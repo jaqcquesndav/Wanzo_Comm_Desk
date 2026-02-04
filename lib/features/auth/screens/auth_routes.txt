@@ -1,0 +1,14 @@
+// Ce fichier est utilisé pour enregistrer les nouvelles routes d'authentification Auth0
+// pour l'application Wanzo. Ajout: 14 juin 2025
+
+// Routes utilisées pour la transition vers Auth0:
+// 1. /auth0_info - Écran d'information sur la transition vers Auth0
+// 2. /auth0_redirect - Écran de redirection vers Auth0
+
+/*
+Configuration:
+- L'écran d'onboarding redirige vers /auth0_info
+- L'écran /auth0_info explique la transition vers Auth0
+- L'écran /auth0_redirect lance automatiquement l'authentification Auth0
+- Toutes les autres routes d'authentification sont désactivées
+*/

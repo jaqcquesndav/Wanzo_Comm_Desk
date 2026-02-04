@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Configuration pour permettre le trafic HTTP en développement -->
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Permettre les connexions HTTP vers votre adresse IP de développement -->
+        <domain includeSubdomains="true">192.168.1.65</domain>
+        <!-- Plages d'adresses IP locales courantes -->
+        <domain includeSubdomains="true">192.168.0.0</domain>
+        <domain includeSubdomains="true">192.168.1.0</domain>
+        <domain includeSubdomains="true">10.0.0.0</domain>
+        <!-- Localhost pour émulateurs -->
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
+    
+    <!-- En production, forcer HTTPS uniquement -->
+    <!-- 
+    <base-config cleartextTrafficPermitted="false" />
+    -->
+</network-security-config>

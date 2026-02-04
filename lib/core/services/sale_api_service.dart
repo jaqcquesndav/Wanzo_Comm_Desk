@@ -1,0 +1,191 @@
+import 'package:flutter/foundation.dart';
+import '../models/api_response.dart';
+import '../exceptions/api_exceptions.dart';
+import '../../features/sales/models/sale.dart';
+import './api_client.dart';
+
+class SaleApiService {
+  final ApiClient _apiClient;
+
+  SaleApiService({ApiClient? apiClient})
+    : _apiClient = apiClient ?? ApiClient();
+
+  Future<ApiResponse<List<Sale>>> getSales({
+    Map<String, String>? queryParameters,
+  }) async {
+    try {
+      final response = await _apiClient.get(
+        'sales',
+        queryParameters: queryParameters,
+        requiresAuth: true,
+      );
+      if (response != null && response['data'] != null) {
+        var data = response['data'];
+
+        // Handle double-envelope response: {success, data: {success, data: ...}}
+        if (data is Map<String, dynamic> &&
+            data.containsKey('success') &&
+            data.containsKey('data')) {
+          data = data['data'];
+        }
+
+        // Handle paginated response: {sales: [...], ...} or {data: [...], ...} or {items: [...], ...}
+        List<dynamic> salesList;
+        if (data is List) {
+          salesList = data;
+        } else if (data is Map<String, dynamic>) {
+          // Try 'sales' first (API response format), then 'data', then 'items'
+          salesList =
+              (data['sales'] as List?) ??
+              (data['data'] as List?) ??
+              (data['items'] as List?) ??
+              [];
+          debugPrint(
+            '📊 Sales API - Extracted ${salesList.length} sales from response',
+          );
+        } else {
+          salesList = [];
+        }
+
+        final sales =
+            salesList
+                .map(
+                  (saleJson) => Sale.fromJson(saleJson as Map<String, dynamic>),
+                )
+                .toList();
+        return ApiResponse<List<Sale>>(
+          success: true,
+          data: sales,
+          message:
+              response['message'] as String? ?? 'Sales fetched successfully.',
+          statusCode: response['statusCode'] as int? ?? 200,
+        );
+      } else {
+        throw ApiExceptionFactory.fromStatusCode(
+          response['statusCode'] as int? ?? 500,
+          'Invalid response data format from server',
+          responseBody: response,
+        );
+      }
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(
+        'Failed to fetch sales: An unexpected error occurred. $e',
+      );
+    }
+  }
+
+  Future<ApiResponse<Sale>> getSaleById(String id) async {
+    try {
+      final response = await _apiClient.get('sales/$id', requiresAuth: true);
+      if (response != null && response['data'] != null) {
+        final sale = Sale.fromJson(response['data'] as Map<String, dynamic>);
+        return ApiResponse<Sale>(
+          success: true,
+          data: sale,
+          message:
+              response['message'] as String? ?? 'Sale fetched successfully.',
+          statusCode: response['statusCode'] as int? ?? 200,
+        );
+      } else {
+        throw ApiExceptionFactory.fromStatusCode(
+          response['statusCode'] as int? ?? 500,
+          'Invalid response data format from server',
+          responseBody: response,
+        );
+      }
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(
+        'Failed to fetch sale: An unexpected error occurred. $e',
+      );
+    }
+  }
+
+  Future<ApiResponse<Sale>> createSale(Sale sale) async {
+    try {
+      final response = await _apiClient.post(
+        'sales',
+        body: sale.toJson(),
+        requiresAuth: true,
+      );
+      if (response != null && response['data'] != null) {
+        final createdSale = Sale.fromJson(
+          response['data'] as Map<String, dynamic>,
+        );
+        return ApiResponse<Sale>(
+          success: true,
+          data: createdSale,
+          message:
+              response['message'] as String? ?? 'Sale created successfully.',
+          statusCode: response['statusCode'] as int? ?? 201,
+        );
+      } else {
+        throw ApiExceptionFactory.fromStatusCode(
+          response['statusCode'] as int? ?? 500,
+          'Invalid response data format from server',
+          responseBody: response,
+        );
+      }
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(
+        'Failed to create sale: An unexpected error occurred. $e',
+      );
+    }
+  }
+
+  Future<ApiResponse<Sale>> updateSale(String id, Sale sale) async {
+    try {
+      final response = await _apiClient.put(
+        'sales/$id',
+        body: sale.toJson(),
+        requiresAuth: true,
+      );
+      if (response != null && response['data'] != null) {
+        final updatedSale = Sale.fromJson(
+          response['data'] as Map<String, dynamic>,
+        );
+        return ApiResponse<Sale>(
+          success: true,
+          data: updatedSale,
+          message:
+              response['message'] as String? ?? 'Sale updated successfully.',
+          statusCode: response['statusCode'] as int? ?? 200,
+        );
+      } else {
+        throw ApiExceptionFactory.fromStatusCode(
+          response['statusCode'] as int? ?? 500,
+          'Invalid response data format from server',
+          responseBody: response,
+        );
+      }
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(
+        'Failed to update sale: An unexpected error occurred. $e',
+      );
+    }
+  }
+
+  Future<ApiResponse<void>> deleteSale(String id) async {
+    try {
+      final response = await _apiClient.delete('sales/$id', requiresAuth: true);
+      return ApiResponse<void>(
+        success: true,
+        message: response['message'] as String? ?? 'Sale deleted successfully.',
+        statusCode: response['statusCode'] as int? ?? 200,
+      );
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(
+        'Failed to delete sale: An unexpected error occurred. $e',
+      );
+    }
+  }
+}

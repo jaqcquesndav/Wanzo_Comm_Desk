@@ -1,0 +1,10 @@
+targets:
+  $default:
+    builders:
+      hive_generator:
+        options:
+          field_rename: snake
+      json_serializable:
+        options:
+          explicit_to_json: true
+          include_if_null: false

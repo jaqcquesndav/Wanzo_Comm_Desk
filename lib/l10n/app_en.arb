@@ -1,0 +1,1270 @@
+{
+  "@@locale": "en",
+  "invoiceSettingsTitle": "Invoice Settings",
+  "currencySettings": "Currency Settings",
+  "activeCurrency": "Active Currency",
+  "exchangeRateSpecific": "Exchange Rate ({currencyFrom} to {currencyTo})",
+  "@exchangeRateSpecific": {
+    "description": "Label for specific exchange rate input",
+    "placeholders": {
+      "currencyFrom": {
+        "type": "String",
+        "example": "USD"
+      },
+      "currencyTo": {
+        "type": "String",
+        "example": "CDF"
+      }
+    }
+  },
+  "exchangeRateHint": "Enter rate for 1 {currencyFrom} to {currencyTo}",
+  "@exchangeRateHint": {
+    "description": "Hint text for exchange rate input",
+    "placeholders": {
+      "currencyFrom": {
+        "type": "String",
+        "example": "USD"
+      },
+      "currencyTo": {
+        "type": "String",
+        "example": "CDF"
+      }
+    }
+  },
+  "errorFieldRequired": "This field is required.",
+  "errorInvalidRate": "Please enter a valid positive rate.",
+  "invoiceFormatting": "Invoice Formatting",
+  "invoiceFormatHint": "Use {YEAR}, {MONTH}, {SEQ} for dynamic values.",
+  "@invoiceFormatHint": {
+    "description": "Hint for invoice number format placeholders",
+    "placeholders": {
+      "YEAR": {},
+      "MONTH": {},
+      "SEQ": {}
+    }
+  },
+  "invoiceNumberFormat": "Invoice Number Format",
+  "invoicePrefix": "Invoice Prefix",
+  "taxesAndConditions": "Taxes & Conditions",
+  "showTaxesOnInvoices": "Show taxes on invoices",
+  "defaultTaxRatePercentage": "Default Tax Rate (%)",
+  "errorInvalidTaxRate": "Tax rate must be between 0 and 100.",
+  "defaultPaymentTerms": "Default Payment Terms",
+  "defaultInvoiceNotes": "Default Invoice Notes",
+  "settingsSavedSuccess": "Settings saved successfully.",
+  "anErrorOccurred": "An error occurred.",
+  "errorUnknown": "Unknown error",
+  "currencySettingsError": "Could not save currency settings: {errorDetails}",
+  "@currencySettingsError": {
+    "description": "Error message for currency settings failure",
+    "placeholders": {
+      "errorDetails": {
+        "type": "String"
+      }
+    }
+  },
+  "currencySettingsSavedSuccess": "Currency settings saved successfully.",
+  "anErrorOccurred": "An error occurred",
+  "currencyCDF": "Congolese Franc",
+  "currencyUSD": "US Dollar",
+  "currencyFCFA": "CFA Franc",
+
+  "editProductTitle": "Edit Product",
+  "addProductTitle": "Add Product",
+  "productCategoryFood": "Food",
+  "productCategoryDrink": "Drink",
+  "productCategoryOther": "Other",
+  "units": "Units",
+  "notes": "Notes (Optional)",
+  "saveProduct": "Save Product",
+
+  "inventoryValue": "Inventory Value",
+  "products": "Products",
+  "stockMovements": "Stock Movements",
+  "noProducts": "No products yet.",
+  "noStockMovements": "No stock movements yet.",
+  "searchProducts": "Search products...",
+  "totalStock": "Total Stock",
+  "valueInCdf": "Value (CDF)",
+  "valueIn": "Value ({currencyCode})",
+  "@valueIn": {
+    "placeholders": {
+      "currencyCode": {
+        "type": "String",
+        "example": "USD"
+      }
+    }
+  },
+  "lastModified": "Last Modified",
+  "productDetails": "Product Details",
+  "deleteProduct": "Delete Product",
+  "confirmDeleteProductTitle": "Confirm Deletion",
+  "confirmDeleteProductMessage": "Are you sure you want to delete this product? This action cannot be undone.",
+  "commonCancel": "Cancel",
+  "delete": "Delete",
+  "stockIn": "Stock In",
+  "stockOut": "Stock Out",
+  "adjustment": "Adjustment",
+  "quantity": "Quantity",
+  "reason": "Reason (Optional)",
+  "addStockMovement": "Add Stock Movement",
+  "newStock": "New Stock",
+  "value": "Value",
+  "type": "Type",
+  "date": "Date",
+  "product": "Product",
+  "selectProduct": "Select Product",
+  "selectCategory": "Select Category",
+  "selectUnit": "Select Unit",
+
+  "imagePickingErrorMessage": "Error picking image: {errorDetails}",
+  "@imagePickingErrorMessage": {
+    "placeholders": {
+      "errorDetails": {
+        "type": "String"
+      }
+    }
+  },
+  "galleryAction": "Gallery",
+  "cameraAction": "Camera",
+  "removeImageAction": "Remove Image",
+  "productImageSectionTitle": "Product Image",
+  "addImageLabel": "Add Image",
+  "generalInformationSectionTitle": "General Information",
+  "productNameLabel": "Product Name",
+  "productNameValidationError": "Please enter the product name.",
+  "productDescriptionLabel": "Description",
+  "productBarcodeLabel": "Barcode (Optional)",
+  "featureComingSoonMessage": "Feature coming soon!",
+  "productCategoryLabel": "Category",
+  "productCategoryElectronics": "Electronics",
+  "productCategoryClothing": "Clothing",
+  "productCategoryHousehold": "Household",
+  "productCategoryHygiene": "Hygiene",
+  "productCategoryOffice": "Office Supplies",
+  "pricingSectionTitle": "Pricing and Currency",
+  "inputCurrencyLabel": "Input Currency",
+  "inputCurrencyValidationError": "Please select an input currency.",
+  "costPriceLabel": "Cost Price",
+  "costPriceValidationError": "Please enter the cost price.",
+  "negativePriceValidationError": "Price cannot be negative.",
+  "invalidNumberValidationError": "Please enter a valid number.",
+  "sellingPriceLabel": "Selling Price",
+  "sellingPriceValidationError": "Please enter the selling price.",
+  "stockManagementSectionTitle": "Stock Management",
+  "stockQuantityLabel": "Quantity in Stock",
+  "stockQuantityValidationError": "Please enter the stock quantity.",
+  "negativeQuantityValidationError": "Quantity cannot be negative.",
+  "productUnitLabel": "Unit",
+  "productUnitPiece": "Piece(s)",
+  "productUnitKg": "Kilogram(s) (kg)",
+  "productUnitG": "Gram(s) (g)",
+  "productUnitL": "Liter(s) (L)",
+  "productUnitMl": "Milliliter(s) (ml)",
+  "productUnitPackage": "Package(s)",
+  "productUnitBox": "Box(es)",
+  "productUnitOther": "Other Unit",
+  "lowStockThresholdLabel": "Low Stock Alert Threshold",
+  "lowStockThresholdHelper": "Receive an alert when stock reaches this level.",
+  "lowStockThresholdValidationError": "Please enter a valid alert threshold.",
+  "negativeThresholdValidationError": "Threshold cannot be negative.",
+  "saveChangesButton": "Save Changes",
+  "addProductButton": "Add Product",
+  "notesLabelOptional": "Notes (Optional)",
+  "addStockDialogTitle": "Add Stock to {productName}",
+  "@addStockDialogTitle": {
+    "placeholders": {
+      "productName": {
+        "type": "String",
+        "example": "Product A"
+      }
+    }
+  },
+  "currentStockLabel": "Current Stock",
+  "quantityToAddLabel": "Quantity to Add",
+  "quantityValidationError": "Please enter a quantity.",
+  "positiveQuantityValidationError": "Quantity must be positive for a purchase.",
+  "addButtonLabel": "Add",
+  "stockAdjustmentDefaultNote": "Stock adjustment",
+  "stockTransactionTypeOther": "Other",
+  "@stockTransactionTypeOther": {
+    "description": "Label for other stock transaction types"
+  },
+  "productInitialFallback": "P",
+  "@productInitialFallback": {
+    "description": "Fallback initial letter for product image if name is empty or image fails"
+  },
+  "inventoryScreenTitle": "Inventory",
+  "@inventoryScreenTitle": {
+    "description": "Title for the Inventory Screen"
+  },
+  "allProductsTabLabel": "All Products",
+  "@allProductsTabLabel": {
+    "description": "Label for the All Products tab"
+  },
+  "lowStockTabLabel": "Low Stock",
+  "@lowStockTabLabel": {
+    "description": "Label for the Low Stock tab"
+  },
+  "transactionsTabLabel": "Transactions",
+  "@transactionsTabLabel": {
+    "description": "Label for the Transactions tab"
+  },
+  "noProductsAvailableMessage": "No products available.",
+  "@noProductsAvailableMessage": {
+    "description": "Message displayed when there are no products"
+  },
+  "noLowStockProductsMessage": "No products with low stock.",
+  "@noLowStockProductsMessage": {
+    "description": "Message displayed when no products have low stock"
+  },
+  "noTransactionsAvailableMessage": "No transactions available.",
+  "@noTransactionsAvailableMessage": {
+    "description": "Message displayed when there are no transactions"
+  },
+  "searchProductDialogTitle": "Search Product",
+  "@searchProductDialogTitle": {
+    "description": "Title for the search product dialog"
+  },
+  "searchProductHintText": "Enter product name or barcode...",
+  "@searchProductHintText": {
+    "description": "Hint text for the product search input field"
+  },
+  "cancelButtonLabel": "Cancel",
+  "@cancelButtonLabel": {
+    "description": "Label for the cancel button"
+  },
+  "searchButtonLabel": "Search",
+  "@searchButtonLabel": {
+    "description": "Label for the search button"
+  },
+  "filterByCategoryDialogTitle": "Filter by Category",
+  "@filterByCategoryDialogTitle": {
+    "description": "Title for the filter by category dialog"
+  },
+  "noCategoriesAvailableMessage": "No categories available to filter.",
+  "@noCategoriesAvailableMessage": {
+    "description": "Message displayed when no categories are available for filtering"
+  },
+  "showAllButtonLabel": "Show All",
+  "@showAllButtonLabel": {
+    "description": "Label for the show all button in filters"
+  },
+  "noProductsInInventoryMessage": "You haven''t added any products to your inventory yet.",
+  "@noProductsInInventoryMessage": {
+    "description": "Message displayed on empty inventory screen"
+  },
+  "priceLabel": "Price",
+  "@priceLabel": {
+    "description": "Label for product price"
+  },
+  "inputPriceLabel": "Input",
+  "@inputPriceLabel": {
+    "description": "Label for product input price"
+  },
+  "stockLabel": "Stock",
+  "@stockLabel": {
+    "description": "Label for product stock quantity"
+  },
+  "unknownProductLabel": "Unknown Product",
+  "@unknownProductLabel": {
+    "description": "Label for a product that cannot be found"
+  },
+  "quantityLabel": "Quantity",
+  "@quantityLabel": {
+    "description": "Label for quantity"
+  },
+  "dateLabel": "Date",
+  "@dateLabel": {
+    "description": "Label for date"
+  },
+  "valueLabel": "Label for value",
+  "@valueLabel": {
+    "description": "Label for value"
+  },
+  "retryButtonLabel": "Retry",
+  "@retryButtonLabel": {
+    "description": "Label for the retry button"
+  },
+  "stockTransactionTypePurchase": "Purchase",
+  "@stockTransactionTypePurchase": {
+    "description": "Label for purchase stock transaction type"
+  },
+  "stockTransactionTypeSale": "Sale",
+  "@stockTransactionTypeSale": {
+    "description": "Label for sale stock transaction type"
+  },
+  "stockTransactionTypeAdjustment": "Adjustment",
+  "@stockTransactionTypeAdjustment": {
+    "description": "Label for adjustment stock transaction type"
+  },
+
+  "salesScreenTitle": "Sales Management",
+  "@salesScreenTitle": {
+    "description": "Title for the Sales Screen"
+  },
+  "salesTabAll": "All",
+  "@salesTabAll": {
+    "description": "Label for the All sales tab"
+  },
+  "salesTabPending": "Pending",
+  "@salesTabPending": {
+    "description": "Label for the Pending sales tab"
+  },
+  "salesTabCompleted": "Completed",
+  "@salesTabCompleted": {
+    "description": "Label for the Completed sales tab"
+  },
+  "salesFilterDialogTitle": "Filter Sales",
+  "@salesFilterDialogTitle": {
+    "description": "Title for the filter sales dialog"
+  },
+  "salesFilterDialogCancel": "Cancel",
+  "@salesFilterDialogCancel": {
+    "description": "Label for the cancel button in filter sales dialog"
+  },
+  "salesFilterDialogApply": "Apply",
+  "@salesFilterDialogApply": {
+    "description": "Label for the apply button in filter sales dialog"
+  },
+  "salesSummaryTotal": "Total Sales",
+  "@salesSummaryTotal": {
+    "description": "Label for total sales in summary"
+  },
+  "salesSummaryCount": "Number of Sales",
+  "@salesSummaryCount": {
+    "description": "Label for number of sales in summary"
+  },
+  "salesStatusPending": "Pending",
+  "@salesStatusPending": {
+    "description": "Status text for pending sales"
+  },
+  "salesStatusCompleted": "Completed",
+  "@salesStatusCompleted": {
+    "description": "Status text for completed sales"
+  },
+  "salesStatusPartiallyPaid": "Partially Paid",
+  "@salesStatusPartiallyPaid": {
+    "description": "Status text for partially paid sales"
+  },
+  "salesStatusCancelled": "Cancelled",
+  "@salesStatusCancelled": {
+    "description": "Status text for cancelled sales"
+  },
+  "salesNoSalesFound": "No sales found",
+  "@salesNoSalesFound": {
+    "description": "Message when no sales are found"
+  },
+  "salesAddSaleButton": "Add Sale",
+  "@salesAddSaleButton": {
+    "description": "Label for the add sale button"
+  },
+  "salesErrorPrefix": "Error",
+  "@salesErrorPrefix": {
+    "description": "Prefix for error messages on sales screen"
+  },
+  "salesRetryButton": "Retry",
+  "@salesRetryButton": {
+    "description": "Label for the retry button on sales screen"
+  },
+  "salesFilterDialogStartDate": "Start Date",
+  "@salesFilterDialogStartDate": {
+    "description": "Label for start date in filter sales dialog"
+  },
+  "salesFilterDialogEndDate": "End Date",
+  "@salesFilterDialogEndDate": {
+    "description": "Label for end date in filter sales dialog"
+  },
+  "salesListItemSaleIdPrefix": "Sale #",
+  "@salesListItemSaleIdPrefix": {
+    "description": "Prefix for sale ID in sale list item"
+  },
+  "salesListItemArticles": "{count,plural, =1{1 article} other{{count} articles}}",
+  "@salesListItemArticles": {
+    "description": "Text for number of articles in a sale item",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "5"
+      }
+    }
+  },
+  "salesListItemTotal": "Total:",
+  "@salesListItemTotal": {
+    "description": "Label for total amount in sale list item"
+  },
+  "salesListItemRemainingToPay": "Remaining to pay:",
+  "@salesListItemRemainingToPay": {
+    "description": "Label for remaining amount to pay in sale list item"
+  },
+
+  "subscriptionScreenTitle": "Subscription Management",
+  "subscriptionUnsupportedFileType": "Unsupported file type. Please choose a JPG or PNG file.",
+  "subscriptionFileTooLarge": "File too large. Maximum size is 5MB.",
+  "subscriptionNoImageSelected": "No image selected.",
+  "subscriptionUpdateSuccessMessage": "Subscription updated successfully.",
+  "subscriptionUpdateFailureMessage": "Failed to update subscription: {error}",
+  "@subscriptionUpdateFailureMessage": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionTokenTopUpSuccessMessage": "Tokens topped up successfully.",
+  "subscriptionTokenTopUpFailureMessage": "Failed to top up tokens: {error}",
+  "@subscriptionTokenTopUpFailureMessage": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionPaymentProofUploadSuccessMessage": "Payment proof uploaded successfully.",
+  "subscriptionPaymentProofUploadFailureMessage": "Failed to upload payment proof: {error}",
+  "@subscriptionPaymentProofUploadFailureMessage": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionRetryButton": "Retry",
+  "subscriptionUnhandledState": "Unhandled state or initialization...",
+  "subscriptionSectionOurOffers": "Our Subscription Offers",
+  "subscriptionSectionCurrentSubscription": "Your Current Subscription",
+  "subscriptionSectionTokenUsage": "Adha Token Usage",
+  "subscriptionSectionInvoiceHistory": "Invoice History",
+  "subscriptionSectionPaymentMethods": "Payment Methods",
+  "subscriptionChangeSubscriptionButton": "Change Subscription",
+  "subscriptionTierFree": "Free",
+  "subscriptionTierUsers": "Users: {count}",
+  "@subscriptionTierUsers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "subscriptionTierAdhaTokens": "Adha Tokens: {count}",
+  "@subscriptionTierAdhaTokens": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "subscriptionTierFeatures": "Features:",
+  "subscriptionTierCurrentPlanChip": "Current Plan",
+  "subscriptionTierChoosePlanButton": "Choose this plan",
+  "subscriptionCurrentPlanTitle": "Current Plan: {tierName}",
+  "@subscriptionCurrentPlanTitle": {
+    "placeholders": {
+      "tierName": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionCurrentPlanPrice": "Price: {price}",
+  "@subscriptionCurrentPlanPrice": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionAvailableAdhaTokens": "Available Adha Tokens: {count}",
+  "@subscriptionAvailableAdhaTokens": {
+    "placeholders": {
+      "count": {
+        "type": "int" 
+      }
+    }
+  },
+  "subscriptionTopUpTokensButton": "Top-up Tokens",
+  "subscriptionNoInvoices": "No invoices available at the moment.",
+  "subscriptionInvoiceListTitle": "Invoice {id} - {date}",
+  "@subscriptionInvoiceListTitle": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionInvoiceListSubtitle": "Amount: {amount} - Status: {status}",
+  "@subscriptionInvoiceListSubtitle": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionDownloadInvoiceTooltip": "Download invoice",
+  "subscriptionSimulateDownloadInvoice": "Simulation: Downloading {id} from {url}",
+  "@subscriptionSimulateDownloadInvoice": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      },
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionSimulateViewInvoiceDetails": "Simulation: View invoice details {id}",
+  "@subscriptionSimulateViewInvoiceDetails": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionPaymentMethodsNextInvoice": "Payment methods for the next invoice:",
+  "subscriptionPaymentMethodsRegistered": "Registered methods:",
+  "subscriptionPaymentMethodsOtherOptions": "Other payment options:",
+  "subscriptionPaymentMethodNewCard": "New Credit Card",
+  "subscriptionPaymentMethodNewMobileMoney": "New Mobile Money",
+  "subscriptionPaymentMethodManual": "Manual Payment (Transfer/Deposit)",
+  "subscriptionManualPaymentInstructions": "Please make the transfer/deposit to the provided details and upload a proof of payment.",
+  "subscriptionProofUploadedLabel": "Proof Uploaded: {fileName}",
+  "@subscriptionProofUploadedLabel": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionUploadProofButton": "Upload Proof",
+  "subscriptionReplaceProofButton": "Replace Proof",
+  "subscriptionConfirmPaymentMethodButton": "Confirm Payment Method",
+  "subscriptionSimulatePaymentMethodSelected": "Selected payment method: {method} (Simulation)",
+  "@subscriptionSimulatePaymentMethodSelected": {
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionChangeDialogTitle": "Change Subscription",
+  "subscriptionChangeDialogTierSubtitle": "{price} - Tokens: {tokens}",
+  "@subscriptionChangeDialogTierSubtitle": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      },
+      "tokens": {
+        "type": "String" 
+      }
+    }
+  },
+  "subscriptionTopUpDialogTitle": "Top-up Adha Tokens",
+  "subscriptionTopUpDialogAmount": "{amount} {currencyCode}",
+  "@subscriptionTopUpDialogAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionNoActivePlan": "You do not have an active subscription plan.",
+  "contactsScreenTitle": "Contacts",
+  "contactsScreenClientsTab": "Clients",
+  "contactsScreenSuppliersTab": "Suppliers",
+  "contactsScreenAddClientTooltip": "Add a client",
+  "contactsScreenAddSupplierTooltip": "Add a supplier",
+
+  "searchCustomerHint": "Search for a customer...",
+  "customerError": "Error: {message}",
+  "@customerError": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "noCustomersToShow": "No customers to display",
+  "customersTitle": "Customers",
+  "filterCustomersTooltip": "Filter customers",
+  "addCustomerTooltip": "Add a new customer",
+  "noResultsForSearchTerm": "No results for {searchTerm}",
+  "@noResultsForSearchTerm": {
+    "placeholders": {
+      "searchTerm": {
+        "type": "String"
+      }
+    }
+  },
+  "noCustomersAvailable": "No customers available",
+  "topCustomersByPurchases": "Top customers by purchases",
+  "recentlyAddedCustomers": "Recently added customers",
+  "resultsForSearchTerm": "Results for {searchTerm}",
+  "@resultsForSearchTerm": {
+    "placeholders": {
+      "searchTerm": {
+        "type": "String"
+      }
+    }
+  },
+  "lastPurchaseDate": "Last purchase: {date}",
+  "@lastPurchaseDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "noRecentPurchase": "No recent purchase",
+  "totalPurchasesAmount": "Total purchases: {amount}",
+  "@totalPurchasesAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "viewDetails": "View details",
+  "edit": "Edit",
+  "delete": "Delete",
+  "allCustomers": "All customers",
+  "topCustomers": "Top customers",
+  "recentCustomers": "Recent customers",
+  "byCategory": "By category",
+  "filterByCategory": "Filter by category",
+  "deleteCustomerTitle": "Delete customer",
+  "deleteCustomerConfirmation": "Are you sure you want to delete {customerName}? This action is irreversible.",
+  "@deleteCustomerConfirmation": {
+    "placeholders": {
+      "customerName": {
+        "type": "String"
+      }
+    }
+  },
+  "customerCategoryVip": "VIP",
+  "customerCategoryRegular": "Regular",
+  "customerCategoryNew": "New",
+  "customerCategoryOccasional": "Occasional",
+  "customerCategoryBusiness": "Business",
+  "customerCategoryUnknown": "Unknown",
+
+  "editCustomerTitle": "Edit Customer",
+  "addCustomerTitle": "Add Customer",
+  "customerPhoneHint": "+243 999 123 456",
+
+  "customerInformation": "Customer Information",
+  "customerNameLabel": "Customer Name",
+  "customerNameValidationError": "Please enter the customer's name.",
+  "customerPhoneLabel": "Customer Phone",
+  "customerPhoneValidationError": "Please enter the customer's phone number.",
+  "customerEmailLabel": "Customer Email (Optional)",
+  "customerEmailLabelOptional": "Customer Email",
+  "customerEmailValidationError": "Please enter a valid email address.",
+  "customerAddressLabel": "Customer Address (Optional)",
+  "customerAddressLabelOptional": "Customer Address",
+  "customerCategoryLabel": "Customer Category",
+  "customerNotesLabel": "Notes (Optional)",
+  "updateButtonLabel": "Update",
+
+  "customerDetailsTitle": "Customer Details",
+  "editCustomerTooltip": "Edit customer",
+  "customerNotFound": "Customer not found",
+  "contactInformationSectionTitle": "Contact Information",
+  "purchaseStatisticsSectionTitle": "Purchase Statistics",
+  "totalPurchasesLabel": "Total Purchases",
+  "lastPurchaseLabel": "Last Purchase",
+  "noPurchaseRecorded": "No purchase recorded",
+  "customerSinceLabel": "Customer Since",
+  "addSaleButtonLabel": "Add Sale",
+  "callButtonLabel": "Call",
+  "deleteButtonLabel": "Delete",
+  "callingNumber": "Calling {phoneNumber}...",
+  "@callingNumber": {
+    "placeholders": {
+      "phoneNumber": {
+        "type": "String"
+      }
+    }
+  },
+  "emailingTo": "Emailing to {email}...",
+  "@emailingTo": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "openingMapFor": "Opening map for {address}...",
+  "@openingMapFor": {
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    }
+  },
+
+  "searchSupplierHint": "Search for a supplier...",
+  "clearSearchTooltip": "Clear search",
+  "supplierError": "Error: {message}",
+  "@supplierError": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "noSuppliersToShow": "No suppliers to display",
+  "suppliersTitle": "Suppliers",
+  "filterSuppliersTooltip": "Filter suppliers",
+  "addSupplierTooltip": "Add a new supplier",
+  "noSuppliersAvailable": "No suppliers available",
+  "topSuppliersByPurchases": "Top suppliers by purchases",
+  "recentlyAddedSuppliers": "Recently added suppliers",
+  "contactPerson": "Contact: {name}",
+  "@contactPerson": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "moreOptionsTooltip": "More options",
+  "allSuppliers": "All suppliers",
+  "topSuppliers": "Top suppliers",
+  "recentSuppliers": "Recent suppliers",
+  "deleteSupplierTitle": "Delete supplier",
+  "deleteSupplierConfirmation": "Are you sure you want to delete {supplierName}? This action is irreversible.",
+  "@deleteSupplierConfirmation": {
+    "placeholders": {
+      "supplierName": {
+        "type": "String"
+      }
+    }
+  },
+  "supplierCategoryStrategic": "Strategic",
+  "supplierCategoryRegular": "Regular",
+  "supplierCategoryNew": "New",
+  "supplierCategoryOccasional": "Occasional",
+  "supplierCategoryInternational": "International",
+  "supplierCategoryUnknown": "Unknown",
+  "supplierCategoryLocal": "Local",
+  "@supplierCategoryLocal": {
+    "description": "Supplier category: Local"
+  },
+  "supplierCategoryOnline": "Online",
+  "@supplierCategoryOnline": {
+    "description": "Supplier category: Online"
+  },
+
+  "addSupplierTitle": "Add Supplier",
+  "editSupplierTitle": "Edit Supplier",
+  "supplierInformation": "Supplier Information",
+  "supplierNameLabel": "Supplier Name *",
+  "supplierNameValidationError": "Name is required",
+  "supplierPhoneLabel": "Phone Number *",
+  "supplierPhoneValidationError": "Phone number is required",
+  "supplierPhoneHint": "+243 999 123 456",
+  "supplierEmailLabel": "Email",
+  "supplierEmailValidationError": "Please enter a valid email",
+  "supplierContactPersonLabel": "Contact Person",
+  "supplierAddressLabel": "Address",
+  "commercialInformation": "Commercial Information",
+  "deliveryTimeLabel": "Delivery Time (days)",
+  "paymentTermsLabel": "Payment Terms",
+  "paymentTermsHint": "Ex: Net 30, 50% upfront, etc.",
+  "supplierCategoryLabel": "Supplier Category",
+  "supplierNotesLabel": "Notes",
+  "updateSupplierButton": "Update",
+  "addSupplierButton": "Add",
+
+  "supplierDetailsTitle": "Supplier Details",
+  "supplierErrorLoading": "Error: {message}",
+  "@supplierErrorLoading": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "supplierNotFound": "Supplier not found",
+  "contactInformationSectionTitle": "Contact Information",
+  "contactLabel": "Contact",
+  "phoneLabel": "Phone",
+  "emailLabel": "Email",
+  "addressLabel": "Address",
+  "commercialInformationSectionTitle": "Commercial Information",
+  "totalPurchasesLabel": "Total Purchases",
+  "lastPurchaseLabel": "Last Purchase",
+  "noPurchaseRecorded": "No purchase recorded",
+  "deliveryTimeLabel": "Delivery Time",
+  "deliveryTimeInDays": "{count,plural, =0{Not specified} =1{1 day} other{{count} days}}",
+  "@deliveryTimeInDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "paymentTermsLabel": "Payment Terms",
+  "supplierSinceLabel": "Supplier Since",
+  "notesSectionTitle": "Notes",
+  "placeOrderButtonLabel": "Place Order",
+  "callButtonLabel": "Call",
+  "deleteButtonLabel": "Delete",
+  "featureToImplement": "Feature to implement",
+  "callingNumber": "Calling {phoneNumber}...",
+  "@callingNumber": {
+    "placeholders": {
+      "phoneNumber": {
+        "type": "String"
+      }
+    }
+  },
+  "emailingTo": "Emailing to {email}...",
+  "@emailingTo": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "openingMapFor": "Opening map for {address}...",
+  "@openingMapFor": {
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    }
+  },
+  "confirmDeleteSupplierTitle": "Delete Supplier",
+  "confirmDeleteSupplierMessage": "Are you sure you want to delete {supplierName}? This action is irreversible.",
+  "@confirmDeleteSupplierMessage": {
+    "placeholders": {
+      "supplierName": {
+        "type": "String"
+      }
+    }
+  },
+  "commonConfirm": "Confirm",
+  "commonCancel": "Cancel",
+  "commonError": "Error",
+  "commonToday": "Today",
+  "commonThisMonth": "This Month",
+  "commonThisYear": "This Year",
+  "commonCustom": "Custom",
+  "commonAnonymousClient": "Anonymous Client",
+  "commonAnonymousClientInitial": "A",
+  "commonErrorDataUnavailable": "Data unavailable",
+  "commonNoData": "No data available",
+
+  "dashboardScreenTitle": "Dashboard",
+  "dashboardHeaderSalesToday": "Sales Today",
+  "dashboardHeaderClientsServed": "Clients Served",
+  "dashboardHeaderReceivables": "Receivables",
+  "dashboardHeaderTransactions": "Transactions",
+  "dashboardCardViewDetails": "View Details",
+  "dashboardSalesChartTitle": "Sales Overview",
+  "dashboardSalesChartNoData": "No sales data to display for the chart.",
+  "dashboardRecentSalesTitle": "Recent Sales",
+  "dashboardRecentSalesViewAll": "View All",
+  "dashboardRecentSalesNoData": "No recent sales.",
+  "dashboardOperationsJournalTitle": "Operations Journal",
+  "dashboardOperationsJournalViewAll": "View All",
+  "dashboardOperationsJournalNoData": "No recent operations.",
+  "dashboardOperationsJournalBalanceLabel": "Balance",
+  "dashboardJournalExportSelectDateRangeTitle": "Select Date Range",
+  "dashboardJournalExportExportButton": "Export to PDF",
+  "dashboardJournalExportPrintButton": "Print Journal",
+  "dashboardJournalExportSuccessMessage": "Journal exported successfully.",
+  "dashboardJournalExportFailureMessage": "Failed to export journal.",
+  "dashboardJournalExportNoDataForPeriod": "No data available for the selected period to export.",
+  "dashboardJournalExportPrintingMessage": "Preparing journal for printing...",
+  "dashboardQuickActionsTitle": "Quick Actions",
+  "dashboardQuickActionsNewSale": "New Sale",
+  "dashboardQuickActionsNewExpense": "New Expense",
+  "dashboardQuickActionsNewProduct": "New Product",
+  "dashboardQuickActionsNewService": "New Service",
+  "dashboardQuickActionsNewClient": "New Client",
+  "dashboardQuickActionsNewSupplier": "New Supplier",
+  "dashboardQuickActionsCashRegister": "Cash Register",
+  "dashboardQuickActionsSettings": "Settings",
+  "dashboardQuickActionsNewInvoice": "Invoicing",
+  "dashboardQuickActionsNewFinancing": "Financing",
+  "commonLoading": "Loading...",
+  "cancel": "Cancel",
+  "journalPdf_title": "Operations Journal",
+  "journalPdf_footer_pageInfo": "Page {currentPage} of {totalPages}",
+  "@journalPdf_footer_pageInfo": {
+    "description": "Footer for PDF, shows current and total pages",
+    "placeholders": {
+      "currentPage": {
+        "type": "int",
+        "example": "1"
+      },
+      "totalPages": {
+        "type": "int",
+        "example": "10"
+      }
+    }
+  },
+  "journalPdf_period": "Period: {startDate} - {endDate}",
+  "@journalPdf_period": {
+    "description": "Indicates the period covered by the journal",
+    "placeholders": {
+      "startDate": {
+        "type": "String",
+        "example": "01/01/2023"
+      },
+      "endDate": {
+        "type": "String",
+        "example": "31/01/2023"
+      }
+    }
+  },
+  "journalPdf_tableHeader_date": "Date",
+  "journalPdf_tableHeader_time": "Time",
+  "journalPdf_tableHeader_description": "Description",
+  "journalPdf_tableHeader_debit": "Debit",
+  "journalPdf_tableHeader_credit": "Credit",
+  "journalPdf_tableHeader_balance": "Balance",
+  "journalPdf_openingBalance": "Opening Balance",
+  "journalPdf_closingBalance": "Closing Balance",
+  "journalPdf_footer_generatedBy": "Generated by Wanzo",
+
+  "adhaHomePageTitle": "Adha - AI Assistant",
+  "adhaHomePageDescription": "Adha, your smart business assistant",
+  "adhaHomePageBody": "Ask me questions about your business and I will help you make the best decisions with personalized analysis and advice.",
+  "startConversationButton": "Start a conversation",
+  "viewConversationsButton": "View my conversations",
+  "salesAnalysisFeatureTitle": "Sales Analysis",
+  "salesAnalysisFeatureDescription": "Get insights into your sales performance",
+  "inventoryManagementFeatureTitle": "Inventory Management",
+  "inventoryManagementFeatureDescription": "Track and optimize your inventory",
+  "customerRelationsFeatureTitle": "Customer Relations",
+  "customerRelationsFeatureDescription": "Advice for retaining your customers",
+  "financialCalculationsFeatureTitle": "Financial Calculations",
+  "financialCalculationsFeatureDescription": "Financial projections and analysis",
+
+  "loginButton": "Login",
+  "registerButton": "Register",
+  "emailLabel": "Email",
+  "emailHint": "Enter your email",
+  "emailValidationErrorRequired": "Please enter your email",
+  "emailValidationErrorInvalid": "Please enter a valid email",
+  "passwordLabel": "Password",
+  "passwordHint": "Enter your password",
+  "passwordValidationErrorRequired": "Please enter your password",
+  "loginButton": "Login",
+  "authFailureMessage": "Authentication failed: {message}",
+  "loginToYourAccount": "Login to your account",
+  "rememberMeLabel": "Remember me",
+  "forgotPasswordButton": "Forgot password?",
+  "noAccountPrompt": "Don't have an account?",
+  "createAccountButton": "Create account",
+  "demoModeButton": "Demo Mode",
+  "settings": "Settings",
+  "settingsTitle": "Settings",
+  "settingsDescription": "Manage your application settings.",
+  "wanzoFallbackText": "Wanzo Fallback",
+  "appVersion": "App Version",
+  "loadingSettings": "Loading settings...",
+  "companyInformation": "Company Information",
+  "companyInformationSubtitle": "Manage your company details",
+  "appearanceAndDisplay": "Appearance and Display",
+  "appearanceAndDisplaySubtitle": "Customize the look and feel",
+  "theme": "Theme",
+  "themeLight": "Light",
+  "themeDark": "Dark",
+  "themeSystem": "System",
+  "language": "Language",
+  "languageEnglish": "English",
+  "languageFrench": "French",
+  "languageSwahili": "Swahili",
+  "dateFormat": "Date Format",
+  "dateFormatDDMMYYYY": "DD/MM/YYYY",
+  "dateFormatMMDDYYYY": "MM/DD/YYYY",
+  "dateFormatYYYYMMDD": "YYYY/MM/DD",
+  "dateFormatDDMMMYYYY": "DD MMM YYYY",
+  "monthJan": "January",
+  "monthFeb": "February",
+  "monthMar": "March",
+  "monthApr": "April",
+  "monthMay": "May",
+  "monthJun": "June",
+  "monthJul": "July",
+  "monthAug": "August",
+  "monthSep": "September",
+  "monthOct": "October",
+  "monthNov": "November",
+  "monthDec": "December",
+  "changeLogo": "Change Logo",
+  "companyName": "Company Name",
+  "companyNameRequired": "Company name is required",
+  "email": "Email",
+  "invalidEmail": "Invalid email address",
+  "phoneNumber": "Phone Number",
+  "address": "Address",
+  "rccm": "RCCM",
+  "rccmHelperText": "Trade and Personal Property Credit Register",
+  "taxId": "Tax ID",
+  "taxIdHelperText": "National Tax Identification Number",
+  "website": "Website",
+  "invoiceSettings": "Invoice Settings",
+  "invoiceSettingsSubtitle": "Manage your invoice preferences",
+  "defaultInvoiceFooter": "Default Invoice Footer",
+  "defaultInvoiceFooterHint": "e.g., Thank you for your business!",
+  "showTotalInWords": "Show Total in Words",
+  "exchangeRate": "Exchange Rate (USD to Local)",
+  "exchangeRateHint": "e.g., 650 for 1 USD = 650 FCFA",
+  "inventorySettings": "Inventory Settings",
+  "inventorySettingsSubtitle": "Manage your inventory preferences",
+  "generalSettings": "General Settings",
+  "defaultCategory": "Default Category",
+  "defaultCategoryRequired": "Default category is required",
+  "lowStockAlert": "Low Stock Alert",
+  "lowStockAlertHint": "Quantity at which to trigger alert",
+  "trackInventory": "Track Inventory",
+  "allowNegativeStock": "Allow Negative Stock",
+  "saveChanges": "Save Changes",
+  "settingsUpdatedSuccessfully": "Settings updated successfully",
+  "@settingsUpdatedSuccessfully": {
+    "description": "Success message when settings are updated"
+  },
+  "errorUpdatingSettings": "Error updating settings",
+  "@errorUpdatingSettings": {
+    "description": "Error message when settings update fails"
+  },
+  "changesSaved": "Changes saved successfully!",
+  "errorSavingChanges": "Error saving changes",
+  "selectTheme": "Select Theme",
+  "selectLanguage": "Select Language",
+  "selectDateFormat": "Select Date Format",
+  "displaySettings": "Display Settings",
+  "displaySettingsDescription": "Manage display settings.",
+  "companySettings": "Company Settings",
+  "companySettingsDescription": "Manage company settings.",
+  "invoiceSettingsDescription": "Manage invoice settings.",
+  "inventorySettingsDescription": "Manage inventory settings.",
+  "minValue": "Min value: {minValue}",
+  "@minValue": {
+      "placeholders": {
+          "minValue": {
+              "type": "double"
+          }
+      }
+  },
+  "maxValue": "Max value: {maxValue}",
+  "@maxValue": {
+      "placeholders": {
+          "maxValue": {
+              "type": "double"
+          }
+      }
+  },
+  "valueMustBeNumber": "Value must be a number",
+  "valueMustBePositive": "Value must be positive",
+  "fieldRequired": "This field is required",
+  "settingsGeneral": "General",
+  "settingsCompany": "Company",
+  "settingsInvoice": "Invoice",
+  "settingsInventory": "Inventory",
+  "settingsAppearance": "Appearance",
+  "searchSettings": "Search settings...",
+  "backupAndReports": "Backup and Reports",
+  "backupAndReportsSubtitle": "Manage data backup and generate reports",
+  "notifications": "Notifications",
+  "notificationsSubtitle": "Manage app notifications",
+  "resetSettings": "Reset Settings",
+  "confirmResetSettings": "Are you sure you want to reset all settings to their default values? This action cannot be undone.",
+  "reset": "Reset",
+  "taxIdentificationNumber": "Tax Identification Number",
+  "rccmNumber": "RCCM Number",
+  "idNatNumber": "National ID Number",
+  "idNatHelperText": "National Identification Number",
+  "selectImageSource": "Select Image Source",
+  "gallery": "Gallery",
+  "camera": "Camera",
+  "deleteCurrentLogo": "Delete Current Logo",
+  "logoDeleted": "Logo deleted.",
+  "logoUpdatedSuccessfully": "Logo updated successfully.",
+  "errorSelectingLogo": "Error selecting logo: {errorDetails}",
+  "@errorSelectingLogo": {
+    "placeholders": {
+      "errorDetails": {
+        "type": "String"
+      }
+    }
+  },
+  "defaultProductCategory": "Default Product Category",
+  "stockAlerts": "Stock Alerts",
+  "lowStockAlertDays": "Low Stock Alert Days",
+  "days": "Days",
+  "enterValidNumber": "Please enter a valid number.",
+  "lowStockAlertDescription": "Receive alerts when product stock is low for a specified number of days.",
+  "productCategories": "Product Categories",
+  "manageYourProductCategories": "Manage your product categories.",
+  "addCategory": "Add Category",
+  "editCategory": "Edit Category",
+  "deleteCategory": "Delete Category",
+  "categoryName": "Category Name",
+  "categoryNameCannotBeEmpty": "Category name cannot be empty.",
+  "categoryAdded": "Category added",
+  "categoryUpdated": "Category updated",
+  "categoryDeleted": "Category deleted",
+  "confirmDeleteCategory": "Are you sure you want to delete this category?",
+  "deleteCategoryMessage": "This action cannot be undone.",
+  "errorAddingCategory": "Error adding category: {error}",
+  "errorUpdatingCategory": "Error updating category: {error}",
+  "errorDeletingCategory": "Error deleting category: {error}",
+  "errorFetchingCategories": "Error fetching categories: {error}",
+  "noCategoriesFound": "No categories found. Add one to get started!",
+
+  "signupScreenTitle": "Create Business Account",
+  "signupStepIdentity": "Identity",
+  "signupStepCompany": "Company",
+  "signupStepConfirmation": "Confirmation",
+  "signupPersonalInfoTitle": "Your Personal Information",
+  "signupOwnerNameLabel": "Full Name of Owner",
+  "signupOwnerNameHint": "Enter your full name",
+  "signupOwnerNameValidation": "Please enter the owner's name",
+  "signupEmailLabel": "Email Address",
+  "signupEmailHint": "Enter your email address",
+  "signupEmailValidationRequired": "Please enter your email",
+  "signupEmailValidationInvalid": "Please enter a valid email",
+  "signupPhoneLabel": "Phone Number",
+  "signupPhoneHint": "Enter your phone number",
+  "signupPhoneValidation": "Please enter your phone number",
+  "signupPasswordLabel": "Password",
+  "signupPasswordHint": "Enter your password (min. 8 characters)",
+  "signupPasswordValidationRequired": "Please enter a password",
+  "signupPasswordValidationLength": "Password must be at least 8 characters",
+  "signupConfirmPasswordLabel": "Confirm Password",
+  "signupConfirmPasswordHint": "Confirm your password",
+  "signupConfirmPasswordValidationRequired": "Please confirm your password",
+  "signupConfirmPasswordValidationMatch": "Passwords do not match",
+  "signupRequiredFields": "* Required fields",
+  "signupCompanyInfoTitle": "Your Company Information",
+  "signupCompanyNameLabel": "Company Name",
+  "signupCompanyNameHint": "Enter your company name",
+  "signupCompanyNameValidation": "Please enter the company name",
+  "signupRccmLabel": "RCCM Number / Business Registration",
+  "signupRccmHint": "Enter your RCCM number or equivalent",
+  "signupRccmValidation": "Please enter the RCCM number",
+  "signupAddressLabel": "Address / Location",
+  "signupAddressHint": "Enter your company address",
+  "signupAddressValidation": "Please enter your company address",
+  "signupActivitySectorLabel": "Business Sector",
+  "signupTermsAndConditionsTitle": "Summary and Terms",
+  "signupInfoSummaryPersonal": "Personal Information:",
+  "signupInfoSummaryName": "Name:",
+  "signupInfoSummaryEmail": "Email:",
+  "signupInfoSummaryPhone": "Phone:",
+  "signupInfoSummaryCompany": "Company Information:",
+  "signupInfoSummaryCompanyName": "Company Name:",
+  "signupInfoSummaryRccm": "RCCM:",
+  "signupInfoSummaryAddress": "Address:",
+  "signupInfoSummaryActivitySector": "Activity Sector:",
+  "signupAgreeToTerms": "I have read and agree to the",
+  "signupTermsOfUse": "Terms of Use",
+  "andConnector": "and",
+  "signupPrivacyPolicy": "Privacy Policy",
+  "signupAgreeToTermsConfirmation": "By checking this box, you confirm that you have read, understood, and accepted our terms of service and privacy policy.",
+  "signupButtonPrevious": "Previous",
+  "signupButtonNext": "Next",
+  "signupButtonRegister": "Register",
+  "signupAlreadyHaveAccount": "Already have an account? Log in",
+  "signupErrorFillFields": "Please fill in all required fields correctly for the current step.",
+  "signupErrorAgreeToTerms": "You must agree to the terms and conditions to register.",
+  "signupSuccessMessage": "Registration successful! Logging you in...",
+  "signupErrorRegistration": "Registration failed: {error}",
+  "@signupErrorRegistration": {
+    "description": "Error message when registration fails",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sectorAgricultureName": "Agriculture and Agri-food",
+  "sectorAgricultureDescription": "Agricultural production, food processing, livestock",
+  "sectorCommerceName": "Trade and Distribution",
+  "sectorCommerceDescription": "Retail, distribution, import-export",
+  "sectorServicesName": "Services",
+  "sectorServicesDescription": "Business and personal services",
+  "sectorTechnologyName": "Technology and Innovation",
+  "sectorTechnologyDescription": "Software development, telecommunications, fintech",
+  "sectorManufacturingName": "Manufacturing and Industry",
+  "sectorManufacturingDescription": "Industrial production, crafts, textiles",
+  "sectorConstructionName": "Construction and Real Estate",
+  "sectorConstructionDescription": "Construction, real estate development, architecture",
+  "sectorTransportationName": "Transport and Logistics",
+  "sectorTransportationDescription": "Freight transport, logistics, warehousing",
+  "sectorEnergyName": "Energy and Natural Resources",
+  "sectorEnergyDescription": "Energy production, mining, water",
+  "sectorTourismName": "Tourism and Hospitality",
+  "sectorTourismDescription": "Hotels, restaurants, tourism",
+  "sectorEducationName": "Education and Training",
+  "sectorEducationDescription": "Teaching, vocational training",
+  "sectorHealthName": "Health and Medical Services",
+  "sectorHealthDescription": "Medical care, pharmacy, medical equipment",
+  "sectorFinanceName": "Financial Services",
+  "sectorFinanceDescription": "Banking, insurance, microfinance",
+  "sectorOtherName": "Other",
+  "sectorOtherDescription": "Other business sectors",
+  "financeSettings": "Finance",
+  "financeSettingsSubtitle": "Configure your bank accounts and Mobile Money",
+
+  "businessUnitTypeCompany": "Company",
+  "businessUnitTypeBranch": "Branch",
+  "businessUnitTypePOS": "Point of Sale",
+  "businessUnitTypeCompanyDesc": "Headquarters - Main establishment",
+  "businessUnitTypeBranchDesc": "Regional branch or agency",
+  "businessUnitTypePOSDesc": "Point of sale, shop or warehouse",
+  "businessUnitStatusActive": "Active",
+  "businessUnitStatusInactive": "Inactive",
+  "businessUnitStatusSuspended": "Suspended",
+  "businessUnitStatusClosed": "Closed",
+  "businessUnitConfiguration": "Business Unit",
+  "businessUnitConfigurationDescription": "Configure the unit to isolate data by establishment",
+  "businessUnitDefaultCompany": "Company Level",
+  "businessUnitDefaultDescription": "Global company data",
+  "businessUnitDefaultCompanyDescription": "You are operating at company level. All data is centralized.",
+  "businessUnitLevelDefault": "Default",
+  "businessUnitConfigureByCode": "Configure a branch or POS",
+  "businessUnitConfigureByCodeDescription": "Enter the code received when creating the unit",
+  "businessUnitCodeLabel": "Unit code",
+  "businessUnitCodeHint": "E.g: BRN-001, POS-KIN-001",
+  "businessUnitCodeHelper": "Unique code provided by administrator",
+  "businessUnitCodeInfo": "Once the branch or point of sale is created from the back-office, you will receive a code to configure this device.",
+  "businessUnitCode": "Code",
+  "businessUnitType": "Type",
+  "businessUnitName": "Unit name",
+  "businessUnitConfigured": "Unit configured",
+  "businessUnitChangeInfo": "To change unit, contact the administrator or reset the application.",
+
+  "userRoleAdmin": "Administrator",
+  "userRoleSuperAdmin": "Super Administrator",
+  "userRoleManager": "Manager",
+  "userRoleAccountant": "Accountant",
+  "userRoleCashier": "Cashier",
+  "userRoleSales": "Sales",
+  "userRoleInventoryManager": "Inventory Manager",
+  "userRoleStaff": "Staff",
+  "userRoleCustomerSupport": "Customer Support",
+  "userRoleAdminDescription": "Business owner with full rights",
+  "userRoleSuperAdminDescription": "Maximum rights across the company and all services",
+  "userRoleManagerDescription": "Manager with extended rights",
+  "userRoleAccountantDescription": "Access to accounting functions",
+  "userRoleCashierDescription": "Access to cashier functions",
+  "userRoleSalesDescription": "Access to sales functions",
+  "userRoleInventoryManagerDescription": "Access to inventory management",
+  "userRoleStaffDescription": "Standard employee",
+  "userRoleCustomerSupportDescription": "Access to customer support"
+}

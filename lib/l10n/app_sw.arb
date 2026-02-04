@@ -1,0 +1,1208 @@
+{
+  "@@locale": "sw",
+  "commonCancel": "Ghairi",
+  "commonConfirm": "Thibitisha",
+  "commonSave": "Hifadhi",
+  "commonError": "Hitilafu",
+  "commonLoading": "Inapakia...",
+  "settingsScreenTitle": "Mipangilio",
+  "dashboardScreenTitle": "Dashibodi",
+  "invoiceSettingsTitle": "Mipangilio ya Ankara",
+  "currencySettings": "Mipangilio ya Sarafu",
+  "activeCurrency": "Sarafu Inayotumika",
+  "exchangeRateSpecific": "Kiwango cha ubadilishaji ({currencyFrom} hadi {currencyTo})",
+  "@exchangeRateSpecific": {
+    "description": "Lebo ya kiwango maalum cha ubadilishaji",
+    "placeholders": {
+      "currencyFrom": {
+        "type": "String",
+        "example": "USD"
+      },
+      "currencyTo": {
+        "type": "String",
+        "example": "CDF"
+      }
+    }
+  },
+  "exchangeRateHint": "Weka kiwango cha 1 {currencyFrom} hadi {currencyTo}",
+  "@exchangeRateHint": {
+    "description": "Kidokezo cha kiwango cha ubadilishaji",
+    "placeholders": {
+      "currencyFrom": {
+        "type": "String",
+        "example": "USD"
+      },
+      "currencyTo": {
+        "type": "String",
+        "example": "CDF"
+      }
+    }
+  },
+  "errorFieldRequired": "Sehemu hii inahitajika.",
+  "errorInvalidRate": "Tafadhali weka kiwango sahihi chanya.",
+  "invoiceFormatting": "Muundo wa Ankara",
+  "invoiceFormatHint": "Tumia {YEAR}, {MONTH}, {SEQ} kwa thamani zinazobadilika.",
+  "@invoiceFormatHint": {
+    "description": "Kidokezo cha viweka nafasi vya nambari ya ankara",
+    "placeholders": {
+      "YEAR": {
+        "type": "Object"
+      },
+      "MONTH": {
+        "type": "Object"
+      },
+      "SEQ": {
+        "type": "Object"
+      }
+    }
+  },
+  "invoiceNumberFormat": "Umbizo la Nambari ya Ankara",
+  "invoicePrefix": "Kiambishi awali cha Ankara",
+  "taxesAndConditions": "Kodi na Masharti",
+  "showTaxesOnInvoices": "Onyesha kodi kwenye ankara",
+  "defaultTaxRatePercentage": "Kiwango cha Kodi Chaguomsingi (%)",
+  "errorInvalidTaxRate": "Kiwango cha kodi lazima kiwe kati ya 0 na 100.",
+  "defaultPaymentTerms": "Masharti Chaguomsingi ya Malipo",
+  "defaultInvoiceNotes": "Maelezo Chaguomsingi ya Ankara",
+  "settingsSavedSuccess": "Mipangilio imehifadhiwa kikamilifu.",
+  "anErrorOccurred": "Hitilafu imetokea.",
+  "errorUnknown": "Hitilafu isiyojulikana",
+  "currencySettingsError": "Haikuweza kuhifadhi mipangilio ya sarafu: {errorDetails}",
+  "@currencySettingsError": {
+    "description": "Ujumbe wa hitilafu kwa kushindwa kwa mipangilio ya sarafu",
+    "placeholders": {
+      "errorDetails": {
+        "type": "String"
+      }
+    }
+  },
+  "currencySettingsSavedSuccess": "Mipangilio ya sarafu imehifadhiwa kikamilifu.",
+  "currencyCDF": "Faranga ya Kongo",
+  "currencyUSD": "Dola ya Marekani",
+  "currencyFCFA": "Faranga ya CFA",
+  "editProductTitle": "Hariri Bidhaa",
+  "addProductTitle": "Ongeza Bidhaa",
+  "productCategoryFood": "Chakula",
+  "productCategoryDrink": "Kinywaji",
+  "productCategoryOther": "Nyingine",
+  "units": "Vipimo",
+  "notes": "Maelezo (Si lazima)",
+  "saveProduct": "Hifadhi Bidhaa",
+  "inventoryValue": "Thamani ya Mali",
+  "products": "Bidhaa",
+  "stockMovements": "Mienendo ya Hisa",
+  "noProducts": "Hakuna bidhaa bado.",
+  "noStockMovements": "Hakuna mienendo ya hisa bado.",
+  "searchProducts": "Tafuta bidhaa...",
+  "totalStock": "Jumla ya Hisa",
+  "valueInCdf": "Thamani (CDF)",
+  "valueIn": "Thamani ({currencyCode})",
+  "@valueIn": {
+    "placeholders": {
+      "currencyCode": {
+        "type": "String",
+        "example": "USD"
+      }
+    }
+  },
+  "lastModified": "Imebadilishwa Mwisho",
+  "productDetails": "Maelezo ya Bidhaa",
+  "deleteProduct": "Futa Bidhaa",
+  "confirmDeleteProductTitle": "Thibitisha Kufuta",
+  "confirmDeleteProductMessage": "Una uhakika unataka kufuta bidhaa hii? Kitendo hiki hakiwezi kutenduliwa.",
+  "delete": "Futa",
+  "stockIn": "Uingizaji Hisa",
+  "stockOut": "Utoaji Hisa",
+  "adjustment": "Marekebisho",
+  "quantity": "Kiasi",
+  "reason": "Sababu (Si lazima)",
+  "addStockMovement": "Ongeza Mwenendo wa Hisa",
+  "newStock": "Hisa Mpya",
+  "value": "Thamani",
+  "type": "Aina",
+  "date": "Tarehe",
+  "product": "Bidhaa",
+  "selectProduct": "Chagua Bidhaa",
+  "selectCategory": "Chagua Kategoria",
+  "selectUnit": "Chagua Kipimo",
+  "imagePickingErrorMessage": "Hitilafu wakati wa kuchagua picha: {errorDetails}",
+  "@imagePickingErrorMessage": {
+    "placeholders": {
+      "errorDetails": {
+        "type": "String"
+      }
+    }
+  },
+  "galleryAction": "Matunzio",
+  "cameraAction": "Kamera",
+  "removeImageAction": "Ondoa Picha",
+  "productImageSectionTitle": "Picha ya Bidhaa",
+  "addImageLabel": "Ongeza Picha",
+  "generalInformationSectionTitle": "Taarifa za Jumla",
+  "productNameLabel": "Jina la Bidhaa",
+  "productNameValidationError": "Tafadhali ingiza jina la bidhaa.",
+  "productDescriptionLabel": "Maelezo",
+  "productBarcodeLabel": "Msimbo Pau (Si lazima)",
+  "featureComingSoonMessage": "Kipengele kinakuja hivi karibuni!",
+  "productCategoryLabel": "Kategoria",
+  "productCategoryElectronics": "Elektroniki",
+  "productCategoryClothing": "Nguo",
+  "productCategoryHousehold": "Vifaa vya Nyumbani",
+  "productCategoryHygiene": "Usafi",
+  "productCategoryOffice": "Vifaa vya Ofisi",
+  "pricingSectionTitle": "Bei na Sarafu",
+  "inputCurrencyLabel": "Sarafu ya Kuingiza",
+  "inputCurrencyValidationError": "Tafadhali chagua sarafu ya kuingiza.",
+  "costPriceLabel": "Bei ya Gharama",
+  "costPriceValidationError": "Tafadhali ingiza bei ya gharama.",
+  "negativePriceValidationError": "Bei haiwezi kuwa hasi.",
+  "invalidNumberValidationError": "Tafadhali ingiza nambari sahihi.",
+  "sellingPriceLabel": "Bei ya Kuuza",
+  "sellingPriceValidationError": "Tafadhali ingiza bei ya kuuza.",
+  "stockManagementSectionTitle": "Usimamizi wa Hisa",
+  "stockQuantityLabel": "Kiasi katika Hisa",
+  "stockQuantityValidationError": "Tafadhali ingiza kiasi cha hisa.",
+  "negativeQuantityValidationError": "Kiasi hakiwezi kuwa hasi.",
+  "productUnitLabel": "Kipimo",
+  "productUnitPiece": "Kipande(Vipande)",
+  "productUnitKg": "Kilogramu (kg)",
+  "productUnitG": "Gramu (g)",
+  "productUnitL": "Lita (L)",
+  "productUnitMl": "Mililita (ml)",
+  "productUnitPackage": "Kifurushi(Vifurushi)",
+  "productUnitBox": "Sanduku(Masanduku)",
+  "productUnitOther": "Kipimo Kingine",
+  "lowStockThresholdLabel": "Kiwango cha Tahadhari ya Hisa Chini",
+  "lowStockThresholdHelper": "Pokea tahadhari hisa inapofikia kiwango hiki.",
+  "lowStockThresholdValidationError": "Tafadhali ingiza kiwango sahihi cha tahadhari.",
+  "negativeThresholdValidationError": "Kiwango hakiwezi kuwa hasi.",
+  "saveChangesButton": "Hifadhi Mabadiliko",
+  "addProductButton": "Ongeza Bidhaa",
+  "notesLabelOptional": "Maelezo (Si lazima)",
+  "addStockDialogTitle": "Ongeza Hisa kwa {productName}",
+  "@addStockDialogTitle": {
+    "placeholders": {
+      "productName": {
+        "type": "String",
+        "example": "Bidhaa A"
+      }
+    }
+  },
+  "currentStockLabel": "Hisa ya Sasa",
+  "quantityToAddLabel": "Kiasi cha Kuongeza",
+  "quantityValidationError": "Tafadhali ingiza kiasi.",
+  "positiveQuantityValidationError": "Kiasi lazima kiwe chanya kwa ununuzi.",
+  "addButtonLabel": "Ongeza",
+  "stockAdjustmentDefaultNote": "Marekebisho ya hisa",
+  "stockTransactionTypeOther": "Nyingine",
+  "@stockTransactionTypeOther": {
+    "description": "Lebo ya aina nyingine za miamala ya hisa"
+  },
+  "productInitialFallback": "B",
+  "@productInitialFallback": {
+    "description": "Herufi ya kwanza mbadala ya picha ya bidhaa ikiwa jina ni tupu au picha itashindwa"
+  },
+  "inventoryScreenTitle": "Mali",
+  "@inventoryScreenTitle": {
+    "description": "Kichwa cha Skrini ya Mali"
+  },
+  "allProductsTabLabel": "Bidhaa Zote",
+  "@allProductsTabLabel": {
+    "description": "Lebo ya kichupo cha Bidhaa Zote"
+  },
+  "lowStockTabLabel": "Hisa Chini",
+  "@lowStockTabLabel": {
+    "description": "Lebo ya kichupo cha Hisa Chini"
+  },
+  "transactionsTabLabel": "Miamala",
+  "@transactionsTabLabel": {
+    "description": "Lebo ya kichupo cha Miamala"
+  },
+  "noProductsAvailableMessage": "Hakuna bidhaa zinazopatikana.",
+  "@noProductsAvailableMessage": {
+    "description": "Ujumbe unaoonyeshwa wakati hakuna bidhaa"
+  },
+  "noLowStockProductsMessage": "Hakuna bidhaa zenye hisa chini.",
+  "@noLowStockProductsMessage": {
+    "description": "Ujumbe unaoonyeshwa wakati hakuna bidhaa zenye hisa chini"
+  },
+  "noTransactionsAvailableMessage": "Hakuna miamala inayopatikana.",
+  "@noTransactionsAvailableMessage": {
+    "description": "Ujumbe unaoonyeshwa wakati hakuna miamala"
+  },
+  "searchProductDialogTitle": "Tafuta Bidhaa",
+  "@searchProductDialogTitle": {
+    "description": "Kichwa cha mazungumzo ya kutafuta bidhaa"
+  },
+  "searchProductHintText": "Ingiza jina la bidhaa au msimbo pau...",
+  "@searchProductHintText": {
+    "description": "Maandishi ya kidokezo kwa sehemu ya kuingiza ya utafutaji wa bidhaa"
+  },
+  "cancelButtonLabel": "Ghairi",
+  "@cancelButtonLabel": {
+    "description": "Lebo ya kitufe cha kughairi"
+  },
+  "searchButtonLabel": "Tafuta",
+  "@searchButtonLabel": {
+    "description": "Lebo ya kitufe cha kutafuta"
+  },
+  "filterByCategoryDialogTitle": "Chuja kwa Kategoria",
+  "@filterByCategoryDialogTitle": {
+    "description": "Kichwa cha mazungumzo ya kuchuja kwa kategoria"
+  },
+  "noCategoriesAvailableMessage": "Hakuna kategoria zinazopatikana za kuchuja.",
+  "@noCategoriesAvailableMessage": {
+    "description": "Ujumbe unaoonyeshwa wakati hakuna kategoria zinazopatikana za kuchuja"
+  },
+  "showAllButtonLabel": "Onyesha Zote",
+  "@showAllButtonLabel": {
+    "description": "Lebo ya kitufe cha kuonyesha zote kwenye vichujio"
+  },
+  "noProductsInInventoryMessage": "Bado hujaongeza bidhaa zozote kwenye mali yako.",
+  "@noProductsInInventoryMessage": {
+    "description": "Ujumbe unaoonyeshwa kwenye skrini tupu ya mali"
+  },
+  "priceLabel": "Bei",
+  "@priceLabel": {
+    "description": "Lebo ya bei ya bidhaa"
+  },
+  "inputPriceLabel": "Bei ya Kuingiza",
+  "@inputPriceLabel": {
+    "description": "Lebo ya bei ya kuingiza ya bidhaa"
+  },
+  "stockLabel": "Hisa",
+  "@stockLabel": {
+    "description": "Lebo ya kiasi cha hisa ya bidhaa"
+  },
+  "unknownProductLabel": "Bidhaa Isiyojulikana",
+  "@unknownProductLabel": {
+    "description": "Lebo ya bidhaa ambayo haipatikani"
+  },
+  "quantityLabel": "Kiasi",
+  "@quantityLabel": {
+    "description": "Lebo ya kiasi"
+  },
+  "dateLabel": "Tarehe",
+  "@dateLabel": {
+    "description": "Lebo ya tarehe"
+  },
+  "valueLabel": "Thamani",
+  "@valueLabel": {
+    "description": "Lebo ya thamani"
+  },
+  "retryButtonLabel": "Jaribu Tena",
+  "@retryButtonLabel": {
+    "description": "Lebo ya kitufe cha kujaribu tena"
+  },
+  "stockTransactionTypePurchase": "Ununuzi",
+  "@stockTransactionTypePurchase": {
+    "description": "Lebo ya aina ya muamala wa hisa ya ununuzi"
+  },
+  "stockTransactionTypeSale": "Uuzaji",
+  "@stockTransactionTypeSale": {
+    "description": "Lebo ya aina ya muamala wa hisa ya uuzaji"
+  },
+  "stockTransactionTypeAdjustment": "Marekebisho",
+  "@stockTransactionTypeAdjustment": {
+    "description": "Lebo ya aina ya muamala wa hisa ya marekebisho"
+  },
+  "salesScreenTitle": "Usimamizi wa Mauzo",
+  "@salesScreenTitle": {
+    "description": "Kichwa cha Skrini ya Mauzo"
+  },
+  "salesTabAll": "Zote",
+  "@salesTabAll": {
+    "description": "Lebo ya kichupo cha mauzo Zote"
+  },
+  "salesTabPending": "Inasubiri",
+  "@salesTabPending": {
+    "description": "Lebo ya kichupo cha mauzo Yanayosubiri"
+  },
+  "salesTabCompleted": "Imekamilika",
+  "@salesTabCompleted": {
+    "description": "Lebo ya kichupo cha mauzo Yaliyokamilika"
+  },
+  "salesFilterDialogTitle": "Chuja Mauzo",
+  "@salesFilterDialogTitle": {
+    "description": "Kichwa cha mazungumzo ya kuchuja mauzo"
+  },
+  "salesFilterDialogCancel": "Ghairi",
+  "@salesFilterDialogCancel": {
+    "description": "Lebo ya kitufe cha kughairi katika mazungumzo ya kuchuja mauzo"
+  },
+  "salesFilterDialogApply": "Tumia",
+  "@salesFilterDialogApply": {
+    "description": "Lebo ya kitufe cha kutumia katika mazungumzo ya kuchuja mauzo"
+  },
+  "salesSummaryTotal": "Jumla ya Mauzo",
+  "@salesSummaryTotal": {
+    "description": "Lebo ya jumla ya mauzo katika muhtasari"
+  },
+  "salesSummaryCount": "Idadi ya Mauzo",
+  "@salesSummaryCount": {
+    "description": "Lebo ya idadi ya mauzo katika muhtasari"
+  },
+  "salesStatusPending": "Inasubiri",
+  "@salesStatusPending": {
+    "description": "Maandishi ya hali kwa mauzo yanayosubiri"
+  },
+  "salesStatusCompleted": "Imekamilika",
+  "@salesStatusCompleted": {
+    "description": "Maandishi ya hali kwa mauzo yaliyokamilika"
+  },
+  "salesStatusPartiallyPaid": "Imelipwa Kiasi",
+  "@salesStatusPartiallyPaid": {
+    "description": "Maandishi ya hali kwa mauzo yaliyolipwa kiasi"
+  },
+  "salesStatusCancelled": "Imeghairiwa",
+  "@salesStatusCancelled": {
+    "description": "Maandishi ya hali kwa mauzo yaliyoghairiwa"
+  },
+  "salesNoSalesFound": "Hakuna mauzo yaliyopatikana",
+  "@salesNoSalesFound": {
+    "description": "Ujumbe wakati hakuna mauzo yanayopatikana"
+  },
+  "salesAddSaleButton": "Ongeza Mauzo",
+  "@salesAddSaleButton": {
+    "description": "Lebo ya kitufe cha kuongeza mauzo"
+  },
+  "salesErrorPrefix": "Hitilafu",
+  "@salesErrorPrefix": {
+    "description": "Kiambishi awali cha ujumbe wa hitilafu kwenye skrini ya mauzo"
+  },
+  "salesRetryButton": "Jaribu Tena",
+  "@salesRetryButton": {
+    "description": "Lebo ya kitufe cha kujaribu tena kwenye skrini ya mauzo"
+  },
+  "salesFilterDialogStartDate": "Tarehe ya Kuanza",
+  "@salesFilterDialogStartDate": {
+    "description": "Lebo ya tarehe ya kuanza katika mazungumzo ya kuchuja mauzo"
+  },
+  "salesFilterDialogEndDate": "Tarehe ya Mwisho",
+  "@salesFilterDialogEndDate": {
+    "description": "Lebo ya tarehe ya mwisho katika mazungumzo ya kuchuja mauzo"
+  },
+  "salesListItemSaleIdPrefix": "Mauzo #",
+  "@salesListItemSaleIdPrefix": {
+    "description": "Kiambishi awali cha ID ya mauzo katika kipengee cha orodha ya mauzo"
+  },
+  "salesListItemArticles": "{count,plural, =1{bidhaa 1} other{{count} bidhaa}}",
+  "@salesListItemArticles": {
+    "description": "Maandishi ya idadi ya bidhaa katika bidhaa ya mauzo",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "5"
+      }
+    }
+  },
+  "salesListItemTotal": "Jumla:",
+  "@salesListItemTotal": {
+    "description": "Lebo ya kiasi cha jumla katika kipengee cha orodha ya mauzo"
+  },
+  "salesListItemRemainingToPay": "Kiasi Kilichobaki Kulipa:",
+  "@salesListItemRemainingToPay": {
+    "description": "Lebo ya kiasi kilichobaki kulipa katika kipengee cha orodha ya mauzo"
+  },
+  "subscriptionScreenTitle": "Usimamizi wa Usajili",
+  "subscriptionUnsupportedFileType": "Aina ya faili haitumiki. Tafadhali chagua faili ya JPG au PNG.",
+  "subscriptionFileTooLarge": "Faili ni kubwa mno. Ukubwa wa juu ni 5MB.",
+  "subscriptionNoImageSelected": "Hakuna picha iliyochaguliwa.",
+  "subscriptionUpdateSuccessMessage": "Usajili umesasishwa kikamilifu.",
+  "subscriptionUpdateFailureMessage": "Imeshindwa kusasisha usajili: {error}",
+  "@subscriptionUpdateFailureMessage": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionTokenTopUpSuccessMessage": "Tokeni zimeongezwa kikamilifu.",
+  "subscriptionTokenTopUpFailureMessage": "Imeshindwa kuongeza tokeni: {error}",
+  "@subscriptionTokenTopUpFailureMessage": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionPaymentProofUploadSuccessMessage": "Uthibitisho wa malipo umepakiwa kikamilifu.",
+  "subscriptionPaymentProofUploadFailureMessage": "Imeshindwa kupakia uthibitisho wa malipo: {error}",
+  "@subscriptionPaymentProofUploadFailureMessage": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionRetryButton": "Jaribu Tena",
+  "subscriptionUnhandledState": "Hali isiyoshughulikiwa au uanzishaji...",
+  "subscriptionSectionOurOffers": "Matoleo Yetu ya Usajili",
+  "subscriptionSectionCurrentSubscription": "Usajili Wako wa Sasa",
+  "subscriptionSectionTokenUsage": "Matumizi ya Tokeni za Adha",
+  "subscriptionSectionInvoiceHistory": "Historia ya Ankara",
+  "subscriptionSectionPaymentMethods": "Njia za Malipo",
+  "subscriptionChangeSubscriptionButton": "Badilisha Usajili",
+  "subscriptionTierFree": "Bure",
+  "subscriptionTierUsers": "Watumiaji: {count}",
+  "@subscriptionTierUsers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "subscriptionTierAdhaTokens": "Tokeni za Adha: {count}",
+  "@subscriptionTierAdhaTokens": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "subscriptionTierFeatures": "Vipengele:",
+  "subscriptionTierCurrentPlanChip": "Mpango wa Sasa",
+  "subscriptionTierChoosePlanButton": "Chagua mpango huu",
+  "subscriptionCurrentPlanTitle": "Mpango wa Sasa: {tierName}",
+  "@subscriptionCurrentPlanTitle": {
+    "placeholders": {
+      "tierName": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionCurrentPlanPrice": "Bei: {price}",
+  "@subscriptionCurrentPlanPrice": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionAvailableAdhaTokens": "Tokeni za Adha Zinazopatikana: {count}",
+  "@subscriptionAvailableAdhaTokens": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "subscriptionTopUpTokensButton": "Ongeza Tokeni",
+  "subscriptionNoInvoices": "Hakuna ankara zinazopatikana kwa sasa.",
+  "subscriptionInvoiceListTitle": "Ankara {id} - {date}",
+  "@subscriptionInvoiceListTitle": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionInvoiceListSubtitle": "Kiasi: {amount} - Hali: {status}",
+  "@subscriptionInvoiceListSubtitle": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionDownloadInvoiceTooltip": "Pakua ankara",
+  "subscriptionSimulateDownloadInvoice": "Uigaji: Inapakua {id} kutoka {url}",
+  "@subscriptionSimulateDownloadInvoice": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      },
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionSimulateViewInvoiceDetails": "Uigaji: Tazama maelezo ya ankara {id}",
+  "@subscriptionSimulateViewInvoiceDetails": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionPaymentMethodsNextInvoice": "Njia za malipo kwa ankara inayofuata:",
+  "subscriptionPaymentMethodsRegistered": "Njia zilizosajiliwa:",
+  "subscriptionPaymentMethodsOtherOptions": "Chaguo zingine za malipo:",
+  "subscriptionPaymentMethodNewCard": "Kadi Mpya ya Mkopo",
+  "subscriptionPaymentMethodNewMobileMoney": "Pesa Mpya ya Simu",
+  "subscriptionPaymentMethodManual": "Malipo ya Mwongozo (Uhamisho/Amana)",
+  "subscriptionManualPaymentInstructions": "Tafadhali fanya uhamisho/amana kwa maelezo yaliyotolewa na upakie uthibitisho wa malipo.",
+  "subscriptionProofUploadedLabel": "Uthibitisho Umepakiwa: {fileName}",
+  "@subscriptionProofUploadedLabel": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionUploadProofButton": "Pakia Uthibitisho",
+  "subscriptionReplaceProofButton": "Badilisha Uthibitisho",
+  "subscriptionConfirmPaymentMethodButton": "Thibitisha Njia ya Malipo",
+  "subscriptionSimulatePaymentMethodSelected": "Njia ya malipo iliyochaguliwa: {method} (Uigaji)",
+  "@subscriptionSimulatePaymentMethodSelected": {
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionChangeDialogTitle": "Badilisha Usajili",
+  "subscriptionChangeDialogTierSubtitle": "{price} - Tokeni: {tokens}",
+  "@subscriptionChangeDialogTierSubtitle": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      },
+      "tokens": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionTopUpDialogTitle": "Ongeza Tokeni za Adha",
+  "subscriptionTopUpDialogAmount": "{amount} {currencyCode}",
+  "@subscriptionTopUpDialogAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionNoActivePlan": "Huna mpango wa usajili unaotumika.",
+  "contactsScreenTitle": "Anwani",
+  "contactsScreenClientsTab": "Wateja",
+  "contactsScreenSuppliersTab": "Wauzaji",
+  "contactsScreenAddClientTooltip": "Ongeza mteja",
+  "contactsScreenAddSupplierTooltip": "Ongeza muuzaji",
+  "searchCustomerHint": "Tafuta mteja...",
+  "customerError": "Hitilafu: {message}",
+  "@customerError": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "noCustomersToShow": "Hakuna wateja wa kuonyesha",
+  "customersTitle": "Wateja",
+  "filterCustomersTooltip": "Chuja wateja",
+  "addCustomerTooltip": "Ongeza mteja mpya",
+  "noResultsForSearchTerm": "Hakuna matokeo ya {searchTerm}",
+  "@noResultsForSearchTerm": {
+    "placeholders": {
+      "searchTerm": {
+        "type": "String"
+      }
+    }
+  },
+  "noCustomersAvailable": "Hakuna wateja wanaopatikana",
+  "topCustomersByPurchases": "Wateja wakuu kwa ununuzi",
+  "recentlyAddedCustomers": "Wateja walioongezwa hivi karibuni",
+  "resultsForSearchTerm": "Matokeo ya {searchTerm}",
+  "@resultsForSearchTerm": {
+    "placeholders": {
+      "searchTerm": {
+        "type": "String"
+      }
+    }
+  },
+  "lastPurchaseDate": "Ununuzi wa mwisho: {date}",
+  "@lastPurchaseDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "noRecentPurchase": "Hakuna ununuzi wa hivi karibuni",
+  "totalPurchasesAmount": "Jumla ya ununuzi: {amount}",
+  "@totalPurchasesAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "viewDetails": "Tazama maelezo",
+  "edit": "Hariri",
+  "delete": "Futa",
+  "allCustomers": "Wateja wote",
+  "topCustomers": "Wateja wakuu",
+  "recentCustomers": "Wateja wa hivi karibuni",
+  "byCategory": "Kwa Kategoria",
+  "filterByCategory": "Chuja kwa kategoria",
+  "deleteCustomerTitle": "Futa mteja",
+  "deleteCustomerConfirmation": "Una uhakika unataka kumfuta {customerName}? Kitendo hiki hakiwezi kutenduliwa.",
+  "@deleteCustomerConfirmation": {
+    "placeholders": {
+      "customerName": {
+        "type": "String"
+      }
+    }
+  },
+  "customerCategoryVip": "VIP",
+  "customerCategoryRegular": "Kawaida",
+  "customerCategoryNew": "Mpya",
+  "customerCategoryOccasional": "Wa Mara kwa Mara",
+  "customerCategoryBusiness": "Biashara",
+  "customerCategoryUnknown": "Haijulikani",
+  "editCustomerTitle": "Hariri Mteja",
+  "addCustomerTitle": "Ongeza Mteja",
+  "customerPhoneHint": "+243 999 123 456",
+  "customerInformation": "Taarifa za Mteja",
+  "customerNameLabel": "Jina la Mteja",
+  "customerNameValidationError": "Tafadhali ingiza jina la mteja.",
+  "customerPhoneLabel": "Simu ya Mteja",
+  "customerPhoneValidationError": "Tafadhali ingiza nambari ya simu ya mteja.",
+  "customerEmailLabel": "Barua Pepe ya Mteja (Si lazima)",
+  "customerEmailLabelOptional": "Barua Pepe ya Mteja",
+  "customerEmailValidationError": "Tafadhali ingiza anwani sahihi ya barua pepe.",
+  "customerAddressLabel": "Anwani ya Mteja (Si lazima)",
+  "customerAddressLabelOptional": "Anwani ya Mteja",
+  "customerCategoryLabel": "Kategoria ya Mteja",
+  "customerNotesLabel": "Maelezo (Si lazima)",
+  "updateButtonLabel": "Sasisha",
+  "customerDetailsTitle": "Maelezo ya Mteja",
+  "editCustomerTooltip": "Hariri mteja",
+  "customerNotFound": "Mteja hajapatikana",
+  "contactInformationSectionTitle": "Taarifa za Mawasiliano",
+  "purchaseStatisticsSectionTitle": "Takwimu za Ununuzi",
+  "totalPurchasesLabel": "Jumla ya Ununuzi",
+  "lastPurchaseLabel": "Ununuzi wa Mwisho",
+  "noPurchaseRecorded": "Hakuna ununuzi uliorekodiwa",
+  "customerSinceLabel": "Mteja Tangu",
+  "addSaleButtonLabel": "Ongeza Mauzo",
+  "callButtonLabel": "Piga Simu",
+  "deleteButtonLabel": "Futa",
+  "callingNumber": "Inapiga {phoneNumber}...",
+  "@callingNumber": {
+    "placeholders": {
+      "phoneNumber": {
+        "type": "String"
+      }
+    }
+  },
+  "emailingTo": "Inatuma barua pepe kwa {email}...",
+  "@emailingTo": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "openingMapFor": "Inafungua ramani ya {address}...",
+  "@openingMapFor": {
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    }
+  },
+  "searchSupplierHint": "Tafuta muuzaji...",
+  "clearSearchTooltip": "Futa utafutaji",
+  "supplierError": "Hitilafu: {message}",
+  "@supplierError": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "noSuppliersToShow": "Hakuna wauzaji wa kuonyesha",
+  "suppliersTitle": "Wauzaji",
+  "filterSuppliersTooltip": "Chuja wauzaji",
+  "addSupplierTooltip": "Ongeza muuzaji mpya",
+  "noSuppliersAvailable": "Hakuna wauzaji wanaopatikana",
+  "topSuppliersByPurchases": "Wauzaji wakuu kwa ununuzi",
+  "recentlyAddedSuppliers": "Wauzaji walioongezwa hivi karibuni",
+  "contactPerson": "Mawasiliano: {name}",
+  "@contactPerson": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "moreOptionsTooltip": "Chaguo zaidi",
+  "allSuppliers": "Wauzaji wote",
+  "topSuppliers": "Wauzaji wakuu",
+  "recentSuppliers": "Wauzaji wa hivi karibuni",
+  "deleteSupplierTitle": "Futa muuzaji",
+  "deleteSupplierConfirmation": "Una uhakika unataka kumfuta {supplierName}? Kitendo hiki hakiwezi kutenduliwa.",
+  "@deleteSupplierConfirmation": {
+    "placeholders": {
+      "supplierName": {
+        "type": "String"
+      }
+    }
+  },
+  "supplierCategoryStrategic": "Kimkakati",
+  "supplierCategoryRegular": "Kawaida",
+  "supplierCategoryNew": "Mpya",
+  "supplierCategoryOccasional": "Wa Mara kwa Mara",
+  "supplierCategoryInternational": "Kimataifa",
+  "supplierCategoryUnknown": "Haijulikani",
+  "supplierCategoryLocal": "Wa Ndani",
+  "@supplierCategoryLocal": {
+    "description": "Kategoria ya muuzaji: Wa Ndani"
+  },
+  "supplierCategoryOnline": "Mtandaoni",
+  "@supplierCategoryOnline": {
+    "description": "Kategoria ya muuzaji: Mtandaoni"
+  },
+
+  "addSupplierTitle": "Ongeza Muuzaji",
+  "editSupplierTitle": "Hariri Muuzaji",
+  "supplierInformation": "Taarifa za Muuzaji",
+  "supplierNameLabel": "Jina la Muuzaji *",
+  "supplierNameValidationError": "Jina linahitajika",
+  "supplierPhoneLabel": "Nambari ya Simu *",
+  "supplierPhoneValidationError": "Nambari ya simu inahitajika",
+  "supplierPhoneHint": "+243 999 123 456",
+  "supplierEmailLabel": "Barua Pepe",
+  "supplierEmailValidationError": "Tafadhali ingiza barua pepe sahihi",
+  "supplierContactPersonLabel": "Mtu wa Kuwasiliana Naye",
+  "supplierAddressLabel": "Anwani",
+  "commercialInformation": "Taarifa za Kibiashara",
+  "deliveryTimeLabel": "Muda wa Uwasilishaji (siku)",
+  "paymentTermsLabel": "Masharti ya Malipo",
+  "paymentTermsHint": "Mfano: Siku 30, 50% mwanzo, n.k.",
+  "supplierCategoryLabel": "Kategoria ya Muuzaji",
+  "supplierNotesLabel": "Maelezo",
+  "updateSupplierButton": "Sasisha",
+  "addSupplierButton": "Ongeza",
+
+  "supplierDetailsTitle": "Maelezo ya Muuzaji",
+  "supplierErrorLoading": "Hitilafu: {message}",
+  "@supplierErrorLoading": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "supplierNotFound": "Muuzaji hajapatikana",
+  "contactInformationSectionTitle": "Taarifa za Mawasiliano",
+  "contactLabel": "Mawasiliano",
+  "phoneLabel": "Simu",
+  "emailLabel": "Barua Pepe",
+  "addressLabel": "Anwani",
+  "commercialInformationSectionTitle": "Taarifa za Kibiashara",
+  "totalPurchasesLabel": "Jumla ya Ununuzi",
+  "lastPurchaseLabel": "Ununuzi wa Mwisho",
+  "noPurchaseRecorded": "Hakuna ununuzi uliorekodiwa",
+  "deliveryTimeLabel": "Muda wa Uwasilishaji",
+  "deliveryTimeInDays": "{count,plural, =0{Haijabainishwa} =1{siku 1} other{{count} siku}}",
+  "@deliveryTimeInDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "paymentTermsLabel": "Masharti ya Malipo",
+  "supplierSinceLabel": "Muuzaji Tangu",
+  "notesSectionTitle": "Maelezo",
+  "placeOrderButtonLabel": "Weka Oda",
+  "callButtonLabel": "Piga Simu",
+  "deleteButtonLabel": "Futa",
+  "featureToImplement": "Kipengele cha kutekeleza",
+  "callingNumber": "Inapiga {phoneNumber}...",
+  "@callingNumber": {
+    "placeholders": {
+      "phoneNumber": {
+        "type": "String"
+      }
+    }
+  },
+  "emailingTo": "Inatuma barua pepe kwa {email}...",
+  "@emailingTo": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "openingMapFor": "Inafungua ramani ya {address}...",
+  "@openingMapFor": {
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    }
+  },
+  "confirmDeleteSupplierTitle": "Futa Muuzaji",
+  "confirmDeleteSupplierMessage": "Una uhakika unataka kumfuta {supplierName}? Kitendo hiki hakiwezi kutenduliwa.",
+  "@confirmDeleteSupplierMessage": {
+    "placeholders": {
+      "supplierName": {
+        "type": "String"
+      }
+    }
+  },
+  "commonToday": "Leo",
+  "commonThisMonth": "Mwezi Huu",
+  "commonThisYear": "Mwaka Huu",
+  "commonCustom": "Maalum",
+  "commonAnonymousClient": "Mteja Asiyejulikana",
+  "commonAnonymousClientInitial": "A",
+  "commonErrorDataUnavailable": "Data haipatikani",
+  "commonNoData": "Hakuna data inayopatikana",
+
+  "dashboardHeaderSalesToday": "Mauzo ya Leo",
+  "dashboardHeaderClientsServed": "Wateja Waliohudumiwa",
+  "dashboardHeaderReceivables": "Madeni Yanayodaiwa",
+  "dashboardHeaderTransactions": "Miamala",
+  "dashboardCardViewDetails": "Tazama Maelezo",
+  "dashboardSalesChartTitle": "Muhtasari wa Mauzo",
+  "dashboardSalesChartNoData": "Hakuna data ya mauzo ya kuonyesha kwenye chati.",
+  "dashboardRecentSalesTitle": "Mauzo ya Hivi Karibuni",
+  "dashboardRecentSalesViewAll": "Tazama Yote",
+  "dashboardRecentSalesNoData": "Hakuna mauzo ya hivi karibuni.",
+  "dashboardOperationsJournalTitle": "Jarida la Uendeshaji",
+  "dashboardOperationsJournalViewAll": "Tazama Yote",
+  "dashboardOperationsJournalNoData": "Hakuna shughuli za hivi karibuni.",
+  "dashboardOperationsJournalBalanceLabel": "Salio",
+  "dashboardJournalExportSelectDateRangeTitle": "Chagua Kipindi cha Tarehe",
+  "dashboardJournalExportExportButton": "Hamisha kwa PDF",
+  "dashboardJournalExportPrintButton": "Chapisha Jarida",
+  "dashboardJournalExportSuccessMessage": "Jarida limehamishwa kikamilifu.",
+  "dashboardJournalExportFailureMessage": "Imeshindwa kuhamisha jarida.",
+  "dashboardJournalExportNoDataForPeriod": "Hakuna data inayopatikana kwa kipindi kilichochaguliwa ili kuhamisha.",
+  "dashboardJournalExportPrintingMessage": "Inaandaa jarida kwa uchapishaji...",
+  "dashboardQuickActionsTitle": "Vitendo vya Haraka",
+  "dashboardQuickActionsNewSale": "Mauzo Mapya",
+  "dashboardQuickActionsNewExpense": "Gharama Mpya",
+  "dashboardQuickActionsNewProduct": "Bidhaa Mpya",
+  "dashboardQuickActionsNewService": "Huduma Mpya",
+  "dashboardQuickActionsNewClient": "Mteja Mpya",
+  "dashboardQuickActionsNewSupplier": "Muuzaji Mpya",
+  "dashboardQuickActionsCashRegister": "Rejista ya Pesa",
+  "dashboardQuickActionsSettings": "Mipangilio",
+  "dashboardQuickActionsNewInvoice": "Ankara",
+  "dashboardQuickActionsNewFinancing": "Ufadhili",
+  "cancel": "Ghairi",
+  "journalPdf_title": "Jarida la Uendeshaji",
+  "journalPdf_footer_pageInfo": "Ukurasa {currentPage} kati ya {totalPages}",
+  "@journalPdf_footer_pageInfo": {
+    "description": "Kijachini cha PDF, kinaonyesha kurasa za sasa na jumla",
+    "placeholders": {
+      "currentPage": {
+        "type": "int",
+        "example": "1"
+      },
+      "totalPages": {
+        "type": "int",
+        "example": "10"
+      }
+    }
+  },
+  "journalPdf_period": "Kipindi: {startDate} - {endDate}",
+  "@journalPdf_period": {
+    "description": "Inaonyesha kipindi kinachoshughulikiwa na jarida",
+    "placeholders": {
+      "startDate": {
+        "type": "String",
+        "example": "01/01/2023"
+      },
+      "endDate": {
+        "type": "String",
+        "example": "31/01/2023"
+      }
+    }
+  },
+  "journalPdf_tableHeader_date": "Tarehe",
+  "journalPdf_tableHeader_time": "Wakati",
+  "journalPdf_tableHeader_description": "Maelezo",
+  "journalPdf_tableHeader_debit": "Debiti",
+  "journalPdf_tableHeader_credit": "Krediti",
+  "journalPdf_tableHeader_balance": "Salio",
+  "journalPdf_openingBalance": "Salio la Kuanzia",
+  "journalPdf_closingBalance": "Salio la Kufunga",
+  "journalPdf_footer_generatedBy": "Imetolewa na Wanzo",
+
+  "adhaHomePageTitle": "Adha - Msaidizi wa AI",
+  "adhaHomePageDescription": "Adha, msaidizi wako mahiri wa biashara",
+  "adhaHomePageBody": "Niulize maswali kuhusu biashara yako na nitakusaidia kufanya maamuzi bora kwa uchambuzi na ushauri wa kibinafsi.",
+  "startConversationButton": "Anzisha mazungumzo",
+  "viewConversationsButton": "Tazama mazungumzo yangu",
+  "salesAnalysisFeatureTitle": "Uchambuzi wa Mauzo",
+  "salesAnalysisFeatureDescription": "Pata maarifa kuhusu utendaji wako wa mauzo",
+  "inventoryManagementFeatureTitle": "Usimamizi wa Mali",
+  "inventoryManagementFeatureDescription": "Fuatilia na uboreshe mali yako",
+  "customerRelationsFeatureTitle": "Mahusiano na Wateja",
+  "customerRelationsFeatureDescription": "Ushauri wa kuwahifadhi wateja wako",
+  "financialCalculationsFeatureTitle": "Mahesabu ya Kifedha",
+  "financialCalculationsFeatureDescription": "Makadirio na uchambuzi wa kifedha",
+
+  "loginButton": "Ingia",
+  "registerButton": "Jisajili",
+  "emailLabel": "Barua Pepe",
+  "emailHint": "Ingiza barua pepe yako",
+  "emailValidationErrorRequired": "Tafadhali ingiza barua pepe yako",
+  "emailValidationErrorInvalid": "Tafadhali ingiza barua pepe sahihi",
+  "passwordLabel": "Nenosiri",
+  "passwordHint": "Ingiza nenosiri lako",
+  "passwordValidationErrorRequired": "Tafadhali ingiza nenosiri lako",
+  "authFailureMessage": "Uthibitishaji umeshindwa: {message}",
+  "loginToYourAccount": "Ingia kwenye akaunti yako",
+  "rememberMeLabel": "Nikumbuke",
+  "forgotPasswordButton": "Umesahau nenosiri?",
+  "noAccountPrompt": "Huna akaunti?",
+  "createAccountButton": "Fungua akaunti",
+  "demoModeButton": "Hali ya Onyesho",
+  "settings": "Mipangilio",
+  "settingsTitle": "Mipangilio",
+  "settingsDescription": "Dhibiti mipangilio ya programu yako.",
+  "wanzoFallbackText": "Maandishi Mbadala ya Wanzo",
+  "appVersion": "Toleo la Programu",
+  "loadingSettings": "Inapakia mipangilio...",
+  "companyInformation": "Taarifa za Kampuni",
+  "companyInformationSubtitle": "Dhibiti maelezo ya kampuni yako",
+  "appearanceAndDisplay": "Muonekano na Onyesho",
+  "appearanceAndDisplaySubtitle": "Binafsisha mwonekano na hisia",
+  "theme": "Mandhari",
+  "themeLight": "Nuru",
+  "themeDark": "Giza",
+  "themeSystem": "Mfumo",
+  "language": "Lugha",
+  "languageEnglish": "Kiingereza",
+  "languageFrench": "Kifaransa",
+  "languageSwahili": "Kiswahili",
+  "dateFormat": "Umbizo la Tarehe",
+  "dateFormatDDMMYYYY": "DD/MM/YYYY",
+  "dateFormatMMDDYYYY": "MM/DD/YYYY",
+  "dateFormatYYYYMMDD": "YYYY/MM/DD",
+  "dateFormatDDMMMYYYY": "DD MMM YYYY",
+  "monthJan": "Januari",
+  "monthFeb": "Februari",
+  "monthMar": "Machi",
+  "monthApr": "Aprili",
+  "monthMay": "Mei",
+  "monthJun": "Juni",
+  "monthJul": "Julai",
+  "monthAug": "Agosti",
+  "monthSep": "Septemba",
+  "monthOct": "Oktoba",
+  "monthNov": "Novemba",
+  "monthDec": "Desemba",
+  "changeLogo": "Badilisha Nembo",
+  "companyName": "Jina la Kampuni",
+  "companyNameRequired": "Jina la kampuni linahitajika",
+  "email": "Barua Pepe",
+  "invalidEmail": "Anwani ya barua pepe si sahihi",
+  "phoneNumber": "Nambari ya Simu",
+  "address": "Anwani",
+  "rccm": "RCCM",
+  "rccmHelperText": "Rejista ya Biashara na Mikopo ya Mali Binafsi",
+  "taxId": "Namba ya Utambulisho wa Mlipakodi (NIM)",
+  "taxIdHelperText": "Nambari ya Utambulisho wa Mlipakodi ya Kitaifa",
+  "website": "Tovuti",
+  "invoiceSettings": "Mipangilio ya Ankara",
+  "invoiceSettingsSubtitle": "Dhibiti mapendeleo yako ya ankara",
+  "defaultInvoiceFooter": "Kijachini Chaguo-msingi cha Ankara",
+  "defaultInvoiceFooterHint": "k.m., Asante kwa biashara yako!",
+  "showTotalInWords": "Onyesha Jumla kwa Maneno",
+  "exchangeRate": "Kiwango cha Ubadilishaji (USD kwenda Sarafu ya Ndani)",
+  "inventorySettings": "Mipangilio ya Mali",
+  "inventorySettingsSubtitle": "Dhibiti mapendeleo yako ya mali",
+  "generalSettings": "Mipangilio ya Jumla",
+  "defaultCategory": "Kategoria Chaguo-msingi",
+  "defaultCategoryRequired": "Kategoria chaguo-msingi inahitajika",
+  "lowStockAlert": "Tahadhari ya Hisa Chini",
+  "lowStockAlertHint": "Kiasi ambacho tahadhari itatolewa",
+  "trackInventory": "Fuatilia Mali",
+  "allowNegativeStock": "Ruhusu Hisa Hasi",
+  "saveChanges": "Hifadhi Mabadiliko",
+  "settingsUpdatedSuccessfully": "Mipangilio imesasishwa kikamilifu",
+  "errorUpdatingSettings": "Hitilafu kusasisha mipangilio",
+  "changesSaved": "Mabadiliko yamehifadhiwa kikamilifu!",
+  "errorSavingChanges": "Hitilafu kuhifadhi mabadiliko",
+  "selectTheme": "Chagua Mandhari",
+  "selectLanguage": "Chagua Lugha",
+  "selectDateFormat": "Chagua Umbizo la Tarehe",
+  "displaySettings": "Mipangilio ya Onyesho",
+  "displaySettingsDescription": "Dhibiti mipangilio ya onyesho.",
+  "companySettings": "Mipangilio ya Kampuni",
+  "companySettingsDescription": "Dhibiti mipangilio ya kampuni.",
+  "invoiceSettingsDescription": "Dhibiti mipangilio ya ankara.",
+  "inventorySettingsDescription": "Dhibiti mipangilio ya mali.",
+  "minValue": "Thamani ya chini: {minValue}",
+  "@minValue": {
+      "placeholders": {
+          "minValue": {
+              "type": "double"
+          }
+      }
+  },
+  "maxValue": "Thamani ya juu: {maxValue}",
+  "@maxValue": {
+      "placeholders": {
+          "maxValue": {
+              "type": "double"
+          }
+      }
+  },
+  "valueMustBeNumber": "Thamani lazima iwe nambari",
+  "valueMustBePositive": "Thamani lazima iwe chanya",
+  "fieldRequired": "Sehemu hii inahitajika",
+  "settingsGeneral": "Jumla",
+  "settingsCompany": "Kampuni",
+  "settingsInvoice": "Ankara",
+  "settingsInventory": "Mali",
+  "settingsAppearance": "Muonekano",
+  "searchSettings": "Tafuta mipangilio...",
+  "backupAndReports": "Nakala na Ripoti",
+  "backupAndReportsSubtitle": "Dhibiti nakala ya data na toa ripoti",
+  "notifications": "Arifa",
+  "notificationsSubtitle": "Dhibiti arifa za programu",
+  "resetSettings": "Weka Upya Mipangilio",
+  "confirmResetSettings": "Una uhakika unataka kuweka upya mipangilio yote kuwa chaguomsingi? Kitendo hiki hakiwezi kutenduliwa.",
+  "reset": "Weka Upya",
+  "taxIdentificationNumber": "Nambari ya Utambulisho wa Mlipakodi",
+  "rccmNumber": "Nambari ya RCCM",
+  "idNatNumber": "Nambari ya Kitambulisho cha Taifa",
+  "idNatHelperText": "Nambari ya Utambulisho wa Kitaifa",
+  "selectImageSource": "Chagua Chanzo cha Picha",
+  "gallery": "Matunzio",
+  "camera": "Kamera",
+  "deleteCurrentLogo": "Futa Nembo ya Sasa",
+  "logoDeleted": "Nembo imefutwa.",
+  "logoUpdatedSuccessfully": "Nembo imesasishwa kikamilifu.",
+  "errorSelectingLogo": "Hitilafu kuchagua nembo: {errorDetails}",
+  "@errorSelectingLogo": {
+    "placeholders": {
+      "errorDetails": {
+        "type": "String"
+      }
+    }
+  },
+  "defaultProductCategory": "Kategoria Chaguo-msingi ya Bidhaa",
+  "stockAlerts": "Tahadhari za Hisa",
+  "lowStockAlertDays": "Siku za Tahadhari ya Hisa Chini",
+  "days": "Siku",
+  "enterValidNumber": "Tafadhali ingiza nambari sahihi.",
+  "lowStockAlertDescription": "Pokea tahadhari wakati hisa ya bidhaa iko chini kwa idadi maalum ya siku.",
+  "productCategories": "Kategoria za Bidhaa",
+  "manageYourProductCategories": "Dhibiti kategoria zako za bidhaa.",
+  "addCategory": "Ongeza Kategoria",
+  "editCategory": "Hariri Kategoria",
+  "deleteCategory": "Futa Kategoria",
+  "categoryName": "Jina la Kategoria",
+  "categoryNameCannotBeEmpty": "Jina la kategoria haliwezi kuwa tupu.",
+  "categoryAdded": "Kategoria imeongezwa",
+  "categoryUpdated": "Kategoria imesasishwa",
+  "categoryDeleted": "Kategoria imefutwa",
+  "confirmDeleteCategory": "Una uhakika unataka kufuta kategoria hii?",
+  "deleteCategoryMessage": "Kitendo hiki hakiwezi kutenduliwa.",
+  "errorAddingCategory": "Hitilafu kuongeza kategoria: {error}",
+  "errorUpdatingCategory": "Hitilafu kusasisha kategoria: {error}",
+  "errorDeletingCategory": "Hitilafu kufuta kategoria: {error}",
+  "errorFetchingCategories": "Hitilafu kupata kategoria: {error}",
+  "noCategoriesFound": "Hakuna kategoria zilizopatikana. Ongeza moja ili kuanza!",
+  "signupScreenTitle": "Fungua Akaunti ya Biashara",
+  "signupStepIdentity": "Utambulisho",
+  "signupStepCompany": "Kampuni",
+  "signupStepConfirmation": "Uthibitisho",
+  "signupPersonalInfoTitle": "Taarifa Zako Binafsi",
+  "signupOwnerNameLabel": "Jina Kamili la Mmiliki",
+  "signupOwnerNameHint": "Ingiza jina lako kamili",
+  "signupOwnerNameValidation": "Tafadhali ingiza jina la mmiliki",
+  "signupEmailLabel": "Anwani ya Barua Pepe",
+  "signupEmailHint": "Ingiza anwani yako ya barua pepe",
+  "signupEmailValidationRequired": "Tafadhali ingiza barua pepe yako",
+  "signupEmailValidationInvalid": "Tafadhali ingiza barua pepe sahihi",
+  "signupPhoneLabel": "Nambari ya Simu",
+  "signupPhoneHint": "Ingiza nambari yako ya simu",
+  "signupPhoneValidation": "Tafadhali ingiza nambari yako ya simu",
+  "signupPasswordLabel": "Nenosiri",
+  "signupPasswordHint": "Ingiza nenosiri lako (angalau herufi 8)",
+  "signupPasswordValidationRequired": "Tafadhali ingiza nenosiri",
+  "signupPasswordValidationLength": "Nenosiri lazima liwe na angalau herufi 8",
+  "signupConfirmPasswordLabel": "Thibitisha Nenosiri",
+  "signupConfirmPasswordHint": "Thibitisha nenosiri lako",
+  "signupConfirmPasswordValidationRequired": "Tafadhali thibitisha nenosiri lako",
+  "signupConfirmPasswordValidationMatch": "Manenosiri hayafanani",
+  "signupRequiredFields": "* Sehemu zinazohitajika",
+  "signupCompanyInfoTitle": "Taarifa za Kampuni Yako",
+  "signupCompanyNameLabel": "Jina la Kampuni",
+  "signupCompanyNameHint": "Ingiza jina la kampuni yako",
+  "signupCompanyNameValidation": "Tafadhali ingiza jina la kampuni",
+  "signupRccmLabel": "Nambari ya RCCM / Usajili wa Biashara",
+  "signupRccmHint": "Ingiza nambari yako ya RCCM au sawa",
+  "signupRccmValidation": "Tafadhali ingiza nambari ya RCCM",
+  "signupAddressLabel": "Anwani / Mahali",
+  "signupAddressHint": "Ingiza anwani ya kampuni yako",
+  "signupAddressValidation": "Tafadhali ingiza anwani ya kampuni yako",
+  "signupActivitySectorLabel": "Sekta ya Biashara",
+  "signupTermsAndConditionsTitle": "Muhtasari na Masharti",
+  "signupInfoSummaryPersonal": "Taarifa Binafsi:",
+  "signupInfoSummaryName": "Jina:",
+  "signupInfoSummaryEmail": "Barua Pepe:",
+  "signupInfoSummaryPhone": "Simu:",
+  "signupInfoSummaryCompany": "Taarifa za Kampuni:",
+  "signupInfoSummaryCompanyName": "Jina la Kampuni:",
+  "signupInfoSummaryRccm": "RCCM:",
+  "signupInfoSummaryAddress": "Anwani:",
+  "signupInfoSummaryActivitySector": "Sekta ya Shughuli:",
+  "signupAgreeToTerms": "Nimesoma na kukubaliana na",
+  "signupTermsOfUse": "Masharti ya Matumizi",
+  "andConnector": "na",
+  "signupPrivacyPolicy": "Sera ya Faragha",
+  "signupAgreeToTermsConfirmation": "Kwa kuweka tiki hapa, unathibitisha kuwa umesoma, umeelewa, na umekubali masharti yetu ya huduma na sera ya faragha.",
+  "signupButtonPrevious": "Nyuma",
+  "signupButtonNext": "Mbele",
+  "signupButtonRegister": "Jisajili",
+  "signupAlreadyHaveAccount": "Tayari una akaunti? Ingia",
+  "signupErrorFillFields": "Tafadhali jaza sehemu zote zinazohitajika kwa usahihi kwa hatua ya sasa.",
+  "signupErrorAgreeToTerms": "Lazima ukubaliane na masharti na kanuni ili kujisajili.",
+  "signupSuccessMessage": "Usajili umefanikiwa! Tunakuingiza...",
+  "signupErrorRegistration": "Usajili umeshindwa: {error}",
+  "@signupErrorRegistration": {
+    "description": "Ujumbe wa hitilafu usajili unaposhindwa",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sectorAgricultureName": "Kilimo na Chakula",
+  "sectorAgricultureDescription": "Uzalishaji wa kilimo, usindikaji wa chakula, mifugo",
+  "sectorCommerceName": "Biashara na Usambazaji",
+  "sectorCommerceDescription": "Rejareja, usambazaji, uagizaji-usafirishaji",
+  "sectorServicesName": "Huduma",
+  "sectorServicesDescription": "Huduma za biashara na binafsi",
+  "sectorTechnologyName": "Teknolojia na Ubunifu",
+  "sectorTechnologyDescription": "Uendelezaji wa programu, mawasiliano, teknolojia ya kifedha",
+  "sectorManufacturingName": "Utengenezaji na Viwanda",
+  "sectorManufacturingDescription": "Uzalishaji wa viwandani, ufundi, nguo",
+  "sectorConstructionName": "Ujenzi na Mali isiyohamishika",
+  "sectorConstructionDescription": "Ujenzi, uendelezaji wa mali isiyohamishika, usanifu majengo",
+  "sectorTransportationName": "Usafiri na Usafirishaji",
+  "sectorTransportationDescription": "Usafirishaji wa mizigo, usafirishaji, uhifadhi",
+  "sectorEnergyName": "Nishati na Maliasili",
+  "sectorEnergyDescription": "Uzalishaji wa nishati, uchimbaji madini, maji",
+  "sectorTourismName": "Utalii na Ukarimu",
+  "sectorTourismDescription": "Hoteli, migahawa, utalii",
+  "sectorEducationName": "Elimu na Mafunzo",
+  "sectorEducationDescription": "Ufundishaji, mafunzo ya ufundi",
+  "sectorHealthName": "Afya na Huduma za Matibabu",
+  "sectorHealthDescription": "Huduma za matibabu, duka la dawa, vifaa vya matibabu",
+  "sectorFinanceName": "Huduma za Kifedha",
+  "sectorFinanceDescription": "Benki, bima, fedha ndogo",
+  "sectorOtherName": "Nyingine",
+  "sectorOtherDescription": "Sekta zingine za biashara"
+}
