@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import 'package:wanzo/l10n/app_localizations.dart'; // Corrected import path
-import 'package:go_router/go_router.dart';
 
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
@@ -28,6 +27,7 @@ import 'package:wanzo/features/dashboard/widgets/expense_chart_widget.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_bloc.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_event.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_state.dart';
+import 'package:wanzo/features/dashboard/widgets/operations_dock.dart';
 
 enum _ExpandedView { none, operationsJournal }
 
@@ -524,180 +524,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return WanzoScaffold(
       currentIndex: 0,
       title: l10n.dashboardScreenTitle,
-      body: _buildDashboardContent(
-        context,
-        l10n,
-        settings,
-        displayCurrencyCode,
-      ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'dashboard_fab', // Added unique heroTag
-        onPressed: () {
-          _showQuickActionsMenu(context, l10n);
-        },
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        child: Icon(Icons.add, color: Theme.of(context).colorScheme.onPrimary),
-      ),
-    );
-  }
-
-  void _showQuickActionsMenu(BuildContext context, AppLocalizations l10n) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (BuildContext bottomSheetContext) {
-        return Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.7,
+      body: Stack(
+        children: [
+          // Contenu principal du dashboard
+          _buildDashboardContent(context, l10n, settings, displayCurrencyCode),
+          // Dock des opérations rapides en bas au centre
+          const Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Center(child: OperationsDock()),
           ),
-          padding: const EdgeInsets.all(WanzoSpacing.lg),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  l10n.dashboardQuickActionsTitle,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: WanzoSpacing.lg),
-                GridView.count(
-                  crossAxisCount:
-                      MediaQuery.of(context).orientation ==
-                              Orientation.landscape
-                          ? 5
-                          : 3,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: WanzoSpacing.md,
-                  crossAxisSpacing: WanzoSpacing.md,
-                  childAspectRatio: 1.0,
-                  children: [
-                    _buildQuickActionInternal(
-                      bottomSheetContext,
-                      Icons.add_shopping_cart,
-                      l10n.dashboardQuickActionsNewInvoice,
-                      () {
-                        Navigator.pop(bottomSheetContext);
-                        context.push('/sales/add');
-                      },
-                      iconColor: Colors.green,
-                    ),
-                    _buildQuickActionInternal(
-                      bottomSheetContext,
-                      Icons.inventory_2,
-                      l10n.addProductTitle, // Corrected localization key
-                      () {
-                        Navigator.pop(bottomSheetContext);
-                        context.push('/inventory/add'); // Corrected route
-                      },
-                      iconColor: Colors.orange,
-                    ),
-                    _buildQuickActionInternal(
-                      bottomSheetContext,
-                      Icons.monetization_on,
-                      l10n.dashboardQuickActionsNewFinancing,
-                      () {
-                        Navigator.pop(bottomSheetContext);
-                        context.push('/financing/add');
-                      },
-                      iconColor: Colors.teal,
-                    ),
-                    _buildQuickActionInternal(
-                      bottomSheetContext,
-                      Icons.receipt_long,
-                      l10n.dashboardQuickActionsNewExpense,
-                      () {
-                        Navigator.pop(bottomSheetContext);
-                        context.push('/expenses/add');
-                      },
-                      iconColor: Colors.redAccent,
-                    ),
-                    _buildQuickActionInternal(
-                      bottomSheetContext,
-                      Icons.person_add_alt_1,
-                      l10n.dashboardQuickActionsNewClient,
-                      () {
-                        Navigator.pop(bottomSheetContext);
-                        context.push('/customers/add');
-                      },
-                      iconColor: Colors.blueAccent,
-                    ),
-                    _buildQuickActionInternal(
-                      bottomSheetContext,
-                      Icons.store,
-                      l10n.dashboardQuickActionsNewSupplier,
-                      () {
-                        Navigator.pop(bottomSheetContext);
-                        context.push('/suppliers/add');
-                      },
-                      iconColor: Colors.purpleAccent,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: WanzoSpacing.md),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildQuickActionInternal(
-    BuildContext context,
-    IconData icon,
-    String label,
-    VoidCallback onTap, {
-    Color iconColor = Colors.grey, // Default color
-    double iconSize = 28.0, // Adjusted icon size
-    double iconContainerPadding = WanzoSpacing.sm, // e.g. 8.0
-    double spacingAfterIcon = WanzoSpacing.xs, // e.g. 4.0
-    TextStyle? labelTextStyle,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(WanzoBorderRadius.md), // e.g. 12.0
-      child: Padding(
-        padding: const EdgeInsets.all(
-          WanzoSpacing.xs / 2,
-        ), // Minimal padding for the InkWell area
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: EdgeInsets.all(iconContainerPadding),
-              decoration: BoxDecoration(
-                color: iconColor.withAlpha(
-                  38,
-                ), // 0.15 * 255 = 38 - Utilisé withAlpha au lieu de withOpacity
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                size: iconSize,
-                color: iconColor, // Icon takes the main color
-              ),
-            ),
-            SizedBox(height: spacingAfterIcon),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style:
-                  labelTextStyle ??
-                  Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontSize: 11,
-                  ), // Adjusted font size
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -819,8 +657,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   /// Construit la disposition responsive des KPI et du graphique
-  /// - Mode portrait : Grille 2x2 de KPI puis graphique en dessous
-  /// - Mode paysage : KPI à gauche, graphique à droite
+  /// - Mode portrait : Grille adaptative de KPI puis graphique en dessous
+  /// - Mode paysage/desktop : KPI à gauche, graphique à droite
   Widget _buildResponsiveKpiAndChart(
     BuildContext context,
     KpiData kpiData,
@@ -828,112 +666,273 @@ class _DashboardScreenState extends State<DashboardScreen> {
     AppLocalizations l10n,
     String displayCurrencyCode,
   ) {
-    final mediaQuery = MediaQuery.of(context);
-    final isLandscape = mediaQuery.orientation == Orientation.landscape;
-    final screenWidth = mediaQuery.size.width;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth;
 
-    final kpiCards = [
-      // 1. Ventes USD
-      _buildStatCard(
-        context,
-        title: '${l10n.dashboardHeaderSalesToday} (USD)',
-        value: formatCurrency(kpiData.salesTodayUsd, 'USD'),
-        icon: Icons.monetization_on,
-        color: Colors.blue,
-        l10n: l10n,
-      ),
-      // 2. Ventes CDF
-      _buildStatCard(
-        context,
-        title: '${l10n.dashboardHeaderSalesToday} (CDF)',
-        value: formatCurrency(kpiData.salesTodayCdf, 'CDF'),
-        icon: Icons.monetization_on,
-        color: Colors.green,
-        l10n: l10n,
-      ),
-      // 3. Dépenses USD
-      _buildStatCard(
-        context,
-        title: 'Dépenses (USD)',
-        value: formatCurrency(kpiData.expensesUsd, 'USD'),
-        icon: Icons.money_off,
-        color: Colors.red.shade300,
-        l10n: l10n,
-      ),
-      // 4. Dépenses CDF
-      _buildStatCard(
-        context,
-        title: 'Dépenses (CDF)',
-        value: formatCurrency(kpiData.expensesCdf, 'CDF'),
-        icon: Icons.money_off,
-        color: Colors.red,
-        l10n: l10n,
-      ),
-      // 5. Valeur Stock
-      _buildStatCard(
-        context,
-        title: 'Valeur Stock',
-        value: formatCurrency(kpiData.stockValueAtCost, 'CDF'),
-        icon: Icons.inventory_2,
-        color: Colors.orange,
-        l10n: l10n,
-        subtitle:
-            kpiData.stockValueAtCost > 0
-                ? '+${formatCurrency(kpiData.potentialProfit, 'CDF')} potentiel'
-                : null,
-      ),
-    ];
+        // Breakpoints pour le layout
+        const double mobileBreakpoint = 400;
+        const double tabletBreakpoint = 700;
+        const double desktopBreakpoint = 1000;
 
-    if (isLandscape) {
-      // Mode paysage : Graphique à gauche, KPI à droite
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Graphique à gauche
-          Expanded(
-            child: _buildCombinedChart(context, recentSales, l10n, kpiData),
+        // Taille minimale d'une carte KPI
+        const double minCardWidth = 140;
+        const double maxCardWidth = 200;
+
+        // Déterminer le nombre de colonnes dynamiquement
+        int crossAxisCount;
+        double cardAspectRatio;
+
+        if (availableWidth < mobileBreakpoint) {
+          // Très petit écran: 1 colonne
+          crossAxisCount = 1;
+          cardAspectRatio = 3.0;
+        } else if (availableWidth < tabletBreakpoint) {
+          // Mobile: 2 colonnes
+          crossAxisCount = 2;
+          cardAspectRatio = 1.8;
+        } else if (availableWidth < desktopBreakpoint) {
+          // Tablet: 3 colonnes
+          crossAxisCount = 3;
+          cardAspectRatio = 1.5;
+        } else {
+          // Desktop: 5 colonnes (toutes les cartes sur une ligne)
+          crossAxisCount = 5;
+          cardAspectRatio = 1.3;
+        }
+
+        final kpiCards = [
+          // 1. Ventes USD
+          _buildResponsiveStatCard(
+            context,
+            title: '${l10n.dashboardHeaderSalesToday} (USD)',
+            value: formatCurrency(kpiData.salesTodayUsd, 'USD'),
+            icon: Icons.monetization_on,
+            color: Colors.blue,
+            l10n: l10n,
+            isCompact: availableWidth < mobileBreakpoint,
           ),
-          const SizedBox(width: WanzoSpacing.md),
-          // Colonne des KPI à droite
-          SizedBox(
-            width: screenWidth * 0.35,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+          // 2. Ventes CDF
+          _buildResponsiveStatCard(
+            context,
+            title: '${l10n.dashboardHeaderSalesToday} (CDF)',
+            value: formatCurrency(kpiData.salesTodayCdf, 'CDF'),
+            icon: Icons.monetization_on,
+            color: Colors.green,
+            l10n: l10n,
+            isCompact: availableWidth < mobileBreakpoint,
+          ),
+          // 3. Dépenses USD
+          _buildResponsiveStatCard(
+            context,
+            title: 'Dépenses (USD)',
+            value: formatCurrency(kpiData.expensesUsd, 'USD'),
+            icon: Icons.money_off,
+            color: Colors.red.shade300,
+            l10n: l10n,
+            isCompact: availableWidth < mobileBreakpoint,
+          ),
+          // 4. Dépenses CDF
+          _buildResponsiveStatCard(
+            context,
+            title: 'Dépenses (CDF)',
+            value: formatCurrency(kpiData.expensesCdf, 'CDF'),
+            icon: Icons.money_off,
+            color: Colors.red,
+            l10n: l10n,
+            isCompact: availableWidth < mobileBreakpoint,
+          ),
+          // 5. Valeur Stock
+          _buildResponsiveStatCard(
+            context,
+            title: 'Valeur Stock',
+            value: formatCurrency(kpiData.stockValueAtCost, 'CDF'),
+            icon: Icons.inventory_2,
+            color: Colors.orange,
+            l10n: l10n,
+            subtitle:
+                kpiData.stockValueAtCost > 0
+                    ? '+${formatCurrency(kpiData.potentialProfit, 'CDF')} potentiel'
+                    : null,
+            isCompact: availableWidth < mobileBreakpoint,
+          ),
+        ];
+
+        // Layout desktop large: graphique à gauche, KPI à droite
+        if (availableWidth >= desktopBreakpoint) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Graphique à gauche avec contraintes minimales
+              Expanded(
+                flex: 2,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    minWidth: 300,
+                    minHeight: 280,
+                  ),
+                  child: _buildCombinedChart(
+                    context,
+                    recentSales,
+                    l10n,
+                    kpiData,
+                  ),
+                ),
+              ),
+              const SizedBox(width: WanzoSpacing.md),
+              // Colonne des KPI à droite
+              Expanded(
+                flex: 1,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minWidth: minCardWidth,
+                    maxWidth: maxCardWidth * 1.5,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (int i = 0; i < kpiCards.length; i++) ...[
+                        kpiCards[i],
+                        if (i < kpiCards.length - 1)
+                          const SizedBox(height: WanzoSpacing.sm),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+
+        // Layout mobile/tablet: Grille de KPI puis graphique en dessous
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Grille adaptative des KPI
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                mainAxisSpacing: WanzoSpacing.sm,
+                crossAxisSpacing: WanzoSpacing.sm,
+                childAspectRatio: cardAspectRatio,
+              ),
+              itemCount: kpiCards.length,
+              itemBuilder: (context, index) => kpiCards[index],
+            ),
+            const SizedBox(height: WanzoSpacing.lg),
+            // Graphique avec contraintes minimales
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 250),
+              child: _buildCombinedChart(context, recentSales, l10n, kpiData),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Carte KPI responsive qui s'adapte à la taille disponible
+  Widget _buildResponsiveStatCard(
+    BuildContext context, {
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color color,
+    required AppLocalizations l10n,
+    String? subtitle,
+    bool isCompact = false,
+  }) {
+    final theme = Theme.of(context);
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(WanzoBorderRadius.md),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: isCompact ? WanzoSpacing.sm : WanzoSpacing.md,
+          vertical: isCompact ? WanzoSpacing.xs : WanzoSpacing.sm,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Titre et icône
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                for (int i = 0; i < kpiCards.length; i++) ...[
-                  kpiCards[i],
-                  if (i < kpiCards.length - 1)
-                    const SizedBox(height: WanzoSpacing.sm),
-                ],
+                Expanded(
+                  child: Text(
+                    title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      fontSize: isCompact ? 10 : 11,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+                Icon(icon, color: color, size: isCompact ? 14 : 16),
               ],
             ),
-          ),
-        ],
-      );
-    } else {
-      // Mode portrait : Grille 2x2 de KPI puis graphique en dessous
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Grille 2x2 des KPI
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: WanzoSpacing.sm,
-            crossAxisSpacing: WanzoSpacing.sm,
-            childAspectRatio: 1.6, // Ajuster le ratio pour les cartes KPI
-            children: kpiCards,
-          ),
-          const SizedBox(height: WanzoSpacing.lg),
-          // Graphique en dessous
-          _buildCombinedChart(context, recentSales, l10n, kpiData),
-        ],
-      );
-    }
+            SizedBox(height: isCompact ? 2 : WanzoSpacing.xs / 2),
+            // Valeur - FittedBox pour éviter l'overflow
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                  fontSize: isCompact ? 14 : 16,
+                ),
+                maxLines: 1,
+              ),
+            ),
+            // Sous-titre optionnel
+            if (subtitle != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    subtitle,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: isCompact ? 8 : 9,
+                      color: Colors.green.shade700,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ),
+            SizedBox(height: isCompact ? 2 : WanzoSpacing.xs / 2),
+            // Lien "Voir détails"
+            InkWell(
+              onTap: () {
+                debugPrint('Voir détails pour: $title');
+              },
+              child: Text(
+                l10n.dashboardCardViewDetails,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.primaryColor,
+                  fontSize: isCompact ? 9 : 10,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // Ancienne méthode conservée pour compatibilité mais non utilisée
+  // ignore: unused_element
   Widget _buildHeaderStats(
     BuildContext context,
     KpiData kpiData,

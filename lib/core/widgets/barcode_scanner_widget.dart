@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../constants/constants.dart';
 import '../../core/services/barcode_scanner_service.dart';
 import '../../core/services/audio_service.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
+import '../platform/platform_service.dart';
+import 'desktop/adaptive_barcode_scanner_widget.dart';
+
+// Conditional import for mobile_scanner
+import 'package:mobile_scanner/mobile_scanner.dart'
+    if (dart.library.io) 'package:mobile_scanner/mobile_scanner.dart';
 
 /// Widget réutilisable pour scanner des codes-barres
+/// Sur desktop, redirige automatiquement vers AdaptiveBarcodeScannerWidget
 class BarcodeScannerWidget extends StatefulWidget {
   final Function(String) onBarcodeScanned;
   final String? title;
@@ -25,7 +31,7 @@ class BarcodeScannerWidget extends StatefulWidget {
 }
 
 class _BarcodeScannerWidgetState extends State<BarcodeScannerWidget> {
-  late MobileScannerController _controller;
+  MobileScannerController? _controller;
   final BarcodeScannerService _scannerService = BarcodeScannerService();
   final AudioService _audioService = AudioService();
   final TextEditingController _manualInputController = TextEditingController();
@@ -34,11 +40,28 @@ class _BarcodeScannerWidgetState extends State<BarcodeScannerWidget> {
   bool _hasPermission = false;
   bool _isSupported = false;
   String? _lastScannedCode;
+  bool _useDesktopMode = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeScanner();
+    _checkPlatformAndInitialize();
+  }
+
+  Future<void> _checkPlatformAndInitialize() async {
+    final platform = PlatformService.instance;
+
+    // Sur desktop, utiliser le mode adaptatif
+    if (platform.isDesktop) {
+      setState(() {
+        _useDesktopMode = true;
+        _isSupported = false;
+      });
+      return;
+    }
+
+    // Sur mobile, initialiser le scanner
+    await _initializeScanner();
   }
 
   Future<void> _initializeScanner() async {
@@ -62,8 +85,8 @@ class _BarcodeScannerWidgetState extends State<BarcodeScannerWidget> {
 
   @override
   void dispose() {
-    if (_hasPermission && _isSupported) {
-      _controller.dispose();
+    if (_hasPermission && _isSupported && _controller != null) {
+      _controller!.dispose();
     }
     _manualInputController.dispose();
     super.dispose();
@@ -71,7 +94,7 @@ class _BarcodeScannerWidgetState extends State<BarcodeScannerWidget> {
 
   void _onBarcodeDetected(BarcodeCapture capture) {
     final barcode = capture.barcodes.firstOrNull;
-    if (barcode?.rawValue != null) {
+    if (barcode?.rawValue != null && _controller != null) {
       final cleanedBarcode = _scannerService.cleanBarcode(barcode!.rawValue!);
 
       if (_scannerService.isValidBarcode(cleanedBarcode) &&
@@ -82,7 +105,7 @@ class _BarcodeScannerWidgetState extends State<BarcodeScannerWidget> {
         });
 
         // Vibration légère pour feedback
-        _controller.stop();
+        _controller!.stop();
 
         // Jouer le son de bip
         _audioService.playBeep();
@@ -115,11 +138,24 @@ class _BarcodeScannerWidgetState extends State<BarcodeScannerWidget> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
 
+    // Sur desktop, utiliser le widget adaptatif
+    if (_useDesktopMode) {
+      return AdaptiveBarcodeScannerWidget(
+        onBarcodeScanned: widget.onBarcodeScanned,
+        title: widget.title,
+        subtitle: widget.subtitle,
+        allowManualInput: widget.allowManualInput,
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title ?? 'Scanner code-barres'),
         actions: [
-          if (_hasPermission && _isSupported && !_isScanning)
+          if (_hasPermission &&
+              _isSupported &&
+              !_isScanning &&
+              _controller != null)
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () {
@@ -127,7 +163,7 @@ class _BarcodeScannerWidgetState extends State<BarcodeScannerWidget> {
                   _isScanning = true;
                   _lastScannedCode = null;
                 });
-                _controller.start();
+                _controller!.start();
               },
             ),
         ],
@@ -178,9 +214,17 @@ class _BarcodeScannerWidgetState extends State<BarcodeScannerWidget> {
       return _buildSuccessState(l10n);
     }
 
+    if (_controller == null) {
+      return _buildErrorState(
+        icon: Icons.error_outline,
+        title: 'Erreur d\'initialisation',
+        subtitle: 'Impossible d\'initialiser le scanner',
+      );
+    }
+
     return Stack(
       children: [
-        MobileScanner(controller: _controller, onDetect: _onBarcodeDetected),
+        MobileScanner(controller: _controller!, onDetect: _onBarcodeDetected),
         _buildScannerOverlay(l10n),
       ],
     );

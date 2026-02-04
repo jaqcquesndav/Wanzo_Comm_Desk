@@ -134,7 +134,7 @@ class _LockScreenState extends State<LockScreen> with TickerProviderStateMixin {
           width: 80,
           height: 80,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(40),
           ),
           child: const Icon(
@@ -163,7 +163,7 @@ class _LockScreenState extends State<LockScreen> with TickerProviderStateMixin {
           'Saisissez votre code PIN',
           style: TextStyle(
             fontSize: WanzoTypography.fontSizeMd,
-            color: Colors.white.withOpacity(0.8),
+            color: Colors.white.withValues(alpha: 0.8),
           ),
         ),
       ],
@@ -203,9 +203,9 @@ class _LockScreenState extends State<LockScreen> with TickerProviderStateMixin {
         vertical: WanzoSpacing.sm,
       ),
       decoration: BoxDecoration(
-        color: Colors.red.withOpacity(0.1),
+        color: Colors.red.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(WanzoBorderRadius.sm),
-        border: Border.all(color: Colors.red.withOpacity(0.3)),
+        border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
       ),
       child: Text(
         _errorMessage,
@@ -260,7 +260,7 @@ class _LockScreenState extends State<LockScreen> with TickerProviderStateMixin {
     required VoidCallback onPressed,
   }) {
     return Material(
-      color: Colors.white.withOpacity(0.1),
+      color: Colors.white.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(WanzoBorderRadius.lg),
       child: InkWell(
         onTap: _isVerifying ? null : onPressed,
@@ -269,7 +269,7 @@ class _LockScreenState extends State<LockScreen> with TickerProviderStateMixin {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(WanzoBorderRadius.lg),
             border: Border.all(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               width: 1,
             ),
           ),
@@ -326,7 +326,7 @@ class _LockScreenState extends State<LockScreen> with TickerProviderStateMixin {
           'PIN par défaut : 1234',
           style: TextStyle(
             fontSize: WanzoTypography.fontSizeXs,
-            color: Colors.white.withOpacity(0.6),
+            color: Colors.white.withValues(alpha: 0.6),
           ),
         ),
       ],

@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 import '../services/auth0_service.dart';
+import '../services/desktop_auth_service.dart';
 import '../../../core/utils/connectivity_service.dart';
 
 /// Classe gérant la connexion et la persistance des données utilisateur
@@ -15,14 +16,25 @@ class AuthRepository {
   /// Clé utilisée pour le stockage du token d'authentification
   static const String _tokenKey = 'auth_token';
 
-  final Auth0Service
-  _auth0Service; // Changed to be non-final and initialized in constructor
+  final Auth0Service _auth0Service;
+  final DesktopAuthService? _desktopAuthService;
   final ConnectivityService _connectivityService = ConnectivityService();
 
   User? _currentUser;
 
-  AuthRepository({required Auth0Service auth0Service})
-    : _auth0Service = auth0Service; // Constructor to inject Auth0Service
+  /// Indique si on utilise l'authentification desktop native
+  /// Vérification directe de la plateforme pour éviter les problèmes de détection
+  bool get _useDesktopAuth {
+    if (kIsWeb) return false;
+    final isDesktop = Platform.isWindows || Platform.isLinux;
+    return isDesktop && _desktopAuthService != null;
+  }
+
+  AuthRepository({
+    required Auth0Service auth0Service,
+    DesktopAuthService? desktopAuthService,
+  }) : _auth0Service = auth0Service,
+       _desktopAuthService = desktopAuthService;
 
   /// Méthode d'initialisation
   Future<void> init() async {
@@ -33,42 +45,80 @@ class AuthRepository {
     await Hive.openBox<User>(_userBoxName);
     await _connectivityService.init();
     await _auth0Service.init();
+
+    // Initialiser le service desktop si disponible
+    if (_desktopAuthService != null) {
+      await _desktopAuthService.init();
+      debugPrint(
+        'AuthRepository: DesktopAuthService initialisé pour ${Platform.operatingSystem}',
+      );
+    }
   }
 
   /// Authentifie un utilisateur.
+  /// Sur desktop (Windows/Linux), utilise le DesktopAuthService avec OAuth flow
+  /// Sur mobile/macOS, utilise Auth0Service avec le flux OAuth web
   Future<User> login(String email, String password) async {
     try {
       User user;
-      // La logique pour déterminer s'il faut utiliser Auth0 ou le compte démo est dans Auth0Service.
-      // Si l'intention est de se connecter avec le compte démo, AuthBloc devrait appeler loginWithDemoAccount.
-      // Cette méthode `login` est pour la connexion standard.
+
+      // Debug: vérifier l'état du service desktop
       debugPrint(
-        'AuthRepository: Tentative de connexion standard (non-démo) via Auth0Service.login',
+        'AuthRepository: isDesktopPlatform=${DesktopAuthService.isDesktopPlatform}, desktopService=${_desktopAuthService != null}, _useDesktopAuth=$_useDesktopAuth',
       );
-      user = await _auth0Service.login();
+
+      // Sur desktop Windows/Linux, toujours utiliser le DesktopAuthService
+      // Le DesktopAuthService gère le flux OAuth avec serveur local
+      if (_useDesktopAuth) {
+        debugPrint('AuthRepository: Connexion desktop via DesktopAuthService');
+        user = await _desktopAuthService!.login(email, password);
+      } else {
+        // Sur mobile/macOS, utiliser Auth0 OAuth natif
+        debugPrint(
+          'AuthRepository: Tentative de connexion standard via Auth0Service.login',
+        );
+        user = await _auth0Service.login();
+      }
 
       await _saveUserData(user);
       _currentUser = user;
       return user;
-    } catch (e) {
-      debugPrint('AuthRepository: Erreur lors de la connexion standard: $e');
-      if (!_connectivityService.isConnected) {
-        debugPrint(
-          'AuthRepository: Mode hors ligne détecté après échec de connexion. Tentative de récupération du dernier utilisateur connecté.',
+    } on DesktopAuthException catch (e) {
+      debugPrint('AuthRepository: Erreur d\'authentification desktop: $e');
+
+      // Si Password Grant est désactivé, informer l'utilisateur
+      if (e.isPasswordGrantDisabled) {
+        throw Exception(
+          'L\'authentification directe n\'est pas activée pour cette application. '
+          'Veuillez contacter l\'administrateur.',
         );
+      }
+
+      // Mauvais identifiants
+      if (e.isInvalidCredentials) {
+        throw Exception('Email ou mot de passe incorrect');
+      }
+
+      // Erreur réseau - essayer offline SEULEMENT si c'est un vrai utilisateur (pas démo)
+      if (e.isNetworkError) {
         final offlineUser =
             await _auth0Service.offlineAuthService.getLastLoggedInUser();
-        if (offlineUser != null) {
-          // Vérifier si cet utilisateur hors ligne est l'utilisateur démo
-          // Cela est géré implicitement si getLastLoggedInUser peut retourner le démo.
+        // Ne pas utiliser l'utilisateur démo comme fallback lors d'un nouveau login
+        if (offlineUser != null && offlineUser.email != 'demo@wanzo.app') {
           debugPrint(
-            'AuthRepository: Utilisation de l\'utilisateur stocké localement (potentiellement démo) via OfflineAuthService.',
+            'AuthRepository: Utilisation du mode hors ligne (utilisateur réel)',
           );
           await _saveUserData(offlineUser);
           _currentUser = offlineUser;
           return offlineUser;
         }
       }
+
+      throw Exception('Échec de l\'authentification: ${e.message}');
+    } catch (e) {
+      debugPrint('AuthRepository: Erreur lors de la connexion: $e');
+      // Ne PAS faire de fallback vers l'utilisateur offline lors d'un login explicite
+      // Le fallback offline ne doit être utilisé que pour isLoggedIn() / getCurrentUser()
       throw Exception('Échec de l\'authentification: $e');
     }
   }
@@ -97,6 +147,11 @@ class AuthRepository {
   /// Déconnecte l'utilisateur actuel
   Future<void> logout() async {
     try {
+      // Déconnexion desktop si applicable
+      if (_useDesktopAuth) {
+        await _desktopAuthService!.logout();
+      }
+
       await _auth0Service
           .logout(); // Auth0Service handles clearing its own tokens including demo key
 
@@ -105,6 +160,7 @@ class AuthRepository {
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_tokenKey);
+      _currentUser = null;
       debugPrint(
         'Données utilisateur local et token SharedPreferences supprimés.',
       );
@@ -212,6 +268,11 @@ class AuthRepository {
 
   /// Vérifie si un utilisateur est connecté
   Future<bool> isLoggedIn() async {
+    // Sur desktop, vérifier d'abord le service desktop
+    if (_useDesktopAuth) {
+      final isDesktopAuth = await _desktopAuthService!.isAuthenticated();
+      if (isDesktopAuth) return true;
+    }
     // Delegate to Auth0Service
     return await _auth0Service.isAuthenticated();
   }

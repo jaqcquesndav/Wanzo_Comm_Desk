@@ -221,50 +221,26 @@ class Auth0Service {
 
       if (userCancelled) {
         debugPrint('User cancelled login flow.');
-      } else {
-        final offlineUser = await offlineAuthService.getLastLoggedInUser();
-        if (offlineUser != null) {
-          debugPrint(
-            'Returning last logged in user due to online login failure (WebAuthenticationException).',
-          );
-          return offlineUser;
-        }
       }
+      // Note: Ne PAS faire de fallback vers l'utilisateur offline lors d'un login explicite
+      // Le fallback offline ne doit être utilisé que pour la vérification d'authentification existante
       rethrow;
     } on CredentialsManagerException catch (e) {
       // Specific catch block for CredentialsManagerException
       debugPrint(
         'CredentialsManagerException during login: ${e.message}. Details: ${e.details}.',
       );
-      final offlineUser = await offlineAuthService.getLastLoggedInUser();
-      if (offlineUser != null) {
-        debugPrint(
-          'Returning last logged in user due to online login failure (CredentialsManagerException).',
-        );
-        return offlineUser;
-      }
+      // Note: Ne PAS faire de fallback vers l'utilisateur offline lors d'un login explicite
       rethrow;
     } on ApiException catch (e) {
       debugPrint(
         'ApiException during login: Status: ${e.statusCode}. Details: ${e.toString()}',
       );
-      final offlineUser = await offlineAuthService.getLastLoggedInUser();
-      if (offlineUser != null) {
-        debugPrint(
-          'Returning last logged in user due to online login failure (ApiException).',
-        );
-        return offlineUser;
-      }
+      // Note: Ne PAS faire de fallback vers l'utilisateur offline lors d'un login explicite
       rethrow;
     } catch (e) {
       debugPrint('Generic error during login: $e');
-      final offlineUser = await offlineAuthService.getLastLoggedInUser();
-      if (offlineUser != null) {
-        debugPrint(
-          'Returning last logged in user due to online login failure (Generic Error).',
-        );
-        return offlineUser;
-      }
+      // Note: Ne PAS faire de fallback vers l'utilisateur offline lors d'un login explicite
       rethrow;
     }
   }

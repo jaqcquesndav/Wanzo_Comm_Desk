@@ -3,8 +3,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../bloc/auth_bloc.dart';
 import '../../../constants/constants.dart';
+import '../../../core/platform/platform_service.dart';
 
 /// Écran de transition qui lance automatiquement l'authentification Auth0
+/// Adapté pour desktop et mobile
 class Auth0RedirectScreen extends StatefulWidget {
   static const String routeName = '/auth0_redirect';
 
@@ -16,25 +18,22 @@ class Auth0RedirectScreen extends StatefulWidget {
 
 class _Auth0RedirectScreenState extends State<Auth0RedirectScreen> {
   bool _isRedirecting = false;
+  final PlatformService _platform = PlatformService.instance;
 
   @override
   void initState() {
     super.initState();
-    // Attendre un court instant avant de lancer l'authentification
-    // pour permettre à l'écran de s'afficher
     Future.delayed(const Duration(milliseconds: 300), _initiateAuth0Login);
   }
 
-  /// Lance le processus d'authentification Auth0
   Future<void> _initiateAuth0Login() async {
     if (_isRedirecting) return;
-    
+
     setState(() {
       _isRedirecting = true;
     });
-    
+
     try {
-      // Utiliser le bloc pour lancer l'authentification Auth0
       context.read<AuthBloc>().add(const AuthLoginWithAuth0Requested());
     } catch (e) {
       if (mounted) {
@@ -44,7 +43,7 @@ class _Auth0RedirectScreenState extends State<Auth0RedirectScreen> {
             backgroundColor: Colors.red,
           ),
         );
-        
+
         setState(() {
           _isRedirecting = false;
         });
@@ -54,6 +53,11 @@ class _Auth0RedirectScreenState extends State<Auth0RedirectScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final isDesktop = screenSize.width >= _platform.desktopMinWidth;
+    final logoSize = isDesktop ? 120.0 : 80.0;
+    final fontSize = isDesktop ? 24.0 : WanzoTypography.fontSizeLg;
+
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
         if (state is AuthAuthenticated) {
@@ -65,47 +69,76 @@ class _Auth0RedirectScreenState extends State<Auth0RedirectScreen> {
               backgroundColor: Colors.red,
             ),
           );
-          
-          // Retour à l'écran d'onboarding en cas d'échec
           context.go('/onboarding');
         }
       },
       child: Scaffold(
         backgroundColor: WanzoColors.primary,
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Logo
-              Image.asset(
-                'assets/images/logo.jpg',
-                height: 80,
-                color: Colors.white,
-                errorBuilder: (_, __, ___) {
-                  return const Icon(
-                    Icons.storefront,
-                    size: 80,
+          child: Container(
+            constraints: BoxConstraints(
+              maxWidth: isDesktop ? 500 : double.infinity,
+            ),
+            padding: EdgeInsets.all(isDesktop ? 48 : 24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Logo avec container décoratif sur desktop
+                if (isDesktop)
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: _buildLogo(logoSize),
+                  )
+                else
+                  _buildLogo(logoSize),
+                SizedBox(height: isDesktop ? 48 : 32),
+                Text(
+                  isDesktop
+                      ? 'Connexion en cours...'
+                      : 'Redirection vers Auth0...',
+                  style: TextStyle(
                     color: Colors.white,
-                  );
-                },
-              ),
-              const SizedBox(height: 32),
-              const Text(
-                'Redirection vers Auth0...',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: WanzoTypography.fontSizeLg,
-                  fontWeight: WanzoTypography.fontWeightMedium,
+                    fontSize: fontSize,
+                    fontWeight: WanzoTypography.fontWeightMedium,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              const CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            ],
+                if (isDesktop) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Vous allez être redirigé vers la page d\'authentification sécurisée',
+                    style: TextStyle(color: Colors.white70, fontSize: 16),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+                SizedBox(height: isDesktop ? 48 : 24),
+                SizedBox(
+                  width: isDesktop ? 48 : 36,
+                  height: isDesktop ? 48 : 36,
+                  child: const CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    strokeWidth: 3,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildLogo(double size) {
+    return Image.asset(
+      'assets/images/logo.jpg',
+      height: size,
+      color: Colors.white,
+      errorBuilder: (_, __, ___) {
+        return Icon(Icons.storefront, size: size, color: Colors.white);
+      },
     );
   }
 }

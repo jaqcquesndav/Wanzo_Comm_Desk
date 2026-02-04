@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
+import '../../../core/widgets/desktop/responsive_form_container.dart';
 import '../bloc/financial_account_bloc.dart';
 import '../bloc/financial_account_event.dart';
 import '../models/financial_account.dart';
@@ -122,33 +123,35 @@ class _AddFinancialAccountScreenState extends State<AddFinancialAccountScreen>
           ),
         ],
       ),
-      body: Form(
-        key: _formKey,
-        child:
-            _isEditing
-                ? _buildEditForm()
-                : Column(
-                  children: [
-                    TabBar(
-                      controller: _tabController,
-                      labelColor: Theme.of(context).primaryColor,
-                      unselectedLabelColor: Colors.grey,
-                      onTap: (index) {
-                        setState(() {
-                          _selectedAccountType =
-                              index == 0
-                                  ? FinancialAccountType.bankAccount
-                                  : FinancialAccountType.mobileMoney;
-                        });
-                      },
-                      tabs: const [
-                        Tab(text: 'Compte Bancaire'),
-                        Tab(text: 'Mobile Money'),
-                      ],
-                    ),
-                    Expanded(child: _buildTabView()),
-                  ],
-                ),
+      body: ResponsiveFormWrapper(
+        child: Form(
+          key: _formKey,
+          child:
+              _isEditing
+                  ? _buildEditForm()
+                  : Column(
+                    children: [
+                      TabBar(
+                        controller: _tabController,
+                        labelColor: Theme.of(context).primaryColor,
+                        unselectedLabelColor: Colors.grey,
+                        onTap: (index) {
+                          setState(() {
+                            _selectedAccountType =
+                                index == 0
+                                    ? FinancialAccountType.bankAccount
+                                    : FinancialAccountType.mobileMoney;
+                          });
+                        },
+                        tabs: const [
+                          Tab(text: 'Compte Bancaire'),
+                          Tab(text: 'Mobile Money'),
+                        ],
+                      ),
+                      Expanded(child: _buildTabView()),
+                    ],
+                  ),
+        ),
       ),
     );
   }

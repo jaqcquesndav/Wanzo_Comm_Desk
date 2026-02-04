@@ -4,12 +4,12 @@ import 'package:wanzo/l10n/app_localizations.dart'; // Import AppLocalizations
 import 'package:wanzo/core/services/currency_service.dart'; // Import CurrencyService
 import 'package:wanzo/core/utils/currency_formatter.dart'; // Added import
 import 'package:wanzo/core/enums/currency_enum.dart'; // Added import for Currency enum and extension
+import 'package:wanzo/core/services/form_navigation_service.dart';
 import '../bloc/supplier_bloc.dart';
 import '../bloc/supplier_event.dart';
 import '../bloc/supplier_state.dart';
 import '../models/supplier.dart';
 import 'supplier_details_screen.dart';
-import 'add_supplier_screen.dart';
 
 /// Écran principal de gestion des fournisseurs
 class SuppliersScreen extends StatefulWidget {
@@ -510,30 +510,29 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
 
   /// Navigation vers l'écran d'ajout d'un fournisseur
   void _navigateToAddSupplier(BuildContext context) {
-    Navigator.push(
+    FormNavigationService.instance.openSupplierForm(
       context,
-      MaterialPageRoute(builder: (context) => const AddSupplierScreen()),
-    ).then((_) {
-      // Recharger les fournisseurs après ajout
-      if (mounted) {
-        context.read<SupplierBloc>().add(const LoadSuppliers());
-      }
-    });
+      onSuccess: () {
+        // Recharger les fournisseurs après ajout
+        if (mounted) {
+          context.read<SupplierBloc>().add(const LoadSuppliers());
+        }
+      },
+    );
   }
 
   /// Navigation vers l'écran de modification d'un fournisseur
   void _navigateToEditSupplier(BuildContext context, Supplier supplier) {
-    Navigator.push(
+    FormNavigationService.instance.openSupplierForm(
       context,
-      MaterialPageRoute(
-        builder: (context) => AddSupplierScreen(supplier: supplier),
-      ),
-    ).then((_) {
-      // Recharger les fournisseurs après modification
-      if (mounted) {
-        context.read<SupplierBloc>().add(const LoadSuppliers());
-      }
-    });
+      supplier: supplier,
+      onSuccess: () {
+        // Recharger les fournisseurs après modification
+        if (mounted) {
+          context.read<SupplierBloc>().add(const LoadSuppliers());
+        }
+      },
+    );
   }
 
   /// Retourne la couleur associée à une catégorie de fournisseur

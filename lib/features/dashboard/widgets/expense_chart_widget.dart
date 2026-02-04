@@ -50,90 +50,184 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
       (sum, val) => sum + val,
     );
 
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.all(WanzoTheme.spacingMd),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(WanzoTheme.borderRadiusMd),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(
+        minWidth: 280, // Largeur minimale du graphique
+        minHeight: 300, // Hauteur minimale du graphique
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // En-tête avec statistiques et bouton expand/collapse
-          Padding(
-            padding: const EdgeInsets.all(WanzoTheme.spacingMd),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          'Ventes vs Dépenses',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
+      child: Card(
+        elevation: 2,
+        margin: const EdgeInsets.all(WanzoTheme.spacingMd),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(WanzoTheme.borderRadiusMd),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // En-tête avec statistiques et bouton expand/collapse
+            Padding(
+              padding: const EdgeInsets.all(WanzoTheme.spacingMd),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Titre et actions - responsive avec Wrap
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final isCompact = constraints.maxWidth < 400;
+
+                      if (isCompact) {
+                        // Layout vertical pour petits écrans
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    'Ventes vs Dépenses',
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.bold),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _buildPeriodSelector(context),
+                                    if (widget.onToggleExpansion != null)
+                                      IconButton(
+                                        icon: Icon(
+                                          widget.isExpanded
+                                              ? Icons.expand_less
+                                              : Icons.expand_more,
+                                          color: theme.colorScheme.primary,
+                                        ),
+                                        onPressed: widget.onToggleExpansion,
+                                        tooltip:
+                                            widget.isExpanded
+                                                ? 'Réduire'
+                                                : 'Agrandir',
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ],
+                        );
+                      }
+
+                      // Layout horizontal pour grands écrans
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Flexible(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    'Ventes vs Dépenses',
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: WanzoTheme.spacingSm),
+                                _buildPeriodSelector(context),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: WanzoTheme.spacingSm),
-                        // Sélecteur de période
-                        _buildPeriodSelector(context),
-                      ],
-                    ),
-                    if (widget.onToggleExpansion != null)
-                      IconButton(
-                        icon: Icon(
-                          widget.isExpanded
-                              ? Icons.expand_less
-                              : Icons.expand_more,
-                          color: theme.colorScheme.primary,
-                        ),
-                        onPressed: widget.onToggleExpansion,
-                        tooltip: widget.isExpanded ? 'Réduire' : 'Agrandir',
-                      ),
-                  ],
-                ),
-                const SizedBox(height: WanzoTheme.spacingSm),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildLegendItem(
-                      context,
-                      'Ventes',
-                      _formatAmount(totalSales),
-                      WanzoTheme.success,
-                      Icons.trending_up,
-                    ),
-                    _buildLegendItem(
-                      context,
-                      'Dépenses',
-                      _formatAmount(totalExpenses),
-                      WanzoTheme.danger,
-                      Icons.trending_down,
-                    ),
-                  ],
-                ),
-              ],
+                          if (widget.onToggleExpansion != null)
+                            IconButton(
+                              icon: Icon(
+                                widget.isExpanded
+                                    ? Icons.expand_less
+                                    : Icons.expand_more,
+                                color: theme.colorScheme.primary,
+                              ),
+                              onPressed: widget.onToggleExpansion,
+                              tooltip:
+                                  widget.isExpanded ? 'Réduire' : 'Agrandir',
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: WanzoTheme.spacingSm),
+                  // Légende responsive
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      if (constraints.maxWidth < 300) {
+                        // Layout vertical pour très petits écrans
+                        return Column(
+                          children: [
+                            _buildLegendItem(
+                              context,
+                              'Ventes',
+                              _formatAmount(totalSales),
+                              WanzoTheme.success,
+                              Icons.trending_up,
+                            ),
+                            const SizedBox(height: WanzoTheme.spacingXs),
+                            _buildLegendItem(
+                              context,
+                              'Dépenses',
+                              _formatAmount(totalExpenses),
+                              WanzoTheme.danger,
+                              Icons.trending_down,
+                            ),
+                          ],
+                        );
+                      }
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          Flexible(
+                            child: _buildLegendItem(
+                              context,
+                              'Ventes',
+                              _formatAmount(totalSales),
+                              WanzoTheme.success,
+                              Icons.trending_up,
+                            ),
+                          ),
+                          Flexible(
+                            child: _buildLegendItem(
+                              context,
+                              'Dépenses',
+                              _formatAmount(totalExpenses),
+                              WanzoTheme.danger,
+                              Icons.trending_down,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          // Graphique combiné
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            height: widget.isExpanded ? 350 : 200,
-            padding: const EdgeInsets.all(WanzoTheme.spacingMd),
-            child:
-                (dailySales.isEmpty && dailyExpenses.isEmpty)
-                    ? _buildEmptyState(context)
-                    : _buildCombinedChart(dailySales, dailyExpenses, theme),
-          ),
+            // Graphique combiné
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              height: widget.isExpanded ? 350 : 200,
+              padding: const EdgeInsets.all(WanzoTheme.spacingMd),
+              child:
+                  (dailySales.isEmpty && dailyExpenses.isEmpty)
+                      ? _buildEmptyState(context)
+                      : _buildCombinedChart(dailySales, dailyExpenses, theme),
+            ),
 
-          // Statistiques détaillées en mode agrandi
-          if (widget.isExpanded)
-            _buildExpandedStats(context, dailySales, dailyExpenses),
-        ],
+            // Statistiques détaillées en mode agrandi
+            if (widget.isExpanded)
+              _buildExpandedStats(context, dailySales, dailyExpenses),
+          ],
+        ),
       ),
     );
   }

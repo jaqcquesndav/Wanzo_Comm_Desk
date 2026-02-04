@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/auth/bloc/auth_bloc.dart';
-import '../../features/auth/screens/forgot_password_screen.dart';
 import '../../features/auth/screens/splash_screen.dart';
 import '../../features/auth/screens/onboarding_screen.dart';
 import '../../features/auth/screens/auth0_redirect_screen.dart';
@@ -13,6 +12,7 @@ import '../../features/inventory/screens/add_product_screen.dart';
 import '../../features/inventory/screens/inventory_screen.dart';
 import '../../features/inventory/screens/product_details_screen.dart';
 import '../../features/sales/screens/add_sale_screen.dart';
+import '../../features/sales/screens/sales_list_screen.dart';
 import '../../features/adha/screens/adha_screen.dart';
 import '../../features/customer/models/customer.dart';
 import '../../features/customer/screens/add_customer_screen.dart';
@@ -24,13 +24,15 @@ import '../../features/settings/screens/settings_screen.dart';
 import '../../features/notifications/screens/notifications_screen.dart';
 import '../../features/notifications/screens/notification_settings_screen.dart';
 import '../../features/contacts/screens/contacts_screen.dart';
-import '../../features/expenses/screens/add_expense_screen.dart'; // Corrected import for AddExpenseScreen
+import '../../features/expenses/screens/add_expense_screen.dart';
+import '../../features/expenses/screens/expenses_list_screen.dart';
 import '../../features/financing/screens/add_financing_request_screen.dart';
 import '../../features/financing/screens/financing_detail_screen.dart';
+import '../../features/financing/screens/financing_list_screen.dart';
 import '../../features/financing/models/financing_request.dart';
 import '../../features/profile/screens/profile_screen.dart';
 import '../../features/operations/screens/operations_screen.dart';
-import 'package:wanzo/features/sales/models/sale.dart'; // Ensure Sale model is imported
+import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/sales/screens/sale_details_screen.dart';
 import 'package:wanzo/features/expenses/screens/expense_detail_screen.dart';
 import '../../features/security/screens/security_settings_screen.dart';
@@ -88,38 +90,57 @@ class AppRouter {
       ),
       GoRoute(
         path: '/auth0_info',
-        builder: (context, state) => const Auth0InfoScreen(),
+        builder: (context, state) => Auth0InfoScreen(),
       ),
       GoRoute(
         path: '/auth0_redirect',
         builder: (context, state) => const Auth0RedirectScreen(),
       ),
-      GoRoute(
-        path: '/login',
-        redirect:
-            (_, __) =>
-                '/auth0_info', // Rediriger vers l'écran d'information Auth0
-      ),
-      GoRoute(
-        path: '/signup',
-        redirect:
-            (_, __) =>
-                '/auth0_info', // Rediriger vers l'écran d'information Auth0
-      ),
-      GoRoute(
-        path: ForgotPasswordScreen.routeName,
-        redirect:
-            (_, __) =>
-                '/auth0_info', // Rediriger vers l'écran d'information Auth0
-      ),
+      // Routes legacy - redirigent vers auth0_info pour compatibilité
+      GoRoute(path: '/login', redirect: (_, __) => '/auth0_info'),
+      GoRoute(path: '/signup', redirect: (_, __) => '/auth0_info'),
+      GoRoute(path: '/forgot-password', redirect: (_, __) => '/auth0_info'),
       GoRoute(
         path: '/dashboard',
         builder: (context, state) => const DashboardScreen(),
       ),
+
+      // Routes principales pour Ventes, Dépenses, Financement (Desktop)
       GoRoute(
-        path: '/financing/add',
-        name: 'add_financing_direct',
-        builder: (context, state) => const AddFinancingRequestScreen(),
+        path: '/sales',
+        name: 'sales_list',
+        builder: (context, state) => const SalesListScreen(),
+        routes: [
+          GoRoute(
+            path: 'add',
+            name: 'add_sale',
+            builder: (context, state) => const AddSaleScreen(),
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/expenses',
+        name: 'expenses_list',
+        builder: (context, state) => const ExpensesListScreen(),
+        routes: [
+          GoRoute(
+            path: 'add',
+            name: 'add_expense',
+            builder: (context, state) => const AddExpenseScreen(),
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/financing',
+        name: 'financing_list',
+        builder: (context, state) => const FinancingListScreen(),
+        routes: [
+          GoRoute(
+            path: 'add',
+            name: 'add_financing',
+            builder: (context, state) => const AddFinancingRequestScreen(),
+          ),
+        ],
       ),
       GoRoute(
         path: '/financing-detail/:id',
@@ -131,9 +152,7 @@ class AppRouter {
         },
       ),
 
-      // Old '/sales' route is removed as OperationsScreen is the main view.
-      // Navigation to add/view sales and expenses will be handled by '/operations' sub-routes
-      // or dedicated detail routes.
+      // Route pour opérations (mobile - garde les onglets)
       GoRoute(
         path: '/inventory',
         builder: (context, state) => const InventoryScreen(),
@@ -305,19 +324,12 @@ class AppRouter {
           return ExpenseDetailScreen(expenseId: id);
         },
       ),
-      // Fallback for old /sales route, redirecting to /operations
-      GoRoute(path: '/sales', redirect: (_, __) => '/operations'),
-      GoRoute(path: '/sales/add', redirect: (_, __) => '/operations/sales/add'),
+      // Route pour les ventes par ID (redirection vers le détail)
       GoRoute(
         path: '/sales/:saleId',
         redirect:
             (context, state) =>
                 '/sale-detail/${state.pathParameters['saleId']}',
-      ),
-      GoRoute(
-        path:
-            '/expenses/add', // Kept for direct access if needed, or FAB in operations can use named route
-        builder: (context, state) => const AddExpenseScreen(),
       ),
     ],
   );

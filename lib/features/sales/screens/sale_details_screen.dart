@@ -1,38 +1,39 @@
-﻿import 'dart:io';
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:wanzo/core/enums/currency_enum.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/services/platform_share_service.dart';
 import 'package:wanzo/constants/spacing.dart';
 import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
-import 'package:wanzo/features/settings/bloc/settings_bloc.dart' as old_settings_bloc;
-import 'package:wanzo/features/settings/bloc/settings_state.dart' as old_settings_state;
-import 'package:wanzo/features/settings/models/settings.dart' as old_settings_model;
+import 'package:wanzo/features/settings/bloc/settings_bloc.dart'
+    as old_settings_bloc;
+import 'package:wanzo/features/settings/bloc/settings_state.dart'
+    as old_settings_state;
+import 'package:wanzo/features/settings/models/settings.dart'
+    as old_settings_model;
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
 import 'package:wanzo/features/invoice/services/invoice_service.dart';
-import 'package:pdf/pdf.dart'; // Added import
-import 'package:printing/printing.dart'; // Added import for Printing
-import 'package:share_plus/share_plus.dart'; // Added for Share.shareXFiles
-// Added for XFile
 
 /// Écran de détails d'une vente
 class SaleDetailsScreen extends StatelessWidget {
   final Sale sale;
 
-  const SaleDetailsScreen({
-    super.key,
-    required this.sale,
-  });
+  const SaleDetailsScreen({super.key, required this.sale});
 
   @override
   Widget build(BuildContext context) {
     // Access currency settings
     final currencySettingsState = context.watch<CurrencySettingsCubit>().state;
-    final Currency appDefaultCurrency = currencySettingsState.settings.activeCurrency; // Corrected: activeCurrency is the app's default/active
-    final String transactionCurrencyCode = sale.transactionCurrencyCode ?? appDefaultCurrency.code; // Provide a default value
+    final Currency appDefaultCurrency =
+        currencySettingsState
+            .settings
+            .activeCurrency; // Corrected: activeCurrency is the app's default/active
+    final String transactionCurrencyCode =
+        sale.transactionCurrencyCode ??
+        appDefaultCurrency.code; // Provide a default value
 
     Color statusColor;
     String statusText;
@@ -50,10 +51,10 @@ class SaleDetailsScreen extends StatelessWidget {
         statusText = "Terminée";
         statusIcon = Icons.check_circle;
         break;
-      case SaleStatus.partiallyPaid: 
-        statusColor = Colors.blue; 
+      case SaleStatus.partiallyPaid:
+        statusColor = Colors.blue;
         statusText = "Partiellement payée";
-        statusIcon = Icons.hourglass_bottom; 
+        statusIcon = Icons.hourglass_bottom;
         break;
       case SaleStatus.cancelled:
         statusColor = Colors.red;
@@ -72,8 +73,12 @@ class SaleDetailsScreen extends StatelessWidget {
               if (value == "edit") {
                 // Naviguer vers l'écran d'édition
                 context.push(
-                  '/sales/edit', 
-                  extra: {'sale': sale, 'currencySettings': context.read<CurrencySettingsCubit>().state.settings}
+                  '/sales/edit',
+                  extra: {
+                    'sale': sale,
+                    'currencySettings':
+                        context.read<CurrencySettingsCubit>().state.settings,
+                  },
                 );
               } else if (value == "delete") {
                 _showDeleteConfirmation(context);
@@ -85,48 +90,49 @@ class SaleDetailsScreen extends StatelessWidget {
                 _showDocumentTypeSelectionDialog(context, isPrintAction: false);
               }
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem<String>(
-                value: "edit",
-                child: Row(
-                  children: [
-                    Icon(Icons.edit),
-                    SizedBox(width: 8),
-                    Text("Modifier"),
-                  ],
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: "print",
-                child: Row(
-                  children: [
-                    Icon(Icons.print),
-                    SizedBox(width: 8),
-                    Text("Imprimer"),
-                  ],
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: "share",
-                child: Row(
-                  children: [
-                    Icon(Icons.share),
-                    SizedBox(width: 8),
-                    Text("Partager"),
-                  ],
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: "delete",
-                child: Row(
-                  children: [
-                    Icon(Icons.delete, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text("Supprimer", style: TextStyle(color: Colors.red)),
-                  ],
-                ),
-              ),
-            ],
+            itemBuilder:
+                (context) => [
+                  const PopupMenuItem<String>(
+                    value: "edit",
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit),
+                        SizedBox(width: 8),
+                        Text("Modifier"),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: "print",
+                    child: Row(
+                      children: [
+                        Icon(Icons.print),
+                        SizedBox(width: 8),
+                        Text("Imprimer"),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: "share",
+                    child: Row(
+                      children: [
+                        Icon(Icons.share),
+                        SizedBox(width: 8),
+                        Text("Partager"),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: "delete",
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text("Supprimer", style: TextStyle(color: Colors.red)),
+                      ],
+                    ),
+                  ),
+                ],
           ),
         ],
       ),
@@ -160,10 +166,7 @@ class SaleDetailsScreen extends StatelessWidget {
                             ),
                           ),
                           backgroundColor: statusColor,
-                          avatar: Icon(
-                            statusIcon,
-                            color: Colors.white,
-                          ),
+                          avatar: Icon(statusIcon, color: Colors.white),
                         ),
                       ],
                     ),
@@ -212,20 +215,27 @@ class SaleDetailsScreen extends StatelessWidget {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         Text(
-                          formatCurrency(sale.totalAmountInTransactionCurrency ?? 0.0, transactionCurrencyCode),
+                          formatCurrency(
+                            sale.totalAmountInTransactionCurrency ?? 0.0,
+                            transactionCurrencyCode,
+                          ),
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                       ],
                     ),
                     if (transactionCurrencyCode != appDefaultCurrency.code)
                       Padding(
-                        padding: const EdgeInsets.only(top: WanzoSpacing.xxs, bottom: WanzoSpacing.xs),
+                        padding: const EdgeInsets.only(
+                          top: WanzoSpacing.xxs,
+                          bottom: WanzoSpacing.xs,
+                        ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             Text(
                               "(${formatCurrency(sale.totalAmountInCdf, appDefaultCurrency.code)})", // Display in app's active currency
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: Colors.grey[600]),
                             ),
                           ],
                         ),
@@ -235,10 +245,15 @@ class SaleDetailsScreen extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text("Payé"),
-                        Text(formatCurrency(sale.paidAmountInTransactionCurrency ?? 0.0, transactionCurrencyCode)),
+                        Text(
+                          formatCurrency(
+                            sale.paidAmountInTransactionCurrency ?? 0.0,
+                            transactionCurrencyCode,
+                          ),
+                        ),
                       ],
                     ),
-                     if (transactionCurrencyCode != appDefaultCurrency.code)
+                    if (transactionCurrencyCode != appDefaultCurrency.code)
                       Padding(
                         padding: const EdgeInsets.only(top: WanzoSpacing.xxs),
                         child: Row(
@@ -246,7 +261,8 @@ class SaleDetailsScreen extends StatelessWidget {
                           children: [
                             Text(
                               "(${formatCurrency(sale.paidAmountInCdf, appDefaultCurrency.code)})", // Display in app's active currency
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: Colors.grey[600]),
                             ),
                           ],
                         ),
@@ -258,18 +274,42 @@ class SaleDetailsScreen extends StatelessWidget {
                         Text(
                           "Reste à payer",
                           style: TextStyle(
-                            color: ((sale.totalAmountInTransactionCurrency ?? 0.0) - (sale.paidAmountInTransactionCurrency ?? 0.0)).abs() < 0.001 || (sale.paidAmountInTransactionCurrency ?? 0.0) >= (sale.totalAmountInTransactionCurrency ?? 0.0)
-                                ? Colors.green
-                                : Colors.red,
+                            color:
+                                ((sale.totalAmountInTransactionCurrency ??
+                                                        0.0) -
+                                                    (sale.paidAmountInTransactionCurrency ??
+                                                        0.0))
+                                                .abs() <
+                                            0.001 ||
+                                        (sale.paidAmountInTransactionCurrency ??
+                                                0.0) >=
+                                            (sale.totalAmountInTransactionCurrency ??
+                                                0.0)
+                                    ? Colors.green
+                                    : Colors.red,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         Text(
-                          formatCurrency((sale.totalAmountInTransactionCurrency ?? 0.0) - (sale.paidAmountInTransactionCurrency ?? 0.0), transactionCurrencyCode),
+                          formatCurrency(
+                            (sale.totalAmountInTransactionCurrency ?? 0.0) -
+                                (sale.paidAmountInTransactionCurrency ?? 0.0),
+                            transactionCurrencyCode,
+                          ),
                           style: TextStyle(
-                           color: ((sale.totalAmountInTransactionCurrency ?? 0.0) - (sale.paidAmountInTransactionCurrency ?? 0.0)).abs() < 0.001 || (sale.paidAmountInTransactionCurrency ?? 0.0) >= (sale.totalAmountInTransactionCurrency ?? 0.0)
-                                ? Colors.green
-                                : Colors.red,
+                            color:
+                                ((sale.totalAmountInTransactionCurrency ??
+                                                        0.0) -
+                                                    (sale.paidAmountInTransactionCurrency ??
+                                                        0.0))
+                                                .abs() <
+                                            0.001 ||
+                                        (sale.paidAmountInTransactionCurrency ??
+                                                0.0) >=
+                                            (sale.totalAmountInTransactionCurrency ??
+                                                0.0)
+                                    ? Colors.green
+                                    : Colors.red,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -301,7 +341,10 @@ class SaleDetailsScreen extends StatelessWidget {
                       "${item.quantity.toInt()} × ${formatCurrency(item.unitPrice, item.currencyCode)}", // item.currencyCode is transaction currency
                     ),
                     trailing: Text(
-                      formatCurrency(item.totalPrice, item.currencyCode), // item.currencyCode is transaction currency
+                      formatCurrency(
+                        item.totalPrice,
+                        item.currencyCode,
+                      ), // item.currencyCode is transaction currency
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   );
@@ -323,7 +366,11 @@ class SaleDetailsScreen extends StatelessWidget {
               Expanded(
                 child: ElevatedButton.icon(
                   // onPressed: () => _printOrShareInvoice(context, print: true),
-                  onPressed: () => _showDocumentTypeSelectionDialog(context, isPrintAction: true),
+                  onPressed:
+                      () => _showDocumentTypeSelectionDialog(
+                        context,
+                        isPrintAction: true,
+                      ),
                   icon: const Icon(Icons.print),
                   label: const Text("Imprimer"),
                   style: ElevatedButton.styleFrom(
@@ -332,11 +379,17 @@ class SaleDetailsScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: WanzoSpacing.sm), // Add some spacing between buttons
+              const SizedBox(
+                width: WanzoSpacing.sm,
+              ), // Add some spacing between buttons
               Expanded(
                 child: ElevatedButton.icon(
                   // onPressed: () => _printOrShareInvoice(context, print: false),
-                  onPressed: () => _showDocumentTypeSelectionDialog(context, isPrintAction: false),
+                  onPressed:
+                      () => _showDocumentTypeSelectionDialog(
+                        context,
+                        isPrintAction: false,
+                      ),
                   icon: const Icon(Icons.share),
                   label: const Text("Partager"),
                   style: ElevatedButton.styleFrom(
@@ -345,8 +398,11 @@ class SaleDetailsScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              if (sale.status == SaleStatus.pending || sale.status == SaleStatus.partiallyPaid) ...[
-                const SizedBox(width: WanzoSpacing.sm), // Add some spacing between buttons
+              if (sale.status == SaleStatus.pending ||
+                  sale.status == SaleStatus.partiallyPaid) ...[
+                const SizedBox(
+                  width: WanzoSpacing.sm,
+                ), // Add some spacing between buttons
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () {
@@ -357,7 +413,8 @@ class SaleDetailsScreen extends StatelessWidget {
                         status: SaleStatus.completed,
                         // Ensure paid amount covers the total if marking completed this way
                         // This might need more sophisticated logic if partial payments can lead to completion
-                        paidAmountInTransactionCurrency: sale.totalAmountInTransactionCurrency,
+                        paidAmountInTransactionCurrency:
+                            sale.totalAmountInTransactionCurrency,
                         paidAmountInCdf: sale.totalAmountInCdf,
                       );
                       context.read<SalesBloc>().add(UpdateSale(updatedSale));
@@ -371,7 +428,7 @@ class SaleDetailsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-              ]
+              ],
             ],
           ),
         ),
@@ -383,67 +440,89 @@ class SaleDetailsScreen extends StatelessWidget {
   void _showDeleteConfirmation(BuildContext context) {
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text("Confirmer la suppression"),
-        content: const Text(
-            "Êtes-vous sûr de vouloir supprimer cette vente ? Cette action est irréversible."),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text("Annuler"),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              context.read<SalesBloc>().add(DeleteSale(sale.id));
-              GoRouter.of(context).pop();
-            },
-            child: const Text(
-              "Supprimer",
-              style: TextStyle(color: Colors.red),
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text("Confirmer la suppression"),
+            content: const Text(
+              "Êtes-vous sûr de vouloir supprimer cette vente ? Cette action est irréversible.",
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text("Annuler"),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  context.read<SalesBloc>().add(DeleteSale(sale.id));
+                  GoRouter.of(context).pop();
+                },
+                child: const Text(
+                  "Supprimer",
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   /// Shows a dialog to select document type (Invoice or Receipt)
-  void _showDocumentTypeSelectionDialog(BuildContext context, {required bool isPrintAction}) {
+  void _showDocumentTypeSelectionDialog(
+    BuildContext context, {
+    required bool isPrintAction,
+  }) {
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(isPrintAction ? "Imprimer le document" : "Partager le document"),
-        content: const Text("Quel type de document souhaitez-vous générer ?"),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _printOrShareInvoice(context, print: isPrintAction, documentType: 'invoice');
-            },
-            child: const Text("Facture"),
+      builder:
+          (dialogContext) => AlertDialog(
+            title: Text(
+              isPrintAction ? "Imprimer le document" : "Partager le document",
+            ),
+            content: const Text(
+              "Quel type de document souhaitez-vous générer ?",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  _printOrShareInvoice(
+                    context,
+                    print: isPrintAction,
+                    documentType: 'invoice',
+                  );
+                },
+                child: const Text("Facture"),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  _printOrShareInvoice(
+                    context,
+                    print: isPrintAction,
+                    documentType: 'receipt',
+                  );
+                },
+                child: const Text("Ticket de caisse"),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text("Annuler"),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _printOrShareInvoice(context, print: isPrintAction, documentType: 'receipt');
-            },
-            child: const Text("Ticket de caisse"),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text("Annuler"),
-          ),
-        ],
-      ),
     );
   }
 
   /// Imprime la facture ou la partage
-  void _printOrShareInvoice(BuildContext context, {required bool print, required String documentType}) async {
+  void _printOrShareInvoice(
+    BuildContext context, {
+    required bool print,
+    required String documentType,
+  }) async {
     final invoiceService = InvoiceService();
     // The sale object already contains all necessary currency information.
-    // The InvoiceService is expected to use sale.transactionCurrencyCode, 
+    // The InvoiceService is expected to use sale.transactionCurrencyCode,
     // sale.totalAmountInTransactionCurrency, etc., for display,
     // and potentially sale.totalAmountInCdf for records if needed.
 
@@ -462,14 +541,16 @@ class SaleDetailsScreen extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Impossible de générer le document : anciens paramètres non chargés.'),
+            content: Text(
+              'Impossible de générer le document : anciens paramètres non chargés.',
+            ),
             backgroundColor: Colors.red,
           ),
         );
       }
       return;
     }
-    
+
     try {
       String? pdfPath;
       // The Sale object now contains all necessary currency information.
@@ -494,44 +575,56 @@ class SaleDetailsScreen extends StatelessWidget {
         }
         return;
       }
-      
+
       // Corrected condition: Removed pdfPath != null as it was deemed redundant by the analyzer
-      if (pdfPath.isNotEmpty && context.mounted) { 
+      if (pdfPath.isNotEmpty && context.mounted) {
         if (print) {
-          await Printing.layoutPdf(
-            onLayout: (PdfPageFormat format) async => File(pdfPath!).readAsBytes(), // pdfPath is not null here due to isNotEmpty check
-            name: documentType == 'invoice' ? 'Invoice_${sale.id.substring(0,8)}' : 'Receipt_${sale.id.substring(0,8)}',
+          // Utiliser PlatformShareService pour l'impression
+          await PlatformShareService.instance.printPdfFile(
+            filePath: pdfPath,
+            documentName:
+                documentType == 'invoice'
+                    ? 'Invoice_${sale.id.substring(0, 8)}'
+                    : 'Receipt_${sale.id.substring(0, 8)}',
           );
         } else {
-          // Share the PDF that was actually generated by the logic above (invoice or receipt)
-          final xFile = XFile(pdfPath); // pdfPath is not null here due to isNotEmpty check
-          String subjectText = documentType == 'invoice' 
-              ? 'Facture N° ${sale.id.substring(0,8)}' 
-              : 'Ticket N° ${sale.id.substring(0,8)}';
-          String bodyText = documentType == 'invoice' 
-              ? 'Voici votre facture N° ${sale.id.substring(0,8)} concernant ${sale.items.first.productName}.'
-              : 'Voici votre ticket de caisse N° ${sale.id.substring(0,8)} concernant ${sale.items.first.productName}.';
+          // Share the PDF using PlatformShareService for cross-platform support
+          String subjectText =
+              documentType == 'invoice'
+                  ? 'Facture N° ${sale.id.substring(0, 8)}'
+                  : 'Ticket N° ${sale.id.substring(0, 8)}';
+          String bodyText =
+              documentType == 'invoice'
+                  ? 'Voici votre facture N° ${sale.id.substring(0, 8)} concernant ${sale.items.first.productName}.'
+                  : 'Voici votre ticket de caisse N° ${sale.id.substring(0, 8)} concernant ${sale.items.first.productName}.';
 
-          await Share.shareXFiles(
-            [xFile],
-            text: bodyText,
+          await PlatformShareService.instance.sharePdfFile(
+            filePath: pdfPath,
             subject: subjectText,
+            text: bodyText,
+            context: context,
           );
         }
       } else if (context.mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Impossible de générer le document. Chemin non valide.'),
+            content: Text(
+              'Impossible de générer le document. Chemin non valide.',
+            ),
             backgroundColor: Colors.red,
           ),
         );
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Erreur lors de la génération/partage du document: $e'),
-          backgroundColor: Colors.red,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Erreur lors de la génération/partage du document: $e',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }

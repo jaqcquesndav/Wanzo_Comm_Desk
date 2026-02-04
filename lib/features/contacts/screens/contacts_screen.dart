@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
+import 'package:wanzo/core/services/form_navigation_service.dart';
 import 'package:wanzo/features/customer/bloc/customer_bloc.dart';
 import 'package:wanzo/features/customer/bloc/customer_event.dart';
 import 'package:wanzo/features/customer/screens/customers_screen.dart';
 import 'package:wanzo/features/supplier/bloc/supplier_bloc.dart';
 import 'package:wanzo/features/supplier/bloc/supplier_event.dart';
 import 'package:wanzo/features/supplier/screens/suppliers_screen.dart';
-import 'package:go_router/go_router.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 
 class ContactsScreen extends StatefulWidget {
@@ -80,19 +80,23 @@ class _ContactsScreenState extends State<ContactsScreen>
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           if (_tabController.index == 0) {
-            context.push('/customers/add').then((_) {
-              // Recharger les clients après retour de l'écran d'ajout
-              if (mounted) {
-                context.read<CustomerBloc>().add(const LoadCustomers());
-              }
-            });
+            FormNavigationService.instance.openCustomerForm(
+              context,
+              onSuccess: () {
+                if (mounted) {
+                  context.read<CustomerBloc>().add(const LoadCustomers());
+                }
+              },
+            );
           } else {
-            context.push('/suppliers/add').then((_) {
-              // Recharger les fournisseurs après retour de l'écran d'ajout
-              if (mounted) {
-                context.read<SupplierBloc>().add(const LoadSuppliers());
-              }
-            });
+            FormNavigationService.instance.openSupplierForm(
+              context,
+              onSuccess: () {
+                if (mounted) {
+                  context.read<SupplierBloc>().add(const LoadSuppliers());
+                }
+              },
+            );
           }
         },
         tooltip:

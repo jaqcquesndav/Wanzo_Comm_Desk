@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -339,10 +340,9 @@ class InvoiceService {
                 pw.SizedBox(height: 5),
                 pw.Row(
                   mainAxisSize: pw.MainAxisSize.min,
-                  mainAxisAlignment:
-                      pw
-                          .MainAxisAlignment
-                          .end, // Align to the right with other totals
+                  mainAxisAlignment: pw
+                      .MainAxisAlignment
+                      .end, // Align to the right with other totals
                   children: [
                     pw.Container(
                       width: 150,
@@ -439,6 +439,9 @@ class InvoiceService {
   }
 
   /// Partage la facture PDF générée
+  /// Note: Cette méthode est dépréciée. Utilisez PlatformShareService.instance.sharePdfFile()
+  /// pour un partage cross-platform robuste.
+  @Deprecated('Use PlatformShareService.instance.sharePdfFile() instead')
   Future<void> shareInvoice(
     Sale sale,
     Settings settings, {
@@ -455,16 +458,17 @@ class InvoiceService {
         shareText += '\nPartage via WhatsApp: wa.me/$customerPhoneNumber';
       }
 
-      await Share.shareXFiles(
-        [xFile],
-        text: shareText,
-        subject: 'Facture N° ${sale.id.substring(0, 8)}',
+      // Utilisation de la nouvelle API SharePlus
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [xFile],
+          text: shareText,
+          subject: 'Facture N° ${sale.id.substring(0, 8)}',
+        ),
       );
     } catch (e) {
-      // print('Erreur lors du partage de la facture: $e');
-      throw Exception(
-        'Impossible de partager la facture: $e',
-      ); // Escaped apostrophe
+      debugPrint('Erreur lors du partage de la facture: $e');
+      throw Exception('Impossible de partager la facture: $e');
     }
   }
 
@@ -853,10 +857,9 @@ class InvoiceService {
           final file = File(filePath);
           return file.readAsBytes();
         },
-        name:
-            isReceipt
-                ? 'Receipt_${DateTime.now().millisecondsSinceEpoch}'
-                : 'Invoice_${DateTime.now().millisecondsSinceEpoch}',
+        name: isReceipt
+            ? 'Receipt_${DateTime.now().millisecondsSinceEpoch}'
+            : 'Invoice_${DateTime.now().millisecondsSinceEpoch}',
       );
     } catch (e) {
       // print('Erreur lors de l'impression du document: $e');

@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart'; // Pour ouvrir les fichiers PDF
 import 'package:wanzo/core/enums/currency_enum.dart'; // Corrected: Currency is the enum name
 import 'package:wanzo/core/models/currency_settings_model.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/widgets/desktop/responsive_form_container.dart';
 import 'package:wanzo/features/customer/bloc/customer_bloc.dart';
 import 'package:wanzo/features/customer/bloc/customer_event.dart';
 import 'package:wanzo/features/customer/bloc/customer_state.dart';
@@ -325,561 +326,580 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
               },
             ),
           ],
-          child: Form(
-            key: _formKey,
-            child: ListView(
-              padding: const EdgeInsets.all(WanzoSpacing.md),
-              children: [
-                // Section articles
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(WanzoSpacing.md),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.shopping_bag),
-                                const SizedBox(width: WanzoSpacing.sm),
-                                Text(
-                                  'Articles (${_items.length})',
-                                  style: Theme.of(context).textTheme.titleMedium
-                                      ?.copyWith(fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            ),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                OutlinedButton.icon(
-                                  icon: const Icon(Icons.qr_code_scanner),
-                                  label: const Text('Scanner'),
-                                  onPressed: _showBarcodeScanner,
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor:
-                                        Theme.of(context).colorScheme.primary,
-                                  ),
-                                ),
-                                const SizedBox(width: WanzoSpacing.sm),
-                                ElevatedButton(
-                                  onPressed: _showAddItemDialog,
-                                  child: const Icon(Icons.add),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const Divider(),
-                        // Section d'ajout rapide par catégorie
-                        _buildQuickAddSection(),
-                        if (_items.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(
-                              vertical: WanzoSpacing.md,
-                            ),
-                            child: Center(
-                              child: Text(
-                                'Aucun article ajouté',
-                                style: TextStyle(
-                                  fontStyle: FontStyle.italic,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ),
-                          )
-                        else
-                          _buildItemsList(), // Updated to use transaction currency
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: WanzoSpacing.md),
-                // Section paiement
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(WanzoSpacing.md),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.payment),
-                            const SizedBox(width: WanzoSpacing.sm),
-                            Text(
-                              'Informations de paiement',
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                        const Divider(),
-                        const SizedBox(height: WanzoSpacing.sm),
-
-                        // Currency Selector
-                        if (_availableCurrencies.length > 1) ...[
-                          DropdownButtonFormField<Currency>(
-                            value: _selectedTransactionCurrency,
-                            decoration: const InputDecoration(
-                              labelText: 'Devise de la transaction',
-                              border: OutlineInputBorder(),
-                            ),
-                            items:
-                                _availableCurrencies.map((Currency currency) {
-                                  return DropdownMenuItem<Currency>(
-                                    value: currency,
-                                    child: Text(
-                                      currency.displayName(context),
-                                    ), // Use context for potential localization
-                                  );
-                                }).toList(),
-                            onChanged: (Currency? newValue) {
-                              if (newValue != null) {
-                                setState(() {
-                                  _selectedTransactionCurrency = newValue;
-                                  _transactionExchangeRate =
-                                      _exchangeRates[newValue] ?? 1.0;
-                                  if (_paymentMethod != 'Crédit') {
-                                    _paidAmount =
-                                        _calculateTotalInTransactionCurrency();
-                                  }
-                                });
-                              }
-                            },
-                            validator:
-                                (value) =>
-                                    value == null
-                                        ? 'Sélectionnez une devise'
-                                        : null,
-                          ),
-                          const SizedBox(height: WanzoSpacing.md),
-                          if (_selectedTransactionCurrency != null &&
-                              _selectedTransactionCurrency != _defaultCurrency)
-                            Padding(
-                              padding: const EdgeInsets.only(
-                                bottom: WanzoSpacing.sm,
-                              ),
-                              child: Text(
-                                'Taux: 1 ${_selectedTransactionCurrency?.code} = ${formatNumber(_transactionExchangeRate)} ${_defaultCurrency.code}',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ),
-                        ],
-
-                        // Affichage du sous-total avant réduction
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Sous-total'),
-                            Text(
-                              formatCurrency(
-                                _calculateSubtotalInTransactionCurrency(),
-                                _selectedTransactionCurrency?.code ??
-                                    _defaultCurrency.code,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: WanzoSpacing.xs),
-
-                        // Champ de réduction en pourcentage
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextFormField(
-                                controller: _discountController,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.allow(
-                                    RegExp(r'^\d+\.?\d{0,2}'),
+          child: ResponsiveFormWrapper(
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(WanzoSpacing.md),
+                children: [
+                  // Section articles
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(WanzoSpacing.md),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.shopping_bag),
+                                  const SizedBox(width: WanzoSpacing.sm),
+                                  Text(
+                                    'Articles (${_items.length})',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.bold),
                                   ),
                                 ],
-                                decoration: const InputDecoration(
-                                  labelText: 'Réduction (%)',
-                                  border: OutlineInputBorder(),
-                                  suffixText: '%',
+                              ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  OutlinedButton.icon(
+                                    icon: const Icon(Icons.qr_code_scanner),
+                                    label: const Text('Scanner'),
+                                    onPressed: _showBarcodeScanner,
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor:
+                                          Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: WanzoSpacing.sm),
+                                  ElevatedButton(
+                                    onPressed: _showAddItemDialog,
+                                    child: const Icon(Icons.add),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const Divider(),
+                          // Section d'ajout rapide par catégorie
+                          _buildQuickAddSection(),
+                          if (_items.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(
+                                vertical: WanzoSpacing.md,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'Aucun article ajouté',
+                                  style: TextStyle(
+                                    fontStyle: FontStyle.italic,
+                                    color: Colors.grey,
+                                  ),
                                 ),
-                                onChanged: (value) {
+                              ),
+                            )
+                          else
+                            _buildItemsList(), // Updated to use transaction currency
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: WanzoSpacing.md),
+                  // Section paiement
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(WanzoSpacing.md),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.payment),
+                              const SizedBox(width: WanzoSpacing.sm),
+                              Text(
+                                'Informations de paiement',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                          const Divider(),
+                          const SizedBox(height: WanzoSpacing.sm),
+
+                          // Currency Selector
+                          if (_availableCurrencies.length > 1) ...[
+                            DropdownButtonFormField<Currency>(
+                              value: _selectedTransactionCurrency,
+                              decoration: const InputDecoration(
+                                labelText: 'Devise de la transaction',
+                                border: OutlineInputBorder(),
+                              ),
+                              items:
+                                  _availableCurrencies.map((Currency currency) {
+                                    return DropdownMenuItem<Currency>(
+                                      value: currency,
+                                      child: Text(
+                                        currency.displayName(context),
+                                      ), // Use context for potential localization
+                                    );
+                                  }).toList(),
+                              onChanged: (Currency? newValue) {
+                                if (newValue != null) {
                                   setState(() {
-                                    _discountPercentage =
-                                        double.tryParse(value) ?? 0.0;
-                                    // Limiter à 100%
-                                    if (_discountPercentage > 100) {
-                                      _discountPercentage = 100;
-                                      _discountController.text = '100';
-                                    }
-                                    // Mettre à jour le montant payé si paiement complet
+                                    _selectedTransactionCurrency = newValue;
+                                    _transactionExchangeRate =
+                                        _exchangeRates[newValue] ?? 1.0;
                                     if (_paymentMethod != 'Crédit') {
                                       _paidAmount =
                                           _calculateTotalInTransactionCurrency();
                                     }
                                   });
-                                },
-                              ),
+                                }
+                              },
+                              validator:
+                                  (value) =>
+                                      value == null
+                                          ? 'Sélectionnez une devise'
+                                          : null,
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: WanzoSpacing.xs),
-
-                        Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text('Montant total'),
-                                Text(
-                                  formatCurrency(
-                                    _calculateTotalInTransactionCurrency(),
-                                    _selectedTransactionCurrency?.code ??
-                                        _defaultCurrency.code,
-                                  ),
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: Theme.of(context).primaryColor,
-                                  ),
+                            const SizedBox(height: WanzoSpacing.md),
+                            if (_selectedTransactionCurrency != null &&
+                                _selectedTransactionCurrency !=
+                                    _defaultCurrency)
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: WanzoSpacing.sm,
                                 ),
-                              ],
-                            ),
-                            // Afficher le total en CDF si une autre devise est sélectionnée
-                            if (_selectedTransactionCurrency?.code !=
-                                'CDF') ...[
-                              const SizedBox(height: 4),
+                                child: Text(
+                                  'Taux: 1 ${_selectedTransactionCurrency?.code} = ${formatNumber(_transactionExchangeRate)} ${_defaultCurrency.code}',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ),
+                          ],
+
+                          // Affichage du sous-total avant réduction
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Sous-total'),
+                              Text(
+                                formatCurrency(
+                                  _calculateSubtotalInTransactionCurrency(),
+                                  _selectedTransactionCurrency?.code ??
+                                      _defaultCurrency.code,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: WanzoSpacing.xs),
+
+                          // Champ de réduction en pourcentage
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: _discountController,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(
+                                      RegExp(r'^\d+\.?\d{0,2}'),
+                                    ),
+                                  ],
+                                  decoration: const InputDecoration(
+                                    labelText: 'Réduction (%)',
+                                    border: OutlineInputBorder(),
+                                    suffixText: '%',
+                                  ),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _discountPercentage =
+                                          double.tryParse(value) ?? 0.0;
+                                      // Limiter à 100%
+                                      if (_discountPercentage > 100) {
+                                        _discountPercentage = 100;
+                                        _discountController.text = '100';
+                                      }
+                                      // Mettre à jour le montant payé si paiement complet
+                                      if (_paymentMethod != 'Crédit') {
+                                        _paidAmount =
+                                            _calculateTotalInTransactionCurrency();
+                                      }
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: WanzoSpacing.xs),
+
+                          Column(
+                            children: [
                               Row(
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(
-                                    'Total (CDF)',
-                                    style: Theme.of(context).textTheme.bodySmall
-                                        ?.copyWith(fontStyle: FontStyle.italic),
-                                  ),
+                                  const Text('Montant total'),
                                   Text(
                                     formatCurrency(
-                                      _calculateTotalInTransactionCurrency() *
-                                          (_exchangeRates[_selectedTransactionCurrency!] ??
-                                              1.0),
-                                      'CDF',
+                                      _calculateTotalInTransactionCurrency(),
+                                      _selectedTransactionCurrency?.code ??
+                                          _defaultCurrency.code,
                                     ),
-                                    style: Theme.of(context).textTheme.bodySmall
-                                        ?.copyWith(fontStyle: FontStyle.italic),
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: Theme.of(context).primaryColor,
+                                    ),
                                   ),
                                 ],
                               ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: WanzoSpacing.md),
-                        TextFormField(
-                          key: ValueKey(_selectedTransactionCurrency),
-                          initialValue: _paidAmount.toStringAsFixed(2),
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'^\d+\.?\d{0,2}'),
-                            ),
-                          ],
-                          decoration: InputDecoration(
-                            labelText: 'Montant payé',
-                            border: const OutlineInputBorder(),
-                            prefixText:
-                                '${_selectedTransactionCurrency?.symbol ?? _defaultCurrency.symbol} ',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Veuillez entrer le montant payé';
-                            }
-                            final amount = double.tryParse(value);
-                            if (amount == null) return 'Montant invalide';
-                            if (amount < 0) {
-                              return 'Le montant ne peut pas être négatif';
-                            }
-                            return null;
-                          },
-                          onChanged: (value) {
-                            setState(() {
-                              _paidAmount = double.tryParse(value) ?? 0.0;
-                            });
-                          },
-                        ),
-                        const SizedBox(height: WanzoSpacing.md),
-                        DropdownButtonFormField<String>(
-                          value: _paymentMethod,
-                          decoration: const InputDecoration(
-                            labelText: 'Méthode de paiement',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'Espèces',
-                              child: Text('Espèces'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Mobile Money',
-                              child: Text('Mobile Money'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Carte bancaire',
-                              child: Text('Carte bancaire'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Virement bancaire',
-                              child: Text('Virement bancaire'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Crédit',
-                              child: Text('Crédit'),
-                            ),
-                          ],
-                          onChanged: (value) {
-                            setState(() {
-                              _paymentMethod = value!;
-                              if (_paymentMethod != 'Crédit') {
-                                _paidAmount =
-                                    _calculateTotalInTransactionCurrency();
-                              }
-                            });
-                          },
-                        ),
-                        const SizedBox(height: WanzoSpacing.md),
-                        if (_items.isNotEmpty)
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              vertical: WanzoSpacing.sm,
-                              horizontal: WanzoSpacing.md,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _getPaymentStatusColor().withAlpha(
-                                (0.1 * 255).round(),
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: _getPaymentStatusColor(),
-                              ),
-                            ),
-                            child: Text(
-                              _getPaymentStatusText(),
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: _getPaymentStatusColor(),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: WanzoSpacing.md),
-                // Section client (déplacée après le paiement, champs optionnels)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(WanzoSpacing.md),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.person),
-                            const SizedBox(width: WanzoSpacing.sm),
-                            Text(
-                              'Informations client (optionnel)',
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                        const Divider(),
-                        const SizedBox(height: WanzoSpacing.sm),
-                        BlocBuilder<CustomerBloc, CustomerState>(
-                          builder: (context, customerState) {
-                            final allCustomers =
-                                customerState is CustomerSearchResults
-                                    ? customerState.customers
-                                    : (customerState is CustomersLoaded
-                                        ? customerState.customers
-                                        : <Customer>[]);
-
-                            return Autocomplete<Customer>(
-                              optionsBuilder: (
-                                TextEditingValue textEditingValue,
-                              ) {
-                                if (textEditingValue.text.isEmpty) {
-                                  return const Iterable<Customer>.empty();
-                                }
-
-                                // Rechercher en temps réel
-                                _searchCustomerByPhone(textEditingValue.text);
-
-                                return allCustomers.where((Customer customer) {
-                                  return customer.phoneNumber
-                                          .toLowerCase()
-                                          .contains(
-                                            textEditingValue.text.toLowerCase(),
-                                          ) ||
-                                      customer.name.toLowerCase().contains(
-                                        textEditingValue.text.toLowerCase(),
-                                      );
-                                });
-                              },
-                              displayStringForOption:
-                                  (Customer option) => option.phoneNumber,
-                              onSelected: (Customer selection) {
-                                setState(() {
-                                  _foundCustomer = selection;
-                                  _linkedCustomerId = selection.id;
-                                  _customerPhoneController.text =
-                                      selection.phoneNumber;
-                                  _customerNameController.text = selection.name;
-                                });
-                              },
-                              fieldViewBuilder: (
-                                context,
-                                textEditingController,
-                                focusNode,
-                                onFieldSubmitted,
-                              ) {
-                                // Synchroniser avec notre controller
-                                if (_customerPhoneController.text !=
-                                    textEditingController.text) {
-                                  textEditingController.text =
-                                      _customerPhoneController.text;
-                                }
-
-                                textEditingController.addListener(() {
-                                  if (_customerPhoneController.text !=
-                                      textEditingController.text) {
-                                    _customerPhoneController.text =
-                                        textEditingController.text;
-
-                                    // Réinitialiser si le texte change
-                                    if (_foundCustomer != null &&
-                                        _foundCustomer!.phoneNumber !=
-                                            textEditingController.text) {
-                                      setState(() {
-                                        _foundCustomer = null;
-                                        _linkedCustomerId = null;
-                                        _customerNameController.clear();
-                                      });
-                                    }
-                                  }
-                                });
-
-                                return TextFormField(
-                                  controller: textEditingController,
-                                  focusNode: focusNode,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Contact téléphonique du client',
-                                    border: OutlineInputBorder(),
-                                    hintText: 'Ex: 0812345678 (optionnel)',
-                                  ),
-                                  keyboardType: TextInputType.phone,
-                                );
-                              },
-                              optionsViewBuilder: (
-                                context,
-                                onSelected,
-                                options,
-                              ) {
-                                return Align(
-                                  alignment: Alignment.topLeft,
-                                  child: Material(
-                                    elevation: 4.0,
-                                    child: ConstrainedBox(
-                                      constraints: const BoxConstraints(
-                                        maxHeight: 200,
-                                        maxWidth: 400,
-                                      ),
-                                      child: ListView.builder(
-                                        padding: const EdgeInsets.all(8.0),
-                                        itemCount: options.length,
-                                        itemBuilder: (context, index) {
-                                          final Customer option = options
-                                              .elementAt(index);
-                                          return ListTile(
-                                            leading: const Icon(
-                                              Icons.person,
-                                              size: 20,
-                                            ),
-                                            title: Text(option.name),
-                                            subtitle: Text(option.phoneNumber),
-                                            onTap: () {
-                                              onSelected(option);
-                                            },
-                                          );
-                                        },
+                              // Afficher le total en CDF si une autre devise est sélectionnée
+                              if (_selectedTransactionCurrency?.code !=
+                                  'CDF') ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Total (CDF)',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall?.copyWith(
+                                        fontStyle: FontStyle.italic,
                                       ),
                                     ),
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        ),
-                        const SizedBox(height: WanzoSpacing.md),
-                        TextFormField(
-                          controller: _customerNameController,
-                          decoration: InputDecoration(
-                            labelText: 'Nom du client',
-                            border: const OutlineInputBorder(),
-                            filled: _foundCustomer != null,
-                            fillColor:
-                                _foundCustomer != null
-                                    ? Colors.green.withAlpha(
-                                      (0.05 * 255).round(),
-                                    )
-                                    : null,
-                            hintText: 'Laissez vide pour "Inconnu"',
+                                    Text(
+                                      formatCurrency(
+                                        _calculateTotalInTransactionCurrency() *
+                                            (_exchangeRates[_selectedTransactionCurrency!] ??
+                                                1.0),
+                                        'CDF',
+                                      ),
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall?.copyWith(
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: WanzoSpacing.md),
-                // Section notes
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(WanzoSpacing.md),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.note),
-                            const SizedBox(width: WanzoSpacing.sm),
-                            Text(
-                              'Notes (optionnel)',
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.bold),
+                          const SizedBox(height: WanzoSpacing.md),
+                          TextFormField(
+                            key: ValueKey(_selectedTransactionCurrency),
+                            initialValue: _paidAmount.toStringAsFixed(2),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
                             ),
-                          ],
-                        ),
-                        const Divider(),
-                        const SizedBox(height: WanzoSpacing.sm),
-                        TextFormField(
-                          controller: _notesController,
-                          maxLines: 3,
-                          decoration: const InputDecoration(
-                            hintText: 'Ajouter des notes ou commentaires...',
-                            border: OutlineInputBorder(),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'^\d+\.?\d{0,2}'),
+                              ),
+                            ],
+                            decoration: InputDecoration(
+                              labelText: 'Montant payé',
+                              border: const OutlineInputBorder(),
+                              prefixText:
+                                  '${_selectedTransactionCurrency?.symbol ?? _defaultCurrency.symbol} ',
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Veuillez entrer le montant payé';
+                              }
+                              final amount = double.tryParse(value);
+                              if (amount == null) return 'Montant invalide';
+                              if (amount < 0) {
+                                return 'Le montant ne peut pas être négatif';
+                              }
+                              return null;
+                            },
+                            onChanged: (value) {
+                              setState(() {
+                                _paidAmount = double.tryParse(value) ?? 0.0;
+                              });
+                            },
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: WanzoSpacing.md),
+                          DropdownButtonFormField<String>(
+                            value: _paymentMethod,
+                            decoration: const InputDecoration(
+                              labelText: 'Méthode de paiement',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'Espèces',
+                                child: Text('Espèces'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Mobile Money',
+                                child: Text('Mobile Money'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Carte bancaire',
+                                child: Text('Carte bancaire'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Virement bancaire',
+                                child: Text('Virement bancaire'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Crédit',
+                                child: Text('Crédit'),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              setState(() {
+                                _paymentMethod = value!;
+                                if (_paymentMethod != 'Crédit') {
+                                  _paidAmount =
+                                      _calculateTotalInTransactionCurrency();
+                                }
+                              });
+                            },
+                          ),
+                          const SizedBox(height: WanzoSpacing.md),
+                          if (_items.isNotEmpty)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                vertical: WanzoSpacing.sm,
+                                horizontal: WanzoSpacing.md,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _getPaymentStatusColor().withAlpha(
+                                  (0.1 * 255).round(),
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: _getPaymentStatusColor(),
+                                ),
+                              ),
+                              child: Text(
+                                _getPaymentStatusText(),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: _getPaymentStatusColor(),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: WanzoSpacing.lg),
-              ],
+                  const SizedBox(height: WanzoSpacing.md),
+                  // Section client (déplacée après le paiement, champs optionnels)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(WanzoSpacing.md),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.person),
+                              const SizedBox(width: WanzoSpacing.sm),
+                              Text(
+                                'Informations client (optionnel)',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                          const Divider(),
+                          const SizedBox(height: WanzoSpacing.sm),
+                          BlocBuilder<CustomerBloc, CustomerState>(
+                            builder: (context, customerState) {
+                              final allCustomers =
+                                  customerState is CustomerSearchResults
+                                      ? customerState.customers
+                                      : (customerState is CustomersLoaded
+                                          ? customerState.customers
+                                          : <Customer>[]);
+
+                              return Autocomplete<Customer>(
+                                optionsBuilder: (
+                                  TextEditingValue textEditingValue,
+                                ) {
+                                  if (textEditingValue.text.isEmpty) {
+                                    return const Iterable<Customer>.empty();
+                                  }
+
+                                  // Rechercher en temps réel
+                                  _searchCustomerByPhone(textEditingValue.text);
+
+                                  return allCustomers.where((
+                                    Customer customer,
+                                  ) {
+                                    return customer.phoneNumber
+                                            .toLowerCase()
+                                            .contains(
+                                              textEditingValue.text
+                                                  .toLowerCase(),
+                                            ) ||
+                                        customer.name.toLowerCase().contains(
+                                          textEditingValue.text.toLowerCase(),
+                                        );
+                                  });
+                                },
+                                displayStringForOption:
+                                    (Customer option) => option.phoneNumber,
+                                onSelected: (Customer selection) {
+                                  setState(() {
+                                    _foundCustomer = selection;
+                                    _linkedCustomerId = selection.id;
+                                    _customerPhoneController.text =
+                                        selection.phoneNumber;
+                                    _customerNameController.text =
+                                        selection.name;
+                                  });
+                                },
+                                fieldViewBuilder: (
+                                  context,
+                                  textEditingController,
+                                  focusNode,
+                                  onFieldSubmitted,
+                                ) {
+                                  // Synchroniser avec notre controller
+                                  if (_customerPhoneController.text !=
+                                      textEditingController.text) {
+                                    textEditingController.text =
+                                        _customerPhoneController.text;
+                                  }
+
+                                  textEditingController.addListener(() {
+                                    if (_customerPhoneController.text !=
+                                        textEditingController.text) {
+                                      _customerPhoneController.text =
+                                          textEditingController.text;
+
+                                      // Réinitialiser si le texte change
+                                      if (_foundCustomer != null &&
+                                          _foundCustomer!.phoneNumber !=
+                                              textEditingController.text) {
+                                        setState(() {
+                                          _foundCustomer = null;
+                                          _linkedCustomerId = null;
+                                          _customerNameController.clear();
+                                        });
+                                      }
+                                    }
+                                  });
+
+                                  return TextFormField(
+                                    controller: textEditingController,
+                                    focusNode: focusNode,
+                                    decoration: const InputDecoration(
+                                      labelText:
+                                          'Contact téléphonique du client',
+                                      border: OutlineInputBorder(),
+                                      hintText: 'Ex: 0812345678 (optionnel)',
+                                    ),
+                                    keyboardType: TextInputType.phone,
+                                  );
+                                },
+                                optionsViewBuilder: (
+                                  context,
+                                  onSelected,
+                                  options,
+                                ) {
+                                  return Align(
+                                    alignment: Alignment.topLeft,
+                                    child: Material(
+                                      elevation: 4.0,
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxHeight: 200,
+                                          maxWidth: 400,
+                                        ),
+                                        child: ListView.builder(
+                                          padding: const EdgeInsets.all(8.0),
+                                          itemCount: options.length,
+                                          itemBuilder: (context, index) {
+                                            final Customer option = options
+                                                .elementAt(index);
+                                            return ListTile(
+                                              leading: const Icon(
+                                                Icons.person,
+                                                size: 20,
+                                              ),
+                                              title: Text(option.name),
+                                              subtitle: Text(
+                                                option.phoneNumber,
+                                              ),
+                                              onTap: () {
+                                                onSelected(option);
+                                              },
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                          const SizedBox(height: WanzoSpacing.md),
+                          TextFormField(
+                            controller: _customerNameController,
+                            decoration: InputDecoration(
+                              labelText: 'Nom du client',
+                              border: const OutlineInputBorder(),
+                              filled: _foundCustomer != null,
+                              fillColor:
+                                  _foundCustomer != null
+                                      ? Colors.green.withAlpha(
+                                        (0.05 * 255).round(),
+                                      )
+                                      : null,
+                              hintText: 'Laissez vide pour "Inconnu"',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: WanzoSpacing.md),
+                  // Section notes
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(WanzoSpacing.md),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.note),
+                              const SizedBox(width: WanzoSpacing.sm),
+                              Text(
+                                'Notes (optionnel)',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                          const Divider(),
+                          const SizedBox(height: WanzoSpacing.sm),
+                          TextFormField(
+                            controller: _notesController,
+                            maxLines: 3,
+                            decoration: const InputDecoration(
+                              hintText: 'Ajouter des notes ou commentaires...',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: WanzoSpacing.lg),
+                ],
+              ),
             ),
           ),
         ),
@@ -1250,7 +1270,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   Widget _buildCategoryIcon(ProductCategory category) {
     return Container(
       decoration: BoxDecoration(
-        color: _getCategoryColor(category).withOpacity(0.15),
+        color: _getCategoryColor(category).withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Center(
@@ -1322,7 +1342,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         width: 28,
         height: 28,
         decoration: BoxDecoration(
-          color: color.withOpacity(0.15),
+          color: color.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(6),
         ),
         child: Icon(icon, size: 16, color: color),
@@ -1353,7 +1373,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                   width: 28,
                   height: 28,
                   decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.15),
+                    color: Colors.blue.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: const Icon(
@@ -1373,7 +1393,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         width: 28,
         height: 28,
         decoration: BoxDecoration(
-          color: _getCategoryColor(product.category).withOpacity(0.15),
+          color: _getCategoryColor(product.category).withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(6),
         ),
         child: Icon(
@@ -1388,7 +1408,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       width: 28,
       height: 28,
       decoration: BoxDecoration(
-        color: Colors.blue.withOpacity(0.15),
+        color: Colors.blue.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(6),
       ),
       child: const Icon(Icons.inventory_2, size: 16, color: Colors.blue),
@@ -2325,7 +2345,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                         decoration: BoxDecoration(
                           color: Theme.of(
                             context,
-                          ).colorScheme.primaryContainer.withOpacity(0.3),
+                          ).colorScheme.primaryContainer.withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
@@ -2864,7 +2884,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                       decoration: BoxDecoration(
                         color: Theme.of(
                           context,
-                        ).colorScheme.primaryContainer.withOpacity(0.3),
+                        ).colorScheme.primaryContainer.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(

@@ -95,7 +95,7 @@ class CustomerDetailsScreen extends StatelessWidget {
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),                    decoration: BoxDecoration(
-                      color: _getCategoryColor(customer.category).withOpacity(0.2), // Corrected
+                      color: _getCategoryColor(customer.category).withValues(alpha: 0.2), // Corrected
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
@@ -319,7 +319,7 @@ class CustomerDetailsScreen extends StatelessWidget {
       icon: Icon(icon, size: 18),
       label: Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)), // Adjusted text style
       style: ElevatedButton.styleFrom(
-        backgroundColor: isDestructive ? Colors.red.withOpacity(0.1) : theme.colorScheme.primaryContainer,
+        backgroundColor: isDestructive ? Colors.red.withValues(alpha: 0.1) : theme.colorScheme.primaryContainer,
         foregroundColor: isDestructive ? Colors.red : theme.colorScheme.onPrimaryContainer,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12), 
         textStyle: const TextStyle(fontSize: 12), 

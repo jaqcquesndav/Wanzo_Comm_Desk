@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/services/currency_service.dart';
+import 'package:wanzo/core/services/form_navigation_service.dart';
 import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
 import '../bloc/customer_state.dart';
 import '../models/customer.dart';
 import 'customer_details_screen.dart';
-import 'add_customer_screen.dart';
 
 /// Écran principal de gestion des clients
 class CustomersScreen extends StatefulWidget {
@@ -466,30 +466,31 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
   /// Navigation vers l'écran d'ajout d'un client
   void _navigateToAddCustomer(BuildContext context) {
-    Navigator.push(
+    final bloc = context.read<CustomerBloc>();
+    FormNavigationService.instance.openCustomerForm(
       context,
-      MaterialPageRoute(builder: (context) => const AddCustomerScreen()),
-    ).then((_) {
-      // Recharger les clients après ajout
-      if (mounted) {
-        context.read<CustomerBloc>().add(const LoadCustomers());
-      }
-    });
+      onSuccess: () {
+        // Recharger les clients après ajout
+        if (mounted) {
+          bloc.add(const LoadCustomers());
+        }
+      },
+    );
   }
 
   /// Navigation vers l'écran de modification d'un client
   void _navigateToEditCustomer(BuildContext context, Customer customer) {
-    Navigator.push(
+    final bloc = context.read<CustomerBloc>();
+    FormNavigationService.instance.openCustomerForm(
       context,
-      MaterialPageRoute(
-        builder: (context) => AddCustomerScreen(customer: customer),
-      ),
-    ).then((_) {
-      // Recharger les clients après modification
-      if (mounted) {
-        context.read<CustomerBloc>().add(const LoadCustomers());
-      }
-    });
+      customer: customer,
+      onSuccess: () {
+        // Recharger les clients après modification
+        if (mounted) {
+          bloc.add(const LoadCustomers());
+        }
+      },
+    );
   }
 
   /// Retourne la couleur associée à une catégorie de client

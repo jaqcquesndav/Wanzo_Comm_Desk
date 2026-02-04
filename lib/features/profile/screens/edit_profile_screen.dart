@@ -1,8 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
+import '../../../core/platform/image_picker/image_picker_service_factory.dart';
+import '../../../core/platform/image_picker/image_picker_service_interface.dart';
 import '../../auth/models/user.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../../core/services/file_storage_service.dart';
@@ -30,7 +31,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _phoneController;
 
   File? _profileImageFile;
-  final ImagePicker _picker = ImagePicker();
+  late final ImagePickerServiceInterface _imagePickerService;
   final FileStorageService _storageService = FileStorageService();
   bool _isSaving = false;
 
@@ -40,6 +41,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _imagePickerService = ImagePickerServiceFactory.getInstance();
     // Séparer le nom complet en prénom et nom
     final nameParts = _splitName(widget.user.name);
     _firstNameController = TextEditingController(text: nameParts['firstName']);
@@ -64,8 +66,50 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  Future<void> _pickAndCropImage(ImageSource source) async {
-    final pickedFile = await _picker.pickImage(source: source);
+  Future<void> _pickAndCropImageFromGallery() async {
+    final pickedFile = await _imagePickerService.pickFromGallery();
+    if (pickedFile != null) {
+      if (!mounted) return;
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: pickedFile.path,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Rogner l\'image',
+            toolbarColor: Theme.of(context).primaryColor,
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.square,
+            lockAspectRatio: false,
+          ),
+          IOSUiSettings(
+            title: 'Rogner l\'image',
+            minimumAspectRatio: 1.0,
+            aspectRatioLockEnabled: false,
+            resetAspectRatioEnabled: true,
+          ),
+        ],
+      );
+      if (croppedFile != null) {
+        setState(() {
+          _profileImageFile = File(croppedFile.path);
+        });
+      }
+    }
+  }
+
+  Future<void> _pickAndCropImageFromCamera() async {
+    if (!_imagePickerService.isCameraAvailable) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'La caméra n\'est pas disponible sur cette plateforme.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    final pickedFile = await _imagePickerService.pickFromCamera();
     if (pickedFile != null) {
       if (!mounted) return;
       final croppedFile = await ImageCropper().cropImage(
@@ -106,17 +150,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 title: const Text('Galerie'),
                 onTap: () async {
                   Navigator.of(context).pop();
-                  await _pickAndCropImage(ImageSource.gallery);
+                  await _pickAndCropImageFromGallery();
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.photo_camera),
-                title: const Text('Appareil photo'),
-                onTap: () async {
-                  Navigator.of(context).pop();
-                  await _pickAndCropImage(ImageSource.camera);
-                },
-              ),
+              if (_imagePickerService.isCameraAvailable)
+                ListTile(
+                  leading: const Icon(Icons.photo_camera),
+                  title: const Text('Appareil photo'),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    await _pickAndCropImageFromCamera();
+                  },
+                ),
             ],
           ),
         );

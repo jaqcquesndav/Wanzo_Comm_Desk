@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import '../../../core/platform/image_picker/image_picker_service_factory.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:wanzo/l10n/app_localizations.dart';
@@ -692,8 +692,10 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
 
   /// Sélectionne un logo depuis la galerie ou la caméra
   Future<void> _selectLogo(AppLocalizations l10n) async {
+    final imagePickerService = ImagePickerServiceFactory.getInstance();
+
     try {
-      final ImageSource? source = await showDialog<ImageSource>(
+      final String? choice = await showDialog<String>(
         context: context,
         builder: (BuildContext context) {
           return AlertDialog(
@@ -706,22 +708,23 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                     leading: const Icon(Icons.photo_library),
                     title: Text(l10n.gallery),
                     onTap: () {
-                      Navigator.of(context).pop(ImageSource.gallery);
+                      Navigator.of(context).pop('gallery');
                     },
                   ),
-                  ListTile(
-                    leading: const Icon(Icons.camera_alt),
-                    title: Text(l10n.camera),
-                    onTap: () {
-                      Navigator.of(context).pop(ImageSource.camera);
-                    },
-                  ),
+                  if (imagePickerService.isCameraAvailable)
+                    ListTile(
+                      leading: const Icon(Icons.camera_alt),
+                      title: Text(l10n.camera),
+                      onTap: () {
+                        Navigator.of(context).pop('camera');
+                      },
+                    ),
                   if (_companyLogo != null && _companyLogo!.isNotEmpty)
                     ListTile(
                       leading: const Icon(Icons.delete, color: Colors.red),
                       title: Text(l10n.deleteCurrentLogo),
                       onTap: () {
-                        Navigator.of(context).pop(null);
+                        Navigator.of(context).pop('delete');
                       },
                     ),
                 ],
@@ -733,8 +736,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
 
       if (!mounted) return;
 
-      if (source == null &&
-          (_companyLogo != null && _companyLogo!.isNotEmpty)) {
+      if (choice == 'delete') {
         setState(() {
           _companyLogo = '';
           _hasChanges = true;
@@ -747,15 +749,22 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
         return;
       }
 
-      if (source == null) return;
+      if (choice == null) return;
 
-      final ImagePicker picker = ImagePicker();
-      final XFile? pickedFile = await picker.pickImage(
-        source: source,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 90,
-      );
+      File? pickedFile;
+      if (choice == 'gallery') {
+        pickedFile = await imagePickerService.pickFromGallery(
+          maxWidth: 1024,
+          maxHeight: 1024,
+          imageQuality: 90,
+        );
+      } else if (choice == 'camera') {
+        pickedFile = await imagePickerService.pickFromCamera(
+          maxWidth: 1024,
+          maxHeight: 1024,
+          imageQuality: 90,
+        );
+      }
 
       if (pickedFile == null) return;
       if (!mounted) return;
@@ -773,7 +782,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
           'company_logo_${DateTime.now().millisecondsSinceEpoch}.png';
       final savedImagePath = path.join(companyLogosDir.path, fileName);
 
-      await File(pickedFile.path).copy(savedImagePath);
+      await pickedFile.copy(savedImagePath);
 
       setState(() {
         _companyLogo = savedImagePath;

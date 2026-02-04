@@ -118,19 +118,25 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     String?
     conversationId, // Optional: to determine if it's a follow-up if not explicitly set
   }) async {
-    print('[AdhaBloc] _buildContextInfo: interactionType=$interactionType');
-    print('[AdhaBloc] _buildContextInfo: sourceIdentifier=$sourceIdentifier');
-    print('[AdhaBloc] _buildContextInfo: conversationId=$conversationId');
+    debugPrint(
+      '[AdhaBloc] _buildContextInfo: interactionType=$interactionType',
+    );
+    debugPrint(
+      '[AdhaBloc] _buildContextInfo: sourceIdentifier=$sourceIdentifier',
+    );
+    debugPrint('[AdhaBloc] _buildContextInfo: conversationId=$conversationId');
 
     // 1. Fetch Business Profile
     AdhaBusinessProfile businessProfile;
     try {
       final User? currentUser = await authRepository.getCurrentUser();
-      print('[AdhaBloc] _buildContextInfo: currentUser=${currentUser?.name}');
-      print(
+      debugPrint(
+        '[AdhaBloc] _buildContextInfo: currentUser=${currentUser?.name}',
+      );
+      debugPrint(
         '[AdhaBloc] _buildContextInfo: currentUser.companyName=${currentUser?.companyName}',
       );
-      print(
+      debugPrint(
         '[AdhaBloc] _buildContextInfo: currentUser.companyId=${currentUser?.companyId}',
       );
       if (currentUser != null) {
@@ -152,8 +158,7 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         );
       }
     } catch (e) {
-      // ignore: avoid_print
-      print('Error fetching business profile for Adha context: $e');
+      debugPrint('Error fetching business profile for Adha context: $e');
       businessProfile = const AdhaBusinessProfile(
         name: 'Error Fetching Profile',
         sector: 'Error',
@@ -187,8 +192,9 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         recentEntries: adhaEntries,
       );
     } catch (e) {
-      // ignore: avoid_print
-      print('Error fetching operation journal summary for Adha context: $e');
+      debugPrint(
+        'Error fetching operation journal summary for Adha context: $e',
+      );
       operationJournalSummary = const AdhaOperationJournalSummary(
         recentEntries: [],
       );
@@ -199,10 +205,10 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       businessProfile: businessProfile,
     );
 
-    print(
+    debugPrint(
       '[AdhaBloc] _buildContextInfo: businessProfile.name=${businessProfile.name}',
     );
-    print(
+    debugPrint(
       '[AdhaBloc] _buildContextInfo: operationJournalSummary.recentEntries.length=${operationJournalSummary.recentEntries.length}',
     );
 
@@ -213,7 +219,7 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       finalInteractionType = AdhaInteractionType.followUp;
     }
 
-    print(
+    debugPrint(
       '[AdhaBloc] _buildContextInfo: finalInteractionType=$finalInteractionType',
     );
 
@@ -229,8 +235,8 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     );
 
     // Log the final context JSON
-    print('[AdhaBloc] _buildContextInfo: FINAL CONTEXT JSON:');
-    print('[AdhaBloc] ${contextInfo.toJson()}');
+    debugPrint('[AdhaBloc] _buildContextInfo: FINAL CONTEXT JSON:');
+    debugPrint('[AdhaBloc] ${contextInfo.toJson()}');
 
     return contextInfo;
   }
@@ -1081,8 +1087,7 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       // Note: Les changements d'état de connexion sont gérés via les événements
       // ConnectToStreamService et DisconnectFromStreamService
       // Ce listener est utilisé pour le logging/debugging
-      // ignore: avoid_print
-      print('[AdhaBloc] Stream connection state: ${connectionState.name}');
+      debugPrint('[AdhaBloc] Stream connection state: ${connectionState.name}');
     });
   }
 
@@ -1152,8 +1157,7 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       case AdhaStreamType.heartbeat:
         // Heartbeat - signal de connexion active (v2.4.0)
         // Ne nécessite aucune action, juste pour maintenir la connexion
-        // ignore: avoid_print
-        print('[AdhaBloc] 💓 Heartbeat reçu');
+        debugPrint('[AdhaBloc] 💓 Heartbeat reçu');
         break;
     }
   }

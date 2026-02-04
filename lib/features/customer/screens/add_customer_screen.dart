@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wanzo/l10n/app_localizations.dart'; // Import AppLocalizations
+import '../../../core/widgets/desktop/responsive_form_container.dart';
 import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
 import '../bloc/customer_state.dart';
@@ -21,28 +22,36 @@ class AddCustomerScreen extends StatefulWidget {
 
 class _AddCustomerScreenState extends State<AddCustomerScreen> {
   final _formKey = GlobalKey<FormState>();
-  
+
   late final TextEditingController _nameController;
   late final TextEditingController _phoneController;
   late final TextEditingController _emailController;
   late final TextEditingController _addressController;
   late final TextEditingController _notesController;
-  
+
   late CustomerCategory _selectedCategory;
-  
+
   bool get _isEditing => widget.customer != null;
 
   @override
   void initState() {
     super.initState();
-    
+
     // Initialise les contrôleurs avec les valeurs du client si on est en mode édition
     _nameController = TextEditingController(text: widget.customer?.name ?? '');
-    _phoneController = TextEditingController(text: widget.customer?.phoneNumber ?? '');
-    _emailController = TextEditingController(text: widget.customer?.email ?? '');
-    _addressController = TextEditingController(text: widget.customer?.address ?? '');
-    _notesController = TextEditingController(text: widget.customer?.notes ?? '');
-    
+    _phoneController = TextEditingController(
+      text: widget.customer?.phoneNumber ?? '',
+    );
+    _emailController = TextEditingController(
+      text: widget.customer?.email ?? '',
+    );
+    _addressController = TextEditingController(
+      text: widget.customer?.address ?? '',
+    );
+    _notesController = TextEditingController(
+      text: widget.customer?.notes ?? '',
+    );
+
     _selectedCategory = widget.customer?.category ?? CustomerCategory.regular;
   }
 
@@ -58,19 +67,26 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final localizations = AppLocalizations.of(context)!; // Add localizations instance
+    final localizations =
+        AppLocalizations.of(context)!; // Add localizations instance
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditing ? localizations.editCustomerTitle : localizations.addCustomerTitle), // Localized
+        title: Text(
+          _isEditing
+              ? localizations.editCustomerTitle
+              : localizations.addCustomerTitle,
+        ), // Localized
       ),
       body: BlocListener<CustomerBloc, CustomerState>(
         listener: (context, state) {
           if (state is CustomerOperationSuccess) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(state.message)), // Keep dynamic message from BLoC
+              SnackBar(
+                content: Text(state.message),
+              ), // Keep dynamic message from BLoC
             );
-            context.pop(); 
+            context.pop();
           } else if (state is CustomerError) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -80,160 +96,177 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
             );
           }
         },
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  localizations.customerInformation, // Localized
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                
-                TextFormField(
-                  controller: _nameController,
-                  decoration: InputDecoration(
-                    labelText: localizations.customerNameLabel, // Localized
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.person),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return localizations.customerNameValidationError; // Localized
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                
-                TextFormField(
-                  controller: _phoneController,
-                  decoration: InputDecoration(
-                    labelText: localizations.customerPhoneLabel, // Localized
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.phone),
-                    hintText: localizations.customerPhoneHint, // Localized
-                  ),
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s-]')),
-                  ],
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return localizations.customerPhoneValidationError; // Localized
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                
-                TextFormField(
-                  controller: _emailController,
-                  decoration: InputDecoration(
-                    labelText: localizations.customerEmailLabel, // Localized
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.email),
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value != null && value.isNotEmpty) {
-                      final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-                      if (!emailRegex.hasMatch(value)) {
-                        return localizations.customerEmailValidationError; // Localized
-                      }
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                
-                TextFormField(
-                  controller: _addressController,
-                  decoration: InputDecoration(
-                    labelText: localizations.customerAddressLabel, // Localized
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.location_on),
-                  ),
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 16),
-                
-                Text(
-                  localizations.customerCategoryLabel, // Localized
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<CustomerCategory>(
-                      isExpanded: true,
-                      value: _selectedCategory,
-                      items: CustomerCategory.values.map((category) {
-                        return DropdownMenuItem<CustomerCategory>(
-                          value: category,
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 16,
-                                height: 16,
-                                decoration: BoxDecoration(
-                                  color: _getCategoryColor(category), // Theme colors will be handled in a follow-up if needed
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(_getCategoryName(context, category)), // Pass context
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          setState(() {
-                            _selectedCategory = value;
-                          });
-                        }
-                      },
+        child: ResponsiveFormWrapper(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    localizations.customerInformation, // Localized
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                
-                TextFormField(
-                  controller: _notesController,
-                  decoration: InputDecoration(
-                    labelText: localizations.customerNotesLabel, // Localized
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.note),
+                  const SizedBox(height: 16),
+
+                  TextFormField(
+                    controller: _nameController,
+                    decoration: InputDecoration(
+                      labelText: localizations.customerNameLabel, // Localized
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.person),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return localizations
+                            .customerNameValidationError; // Localized
+                      }
+                      return null;
+                    },
                   ),
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 24),
-                
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _saveCustomer,
-                    child: Text(_isEditing ? localizations.updateButtonLabel : localizations.addButtonLabel), // Localized
+                  const SizedBox(height: 16),
+
+                  TextFormField(
+                    controller: _phoneController,
+                    decoration: InputDecoration(
+                      labelText: localizations.customerPhoneLabel, // Localized
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.phone),
+                      hintText: localizations.customerPhoneHint, // Localized
+                    ),
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s-]')),
+                    ],
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return localizations
+                            .customerPhoneValidationError; // Localized
+                      }
+                      return null;
+                    },
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+
+                  TextFormField(
+                    controller: _emailController,
+                    decoration: InputDecoration(
+                      labelText: localizations.customerEmailLabel, // Localized
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.email),
+                    ),
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (value) {
+                      if (value != null && value.isNotEmpty) {
+                        final emailRegex = RegExp(
+                          r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                        );
+                        if (!emailRegex.hasMatch(value)) {
+                          return localizations
+                              .customerEmailValidationError; // Localized
+                        }
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  TextFormField(
+                    controller: _addressController,
+                    decoration: InputDecoration(
+                      labelText:
+                          localizations.customerAddressLabel, // Localized
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.location_on),
+                    ),
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 16),
+
+                  Text(
+                    localizations.customerCategoryLabel, // Localized
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<CustomerCategory>(
+                        isExpanded: true,
+                        value: _selectedCategory,
+                        items:
+                            CustomerCategory.values.map((category) {
+                              return DropdownMenuItem<CustomerCategory>(
+                                value: category,
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 16,
+                                      height: 16,
+                                      decoration: BoxDecoration(
+                                        color: _getCategoryColor(
+                                          category,
+                                        ), // Theme colors will be handled in a follow-up if needed
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _getCategoryName(context, category),
+                                    ), // Pass context
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() {
+                              _selectedCategory = value;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  TextFormField(
+                    controller: _notesController,
+                    decoration: InputDecoration(
+                      labelText: localizations.customerNotesLabel, // Localized
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.note),
+                    ),
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 24),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: _saveCustomer,
+                      child: Text(
+                        _isEditing
+                            ? localizations.updateButtonLabel
+                            : localizations.addButtonLabel,
+                      ), // Localized
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -256,7 +289,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         lastPurchaseDate: widget.customer?.lastPurchaseDate,
         category: _selectedCategory,
       );
-      
+
       if (_isEditing) {
         context.read<CustomerBloc>().add(UpdateCustomer(customer));
       } else {
@@ -285,8 +318,10 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
   }
 
   /// Retourne le nom d\'une catégorie de client
-  String _getCategoryName(BuildContext context, CustomerCategory category) { // Add context
-    final localizations = AppLocalizations.of(context)!; // Add localizations instance
+  String _getCategoryName(BuildContext context, CustomerCategory category) {
+    // Add context
+    final localizations =
+        AppLocalizations.of(context)!; // Add localizations instance
     switch (category) {
       case CustomerCategory.vip:
         return localizations.customerCategoryVip;

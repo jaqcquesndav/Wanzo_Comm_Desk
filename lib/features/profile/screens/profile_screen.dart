@@ -2,8 +2,9 @@ import 'dart:io'; // Import for File type
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:image_picker/image_picker.dart'; // Import image_picker
 import 'package:image_cropper/image_cropper.dart'; // Import image_cropper
+import '../../../core/platform/image_picker/image_picker_service_factory.dart';
+import '../../../core/platform/image_picker/image_picker_service_interface.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../auth/models/user.dart';
@@ -21,12 +22,18 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   File? _profileImageFile;
-  final ImagePicker _picker = ImagePicker();
+  late final ImagePickerServiceInterface _imagePickerService;
   bool _settingsEnriched = false;
 
-  Future<void> _pickImage(ImageSource source) async {
-    final pickedFile = await _picker.pickImage(source: source);
-    if (pickedFile != null) {
+  @override
+  void initState() {
+    super.initState();
+    _imagePickerService = ImagePickerServiceFactory.getInstance();
+  }
+
+  Future<void> _pickImageFromGallery() async {
+    final pickedFile = await _imagePickerService.pickFromGallery();
+    if (pickedFile != null && mounted) {
       final croppedFile = await ImageCropper().cropImage(
         sourcePath: pickedFile.path,
         uiSettings: [
@@ -45,7 +52,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
       );
-      if (croppedFile != null) {
+      if (croppedFile != null && mounted) {
+        setState(() {
+          _profileImageFile = File(croppedFile.path);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Photo de profil mise à jour localement.'),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickImageFromCamera() async {
+    if (!_imagePickerService.isCameraAvailable) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'La caméra n\'est pas disponible sur cette plateforme.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    final pickedFile = await _imagePickerService.pickFromCamera();
+    if (pickedFile != null && mounted) {
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: pickedFile.path,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Rogner l\'image',
+            toolbarColor: Theme.of(context).primaryColor,
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.original,
+            lockAspectRatio: false,
+          ),
+          IOSUiSettings(
+            title: 'Rogner l\'image',
+            minimumAspectRatio: 1.0,
+            aspectRatioLockEnabled: false,
+            resetAspectRatioEnabled: true,
+          ),
+        ],
+      );
+      if (croppedFile != null && mounted) {
         setState(() {
           _profileImageFile = File(croppedFile.path);
         });
@@ -69,18 +122,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 leading: const Icon(Icons.photo_library),
                 title: const Text('Galerie'),
                 onTap: () {
-                  _pickImage(ImageSource.gallery);
+                  _pickImageFromGallery();
                   Navigator.of(context).pop();
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.photo_camera),
-                title: const Text('Appareil photo'),
-                onTap: () {
-                  _pickImage(ImageSource.camera);
-                  Navigator.of(context).pop();
-                },
-              ),
+              if (_imagePickerService.isCameraAvailable)
+                ListTile(
+                  leading: const Icon(Icons.photo_camera),
+                  title: const Text('Appareil photo'),
+                  onTap: () {
+                    _pickImageFromCamera();
+                    Navigator.of(context).pop();
+                  },
+                ),
             ],
           ),
         );

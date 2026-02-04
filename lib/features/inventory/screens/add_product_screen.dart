@@ -4,13 +4,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
-import 'package:image_picker/image_picker.dart'; // Added image_picker
 import 'package:path_provider/path_provider.dart'; // Added path_provider
 import 'package:path/path.dart' as path; // Added path
 import '../../../constants/spacing.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/widgets/barcode_scanner_widget.dart'; // Import du scanner
 import '../../../core/services/barcode_scanner_service.dart'; // Import du service
+import '../../../core/platform/image_picker/image_picker_service_factory.dart';
+import '../../../core/platform/image_picker/image_picker_service_interface.dart';
+import '../../../core/widgets/desktop/responsive_form_container.dart';
 import '../bloc/inventory_bloc.dart';
 import '../bloc/inventory_event.dart';
 import '../bloc/inventory_state.dart';
@@ -53,10 +55,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
   Currency? _selectedInputCurrency;
   Currency _appActiveCurrency = Currency.CDF; // Default to CDF
 
+  late final ImagePickerServiceInterface _imagePickerService;
+
   @override
   void initState() {
     super.initState();
 
+    _imagePickerService = ImagePickerServiceFactory.getInstance();
     _isEditing = widget.product != null;
     _currentImagePath = widget.product?.imagePath;
 
@@ -128,19 +133,15 @@ class _AddProductScreenState extends State<AddProductScreen> {
     super.dispose();
   }
 
-  Future<void> _pickImage(ImageSource source) async {
+  Future<void> _pickImageFromGallery() async {
     try {
-      final ImagePicker picker = ImagePicker();
-      final XFile? pickedFile = await picker.pickImage(source: source);
+      final File? pickedFile = await _imagePickerService.pickFromGallery();
 
       if (pickedFile != null) {
-        final File imageFile = File(pickedFile.path);
-        // Optionally, save the image to the app's directory and store the path
         final Directory appDir = await getApplicationDocumentsDirectory();
-        final String fileName = path.basename(imageFile.path);
+        final String fileName = path.basename(pickedFile.path);
         final String savedImagePath = path.join(appDir.path, fileName);
 
-        // Check if the file already exists at the destination, if so, generate a unique name
         String uniqueSavedImagePath = savedImagePath;
         int counter = 1;
         while (await File(uniqueSavedImagePath).exists()) {
@@ -150,19 +151,63 @@ class _AddProductScreenState extends State<AddProductScreen> {
           counter++;
         }
 
-        await imageFile.copy(uniqueSavedImagePath);
+        await pickedFile.copy(uniqueSavedImagePath);
 
         setState(() {
-          _selectedImageFile = imageFile; // Keep for display before saving form
-          _currentImagePath =
-              uniqueSavedImagePath; // Store the path to be saved with the product
+          _selectedImageFile = pickedFile;
+          _currentImagePath = uniqueSavedImagePath;
         });
       }
     } catch (e) {
-      // Handle exceptions, e.g., permission denied
       if (mounted) {
-        // Check if the widget is still in the tree
-        final l10n = AppLocalizations.of(context)!; // Ensure l10n is available
+        final l10n = AppLocalizations.of(context)!;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.imagePickingErrorMessage(e.toString()))),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickImageFromCamera() async {
+    if (!_imagePickerService.isCameraAvailable) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'La caméra n\'est pas disponible sur cette plateforme. Utilisez la galerie.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    try {
+      final File? pickedFile = await _imagePickerService.pickFromCamera();
+
+      if (pickedFile != null) {
+        final Directory appDir = await getApplicationDocumentsDirectory();
+        final String fileName = path.basename(pickedFile.path);
+        final String savedImagePath = path.join(appDir.path, fileName);
+
+        String uniqueSavedImagePath = savedImagePath;
+        int counter = 1;
+        while (await File(uniqueSavedImagePath).exists()) {
+          String newFileName =
+              '${path.basenameWithoutExtension(savedImagePath)}_$counter${path.extension(savedImagePath)}';
+          uniqueSavedImagePath = path.join(appDir.path, newFileName);
+          counter++;
+        }
+
+        await pickedFile.copy(uniqueSavedImagePath);
+
+        setState(() {
+          _selectedImageFile = pickedFile;
+          _currentImagePath = uniqueSavedImagePath;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(l10n.imagePickingErrorMessage(e.toString()))),
         );
@@ -182,18 +227,19 @@ class _AddProductScreenState extends State<AddProductScreen> {
                 leading: const Icon(Icons.photo_library),
                 title: Text(l10n.galleryAction),
                 onTap: () {
-                  _pickImage(ImageSource.gallery);
+                  _pickImageFromGallery();
                   Navigator.of(context).pop();
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.photo_camera),
-                title: Text(l10n.cameraAction),
-                onTap: () {
-                  _pickImage(ImageSource.camera);
-                  Navigator.of(context).pop();
-                },
-              ),
+              if (_imagePickerService.isCameraAvailable)
+                ListTile(
+                  leading: const Icon(Icons.photo_camera),
+                  title: Text(l10n.cameraAction),
+                  onTap: () {
+                    _pickImageFromCamera();
+                    Navigator.of(context).pop();
+                  },
+                ),
               if (_selectedImageFile != null ||
                   (_currentImagePath != null && _currentImagePath!.isNotEmpty))
                 ListTile(
@@ -329,491 +375,500 @@ class _AddProductScreenState extends State<AddProductScreen> {
               // Fallback if _selectedInputCurrency is still null for any reason.
               _selectedInputCurrency ??= _appActiveCurrency;
 
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(WanzoSpacing.md),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Image Picker Section
-                      _buildSectionTitle(
-                        context,
-                        l10n.productImageSectionTitle,
-                      ),
-                      const SizedBox(height: WanzoSpacing.md),
-                      GestureDetector(
-                        onTap: () => _showImageSourceActionSheet(context),
-                        child: Container(
-                          height: 150,
-                          decoration: BoxDecoration(
-                            color: Colors.grey[200],
-                            borderRadius: BorderRadius.circular(
-                              WanzoSpacing.sm,
+              return ResponsiveFormWrapper(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(WanzoSpacing.md),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Image Picker Section
+                        _buildSectionTitle(
+                          context,
+                          l10n.productImageSectionTitle,
+                        ),
+                        const SizedBox(height: WanzoSpacing.md),
+                        GestureDetector(
+                          onTap: () => _showImageSourceActionSheet(context),
+                          child: Container(
+                            height: 150,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[200],
+                              borderRadius: BorderRadius.circular(
+                                WanzoSpacing.sm,
+                              ),
+                              border: Border.all(color: Colors.grey.shade400),
                             ),
-                            border: Border.all(color: Colors.grey.shade400),
-                          ),
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              if (_selectedImageFile != null)
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(
-                                    WanzoSpacing.sm,
-                                  ),
-                                  child: Image.file(
-                                    _selectedImageFile!,
-                                    width: double.infinity,
-                                    height: 150,
-                                    fit: BoxFit.cover,
-                                  ),
-                                )
-                              else if (_currentImagePath != null &&
-                                  _currentImagePath!.isNotEmpty)
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(
-                                    WanzoSpacing.sm,
-                                  ),
-                                  child: Image.file(
-                                    File(
-                                      _currentImagePath!,
-                                    ), // Display existing image
-                                    width: double.infinity,
-                                    height: 150,
-                                    fit: BoxFit.cover,
-                                  ),
-                                )
-                              else
-                                Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.add_a_photo,
-                                      size: 40,
-                                      color: Colors.grey[600],
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                if (_selectedImageFile != null)
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(
+                                      WanzoSpacing.sm,
                                     ),
-                                    const SizedBox(height: WanzoSpacing.sm),
-                                    Text(
-                                      l10n.addImageLabel,
-                                      style: TextStyle(color: Colors.grey[700]),
+                                    child: Image.file(
+                                      _selectedImageFile!,
+                                      width: double.infinity,
+                                      height: 150,
+                                      fit: BoxFit.cover,
                                     ),
-                                  ],
-                                ),
-                              if (_selectedImageFile != null ||
-                                  (_currentImagePath != null &&
-                                      _currentImagePath!.isNotEmpty))
-                                Positioned(
-                                  top: 8,
-                                  right: 8,
-                                  child: InkWell(
-                                    onTap: () {
-                                      setState(() {
-                                        _selectedImageFile = null;
-                                        _currentImagePath = null;
-                                      });
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(
-                                          alpha: 0.5,
+                                  )
+                                else if (_currentImagePath != null &&
+                                    _currentImagePath!.isNotEmpty)
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(
+                                      WanzoSpacing.sm,
+                                    ),
+                                    child: Image.file(
+                                      File(
+                                        _currentImagePath!,
+                                      ), // Display existing image
+                                      width: double.infinity,
+                                      height: 150,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  )
+                                else
+                                  Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.add_a_photo,
+                                        size: 40,
+                                        color: Colors.grey[600],
+                                      ),
+                                      const SizedBox(height: WanzoSpacing.sm),
+                                      Text(
+                                        l10n.addImageLabel,
+                                        style: TextStyle(
+                                          color: Colors.grey[700],
                                         ),
-                                        shape: BoxShape.circle,
                                       ),
-                                      child: const Icon(
-                                        Icons.close,
-                                        color: Colors.white,
-                                        size: 18,
+                                    ],
+                                  ),
+                                if (_selectedImageFile != null ||
+                                    (_currentImagePath != null &&
+                                        _currentImagePath!.isNotEmpty))
+                                  Positioned(
+                                    top: 8,
+                                    right: 8,
+                                    child: InkWell(
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedImageFile = null;
+                                          _currentImagePath = null;
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.5,
+                                          ),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.close,
+                                          color: Colors.white,
+                                          size: 18,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: WanzoSpacing.lg),
-
-                      // Informations générales
-                      _buildSectionTitle(
-                        context,
-                        l10n.generalInformationSectionTitle,
-                      ),
-                      const SizedBox(height: WanzoSpacing.md),
-
-                      // Nom du produit
-                      TextFormField(
-                        controller: _nameController,
-                        decoration: InputDecoration(
-                          labelText: l10n.productNameLabel,
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(Icons.inventory),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return l10n.productNameValidationError;
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: WanzoSpacing.md),
-
-                      // Description
-                      TextFormField(
-                        controller: _descriptionController,
-                        decoration: InputDecoration(
-                          labelText: l10n.productDescriptionLabel,
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(Icons.description),
-                        ),
-                        maxLines: 3,
-                      ),
-                      const SizedBox(height: WanzoSpacing.md),
-
-                      // Code-barres
-                      TextFormField(
-                        controller: _barcodeController,
-                        decoration: InputDecoration(
-                          labelText: l10n.productBarcodeLabel,
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(Icons.qr_code),
-                          suffixIcon: IconButton(
-                            icon: const Icon(Icons.camera_alt),
-                            onPressed: _openBarcodeScanner,
-                            tooltip: 'Scanner un code-barres',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: WanzoSpacing.md),
-
-                      // Catégorie
-                      Autocomplete<ProductCategory>(
-                        initialValue: TextEditingValue(
-                          text: _getCategoryName(_selectedCategory, l10n),
-                        ),
-                        optionsBuilder: (TextEditingValue textEditingValue) {
-                          if (textEditingValue.text.isEmpty) {
-                            return ProductCategory.values;
-                          }
-                          return ProductCategory.values.where((category) {
-                            final displayName =
-                                _getCategoryName(category, l10n).toLowerCase();
-                            final searchText =
-                                textEditingValue.text.toLowerCase();
-                            return displayName.contains(searchText);
-                          });
-                        },
-                        displayStringForOption:
-                            (ProductCategory category) =>
-                                _getCategoryName(category, l10n),
-                        onSelected: (ProductCategory selection) {
-                          setState(() {
-                            _selectedCategory = selection;
-                          });
-                        },
-                        fieldViewBuilder: (
-                          BuildContext context,
-                          TextEditingController textEditingController,
-                          FocusNode focusNode,
-                          VoidCallback onFieldSubmitted,
-                        ) {
-                          return TextFormField(
-                            controller: textEditingController,
-                            focusNode: focusNode,
-                            onFieldSubmitted: (String value) {
-                              onFieldSubmitted();
-                            },
-                            decoration: InputDecoration(
-                              labelText: l10n.productCategoryLabel,
-                              border: const OutlineInputBorder(),
-                              prefixIcon: const Icon(Icons.category),
-                            ),
-                          );
-                        },
-                        optionsViewBuilder: (
-                          BuildContext context,
-                          AutocompleteOnSelected<ProductCategory> onSelected,
-                          Iterable<ProductCategory> options,
-                        ) {
-                          return Align(
-                            alignment: Alignment.topLeft,
-                            child: Material(
-                              elevation: 4.0,
-                              child: Container(
-                                width: 300,
-                                constraints: const BoxConstraints(
-                                  maxHeight: 200,
-                                ),
-                                child: ListView.builder(
-                                  padding: const EdgeInsets.all(8.0),
-                                  itemCount: options.length,
-                                  itemBuilder: (
-                                    BuildContext context,
-                                    int index,
-                                  ) {
-                                    final option = options.elementAt(index);
-                                    return ListTile(
-                                      leading: Icon(option.icon),
-                                      title: Text(
-                                        _getCategoryName(option, l10n),
-                                      ),
-                                      onTap: () {
-                                        onSelected(option);
-                                      },
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: WanzoSpacing.lg),
-
-                      // Prix & Currency Section
-                      _buildSectionTitle(context, l10n.pricingSectionTitle),
-                      const SizedBox(height: WanzoSpacing.md),
-                      DropdownButtonFormField<Currency>(
-                        value: _selectedInputCurrency,
-                        decoration: InputDecoration(
-                          labelText: l10n.inputCurrencyLabel,
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(Icons.money),
-                        ),
-                        items:
-                            Currency.values.map((Currency currency) {
-                              return DropdownMenuItem<Currency>(
-                                value: currency,
-                                child: Text(
-                                  currency.displayName(context),
-                                ), // Pass context
-                              );
-                            }).toList(),
-                        onChanged: (Currency? newValue) {
-                          setState(() {
-                            _selectedInputCurrency = newValue!;
-                          });
-                        },
-                        validator:
-                            (value) =>
-                                value == null
-                                    ? l10n.inputCurrencyValidationError
-                                    : null,
-                      ),
-                      const SizedBox(height: WanzoSpacing.md),
-
-                      // Prix d'achat
-                      TextFormField(
-                        controller: _costPriceController,
-                        decoration: InputDecoration(
-                          labelText:
-                              '${l10n.costPriceLabel} (${_selectedInputCurrency?.code ?? _appActiveCurrency.code})',
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(Icons.store),
-                        ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(
-                            RegExp(r'^\d+\.?\d{0,2}'),
-                          ),
-                        ],
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return l10n.costPriceValidationError;
-                          }
-                          try {
-                            final price = double.parse(value);
-                            if (price < 0) {
-                              return l10n.negativePriceValidationError;
-                            }
-                          } catch (e) {
-                            return l10n.invalidNumberValidationError;
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: WanzoSpacing.md),
-
-                      // Prix de vente
-                      TextFormField(
-                        controller: _sellingPriceController,
-                        decoration: InputDecoration(
-                          labelText:
-                              '${l10n.sellingPriceLabel} (${_selectedInputCurrency?.code ?? _appActiveCurrency.code})',
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(Icons.sell),
-                        ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(
-                            RegExp(r'^\d+\.?\d{0,2}'),
-                          ),
-                        ],
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return l10n.sellingPriceValidationError;
-                          }
-                          try {
-                            final price = double.parse(value);
-                            if (price < 0) {
-                              return l10n.negativePriceValidationError;
-                            }
-                          } catch (e) {
-                            return l10n.invalidNumberValidationError;
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: WanzoSpacing.lg),
-
-                      // Stock
-                      _buildSectionTitle(
-                        context,
-                        l10n.stockManagementSectionTitle,
-                      ),
-                      const SizedBox(height: WanzoSpacing.md),
-
-                      // Quantité en stock
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Quantité
-                          Expanded(
-                            flex: 2,
-                            child: TextFormField(
-                              controller: _stockQuantityController,
-                              decoration: InputDecoration(
-                                labelText: l10n.stockQuantityLabel,
-                                border: const OutlineInputBorder(),
-                                prefixIcon: const Icon(Icons.inventory_2),
-                              ),
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.allow(
-                                  RegExp(r'^\d+\.?\d{0,2}'),
-                                ),
                               ],
-                              validator: (value) {
-                                if (_isEditing &&
-                                    widget.product?.stockQuantity.toString() ==
-                                        value) {
-                                  // If editing and quantity hasn't changed, no new stock transaction needed for initial quantity.
-                                  // Validation for format is still good.
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: WanzoSpacing.lg),
+
+                        // Informations générales
+                        _buildSectionTitle(
+                          context,
+                          l10n.generalInformationSectionTitle,
+                        ),
+                        const SizedBox(height: WanzoSpacing.md),
+
+                        // Nom du produit
+                        TextFormField(
+                          controller: _nameController,
+                          decoration: InputDecoration(
+                            labelText: l10n.productNameLabel,
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.inventory),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return l10n.productNameValidationError;
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: WanzoSpacing.md),
+
+                        // Description
+                        TextFormField(
+                          controller: _descriptionController,
+                          decoration: InputDecoration(
+                            labelText: l10n.productDescriptionLabel,
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.description),
+                          ),
+                          maxLines: 3,
+                        ),
+                        const SizedBox(height: WanzoSpacing.md),
+
+                        // Code-barres
+                        TextFormField(
+                          controller: _barcodeController,
+                          decoration: InputDecoration(
+                            labelText: l10n.productBarcodeLabel,
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.qr_code),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.camera_alt),
+                              onPressed: _openBarcodeScanner,
+                              tooltip: 'Scanner un code-barres',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: WanzoSpacing.md),
+
+                        // Catégorie
+                        Autocomplete<ProductCategory>(
+                          initialValue: TextEditingValue(
+                            text: _getCategoryName(_selectedCategory, l10n),
+                          ),
+                          optionsBuilder: (TextEditingValue textEditingValue) {
+                            if (textEditingValue.text.isEmpty) {
+                              return ProductCategory.values;
+                            }
+                            return ProductCategory.values.where((category) {
+                              final displayName =
+                                  _getCategoryName(
+                                    category,
+                                    l10n,
+                                  ).toLowerCase();
+                              final searchText =
+                                  textEditingValue.text.toLowerCase();
+                              return displayName.contains(searchText);
+                            });
+                          },
+                          displayStringForOption:
+                              (ProductCategory category) =>
+                                  _getCategoryName(category, l10n),
+                          onSelected: (ProductCategory selection) {
+                            setState(() {
+                              _selectedCategory = selection;
+                            });
+                          },
+                          fieldViewBuilder: (
+                            BuildContext context,
+                            TextEditingController textEditingController,
+                            FocusNode focusNode,
+                            VoidCallback onFieldSubmitted,
+                          ) {
+                            return TextFormField(
+                              controller: textEditingController,
+                              focusNode: focusNode,
+                              onFieldSubmitted: (String value) {
+                                onFieldSubmitted();
+                              },
+                              decoration: InputDecoration(
+                                labelText: l10n.productCategoryLabel,
+                                border: const OutlineInputBorder(),
+                                prefixIcon: const Icon(Icons.category),
+                              ),
+                            );
+                          },
+                          optionsViewBuilder: (
+                            BuildContext context,
+                            AutocompleteOnSelected<ProductCategory> onSelected,
+                            Iterable<ProductCategory> options,
+                          ) {
+                            return Align(
+                              alignment: Alignment.topLeft,
+                              child: Material(
+                                elevation: 4.0,
+                                child: Container(
+                                  width: 300,
+                                  constraints: const BoxConstraints(
+                                    maxHeight: 200,
+                                  ),
+                                  child: ListView.builder(
+                                    padding: const EdgeInsets.all(8.0),
+                                    itemCount: options.length,
+                                    itemBuilder: (
+                                      BuildContext context,
+                                      int index,
+                                    ) {
+                                      final option = options.elementAt(index);
+                                      return ListTile(
+                                        leading: Icon(option.icon),
+                                        title: Text(
+                                          _getCategoryName(option, l10n),
+                                        ),
+                                        onTap: () {
+                                          onSelected(option);
+                                        },
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: WanzoSpacing.lg),
+
+                        // Prix & Currency Section
+                        _buildSectionTitle(context, l10n.pricingSectionTitle),
+                        const SizedBox(height: WanzoSpacing.md),
+                        DropdownButtonFormField<Currency>(
+                          value: _selectedInputCurrency,
+                          decoration: InputDecoration(
+                            labelText: l10n.inputCurrencyLabel,
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.money),
+                          ),
+                          items:
+                              Currency.values.map((Currency currency) {
+                                return DropdownMenuItem<Currency>(
+                                  value: currency,
+                                  child: Text(
+                                    currency.displayName(context),
+                                  ), // Pass context
+                                );
+                              }).toList(),
+                          onChanged: (Currency? newValue) {
+                            setState(() {
+                              _selectedInputCurrency = newValue!;
+                            });
+                          },
+                          validator:
+                              (value) =>
+                                  value == null
+                                      ? l10n.inputCurrencyValidationError
+                                      : null,
+                        ),
+                        const SizedBox(height: WanzoSpacing.md),
+
+                        // Prix d'achat
+                        TextFormField(
+                          controller: _costPriceController,
+                          decoration: InputDecoration(
+                            labelText:
+                                '${l10n.costPriceLabel} (${_selectedInputCurrency?.code ?? _appActiveCurrency.code})',
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.store),
+                          ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'^\d+\.?\d{0,2}'),
+                            ),
+                          ],
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return l10n.costPriceValidationError;
+                            }
+                            try {
+                              final price = double.parse(value);
+                              if (price < 0) {
+                                return l10n.negativePriceValidationError;
+                              }
+                            } catch (e) {
+                              return l10n.invalidNumberValidationError;
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: WanzoSpacing.md),
+
+                        // Prix de vente
+                        TextFormField(
+                          controller: _sellingPriceController,
+                          decoration: InputDecoration(
+                            labelText:
+                                '${l10n.sellingPriceLabel} (${_selectedInputCurrency?.code ?? _appActiveCurrency.code})',
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.sell),
+                          ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'^\d+\.?\d{0,2}'),
+                            ),
+                          ],
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return l10n.sellingPriceValidationError;
+                            }
+                            try {
+                              final price = double.parse(value);
+                              if (price < 0) {
+                                return l10n.negativePriceValidationError;
+                              }
+                            } catch (e) {
+                              return l10n.invalidNumberValidationError;
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: WanzoSpacing.lg),
+
+                        // Stock
+                        _buildSectionTitle(
+                          context,
+                          l10n.stockManagementSectionTitle,
+                        ),
+                        const SizedBox(height: WanzoSpacing.md),
+
+                        // Quantité en stock
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Quantité
+                            Expanded(
+                              flex: 2,
+                              child: TextFormField(
+                                controller: _stockQuantityController,
+                                decoration: InputDecoration(
+                                  labelText: l10n.stockQuantityLabel,
+                                  border: const OutlineInputBorder(),
+                                  prefixIcon: const Icon(Icons.inventory_2),
+                                ),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                    RegExp(r'^\d+\.?\d{0,2}'),
+                                  ),
+                                ],
+                                validator: (value) {
+                                  if (_isEditing &&
+                                      widget.product?.stockQuantity
+                                              .toString() ==
+                                          value) {
+                                    // If editing and quantity hasn't changed, no new stock transaction needed for initial quantity.
+                                    // Validation for format is still good.
+                                    try {
+                                      if (value != null && value.isNotEmpty) {
+                                        double.parse(value);
+                                      }
+                                    } catch (e) {
+                                      return l10n.invalidNumberValidationError;
+                                    }
+                                    return null;
+                                  }
+                                  if (value == null || value.isEmpty) {
+                                    return l10n.stockQuantityValidationError;
+                                  }
                                   try {
-                                    if (value != null && value.isNotEmpty) {
-                                      double.parse(value);
+                                    final quantity = double.parse(value);
+                                    if (quantity < 0) {
+                                      return l10n
+                                          .negativeQuantityValidationError;
                                     }
                                   } catch (e) {
                                     return l10n.invalidNumberValidationError;
                                   }
                                   return null;
-                                }
-                                if (value == null || value.isEmpty) {
-                                  return l10n.stockQuantityValidationError;
-                                }
-                                try {
-                                  final quantity = double.parse(value);
-                                  if (quantity < 0) {
-                                    return l10n.negativeQuantityValidationError;
-                                  }
-                                } catch (e) {
-                                  return l10n.invalidNumberValidationError;
-                                }
-                                return null;
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: WanzoSpacing.md),
-
-                          // Unité
-                          Expanded(
-                            flex: 1,
-                            child: DropdownButtonFormField<ProductUnit>(
-                              isExpanded: true,
-                              value: _selectedUnit,
-                              decoration: InputDecoration(
-                                labelText: l10n.productUnitLabel,
-                                border: const OutlineInputBorder(),
+                                },
                               ),
-                              items:
-                                  ProductUnit.values.map((unit) {
-                                    return DropdownMenuItem<ProductUnit>(
-                                      value: unit,
-                                      child: Text(
-                                        _getUnitName(unit, l10n),
-                                        overflow: TextOverflow.ellipsis,
-                                      ), // Pass l10n
-                                    );
-                                  }).toList(),
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(() {
-                                    _selectedUnit = value;
-                                  });
-                                }
-                              },
+                            ),
+                            const SizedBox(width: WanzoSpacing.md),
+
+                            // Unité
+                            Expanded(
+                              flex: 1,
+                              child: DropdownButtonFormField<ProductUnit>(
+                                isExpanded: true,
+                                value: _selectedUnit,
+                                decoration: InputDecoration(
+                                  labelText: l10n.productUnitLabel,
+                                  border: const OutlineInputBorder(),
+                                ),
+                                items:
+                                    ProductUnit.values.map((unit) {
+                                      return DropdownMenuItem<ProductUnit>(
+                                        value: unit,
+                                        child: Text(
+                                          _getUnitName(unit, l10n),
+                                          overflow: TextOverflow.ellipsis,
+                                        ), // Pass l10n
+                                      );
+                                    }).toList(),
+                                onChanged: (value) {
+                                  if (value != null) {
+                                    setState(() {
+                                      _selectedUnit = value;
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: WanzoSpacing.md),
+
+                        // Seuil d'alerte
+                        TextFormField(
+                          controller: _alertThresholdController,
+                          decoration: InputDecoration(
+                            labelText: l10n.lowStockThresholdLabel,
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.warning),
+                            helperText: l10n.lowStockThresholdHelper,
+                          ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'^\d+\.?\d{0,2}'),
+                            ),
+                          ],
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return l10n.lowStockThresholdValidationError;
+                            }
+                            try {
+                              final threshold = double.parse(value);
+                              if (threshold < 0) {
+                                return l10n.negativeThresholdValidationError;
+                              }
+                            } catch (e) {
+                              return l10n.invalidNumberValidationError;
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: WanzoSpacing.xl),
+
+                        // Bouton de soumission
+                        ElevatedButton.icon(
+                          icon: Icon(_isEditing ? Icons.save : Icons.add),
+                          label: Text(
+                            _isEditing
+                                ? l10n.saveChangesButton
+                                : l10n.addProductButton,
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: WanzoSpacing.md,
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: WanzoSpacing.md),
-
-                      // Seuil d'alerte
-                      TextFormField(
-                        controller: _alertThresholdController,
-                        decoration: InputDecoration(
-                          labelText: l10n.lowStockThresholdLabel,
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(Icons.warning),
-                          helperText: l10n.lowStockThresholdHelper,
-                        ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(
-                            RegExp(r'^\d+\.?\d{0,2}'),
-                          ),
-                        ],
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return l10n.lowStockThresholdValidationError;
-                          }
-                          try {
-                            final threshold = double.parse(value);
-                            if (threshold < 0) {
-                              return l10n.negativeThresholdValidationError;
+                          onPressed: () {
+                            if (_formKey.currentState!.validate()) {
+                              _submitForm(context);
                             }
-                          } catch (e) {
-                            return l10n.invalidNumberValidationError;
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: WanzoSpacing.xl),
-
-                      // Bouton de soumission
-                      ElevatedButton.icon(
-                        icon: Icon(_isEditing ? Icons.save : Icons.add),
-                        label: Text(
-                          _isEditing
-                              ? l10n.saveChangesButton
-                              : l10n.addProductButton,
+                          },
                         ),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: WanzoSpacing.md,
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        onPressed: () {
-                          if (_formKey.currentState!.validate()) {
-                            _submitForm(context);
-                          }
-                        },
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               );

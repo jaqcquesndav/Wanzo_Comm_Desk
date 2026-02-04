@@ -33,13 +33,13 @@ class AdhaErrorWidget extends StatelessWidget {
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: theme.colorScheme.errorContainer.withOpacity(0.3),
+                color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 friendlyError.icon,
                 size: 40,
-                color: theme.colorScheme.error.withOpacity(0.8),
+                color: theme.colorScheme.error.withValues(alpha: 0.8),
               ),
             ),
             const SizedBox(height: 24),
@@ -184,10 +184,10 @@ class AdhaInlineErrorWidget extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.errorContainer.withOpacity(0.2),
+        color: theme.colorScheme.errorContainer.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: theme.colorScheme.error.withOpacity(0.3),
+          color: theme.colorScheme.error.withValues(alpha: 0.3),
           width: 1,
         ),
       ),
@@ -197,7 +197,7 @@ class AdhaInlineErrorWidget extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: theme.colorScheme.errorContainer.withOpacity(0.5),
+              color: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
               shape: BoxShape.circle,
             ),
             child: Icon(

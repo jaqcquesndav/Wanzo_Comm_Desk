@@ -2,7 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:image_picker/image_picker.dart';
+import '../../../core/platform/image_picker/image_picker_service_factory.dart';
+import '../../../core/platform/image_picker/image_picker_service_interface.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import '../bloc/adha_bloc.dart';
 import '../bloc/adha_event.dart';
@@ -33,7 +34,7 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
   final List<AdhaAttachment> _pendingAttachments = [];
 
   /// Picker pour les images
-  final ImagePicker _imagePicker = ImagePicker();
+  late final ImagePickerServiceInterface _imagePickerService;
 
   /// Contrôle l'auto-scroll pendant le streaming
   /// Si l'utilisateur scrolle manuellement vers le haut, on désactive l'auto-scroll
@@ -45,6 +46,7 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _imagePickerService = ImagePickerServiceFactory.getInstance();
     // Observer le cycle de vie de l'application pour reconnecter WebSocket
     WidgetsBinding.instance.addObserver(this);
 
@@ -157,12 +159,14 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
   void _showConversationsHistory(BuildContext context) {
     // Récupérer les conversations depuis le BLoC
     final bloc = context.read<AdhaBloc>();
+    final currentContext = context;
     bloc.adhaRepository.getConversations().then((conversations) {
+      if (!mounted) return;
       // Trier par date de mise à jour (plus récent en premier)
       conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
       ConversationsBottomSheet.show(
-        context: context,
+        context: currentContext,
         conversations: conversations,
         onConversationSelected: (conversationId) {
           bloc.add(LoadConversation(conversationId));
@@ -466,7 +470,7 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
                               : isStreaming
                               ? "ADHA répond..."
                               : (isConversationActive &&
-                                  !(adhaState.conversation.messages.isEmpty))
+                                  adhaState.conversation.messages.isNotEmpty)
                               ? "Écrivez votre message..."
                               : "Commencer une nouvelle conversation...",
                       border: OutlineInputBorder(
@@ -635,7 +639,7 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
+                      color: Colors.black.withValues(alpha: 0.2),
                       blurRadius: 2,
                       offset: const Offset(0, 1),
                     ),
@@ -699,14 +703,15 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
       onSelected: (value) => _handleAttachmentSelection(context, value),
       itemBuilder:
           (context) => [
-            const PopupMenuItem(
-              value: 'camera',
-              child: ListTile(
-                leading: Icon(Icons.camera_alt, color: Colors.blue),
-                title: Text('Prendre une photo'),
-                contentPadding: EdgeInsets.zero,
+            if (_imagePickerService.isCameraAvailable)
+              const PopupMenuItem(
+                value: 'camera',
+                child: ListTile(
+                  leading: Icon(Icons.camera_alt, color: Colors.blue),
+                  title: Text('Prendre une photo'),
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-            ),
             const PopupMenuItem(
               value: 'gallery',
               child: ListTile(
@@ -735,24 +740,43 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
     try {
       switch (type) {
         case 'camera':
-          final XFile? image = await _imagePicker.pickImage(
-            source: ImageSource.camera,
+          if (!_imagePickerService.isCameraAvailable) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'La caméra n\'est pas disponible sur cette plateforme.',
+                  ),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            }
+            return;
+          }
+          final File? image = await _imagePickerService.pickFromCamera(
             maxWidth: 1920,
             maxHeight: 1080,
             imageQuality: 85,
           );
           if (image != null) {
-            await _addAttachmentFromFile(image.path, image.name);
+            await _addAttachmentFromFile(
+              image.path,
+              image.path.split('/').last,
+            );
           }
           break;
         case 'gallery':
-          final List<XFile> images = await _imagePicker.pickMultiImage(
-            maxWidth: 1920,
-            maxHeight: 1080,
-            imageQuality: 85,
-          );
+          final List<File> images = await _imagePickerService
+              .pickMultipleImages(
+                maxWidth: 1920,
+                maxHeight: 1080,
+                imageQuality: 85,
+              );
           for (final image in images) {
-            await _addAttachmentFromFile(image.path, image.name);
+            await _addAttachmentFromFile(
+              image.path,
+              image.path.split('/').last,
+            );
           }
           break;
         case 'document':

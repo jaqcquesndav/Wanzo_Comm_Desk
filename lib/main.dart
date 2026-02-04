@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -32,6 +34,7 @@ import 'package:wanzo/features/supplier/services/supplier_api_service.dart'; // 
 
 import 'package:wanzo/features/auth/services/auth0_service.dart';
 import 'package:wanzo/features/auth/services/offline_auth_service.dart';
+import 'package:wanzo/features/auth/services/desktop_auth_service.dart';
 import 'package:wanzo/features/notifications/services/notification_service.dart';
 import 'package:wanzo/features/security/services/local_security_service.dart';
 import 'package:wanzo/features/offline/services/enhanced_offline_service.dart';
@@ -109,6 +112,36 @@ Future<void> main() async {
     final auth0Service = Auth0Service(offlineAuthService: offlineAuthService);
     await auth0Service.init();
 
+    // 4b. Initialisation du service d'authentification desktop (Windows/Linux)
+    DesktopAuthService? desktopAuthService;
+    // Vérification de la plateforme - Platform.* ne peut pas être appelé sur le web
+    bool isDesktopPlatform = false;
+    String platformName = 'web';
+
+    if (!kIsWeb) {
+      // Seulement accéder à Platform si on n'est pas sur le web
+      isDesktopPlatform = Platform.isWindows || Platform.isLinux;
+      platformName = Platform.operatingSystem;
+    }
+
+    debugPrint(
+      'Main: kIsWeb=$kIsWeb, Platform=$platformName, isDesktopPlatform=$isDesktopPlatform',
+    );
+
+    if (isDesktopPlatform) {
+      desktopAuthService = DesktopAuthService(
+        offlineAuthService: offlineAuthService,
+      );
+      await desktopAuthService.init();
+      debugPrint(
+        'Main: DesktopAuthService initialisé pour authentification native',
+      );
+    } else {
+      debugPrint(
+        'Main: Plateforme non-desktop (web/mobile/macOS), desktopAuthService sera null',
+      );
+    }
+
     // 5. Initialisation complète des services de production
     await AppInitializationService.instance.initialize(
       auth0Service: auth0Service,
@@ -164,6 +197,7 @@ Future<void> main() async {
     // 9. Initialisation des repositories en parallèle où possible
     final repositories = await _initializeRepositoriesOptimized(
       auth0Service: auth0Service,
+      desktopAuthService: desktopAuthService,
       notificationService: notificationService,
       expenseApiService: expenseApiService,
       adhaApiService: adhaApiService,
@@ -277,6 +311,7 @@ Future<void> _initializeConnectivity() async {
 /// Initialise tous les repositories de manière optimisée (parallèle où possible)
 Future<Map<String, dynamic>> _initializeRepositoriesOptimized({
   required Auth0Service auth0Service,
+  required DesktopAuthService? desktopAuthService,
   required NotificationService notificationService,
   required ExpenseApiServiceImpl expenseApiService,
   required AdhaApiService adhaApiService,
@@ -292,7 +327,10 @@ Future<Map<String, dynamic>> _initializeRepositoriesOptimized({
 
   try {
     // Phase 1: Repositories avec leurs services API injectés
-    final authRepository = AuthRepository(auth0Service: auth0Service);
+    final authRepository = AuthRepository(
+      auth0Service: auth0Service,
+      desktopAuthService: desktopAuthService,
+    );
     final settingsRepository = SettingsRepository(
       apiService: settingsApiService,
     );

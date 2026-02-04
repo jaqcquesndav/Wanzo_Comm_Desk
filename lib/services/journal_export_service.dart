@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -54,36 +55,34 @@ class JournalExportService {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(30),
-        header:
-            (context) => _buildSimpleHeader(
-              context,
-              settings,
-              font,
-              fontBold,
-              filter,
-              exportId,
-            ),
+        header: (context) => _buildSimpleHeader(
+          context,
+          settings,
+          font,
+          fontBold,
+          filter,
+          exportId,
+        ),
         footer: (context) => _buildSimpleFooter(context, font, exportId),
-        build:
-            (context) => [
-              // Métadonnées du rapport
-              _buildMetadataSection(
-                font,
-                fontBold,
-                filter,
-                currentUser,
-                operations.length,
-                qrData,
-              ),
-              pw.SizedBox(height: 15),
+        build: (context) => [
+          // Métadonnées du rapport
+          _buildMetadataSection(
+            font,
+            fontBold,
+            filter,
+            currentUser,
+            operations.length,
+            qrData,
+          ),
+          pw.SizedBox(height: 15),
 
-              // Résumé financier compact
-              _buildCompactSummary(totals, font, fontBold),
-              pw.SizedBox(height: 20),
+          // Résumé financier compact
+          _buildCompactSummary(totals, font, fontBold),
+          pw.SizedBox(height: 20),
 
-              // Tableau des opérations
-              ..._buildDataTable(groupedByDevise, font, fontBold),
-            ],
+          // Tableau des opérations
+          ..._buildDataTable(groupedByDevise, font, fontBold),
+        ],
       ),
     );
 
@@ -499,10 +498,9 @@ class JournalExportService {
               final isAlternate = index % 2 == 1;
 
               return pw.TableRow(
-                decoration:
-                    isAlternate
-                        ? const pw.BoxDecoration(color: PdfColors.grey50)
-                        : null,
+                decoration: isAlternate
+                    ? const pw.BoxDecoration(color: PdfColors.grey50)
+                    : null,
                 children: [
                   _buildDataCell(DateFormat('dd/MM/yy').format(op.date), font),
                   _buildDataCell(_truncateText(op.description, 45), font),
@@ -679,6 +677,7 @@ class JournalExportService {
   }
 
   /// Exporte et partage le PDF
+  /// Utilise Printing.sharePdf qui est supporté sur toutes les plateformes desktop
   static Future<void> exportAndShare({
     required List<OperationJournalEntry> operations,
     required JournalFilter filter,
@@ -686,18 +685,25 @@ class JournalExportService {
     String? companyName,
     String? companyAddress,
   }) async {
-    final file = await exportToPdf(
-      operations: operations,
-      filter: filter,
-      currentUser: currentUser,
-      companyName: companyName,
-      companyAddress: companyAddress,
-    );
+    try {
+      final file = await exportToPdf(
+        operations: operations,
+        filter: filter,
+        currentUser: currentUser,
+        companyName: companyName,
+        companyAddress: companyAddress,
+      );
 
-    await Printing.sharePdf(
-      bytes: await file.readAsBytes(),
-      filename: file.path.split('/').last,
-    );
+      // Printing.sharePdf fonctionne sur toutes les plateformes
+      // C'est la méthode recommandée pour partager des PDFs sur desktop
+      await Printing.sharePdf(
+        bytes: await file.readAsBytes(),
+        filename: file.path.split('/').last,
+      );
+    } catch (e) {
+      debugPrint('[JournalExportService] Error during PDF share: $e');
+      rethrow;
+    }
   }
 
   /// Récupère les paramètres de l'entreprise

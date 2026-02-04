@@ -13,23 +13,30 @@ class AuthCheckRequested extends AuthEvent {
   const AuthCheckRequested();
 }
 
-/// Événement pour se connecter
+/// Événement pour se connecter avec email/password
+/// Utilisé sur desktop (Windows/Linux) avec l'authentification directe
 class AuthLoginRequested extends AuthEvent {
   final String email;
   final String password;
 
-  const AuthLoginRequested({
-    required this.email,
-    required this.password,
-  });
+  const AuthLoginRequested({required this.email, required this.password});
 
   @override
   List<Object?> get props => [email, password];
 }
 
-/// Événement pour se connecter avec Auth0
+/// Événement pour se connecter avec Auth0 (OAuth web)
+/// Utilisé sur mobile/macOS avec le flux de redirection navigateur
 class AuthLoginWithAuth0Requested extends AuthEvent {
-  const AuthLoginWithAuth0Requested();
+  /// Email et password optionnels pour desktop
+  /// Si fournis sur desktop, utilise l'authentification directe
+  final String? email;
+  final String? password;
+
+  const AuthLoginWithAuth0Requested({this.email, this.password});
+
+  @override
+  List<Object?> get props => [email, password];
 }
 
 /// Événement pour se connecter avec le compte de démonstration
@@ -47,7 +54,10 @@ class AuthUserProfileUpdated extends AuthEvent {
   final User updatedUser;
   final File? profileImageFile; // Added to carry the actual image file
 
-  const AuthUserProfileUpdated(this.updatedUser, {this.profileImageFile}); // Updated constructor
+  const AuthUserProfileUpdated(
+    this.updatedUser, {
+    this.profileImageFile,
+  }); // Updated constructor
 
   @override
   List<Object?> get props => [updatedUser, profileImageFile]; // Updated props

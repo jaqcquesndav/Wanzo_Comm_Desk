@@ -12,14 +12,14 @@ class SecuritySettingsScreen extends StatefulWidget {
 
 class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   final LocalSecurityService _securityService = LocalSecurityService.instance;
-  
+
   bool _isPinEnabled = false;
   bool _isLoading = true;
-  
+
   final _currentPinController = TextEditingController();
   final _newPinController = TextEditingController();
   final _confirmPinController = TextEditingController();
-  
+
   bool _obscureCurrentPin = true;
   bool _obscureNewPin = true;
   bool _obscureConfirmPin = true;
@@ -53,25 +53,26 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
         backgroundColor: WanzoColors.primary,
         foregroundColor: Colors.white,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(WanzoSpacing.lg),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildPinToggleSection(),
-                  
-                  if (_isPinEnabled) ...[
+      body:
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                padding: const EdgeInsets.all(WanzoSpacing.lg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildPinToggleSection(),
+
+                    if (_isPinEnabled) ...[
+                      const SizedBox(height: WanzoSpacing.xl),
+                      _buildChangePinSection(),
+                    ],
+
                     const SizedBox(height: WanzoSpacing.xl),
-                    _buildChangePinSection(),
+                    _buildInfoSection(),
                   ],
-                  
-                  const SizedBox(height: WanzoSpacing.xl),
-                  _buildInfoSection(),
-                ],
+                ),
               ),
-            ),
     );
   }
 
@@ -85,11 +86,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.security,
-                  color: WanzoColors.primary,
-                  size: 24,
-                ),
+                Icon(Icons.security, color: WanzoColors.primary, size: 24),
                 const SizedBox(width: WanzoSpacing.sm),
                 const Expanded(
                   child: Text(
@@ -107,9 +104,9 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: WanzoSpacing.sm),
-            
+
             Text(
               _isPinEnabled
                   ? 'Le verrouillage par code PIN est activé. L\'application se verrouillera automatiquement après 5 minutes d\'inactivité.'
@@ -135,11 +132,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.edit_outlined,
-                  color: WanzoColors.primary,
-                  size: 24,
-                ),
+                Icon(Icons.edit_outlined, color: WanzoColors.primary, size: 24),
                 const SizedBox(width: WanzoSpacing.sm),
                 const Text(
                   'Modifier le code PIN',
@@ -150,9 +143,9 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: WanzoSpacing.lg),
-            
+
             // Code PIN actuel
             TextFormField(
               controller: _currentPinController,
@@ -165,7 +158,9 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                 prefixIcon: const Icon(Icons.lock_outline),
                 suffixIcon: IconButton(
                   icon: Icon(
-                    _obscureCurrentPin ? Icons.visibility : Icons.visibility_off,
+                    _obscureCurrentPin
+                        ? Icons.visibility
+                        : Icons.visibility_off,
                   ),
                   onPressed: () {
                     setState(() {
@@ -179,9 +174,9 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                 counterText: '',
               ),
             ),
-            
+
             const SizedBox(height: WanzoSpacing.md),
-            
+
             // Nouveau code PIN
             TextFormField(
               controller: _newPinController,
@@ -208,9 +203,9 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                 counterText: '',
               ),
             ),
-            
+
             const SizedBox(height: WanzoSpacing.md),
-            
+
             // Confirmation du nouveau code PIN
             TextFormField(
               controller: _confirmPinController,
@@ -223,7 +218,9 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                 prefixIcon: const Icon(Icons.lock_reset),
                 suffixIcon: IconButton(
                   icon: Icon(
-                    _obscureConfirmPin ? Icons.visibility : Icons.visibility_off,
+                    _obscureConfirmPin
+                        ? Icons.visibility
+                        : Icons.visibility_off,
                   ),
                   onPressed: () {
                     setState(() {
@@ -237,9 +234,9 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                 counterText: '',
               ),
             ),
-            
+
             const SizedBox(height: WanzoSpacing.lg),
-            
+
             // Bouton de modification
             SizedBox(
               width: double.infinity,
@@ -247,7 +244,9 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                 onPressed: _changePin,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: WanzoColors.primary,
-                  padding: const EdgeInsets.symmetric(vertical: WanzoSpacing.md),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: WanzoSpacing.md,
+                  ),
                 ),
                 child: const Text(
                   'Modifier le code PIN',
@@ -275,11 +274,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.info_outline,
-                  color: WanzoColors.info,
-                  size: 24,
-                ),
+                Icon(Icons.info_outline, color: WanzoColors.info, size: 24),
                 const SizedBox(width: WanzoSpacing.sm),
                 const Text(
                   'Informations importantes',
@@ -290,37 +285,41 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: WanzoSpacing.md),
-            
+
             _buildInfoItem(
               icon: Icons.timer,
               title: 'Verrouillage automatique',
-              description: 'L\'application se verrouille après 5 minutes d\'inactivité.',
+              description:
+                  'L\'application se verrouille après 5 minutes d\'inactivité.',
             ),
-            
+
             const SizedBox(height: WanzoSpacing.sm),
-            
+
             _buildInfoItem(
               icon: Icons.offline_bolt,
               title: 'Sécurité locale',
-              description: 'Le code PIN fonctionne même sans connexion Internet.',
+              description:
+                  'Le code PIN fonctionne même sans connexion Internet.',
             ),
-            
+
             const SizedBox(height: WanzoSpacing.sm),
-            
+
             _buildInfoItem(
               icon: Icons.vpn_key,
               title: 'Code par défaut',
-              description: 'Le code PIN par défaut est "1234". Modifiez-le pour plus de sécurité.',
+              description:
+                  'Le code PIN par défaut est "1234". Modifiez-le pour plus de sécurité.',
             ),
-            
+
             const SizedBox(height: WanzoSpacing.sm),
-            
+
             _buildInfoItem(
               icon: Icons.security,
               title: 'Chiffrement',
-              description: 'Votre code PIN est stocké de manière sécurisée et chiffrée sur l\'appareil.',
+              description:
+                  'Votre code PIN est stocké de manière sécurisée et chiffrée sur l\'appareil.',
             ),
           ],
         ),
@@ -336,11 +335,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(
-          icon,
-          size: 20,
-          color: Colors.grey[600],
-        ),
+        Icon(icon, size: 20, color: Colors.grey[600]),
         const SizedBox(width: WanzoSpacing.sm),
         Expanded(
           child: Column(
@@ -368,39 +363,45 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   }
 
   Future<void> _onPinToggleChanged(bool enabled) async {
+    final messenger = ScaffoldMessenger.of(context);
     try {
       if (enabled) {
         // Activer le PIN avec le code par défaut
         await _securityService.setPinEnabled(true);
-        
-        ScaffoldMessenger.of(context).showSnackBar(
+
+        if (!mounted) return;
+        messenger.showSnackBar(
           const SnackBar(
-            content: Text('Sécurité par code PIN activée avec le code par défaut "1234"'),
+            content: Text(
+              'Sécurité par code PIN activée avec le code par défaut "1234"',
+            ),
             backgroundColor: WanzoColors.success,
           ),
         );
       } else {
         // Désactiver le PIN
         await _securityService.setPinEnabled(false);
-        
-        ScaffoldMessenger.of(context).showSnackBar(
+
+        if (!mounted) return;
+        messenger.showSnackBar(
           const SnackBar(
             content: Text('Sécurité par code PIN désactivée'),
             backgroundColor: WanzoColors.info,
           ),
         );
       }
-      
+
       setState(() {
         _isPinEnabled = enabled;
       });
-      
+
       // Vider les champs
       _currentPinController.clear();
       _newPinController.clear();
       _confirmPinController.clear();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (!mounted) return;
+      messenger.showSnackBar(
         SnackBar(
           content: Text('Erreur : $e'),
           backgroundColor: WanzoColors.error,
@@ -415,31 +416,33 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
       _showError('Le code PIN actuel doit contenir 4 chiffres');
       return;
     }
-    
+
     if (_newPinController.text.length != 4) {
       _showError('Le nouveau code PIN doit contenir 4 chiffres');
       return;
     }
-    
+
     if (_newPinController.text != _confirmPinController.text) {
       _showError('La confirmation du code PIN ne correspond pas');
       return;
     }
-    
+
+    final messenger = ScaffoldMessenger.of(context);
     try {
       final success = await _securityService.changePin(
         _currentPinController.text,
         _newPinController.text,
       );
-      
+
       if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        if (!mounted) return;
+        messenger.showSnackBar(
           const SnackBar(
             content: Text('Code PIN modifié avec succès'),
             backgroundColor: WanzoColors.success,
           ),
         );
-        
+
         // Vider les champs
         _currentPinController.clear();
         _newPinController.clear();
@@ -454,10 +457,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: WanzoColors.error,
-      ),
+      SnackBar(content: Text(message), backgroundColor: WanzoColors.error),
     );
   }
 }
