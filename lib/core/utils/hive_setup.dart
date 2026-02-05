@@ -191,16 +191,17 @@ Future<void> initializeHiveAdapters() async {
 Future<void> openHiveBoxes() async {
   await Hive.openBox<User>('userBox');
   await Hive.openBox<auth_bs.BusinessSector>('authBusinessSectorsBox');
+  // IMPORTANT: Utiliser 'customers' pour correspondre à CustomerRepository
   await Hive.openBox<customer_model.Customer>(
-    'customersBox',
+    'customers',
   ); // Use customer_model.Customer
-  // Ensure the correct Product type is used for 'productsBox' or use separate boxes.
-  // For now, assuming 'productsBox' is for inventory_product.Product based on previous context.
-  await Hive.openBox<inventory_product.Product>('productsBox');
+  // IMPORTANT: Utiliser 'products' pour correspondre à InventoryRepository
+  await Hive.openBox<inventory_product.Product>('products');
   await Hive.openBox<stock_tx_model.StockTransaction>(
     'stock_transactions',
   ); // Added for InventoryRepository
-  await Hive.openBox<Sale>('salesBox');
+  // IMPORTANT: Utiliser 'sales' pour correspondre à SalesRepository
+  await Hive.openBox<Sale>('sales');
   await Hive.openBox<Supplier>('suppliersBox');
   await Hive.openBox<Settings>('settingsBox');
   await Hive.openBox<FinancialAccount>('financial_accounts');

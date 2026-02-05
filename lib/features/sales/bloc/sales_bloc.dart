@@ -102,18 +102,25 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
     LoadSalesByDateRange event,
     Emitter<SalesState> emit,
   ) async {
+    debugPrint('🔄 SalesBloc: LoadSalesByDateRange appelé');
+    debugPrint('📅 Période: ${event.startDate} → ${event.endDate}');
     emit(const SalesLoading());
     try {
       final sales = await _salesRepository.getSalesByDateRange(
         event.startDate,
         event.endDate,
       );
+      debugPrint(
+        '📊 SalesBloc: ${sales.length} ventes récupérées du repository',
+      );
       final totalAmountInCdf = sales.fold(
         0.0,
         (total, sale) => total + sale.totalAmountInCdf,
       );
+      debugPrint('💰 SalesBloc: Total = $totalAmountInCdf CDF');
       emit(SalesLoaded(sales: sales, totalAmountInCdf: totalAmountInCdf));
     } catch (e) {
+      debugPrint('❌ SalesBloc: Erreur - $e');
       emit(SalesError(e.toString()));
     }
   }

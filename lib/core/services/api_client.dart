@@ -62,6 +62,15 @@ class ApiClient {
         final String? token = await _auth0Service?.getAccessToken();
         if (token != null) {
           headers[HttpHeaders.authorizationHeader] = 'Bearer $token';
+          // Debug: Afficher le payload du token JWT pour vérifier company_id
+          // ignore: avoid_print
+          print(
+            '🔐 Token JWT obtenu (${token.length} chars): ${token.substring(0, 50)}...',
+          );
+          _debugJwtPayload(token);
+        } else {
+          // ignore: avoid_print
+          print('⚠️ Token JWT est NULL !');
         }
       } else {
         // Fallback à la méthode précédente
@@ -71,6 +80,71 @@ class ApiClient {
     }
 
     return headers;
+  }
+
+  /// Debug: Décoder et afficher le payload du token JWT (une seule fois par session)
+  static bool _jwtDebugShown = false;
+
+  void _debugJwtPayload(String token) {
+    // Afficher une fois par session (reset au hot restart complet)
+    if (_jwtDebugShown) return;
+    _jwtDebugShown = true;
+
+    try {
+      final parts = token.split('.');
+      if (parts.length == 3) {
+        // Décoder le payload (partie 2)
+        String payload = parts[1];
+        // Ajouter le padding si nécessaire pour base64
+        while (payload.length % 4 != 0) {
+          payload += '=';
+        }
+        final decoded = utf8.decode(base64Url.decode(payload));
+        final payloadJson = jsonDecode(decoded) as Map<String, dynamic>;
+
+        // ignore: avoid_print
+        print('');
+        // ignore: avoid_print
+        print(
+          '╔══════════════════════════════════════════════════════════════',
+        );
+        // ignore: avoid_print
+        print('║ 🔑 JWT TOKEN PAYLOAD DEBUG');
+        // ignore: avoid_print
+        print(
+          '╠══════════════════════════════════════════════════════════════',
+        );
+        // ignore: avoid_print
+        print(
+          '║ company_id (wanzo.app): ${payloadJson['https://wanzo.app/company_id']}',
+        );
+        // ignore: avoid_print
+        print(
+          '║ company_id (wanzo.com): ${payloadJson['https://wanzo.com/company_id']}',
+        );
+        // ignore: avoid_print
+        print('║ roles (wanzo.app): ${payloadJson['https://wanzo.app/roles']}');
+        // ignore: avoid_print
+        print('║ roles (wanzo.com): ${payloadJson['https://wanzo.com/roles']}');
+        // ignore: avoid_print
+        print('║ sub: ${payloadJson['sub']}');
+        // ignore: avoid_print
+        print(
+          '║ exp: ${payloadJson['exp']} (${DateTime.fromMillisecondsSinceEpoch((payloadJson['exp'] as int) * 1000)})',
+        );
+        // ignore: avoid_print
+        print('║ iat: ${payloadJson['iat']}');
+        // ignore: avoid_print
+        print(
+          '╚══════════════════════════════════════════════════════════════',
+        );
+        // ignore: avoid_print
+        print('');
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('⚠️ Failed to decode JWT payload: $e');
+    }
   }
 
   // Méthode privée pour nettoyer l'endpoint (enlever les slashes en début/fin)

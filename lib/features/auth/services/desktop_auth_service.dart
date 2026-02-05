@@ -11,7 +11,9 @@ import 'package:wanzo/features/auth/models/user.dart';
 import 'package:wanzo/features/auth/services/offline_auth_service.dart';
 import 'package:wanzo/features/auth/services/jwt_offline_validator.dart';
 import 'package:wanzo/features/auth/services/local_auth_server.dart';
+import 'package:wanzo/features/auth/services/auth_backend_service.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:get_it/get_it.dart';
 
 /// Service d'authentification pour les plateformes desktop (Windows/Linux)
 ///
@@ -406,7 +408,7 @@ class DesktopAuthService {
     }
   }
 
-  /// Récupère les informations utilisateur depuis Auth0
+  /// Récupère les informations utilisateur depuis Auth0 puis enrichit avec /users/me
   Future<User?> _getUserInfo(String accessToken) async {
     try {
       final response = await http.get(
@@ -417,7 +419,7 @@ class DesktopAuthService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
 
-        final User user = User(
+        User auth0User = User(
           id: data['sub'] as String,
           name: data['name'] ?? data['nickname'] ?? 'N/A',
           email: data['email'] ?? 'N/A',
@@ -437,7 +439,10 @@ class DesktopAuthService {
           token: accessToken,
         );
 
-        return user;
+        // 🔑 IMPORTANT: Enrichir avec les données du backend /users/me
+        // C'est là que nous obtenons le companyId correct de la base de données
+        final enrichedUser = await _enrichUserWithBackendData(auth0User);
+        return enrichedUser;
       } else {
         debugPrint(
           'DesktopAuthService: Failed to get user info: ${response.statusCode}',
@@ -447,6 +452,75 @@ class DesktopAuthService {
     } catch (e) {
       debugPrint('DesktopAuthService: Error getting user info: $e');
       return null;
+    }
+  }
+
+  /// Enrichit l'utilisateur Auth0 avec les données du backend via /users/me
+  ///
+  /// Cette méthode récupère le companyId, businessUnitId et autres données
+  /// depuis la base de données du backend.
+  Future<User> _enrichUserWithBackendData(User auth0User) async {
+    try {
+      debugPrint(
+        'DesktopAuthService: Enriching user with backend data from /users/me...',
+      );
+
+      // Utiliser AuthBackendService pour appeler /users/me
+      final authBackendService = GetIt.instance<AuthBackendService>();
+      final authMeResponse = await authBackendService.fetchAuthMe();
+
+      if (authMeResponse != null) {
+        final backendProfile = authMeResponse.user;
+        final company = authMeResponse.company;
+        final businessUnit = authMeResponse.businessUnit;
+
+        debugPrint(
+          'DesktopAuthService: Backend profile fetched. CompanyId: ${backendProfile.companyId}',
+        );
+        debugPrint(
+          'DesktopAuthService: Company from /users/me: name=${company?.name}, id=${company?.id}',
+        );
+
+        // Mettre à jour le BusinessContextService avec les données de /users/me
+        await _businessContextService.updateFromAuthMeResponse(authMeResponse);
+        debugPrint(
+          'DesktopAuthService: BusinessContextService updated from /users/me',
+        );
+
+        // Fusionner les données Auth0 avec les données backend complètes
+        final companyName = company?.name ?? backendProfile.companyName;
+        return auth0User.copyWith(
+          companyId: backendProfile.companyId,
+          companyName: companyName ?? auth0User.companyName,
+          rccmNumber: backendProfile.rccmNumber ?? auth0User.rccmNumber,
+          companyLocation:
+              backendProfile.companyLocation ?? auth0User.companyLocation,
+          businessSector:
+              backendProfile.businessSector ?? auth0User.businessSector,
+          businessSectorId:
+              backendProfile.businessSectorId ?? auth0User.businessSectorId,
+          businessAddress:
+              backendProfile.businessAddress ?? auth0User.businessAddress,
+          businessLogoUrl:
+              backendProfile.businessLogoUrl ?? auth0User.businessLogoUrl,
+          jobTitle: backendProfile.jobTitle ?? auth0User.jobTitle,
+          physicalAddress:
+              backendProfile.physicalAddress ?? auth0User.physicalAddress,
+          businessUnitId: backendProfile.businessUnitId ?? businessUnit?.id,
+          businessUnitCode: businessUnit?.code,
+        );
+      }
+
+      debugPrint(
+        'DesktopAuthService: Failed to get backend data, using Auth0 data only',
+      );
+      return auth0User;
+    } catch (e) {
+      debugPrint(
+        'DesktopAuthService: Error enriching user with backend data: $e',
+      );
+      // En cas d'erreur réseau, retourner l'utilisateur Auth0 tel quel
+      return auth0User;
     }
   }
 

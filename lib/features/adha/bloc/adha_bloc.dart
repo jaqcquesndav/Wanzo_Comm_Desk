@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:async';
 import '../../../core/services/api_client.dart';
+import '../../../core/config/env_config.dart';
 import '../repositories/adha_repository.dart';
 import '../../auth/repositories/auth_repository.dart'; // Corrected path
 import '../../dashboard/repositories/operation_journal_repository.dart'; // Corrected path
@@ -923,9 +924,15 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     final currentState = state as AdhaConversationActive;
 
     try {
-      // Configuration du service audio
+      // Configuration du service audio avec URL dynamique depuis EnvConfig
+      final apiUrl = EnvConfig.getDeviceCompatibleUrl(EnvConfig.apiGatewayUrl);
+      // Convertir http(s) en ws(s) pour WebSocket
+      final wsUrl = apiUrl
+          .replaceFirst('http://', 'ws://')
+          .replaceFirst('https://', 'wss://');
+
       _audioStreamingService.configure(
-        wsUrl: 'wss://api.wanzo.com/ws', // URL à configurer
+        wsUrl: '$wsUrl/commerce/audio',
         headers: {'Authorization': 'Bearer ${await _getAuthToken()}'},
       );
 
@@ -1200,16 +1207,29 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     ConnectToStreamService event,
     Emitter<AdhaState> emit,
   ) async {
+    debugPrint('[AdhaBloc] 🔌 Tentative de connexion au streaming...');
     try {
       final businessContextService = BusinessContextService();
+      debugPrint(
+        '[AdhaBloc] BusinessContext - isInitialized: ${businessContextService.isInitialized}, companyId: ${businessContextService.companyId}',
+      );
 
       if (!businessContextService.isInitialized ||
           businessContextService.companyId == null) {
+        debugPrint(
+          '[AdhaBloc] BusinessContext non initialisé, tentative getUser...',
+        );
         await authRepository.getUser(forceRemote: true);
+        debugPrint(
+          '[AdhaBloc] Après getUser - isInitialized: ${businessContextService.isInitialized}, companyId: ${businessContextService.companyId}',
+        );
       }
 
       if (!businessContextService.isInitialized ||
           businessContextService.companyId == null) {
+        debugPrint(
+          '[AdhaBloc] ❌ BusinessContext toujours indisponible après getUser',
+        );
         emit(
           const AdhaStreamConnected(
             connectionState: StreamConnectionState.error,
@@ -1222,8 +1242,12 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
 
       // Récupérer le token d'authentification
       final authToken = event.authToken ?? await _getAuthToken();
+      debugPrint(
+        '[AdhaBloc] Token JWT récupéré: ${authToken.isNotEmpty ? "✅ (${authToken.length} chars)" : "❌ vide"}',
+      );
 
       if (authToken.isEmpty) {
+        debugPrint('[AdhaBloc] ❌ Token vide, abandon connexion streaming');
         emit(
           const AdhaStreamConnected(
             connectionState: StreamConnectionState.error,
@@ -1234,14 +1258,18 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       }
 
       // Connecter au service de streaming avec le token JWT
+      debugPrint('[AdhaBloc] 🚀 Connexion à AdhaStreamService...');
       await _streamService.connect(authToken);
+      debugPrint('[AdhaBloc] ✅ Connexion streaming initiée');
 
       emit(
         const AdhaStreamConnected(
           connectionState: StreamConnectionState.connected,
         ),
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('[AdhaBloc] ❌ Erreur connexion streaming: $e');
+      debugPrint('[AdhaBloc] StackTrace: $stackTrace');
       emit(
         AdhaStreamConnected(
           connectionState: StreamConnectionState.error,
@@ -1377,7 +1405,12 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
 
     // S'assurer que la connexion WebSocket est active avant d'envoyer
     // Si la connexion a été perdue (timeout, app en arrière-plan, etc.), reconnecter
-    final isWebSocketConnected = await _streamService.ensureConnected();
+    // On passe le token JWT pour permettre la reconnexion même si connect() n'a jamais été appelé
+    final authToken = await _getAuthToken();
+    final isWebSocketConnected = await _streamService.ensureConnected(
+      authToken: authToken,
+    );
+    debugPrint('[AdhaBloc] WebSocket connecté: $isWebSocketConnected');
 
     // Vérifier la connexion au service de streaming
     if (!isWebSocketConnected) {

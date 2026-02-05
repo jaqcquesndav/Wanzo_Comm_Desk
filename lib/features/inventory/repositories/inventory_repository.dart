@@ -258,33 +258,64 @@ class InventoryRepository {
       date: transaction.date,
       referenceId: transaction.referenceId,
       notes: transaction.notes,
-      unitCostInCdf: transaction.unitCostInCdf, // Added field
-      totalValueInCdf: transaction.totalValueInCdf, // Added field
+      unitCostInCdf: transaction.unitCostInCdf,
+      totalValueInCdf: transaction.totalValueInCdf,
+      // === Champs Business Unit pour l'isolation multi-tenant ===
+      companyId: transaction.companyId ?? product.companyId,
+      businessUnitId: transaction.businessUnitId ?? product.businessUnitId,
+      businessUnitCode:
+          transaction.businessUnitCode ?? product.businessUnitCode,
+      businessUnitType:
+          transaction.businessUnitType ?? product.businessUnitType,
+      // Autres champs optionnels
+      currencyCode: transaction.currencyCode,
+      createdBy: transaction.createdBy,
+      locationId: transaction.locationId,
     );
 
+    // 1. Sauvegarder la transaction localement
     await _transactionsBox.put(newTransaction.id, newTransaction);
 
-    // Mettre à jour la quantité en stock du produit
+    // 2. Mettre à jour la quantité en stock du produit localement
     final newQuantity = product.stockQuantity + transaction.quantity;
     if (newQuantity < 0 && transaction.type != StockTransactionType.sale) {
-      // Allow negative stock for sales if settings permit, but not for other types of transactions.
-      // For now, we prevent negative stock for all types except sales for simplicity.
-      // A more advanced system might check a global setting.
       throw Exception('Stock insuffisant pour cette opération.');
-    } else if (newQuantity < 0 &&
-        transaction.type == StockTransactionType.sale) {
-      // If it's a sale and stock goes negative, it's allowed (or could be based on a setting)
-      // but the cost of goods sold should still be based on the available stock if possible,
-      // or the last known cost. For simplicity, we use the product's current costPriceInCdf.
     }
 
     // Update product stock quantity
     final updatedProduct = product.copyWith(
       stockQuantity: newQuantity,
       updatedAt: DateTime.now(),
+      syncStatus: 'pending', // Marquer comme en attente de sync
     );
 
     await _productsBox.put(product.id, updatedProduct);
+    debugPrint(
+      '💾 Stock mis à jour localement: ${product.name} → $newQuantity',
+    );
+
+    // 3. Synchroniser la transaction et le stock avec l'API
+    if (_apiService != null) {
+      try {
+        // Envoyer la transaction au serveur
+        final apiResponse = await _apiService
+            .createStockTransaction(newTransaction)
+            .timeout(const Duration(seconds: 10));
+
+        if (apiResponse.success) {
+          debugPrint('✅ Transaction de stock synchronisée avec l\'API');
+
+          // Mettre à jour le produit pour refléter le sync
+          final syncedProduct = updatedProduct.copyWith(syncStatus: 'synced');
+          await _productsBox.put(product.id, syncedProduct);
+        } else {
+          debugPrint('⚠️ Échec sync transaction stock: ${apiResponse.message}');
+        }
+      } catch (e) {
+        debugPrint('❌ Erreur sync transaction stock: $e - Restera en local');
+        // La transaction reste en local pour synchronisation ultérieure
+      }
+    }
 
     return newTransaction;
   }

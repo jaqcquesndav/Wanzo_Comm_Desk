@@ -33,6 +33,44 @@ class AuthBackendService {
 
       final response = await _apiClient.get('users/me', requiresAuth: true);
 
+      // ignore: avoid_print
+      print('');
+      // ignore: avoid_print
+      print('╔══════════════════════════════════════════════════════════════');
+      // ignore: avoid_print
+      print('║ 👤 /users/me RESPONSE');
+      // ignore: avoid_print
+      print('╠══════════════════════════════════════════════════════════════');
+      // ignore: avoid_print
+      print('║ success: ${response?['success']}');
+      // ignore: avoid_print
+      print('║ data keys: ${(response?['data'] as Map?)?.keys.toList()}');
+      if (response?['data']?['user'] != null) {
+        final user = response!['data']['user'];
+        // ignore: avoid_print
+        print('║ user.id: ${user['id']}');
+        // ignore: avoid_print
+        print('║ user.email: ${user['email']}');
+        // ignore: avoid_print
+        print('║ user.companyId: ${user['companyId']}');
+        // ignore: avoid_print
+        print('║ user.businessUnitId: ${user['businessUnitId']}');
+      }
+      if (response?['data']?['company'] != null) {
+        final company = response!['data']['company'];
+        // ignore: avoid_print
+        print('║ company.id: ${company['id']}');
+        // ignore: avoid_print
+        print('║ company.name: ${company['name']}');
+      } else {
+        // ignore: avoid_print
+        print('║ company: null');
+      }
+      // ignore: avoid_print
+      print('╚══════════════════════════════════════════════════════════════');
+      // ignore: avoid_print
+      print('');
+
       if (response != null && response['success'] == true) {
         var data = response['data'] as Map<String, dynamic>?;
         if (data != null) {

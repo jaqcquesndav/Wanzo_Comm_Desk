@@ -152,138 +152,142 @@ class Auth0InfoScreen extends StatelessWidget {
             child: Container(
               color: Colors.white,
               padding: const EdgeInsets.all(48),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Container(
-                    constraints: const BoxConstraints(maxWidth: 400),
-                    child: Column(
-                      children: [
-                        const Icon(
-                          Icons.lock_outline,
-                          size: 64,
-                          color: WanzoColors.primary,
-                        ),
-                        const SizedBox(height: 24),
-                        const Text(
-                          'Connexion sécurisée',
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      constraints: const BoxConstraints(maxWidth: 400),
+                      child: Column(
+                        children: [
+                          const Icon(
+                            Icons.lock_outline,
+                            size: 64,
+                            color: WanzoColors.primary,
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Authentification sécurisée avec Auth0 pour protéger vos données professionnelles.',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey[600],
-                            height: 1.5,
+                          const SizedBox(height: 24),
+                          const Text(
+                            'Connexion sécurisée',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 48),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: () {
-                              context.read<AuthBloc>().add(
-                                const AuthLoginWithAuth0Requested(),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: WanzoColors.primary,
-                              padding: const EdgeInsets.symmetric(vertical: 20),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Authentification sécurisée avec Auth0 pour protéger vos données professionnelles.',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey[600],
+                              height: 1.5,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 48),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: () {
+                                context.read<AuthBloc>().add(
+                                  const AuthLoginWithAuth0Requested(),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: WanzoColors.primary,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 20,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.login, color: Colors.white),
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'Se connecter',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                          ),
+                          const SizedBox(height: 24),
+                          TextButton.icon(
+                            onPressed: () => context.go('/onboarding'),
+                            icon: const Icon(Icons.arrow_back),
+                            label: const Text('Retour à la présentation'),
+                          ),
+                          const SizedBox(height: 32),
+                          const Divider(),
+                          const SizedBox(height: 16),
+                          // Bouton bypass pour le développement
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.orange.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Column(
                               children: [
-                                Icon(Icons.login, color: Colors.white),
-                                SizedBox(width: 12),
-                                Text(
-                                  'Se connecter',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.developer_mode,
+                                      color: Colors.orange[700],
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Mode Développement',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.orange[700],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () {
+                                      context.read<AuthBloc>().add(
+                                        const AuthLoginWithDemoAccountRequested(),
+                                      );
+                                    },
+                                    icon: const Icon(Icons.skip_next),
+                                    label: const Text(
+                                      'Bypass Auth0 (Compte Démo)',
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.orange[700],
+                                      side: BorderSide(
+                                        color: Colors.orange[700]!,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 24),
-                        TextButton.icon(
-                          onPressed: () => context.go('/onboarding'),
-                          icon: const Icon(Icons.arrow_back),
-                          label: const Text('Retour à la présentation'),
-                        ),
-                        const SizedBox(height: 32),
-                        const Divider(),
-                        const SizedBox(height: 16),
-                        // Bouton bypass pour le développement
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.orange.withValues(alpha: 0.3),
-                            ),
-                          ),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.developer_mode,
-                                    color: Colors.orange[700],
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Mode Développement',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.orange[700],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton.icon(
-                                  onPressed: () {
-                                    context.read<AuthBloc>().add(
-                                      const AuthLoginWithDemoAccountRequested(),
-                                    );
-                                  },
-                                  icon: const Icon(Icons.skip_next),
-                                  label: const Text(
-                                    'Bypass Auth0 (Compte Démo)',
-                                  ),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: Colors.orange[700],
-                                    side: BorderSide(
-                                      color: Colors.orange[700]!,
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

@@ -178,7 +178,7 @@ class _FinancingListScreenState extends State<FinancingListScreen> {
                     child: Icon(Icons.account_balance, color: statusColor),
                   ),
                   title: Text(
-                    '${request.type.displayName}',
+                    request.type.displayName,
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: Column(

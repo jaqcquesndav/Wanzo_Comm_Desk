@@ -304,21 +304,21 @@ Product _$ProductFromJson(Map<String, dynamic> json) => Product(
       description: json['description'] as String? ?? '',
       barcode: json['barcode'] as String? ?? '',
       category: $enumDecode(_$ProductCategoryEnumMap, json['category']),
-      costPriceInCdf: (json['costPriceInCdf'] as num).toDouble(),
-      sellingPriceInCdf: (json['sellingPriceInCdf'] as num).toDouble(),
-      stockQuantity: (json['stockQuantity'] as num).toDouble(),
+      costPriceInCdf: (json['costPriceInCdf'] as num?)?.toDouble() ?? 0.0,
+      sellingPriceInCdf: (json['sellingPriceInCdf'] as num?)?.toDouble() ?? 0.0,
+      stockQuantity: (json['stockQuantity'] as num?)?.toDouble() ?? 0.0,
       unit: $enumDecode(_$ProductUnitEnumMap, json['unit']),
       alertThreshold: (json['alertThreshold'] as num?)?.toDouble() ?? 5,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       imagePath: json['imagePath'] as String?,
       imageUrl: json['imageUrl'] as String?,
-      inputCurrencyCode: json['inputCurrencyCode'] as String,
-      inputExchangeRate: (json['inputExchangeRate'] as num).toDouble(),
+      inputCurrencyCode: json['inputCurrencyCode'] as String? ?? 'CDF',
+      inputExchangeRate: (json['inputExchangeRate'] as num?)?.toDouble() ?? 1.0,
       costPriceInInputCurrency:
-          (json['costPriceInInputCurrency'] as num).toDouble(),
+          (json['costPriceInInputCurrency'] as num?)?.toDouble() ?? 0.0,
       sellingPriceInInputCurrency:
-          (json['sellingPriceInInputCurrency'] as num).toDouble(),
+          (json['sellingPriceInInputCurrency'] as num?)?.toDouble() ?? 0.0,
       supplierIds: (json['supplierIds'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList(),

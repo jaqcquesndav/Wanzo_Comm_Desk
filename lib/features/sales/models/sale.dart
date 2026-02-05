@@ -61,7 +61,7 @@ class Sale extends Equatable {
 
   /// Montant payé en CDF
   @HiveField(6)
-  @JsonKey(name: 'amountPaidInCdf')
+  @JsonKey(name: 'paidAmountInCdf', defaultValue: 0.0)
   final double paidAmountInCdf;
 
   /// Montant total de la vente en USD (si applicable)

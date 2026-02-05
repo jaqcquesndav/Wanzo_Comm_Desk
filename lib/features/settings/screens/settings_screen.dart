@@ -46,7 +46,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            context.pop();
+            // Vérifier s'il y a une page précédente dans la pile de navigation
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              // Si navigué via sidebar (go), retourner au dashboard
+              context.go('/dashboard');
+            }
           },
         ),
         actions: [

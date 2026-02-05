@@ -9,6 +9,7 @@ import '../models/adha_attachment.dart';
 import '../widgets/adha_error_widget.dart';
 import '../screens/chat_message_widget.dart';
 import '../screens/streaming_message_widget.dart';
+import '../screens/audio_chat_widget.dart';
 import '../models/adha_context_info.dart';
 import '../screens/conversations_bottom_sheet.dart';
 import '../../auth/bloc/auth_bloc.dart';
@@ -34,17 +35,29 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
   final List<AdhaAttachment> _pendingAttachments = [];
   bool _autoScrollEnabled = true;
   static const double _autoScrollThreshold = 100.0;
+  bool _hasText = false; // Pour suivre si le champ de saisie contient du texte
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScrollChanged);
+    _messageController.addListener(
+      _onTextChanged,
+    ); // Écouter les changements de texte
 
     final bloc = context.read<AdhaBloc>();
     _initializeForCurrentUser();
     bloc.add(const LoadConversations());
     bloc.add(const ConnectToStreamService());
+  }
+
+  /// Callback quand le texte change dans le champ de saisie
+  void _onTextChanged() {
+    final hasText = _messageController.text.trim().isNotEmpty;
+    if (hasText != _hasText) {
+      setState(() => _hasText = hasText);
+    }
   }
 
   void _initializeForCurrentUser() {
@@ -74,6 +87,7 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _scrollController.removeListener(_onScrollChanged);
+    _messageController.removeListener(_onTextChanged);
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -626,23 +640,96 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
 
           const SizedBox(width: 8),
 
-          // Bouton envoi
+          // Bouton dynamique: Micro / Envoyer / Stop
           BlocBuilder<AdhaBloc, AdhaState>(
             builder: (context, state) {
-              final isLoading = state is AdhaLoading || state is AdhaStreaming;
-              return IconButton(
-                icon: Icon(
-                  _editingMessage != null ? Icons.check : Icons.send,
-                  color: isLoading ? Colors.grey : WanzoColors.primary,
-                ),
-                onPressed: isLoading ? null : _sendMessage,
-                tooltip: _editingMessage != null ? 'Confirmer' : 'Envoyer',
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              );
+              final isStreaming = state is AdhaStreaming;
+              final isLoading = state is AdhaLoading;
+              final isEditing = _editingMessage != null;
+
+              // Déterminer l'état du bouton
+              // 1. Si l'IA répond (streaming) → Bouton Stop
+              // 2. Si on édite un message → Bouton Check
+              // 3. Si le champ contient du texte → Bouton Envoyer
+              // 4. Sinon → Bouton Microphone (mode audio)
+
+              if (isStreaming) {
+                // Bouton STOP pendant le streaming
+                return _buildDynamicButton(
+                  icon: Icons.stop_rounded,
+                  color: Colors.red,
+                  tooltip: 'Arrêter la réponse',
+                  onPressed: () {
+                    context.read<AdhaBloc>().add(const InterruptAdha());
+                  },
+                );
+              } else if (isEditing) {
+                // Bouton CONFIRMER pendant l'édition
+                return _buildDynamicButton(
+                  icon: Icons.check,
+                  color: WanzoColors.primary,
+                  tooltip: 'Confirmer',
+                  onPressed: isLoading ? null : _sendMessage,
+                );
+              } else if (_hasText || _pendingAttachments.isNotEmpty) {
+                // Bouton ENVOYER quand il y a du texte
+                return _buildDynamicButton(
+                  icon: Icons.send,
+                  color: WanzoColors.primary,
+                  tooltip: 'Envoyer',
+                  onPressed: isLoading ? null : _sendMessage,
+                );
+              } else {
+                // Bouton MICROPHONE par défaut (champ vide)
+                return _buildDynamicButton(
+                  icon: Icons.mic,
+                  color: isDark ? Colors.grey[400]! : Colors.grey[600]!,
+                  tooltip: 'Mode vocal',
+                  onPressed: isLoading ? null : _openAudioMode,
+                );
+              }
             },
           ),
         ],
       ),
+    );
+  }
+
+  /// Construit le bouton dynamique avec animation
+  Widget _buildDynamicButton({
+    required IconData icon,
+    required Color color,
+    required String tooltip,
+    VoidCallback? onPressed,
+  }) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      transitionBuilder: (child, animation) {
+        return ScaleTransition(scale: animation, child: child);
+      },
+      child: IconButton(
+        key: ValueKey(icon),
+        icon: Icon(icon, color: onPressed == null ? Colors.grey : color),
+        onPressed: onPressed,
+        tooltip: tooltip,
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      ),
+    );
+  }
+
+  /// Ouvre le mode audio pour conversation vocale avec ADHA
+  void _openAudioMode() {
+    final adhaBloc = context.read<AdhaBloc>();
+    // Afficher le widget audio en modal bottom sheet
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder:
+          (_) => BlocProvider.value(
+            value: adhaBloc,
+            child: const AudioChatWidget(),
+          ),
     );
   }
 
@@ -683,7 +770,18 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
         interactionContext: interactionContext,
       );
 
-      bloc.add(SendMessage(text, contextInfo: contextInfo));
+      // Récupérer les pièces jointes avant de les effacer
+      final attachments = List<AdhaAttachment>.from(_pendingAttachments);
+
+      // Utiliser le streaming par défaut selon la documentation (Janvier 2026)
+      bloc.add(
+        SendStreamingMessage(
+          text,
+          contextInfo: contextInfo,
+          streaming: true,
+          attachments: attachments.isNotEmpty ? attachments : null,
+        ),
+      );
 
       setState(() {
         _pendingAttachments.clear();

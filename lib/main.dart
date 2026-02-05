@@ -9,6 +9,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // Support SQLite pour Windows/Linux
+import 'package:get_it/get_it.dart'; // Service locator pour accès global aux services
 
 import 'package:wanzo/core/navigation/app_router.dart';
 import 'package:wanzo/core/services/api_client.dart';
@@ -34,6 +35,7 @@ import 'package:wanzo/features/customer/services/customer_api_service.dart'
 import 'package:wanzo/features/supplier/services/supplier_api_service.dart'; // Supplier API Service
 
 import 'package:wanzo/features/auth/services/auth0_service.dart';
+import 'package:wanzo/features/auth/services/auth_backend_service.dart';
 import 'package:wanzo/features/auth/services/offline_auth_service.dart';
 import 'package:wanzo/features/auth/services/desktop_auth_service.dart';
 import 'package:wanzo/features/notifications/services/notification_service.dart';
@@ -170,6 +172,12 @@ Future<void> main() async {
     final apiClient = ApiClient();
     ApiClient.configure(auth0Service: auth0Service);
 
+    // 6.1 Enregistrer AuthBackendService dans GetIt pour accès par DesktopAuthService
+    final authBackendService = AuthBackendService(apiClient: apiClient);
+    if (!GetIt.instance.isRegistered<AuthBackendService>()) {
+      GetIt.instance.registerSingleton<AuthBackendService>(authBackendService);
+    }
+
     // 7. Initialisation des services API (léger, pas de I/O)
     final productApiService = ProductApiService(apiClient: apiClient);
     final customerApiService = CustomerApiService(apiClient: apiClient);
@@ -231,9 +239,16 @@ Future<void> main() async {
       customerApiService: customerApiService,
       saleApiService: saleApiService,
       syncStatusBox: syncStatusBox,
+      expenseApiService:
+          expenseApiService, // AJOUTÉ: Pour synchroniser les dépenses
       operationJournalRepository:
           operationJournalRepo, // AJOUTÉ: Passer le repository pour sync des opérations
     );
+
+    // Enregistrer SyncService dans GetIt pour accès global (notamment depuis le sidebar)
+    if (!GetIt.instance.isRegistered<SyncService>()) {
+      GetIt.instance.registerSingleton<SyncService>(syncService);
+    }
 
     // Initialiser en parallèle: syncService, localSecurity, enhancedOffline, currencyService
     final localSecurityService = LocalSecurityService.instance;

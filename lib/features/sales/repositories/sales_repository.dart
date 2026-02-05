@@ -67,13 +67,34 @@ class SalesRepository {
 
   /// Récupérer les ventes d'une période donnée
   Future<List<Sale>> getSalesByDateRange(DateTime start, DateTime end) async {
-    return _salesBox.values
-        .where(
-          (sale) =>
-              sale.date.isAfter(start) &&
-              sale.date.isBefore(end.add(const Duration(days: 1))),
-        )
-        .toList();
+    final allSales = _salesBox.values.toList();
+    Logger.info(
+      '📊 getSalesByDateRange: Total dans la box: ${allSales.length}',
+    );
+    Logger.info('📊 getSalesByDateRange: Période demandée: $start à $end');
+
+    if (allSales.isEmpty) {
+      Logger.warning('⚠️ getSalesByDateRange: La box "sales" est VIDE!');
+    } else {
+      // Log quelques dates de ventes pour débug
+      final sampleDates =
+          allSales.take(5).map((s) => s.date.toString()).toList();
+      Logger.info('📊 Exemples de dates de ventes: $sampleDates');
+    }
+
+    final filteredSales =
+        allSales
+            .where(
+              (sale) =>
+                  sale.date.isAfter(start) &&
+                  sale.date.isBefore(end.add(const Duration(days: 1))),
+            )
+            .toList();
+
+    Logger.info(
+      '📊 getSalesByDateRange: ${filteredSales.length} ventes après filtrage',
+    );
+    return filteredSales;
   }
 
   /// Ajouter une nouvelle vente

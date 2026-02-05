@@ -279,39 +279,73 @@ class SyncService {
   Future<void> _syncProducts({bool forceFullSync = false}) async {
     debugPrint('Synchronisation des produits...');
     try {
-      // Vérifier si la box est ouverte
-      if (!Hive.isBoxOpen('productsBox')) {
+      // IMPORTANT: Utiliser le même nom de box que InventoryRepository ('products')
+      if (!Hive.isBoxOpen('products')) {
         debugPrint('⚠️ productsBox non ouverte, tentative d\'ouverture...');
-        await Hive.openBox<Product>('productsBox');
+        await Hive.openBox<Product>('products');
       }
-      final productBox = Hive.box<Product>('productsBox');
+      final productBox = Hive.box<Product>('products');
       debugPrint(
         '✅ productsBox ouverte avec ${productBox.length} produits existants',
       );
 
-      final String lastSyncKey = 'product_last_sync';
-      Map<String, String> queryParams = {};
-
-      if (!forceFullSync && _syncStatusBox.containsKey(lastSyncKey)) {
-        final lastSyncDate = _syncStatusBox.get(lastSyncKey)!;
-        queryParams['updated_after'] = lastSyncDate;
-        debugPrint('📅 Sync incrémental depuis: $lastSyncDate');
-      } else {
-        debugPrint('📅 Sync complet (pas de date précédente)');
-      }
-
-      debugPrint('🔄 Appel API getProducts...');
-      final apiResponse = await _productApiService.getProducts(
-        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      // Collecter les produits locaux en attente de sync (créés en offline)
+      final pendingProducts =
+          productBox.values.where((p) => p.syncStatus == 'pending').toList();
+      debugPrint(
+        '📤 ${pendingProducts.length} produits en attente de synchronisation',
       );
+
+      // Note: L'API backend ne supporte pas le paramètre updated_after
+      // Nous faisons donc une synchronisation complète à chaque fois
+      debugPrint('🔄 Appel API getProducts (sync complet)...');
+      final apiResponse = await _productApiService.getProducts();
 
       if (apiResponse.success && apiResponse.data != null) {
         debugPrint('✅ ${apiResponse.data!.length} produits reçus de l\'API');
-        for (var product in apiResponse.data!) {
-          await productBox.put(product.id, product);
+
+        // Créer un ensemble d'IDs des produits reçus de l'API
+        final apiProductIds = apiResponse.data!.map((p) => p.id).toSet();
+
+        for (var apiProduct in apiResponse.data!) {
+          // Vérifier si le produit existe localement
+          final localProduct = productBox.get(apiProduct.id);
+
+          if (localProduct != null) {
+            // Le produit existe localement - préserver le stock local si différent
+            // car le stock local peut avoir été modifié par des ventes/achats
+            final mergedProduct = apiProduct.copyWith(
+              stockQuantity:
+                  localProduct.stockQuantity, // Préserver le stock local
+              syncStatus: 'synced',
+            );
+            await productBox.put(apiProduct.id, mergedProduct);
+            debugPrint(
+              '🔄 Produit ${apiProduct.name}: stock local préservé (${localProduct.stockQuantity})',
+            );
+          } else {
+            // Nouveau produit de l'API - utiliser le stock de l'API
+            final syncedProduct = apiProduct.copyWith(syncStatus: 'synced');
+            await productBox.put(apiProduct.id, syncedProduct);
+            debugPrint(
+              '➕ Nouveau produit de l\'API: ${apiProduct.name} (stock: ${apiProduct.stockQuantity})',
+            );
+          }
         }
-        await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
-        debugPrint('✅ Produits synchronisés avec succès');
+
+        // Gérer les produits locaux en attente qui n'existent pas encore sur le serveur
+        for (var pendingProduct in pendingProducts) {
+          if (!apiProductIds.contains(pendingProduct.id)) {
+            // Le produit n'existe pas sur le serveur - le conserver en local
+            debugPrint(
+              '📦 Produit local conservé (pending): ${pendingProduct.name}',
+            );
+          }
+        }
+
+        debugPrint(
+          '✅ Produits synchronisés avec succès (${productBox.length} total en local)',
+        );
       } else {
         debugPrint('❌ Failed to sync products: ${apiResponse.message}');
       }
@@ -329,23 +363,19 @@ class SyncService {
   Future<void> _syncCustomers({bool forceFullSync = false}) async {
     debugPrint('Synchronisation des clients...');
     try {
-      final customerBox = Hive.box<Customer>('customersBox');
-      final String lastSyncKey = 'customer_last_sync';
-      Map<String, String> queryParams = {};
-
-      if (!forceFullSync && _syncStatusBox.containsKey(lastSyncKey)) {
-        final lastSyncDate = _syncStatusBox.get(lastSyncKey)!;
-        queryParams['updated_after'] = lastSyncDate;
-      }
-
-      final apiResponse = await _customerApiService.getCustomers(
-        queryParams: queryParams.isNotEmpty ? queryParams : null,
-      );
+      // IMPORTANT: Utiliser le même nom de box que CustomerRepository ('customers')
+      final customerBox = Hive.box<Customer>('customers');
+      // Note: L'API backend ne supporte pas le paramètre updated_after
+      // Nous faisons donc une synchronisation complète à chaque fois
+      debugPrint('🔄 Appel API getCustomers (sync complet)...');
+      final apiResponse = await _customerApiService.getCustomers();
       if (apiResponse.success && apiResponse.data != null) {
         for (var customer in apiResponse.data!) {
           await customerBox.put(customer.id, customer);
         }
-        await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
+        debugPrint(
+          '✅ ${apiResponse.data!.length} clients synchronisés avec succès',
+        );
       } else {
         debugPrint('Failed to sync customers: ${apiResponse.message}');
       }
@@ -362,23 +392,39 @@ class SyncService {
   Future<void> _syncSales({bool forceFullSync = false}) async {
     debugPrint('Synchronisation des ventes...');
     try {
-      final saleBox = Hive.box<Sale>('salesBox');
-      final String lastSyncKey = 'sale_last_sync';
-      Map<String, String> queryParams = {};
-
-      if (!forceFullSync && _syncStatusBox.containsKey(lastSyncKey)) {
-        final lastSyncDate = _syncStatusBox.get(lastSyncKey)!;
-        queryParams['updated_after'] = lastSyncDate;
+      // IMPORTANT: Utiliser le même nom de box que SalesRepository ('sales')
+      // Vérifier si la box est ouverte, sinon l'ouvrir
+      if (!Hive.isBoxOpen('sales')) {
+        debugPrint('⚠️ Box "sales" non ouverte, tentative d\'ouverture...');
+        await Hive.openBox<Sale>('sales');
       }
+      final saleBox = Hive.box<Sale>('sales');
+      debugPrint('📦 Box "sales" contient ${saleBox.length} ventes AVANT sync');
 
-      final apiResponse = await _saleApiService.getSales(
-        queryParameters: queryParams.isNotEmpty ? queryParams : null,
-      );
+      // Note: L'API backend ne supporte pas le paramètre updated_after
+      // Nous faisons donc une synchronisation complète à chaque fois
+      debugPrint('🔄 Appel API getSales (sync complet)...');
+      final apiResponse = await _saleApiService.getSales();
       if (apiResponse.success && apiResponse.data != null) {
+        debugPrint('📥 Reçu ${apiResponse.data!.length} ventes de l\'API');
         for (var sale in apiResponse.data!) {
           await saleBox.put(sale.id, sale);
         }
-        await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
+        debugPrint(
+          '📦 Box "sales" contient maintenant ${saleBox.length} ventes APRÈS sync',
+        );
+
+        // Log quelques IDs et dates pour débug
+        final sampleSales = saleBox.values.take(3).toList();
+        for (var s in sampleSales) {
+          debugPrint(
+            '📋 Vente stockée: id=${s.id}, date=${s.date}, montant=${s.totalAmountInCdf}',
+          );
+        }
+
+        debugPrint(
+          '✅ ${apiResponse.data!.length} ventes synchronisées avec succès',
+        );
       } else {
         debugPrint('Failed to sync sales: ${apiResponse.message}');
       }
@@ -393,11 +439,23 @@ class SyncService {
 
   /// Synchronise les dépenses
   Future<void> _syncExpenses({bool forceFullSync = false}) async {
-    if (_expenseApiService == null) return;
+    if (_expenseApiService == null) {
+      debugPrint('⚠️ ExpenseApiService non disponible - skip sync dépenses');
+      return;
+    }
 
     debugPrint('Synchronisation des dépenses...');
     try {
-      final expenseBox = await Hive.openBox<Expense>('expensesBox');
+      // IMPORTANT: Utiliser le même nom de box que ExpenseRepository ('expenses')
+      if (!Hive.isBoxOpen('expenses')) {
+        debugPrint('⚠️ Box "expenses" non ouverte, tentative d\'ouverture...');
+        await Hive.openBox<Expense>('expenses');
+      }
+      final expenseBox = Hive.box<Expense>('expenses');
+      debugPrint(
+        '📦 Box "expenses" contient ${expenseBox.length} dépenses AVANT sync',
+      );
+
       final String lastSyncKey = 'expense_last_sync';
       Map<String, String> queryParams = {};
 
@@ -406,6 +464,7 @@ class SyncService {
         queryParams['dateFrom'] = lastSyncDate;
       }
 
+      debugPrint('🔄 Appel API getExpenses...');
       final apiResponse = await _expenseApiService.getExpenses(
         dateFrom:
             queryParams.containsKey('dateFrom')
@@ -414,12 +473,16 @@ class SyncService {
       );
 
       if (apiResponse.success && apiResponse.data != null) {
+        debugPrint('📥 Reçu ${apiResponse.data!.length} dépenses de l\'API');
         for (var expense in apiResponse.data!) {
           await expenseBox.put(expense.id, expense);
         }
         await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
         debugPrint(
-          '${apiResponse.data!.length} dépenses synchronisées avec succès',
+          '📦 Box "expenses" contient maintenant ${expenseBox.length} dépenses APRÈS sync',
+        );
+        debugPrint(
+          '✅ ${apiResponse.data!.length} dépenses synchronisées avec succès',
         );
       } else {
         debugPrint('Failed to sync expenses: ${apiResponse.message}');
@@ -440,29 +503,17 @@ class SyncService {
     debugPrint('Synchronisation des fournisseurs...');
     try {
       final supplierBox = await Hive.openBox<Supplier>('suppliersBox');
-      final String lastSyncKey = 'supplier_last_sync';
-      Map<String, String> queryParams = {};
-
-      if (!forceFullSync && _syncStatusBox.containsKey(lastSyncKey)) {
-        final lastSyncDate = _syncStatusBox.get(lastSyncKey)!;
-        queryParams['updated_after'] = lastSyncDate;
-      }
-
-      String? searchQuery;
-      if (queryParams.containsKey('updated_after')) {
-        searchQuery = "updated_after:${queryParams['updated_after']!}";
-      }
-      final apiResponse = await _supplierApiService.getSuppliers(
-        searchQuery: searchQuery,
-      );
+      // Note: L'API backend ne supporte pas le paramètre updated_after
+      // Nous faisons donc une synchronisation complète à chaque fois
+      debugPrint('🔄 Appel API getSuppliers (sync complet)...');
+      final apiResponse = await _supplierApiService.getSuppliers();
 
       if (apiResponse.success && apiResponse.data != null) {
         for (var supplier in apiResponse.data!) {
           await supplierBox.put(supplier.id, supplier);
         }
-        await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
         debugPrint(
-          '${apiResponse.data!.length} fournisseurs synchronisés avec succès',
+          '✅ ${apiResponse.data!.length} fournisseurs synchronisés avec succès',
         );
       } else {
         debugPrint('Failed to sync suppliers: ${apiResponse.message}');

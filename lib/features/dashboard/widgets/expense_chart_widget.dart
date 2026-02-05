@@ -5,6 +5,7 @@ import 'package:wanzo/utils/theme.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/dashboard/models/chart_period.dart';
+import 'package:wanzo/features/dashboard/models/chart_filter.dart';
 
 /// Widget pour afficher les courbes des ventes et dépenses combinées
 class SalesExpenseChartWidget extends StatefulWidget {
@@ -37,6 +38,9 @@ class SalesExpenseChartWidget extends StatefulWidget {
 
 class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
   ChartPeriod _selectedPeriod = ChartPeriod.week;
+  ChartType _selectedChartType = ChartType.line;
+  SalesFilter _selectedSalesFilter = SalesFilter.all;
+  ExpenseCategoryFilter _selectedExpenseFilter = ExpenseCategoryFilter.all;
 
   @override
   Widget build(BuildContext context) {
@@ -164,9 +168,19 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
                         // Layout vertical pour très petits écrans
                         return Column(
                           children: [
+                            // Barre de filtres compacte
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildChartTypeSelector(context),
+                                _buildSalesFilterSelector(context),
+                                _buildExpenseFilterSelector(context),
+                              ],
+                            ),
+                            const SizedBox(height: WanzoTheme.spacingXs),
                             _buildLegendItem(
                               context,
-                              'Ventes',
+                              'Ventes${_selectedSalesFilter != SalesFilter.all ? " (${_selectedSalesFilter.displayName})" : ""}',
                               _formatAmount(totalSales),
                               WanzoTheme.success,
                               Icons.trending_up,
@@ -174,7 +188,7 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
                             const SizedBox(height: WanzoTheme.spacingXs),
                             _buildLegendItem(
                               context,
-                              'Dépenses',
+                              'Dépenses${_selectedExpenseFilter != ExpenseCategoryFilter.all ? " (${_selectedExpenseFilter.displayName})" : ""}',
                               _formatAmount(totalExpenses),
                               WanzoTheme.danger,
                               Icons.trending_down,
@@ -182,26 +196,42 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
                           ],
                         );
                       }
-                      return Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      return Column(
                         children: [
-                          Flexible(
-                            child: _buildLegendItem(
-                              context,
-                              'Ventes',
-                              _formatAmount(totalSales),
-                              WanzoTheme.success,
-                              Icons.trending_up,
-                            ),
+                          // Barre de filtres
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _buildChartTypeSelector(context),
+                              const SizedBox(width: WanzoTheme.spacingXs),
+                              _buildSalesFilterSelector(context),
+                              const SizedBox(width: WanzoTheme.spacingXs),
+                              _buildExpenseFilterSelector(context),
+                            ],
                           ),
-                          Flexible(
-                            child: _buildLegendItem(
-                              context,
-                              'Dépenses',
-                              _formatAmount(totalExpenses),
-                              WanzoTheme.danger,
-                              Icons.trending_down,
-                            ),
+                          const SizedBox(height: WanzoTheme.spacingXs),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              Flexible(
+                                child: _buildLegendItem(
+                                  context,
+                                  'Ventes${_selectedSalesFilter != SalesFilter.all ? " (${_selectedSalesFilter.displayName})" : ""}',
+                                  _formatAmount(totalSales),
+                                  WanzoTheme.success,
+                                  Icons.trending_up,
+                                ),
+                              ),
+                              Flexible(
+                                child: _buildLegendItem(
+                                  context,
+                                  'Dépenses${_selectedExpenseFilter != ExpenseCategoryFilter.all ? " (${_selectedExpenseFilter.displayName})" : ""}',
+                                  _formatAmount(totalExpenses),
+                                  WanzoTheme.danger,
+                                  Icons.trending_down,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       );
@@ -220,7 +250,7 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
               child:
                   (dailySales.isEmpty && dailyExpenses.isEmpty)
                       ? _buildEmptyState(context)
-                      : _buildCombinedChart(dailySales, dailyExpenses, theme),
+                      : _buildChart(dailySales, dailyExpenses, theme),
             ),
 
             // Statistiques détaillées en mode agrandi
@@ -230,6 +260,22 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
         ),
       ),
     );
+  }
+
+  /// Sélectionne le type de graphique à afficher
+  Widget _buildChart(
+    Map<DateTime, double> dailySales,
+    Map<DateTime, double> dailyExpenses,
+    ThemeData theme,
+  ) {
+    switch (_selectedChartType) {
+      case ChartType.line:
+        return _buildCombinedChart(dailySales, dailyExpenses, theme);
+      case ChartType.bar:
+        return _buildBarChart(dailySales, dailyExpenses, theme);
+      case ChartType.pie:
+        return _buildPieChart(dailySales, dailyExpenses, theme);
+    }
   }
 
   Widget _buildLegendItem(
@@ -481,6 +527,329 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
           ),
         ),
       ),
+    );
+  }
+
+  /// Graphique en barres groupées
+  Widget _buildBarChart(
+    Map<DateTime, double> dailySales,
+    Map<DateTime, double> dailyExpenses,
+    ThemeData theme,
+  ) {
+    final allDates =
+        <DateTime>{...dailySales.keys, ...dailyExpenses.keys}.toList()..sort();
+
+    if (allDates.isEmpty) {
+      return _buildEmptyState(context);
+    }
+
+    final maxSales =
+        dailySales.values.isEmpty
+            ? 0.0
+            : dailySales.values.reduce((a, b) => a > b ? a : b);
+    final maxExpenses =
+        dailyExpenses.values.isEmpty
+            ? 0.0
+            : dailyExpenses.values.reduce((a, b) => a > b ? a : b);
+    final maxY = (maxSales > maxExpenses ? maxSales : maxExpenses) * 1.2;
+    final safeMaxY = maxY > 0 ? maxY : 100.0;
+
+    return BarChart(
+      BarChartData(
+        alignment: BarChartAlignment.spaceAround,
+        maxY: safeMaxY,
+        barTouchData: BarTouchData(
+          enabled: true,
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipColor: (group) => theme.colorScheme.surface,
+            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              if (groupIndex < allDates.length) {
+                final date = allDates[groupIndex];
+                final isSales = rodIndex == 0;
+                final label = isSales ? 'Ventes' : 'Dépenses';
+                return BarTooltipItem(
+                  '${DateFormat('dd MMM').format(date)}\n$label: ${_formatAmount(rod.toY)}',
+                  TextStyle(
+                    color: isSales ? WanzoTheme.success : WanzoTheme.danger,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                );
+              }
+              return null;
+            },
+          ),
+        ),
+        titlesData: FlTitlesData(
+          show: true,
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 30,
+              getTitlesWidget: (value, meta) {
+                final index = value.toInt();
+                if (index < 0 || index >= allDates.length) {
+                  return const SizedBox.shrink();
+                }
+                // N'afficher que certains labels selon le nombre de points
+                final interval = _getAxisInterval(allDates.length).toInt();
+                if (index % interval != 0) {
+                  return const SizedBox.shrink();
+                }
+                final date = allDates[index];
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Text(
+                    _formatDateLabel(date),
+                    style: theme.textTheme.bodySmall?.copyWith(fontSize: 9),
+                  ),
+                );
+              },
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 50,
+              interval: safeMaxY / 4,
+              getTitlesWidget: (value, meta) {
+                if (value == 0) return const SizedBox.shrink();
+                return Text(
+                  _formatCompactAmount(value),
+                  style: theme.textTheme.bodySmall?.copyWith(fontSize: 9),
+                );
+              },
+            ),
+          ),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+        ),
+        borderData: FlBorderData(
+          show: true,
+          border: Border(
+            bottom: BorderSide(
+              color: theme.colorScheme.outline.withValues(alpha: 0.3),
+            ),
+            left: BorderSide(
+              color: theme.colorScheme.outline.withValues(alpha: 0.3),
+            ),
+          ),
+        ),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: safeMaxY / 5,
+          getDrawingHorizontalLine: (value) {
+            return FlLine(
+              color: theme.colorScheme.outline.withValues(alpha: 0.2),
+              strokeWidth: 1,
+            );
+          },
+        ),
+        barGroups: List.generate(allDates.length, (index) {
+          final date = allDates[index];
+          final salesValue = dailySales[date] ?? 0;
+          final expensesValue = dailyExpenses[date] ?? 0;
+
+          return BarChartGroupData(
+            x: index,
+            barRods: [
+              BarChartRodData(
+                toY: salesValue,
+                color: WanzoTheme.success,
+                width: widget.isExpanded ? 8 : 6,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(4),
+                  topRight: Radius.circular(4),
+                ),
+              ),
+              BarChartRodData(
+                toY: expensesValue,
+                color: WanzoTheme.danger,
+                width: widget.isExpanded ? 8 : 6,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(4),
+                  topRight: Radius.circular(4),
+                ),
+              ),
+            ],
+          );
+        }),
+      ),
+    );
+  }
+
+  /// Graphique en secteurs (Pie Chart)
+  Widget _buildPieChart(
+    Map<DateTime, double> dailySales,
+    Map<DateTime, double> dailyExpenses,
+    ThemeData theme,
+  ) {
+    final totalSales = dailySales.values.fold(0.0, (sum, val) => sum + val);
+    final totalExpenses = dailyExpenses.values.fold(
+      0.0,
+      (sum, val) => sum + val,
+    );
+    final total = totalSales + totalExpenses;
+
+    if (total == 0) {
+      return _buildEmptyState(context);
+    }
+
+    final salesPercentage = (totalSales / total * 100).toStringAsFixed(1);
+    final expensesPercentage = (totalExpenses / total * 100).toStringAsFixed(1);
+
+    return Row(
+      children: [
+        // Graphique circulaire
+        Expanded(
+          flex: 2,
+          child: PieChart(
+            PieChartData(
+              sectionsSpace: 2,
+              centerSpaceRadius: widget.isExpanded ? 50 : 30,
+              sections: [
+                PieChartSectionData(
+                  color: WanzoTheme.success,
+                  value: totalSales,
+                  title: '$salesPercentage%',
+                  radius: widget.isExpanded ? 80 : 50,
+                  titleStyle: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  badgeWidget:
+                      widget.isExpanded
+                          ? Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: WanzoTheme.success,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Icon(
+                              Icons.trending_up,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          )
+                          : null,
+                  badgePositionPercentageOffset: 1.2,
+                ),
+                PieChartSectionData(
+                  color: WanzoTheme.danger,
+                  value: totalExpenses,
+                  title: '$expensesPercentage%',
+                  radius: widget.isExpanded ? 80 : 50,
+                  titleStyle: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  badgeWidget:
+                      widget.isExpanded
+                          ? Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: WanzoTheme.danger,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Icon(
+                              Icons.trending_down,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          )
+                          : null,
+                  badgePositionPercentageOffset: 1.2,
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Légende détaillée
+        if (widget.isExpanded)
+          Expanded(
+            flex: 1,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildPieLegendItem(
+                  'Ventes',
+                  _formatAmount(totalSales),
+                  '$salesPercentage%',
+                  WanzoTheme.success,
+                ),
+                const SizedBox(height: WanzoTheme.spacingMd),
+                _buildPieLegendItem(
+                  'Dépenses',
+                  _formatAmount(totalExpenses),
+                  '$expensesPercentage%',
+                  WanzoTheme.danger,
+                ),
+                const SizedBox(height: WanzoTheme.spacingMd),
+                Divider(
+                  color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                ),
+                const SizedBox(height: WanzoTheme.spacingSm),
+                Text(
+                  'Balance: ${_formatAmount(totalSales - totalExpenses)}',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color:
+                        totalSales >= totalExpenses
+                            ? WanzoTheme.success
+                            : WanzoTheme.danger,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Item de légende pour le pie chart
+  Widget _buildPieLegendItem(
+    String label,
+    String amount,
+    String percentage,
+    Color color,
+  ) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+            Text(
+              amount,
+              style: TextStyle(
+                fontSize: 11,
+                color: color,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -785,6 +1154,102 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     );
   }
 
+  /// Sélecteur de type de graphique (ligne, barres, secteurs)
+  Widget _buildChartTypeSelector(BuildContext context) {
+    return PopupMenuButton<ChartType>(
+      initialValue: _selectedChartType,
+      icon: Icon(
+        _selectedChartType.icon,
+        size: 20,
+        color: Theme.of(context).colorScheme.secondary,
+      ),
+      tooltip: 'Type: ${_selectedChartType.displayName}',
+      onSelected: (ChartType type) {
+        setState(() {
+          _selectedChartType = type;
+        });
+      },
+      itemBuilder:
+          (context) =>
+              ChartType.values.map((type) {
+                return PopupMenuItem<ChartType>(
+                  value: type,
+                  child: Row(
+                    children: [
+                      Icon(type.icon, size: 18),
+                      const SizedBox(width: 8),
+                      Text(type.displayName),
+                    ],
+                  ),
+                );
+              }).toList(),
+    );
+  }
+
+  /// Sélecteur de filtre des ventes (tout, produits, services)
+  Widget _buildSalesFilterSelector(BuildContext context) {
+    return PopupMenuButton<SalesFilter>(
+      initialValue: _selectedSalesFilter,
+      icon: Icon(
+        _selectedSalesFilter.icon,
+        size: 20,
+        color: WanzoTheme.success,
+      ),
+      tooltip: 'Ventes: ${_selectedSalesFilter.displayName}',
+      onSelected: (SalesFilter filter) {
+        setState(() {
+          _selectedSalesFilter = filter;
+        });
+      },
+      itemBuilder:
+          (context) =>
+              SalesFilter.values.map((filter) {
+                return PopupMenuItem<SalesFilter>(
+                  value: filter,
+                  child: Row(
+                    children: [
+                      Icon(filter.icon, size: 18, color: WanzoTheme.success),
+                      const SizedBox(width: 8),
+                      Text(filter.displayName),
+                    ],
+                  ),
+                );
+              }).toList(),
+    );
+  }
+
+  /// Sélecteur de filtre des dépenses par catégorie
+  Widget _buildExpenseFilterSelector(BuildContext context) {
+    return PopupMenuButton<ExpenseCategoryFilter>(
+      initialValue: _selectedExpenseFilter,
+      icon: Icon(
+        _selectedExpenseFilter.icon,
+        size: 20,
+        color: WanzoTheme.danger,
+      ),
+      tooltip: 'Dépenses: ${_selectedExpenseFilter.displayName}',
+      onSelected: (ExpenseCategoryFilter filter) {
+        setState(() {
+          _selectedExpenseFilter = filter;
+        });
+      },
+      itemBuilder:
+          (context) =>
+              ExpenseCategoryFilter.values.map((filter) {
+                return PopupMenuItem<ExpenseCategoryFilter>(
+                  value: filter,
+                  child: Row(
+                    children: [
+                      Icon(filter.icon, size: 18, color: WanzoTheme.danger),
+                      const SizedBox(width: 8),
+                      Text(filter.displayName),
+                    ],
+                  ),
+                );
+              }).toList(),
+    );
+  }
+
   Map<DateTime, double> _aggregateSalesByPeriod() {
     final Map<DateTime, double> aggregated = {};
     final dateRange = _selectedPeriod.getDateRange(DateTime.now());
@@ -793,9 +1258,17 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
       // Filtrer uniquement les ventes dans la période
       if (sale.date.isAfter(dateRange.start) &&
           sale.date.isBefore(dateRange.end.add(const Duration(seconds: 1)))) {
-        final dateKey = _getDateKey(sale.date);
-        aggregated[dateKey] =
-            (aggregated[dateKey] ?? 0) + sale.totalAmountInCdf;
+        // Appliquer le filtre de type de vente (produits/services)
+        double filteredAmount = 0.0;
+        for (final item in sale.items) {
+          if (_selectedSalesFilter.matchesItem(item)) {
+            filteredAmount += item.totalPrice;
+          }
+        }
+        if (filteredAmount > 0) {
+          final dateKey = _getDateKey(sale.date);
+          aggregated[dateKey] = (aggregated[dateKey] ?? 0) + filteredAmount;
+        }
       }
     }
 
@@ -813,8 +1286,11 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
           expense.date.isBefore(
             dateRange.end.add(const Duration(seconds: 1)),
           )) {
-        final dateKey = _getDateKey(expense.date);
-        aggregated[dateKey] = (aggregated[dateKey] ?? 0) + expense.amount;
+        // Appliquer le filtre de catégorie de dépense
+        if (_selectedExpenseFilter.matchesCategory(expense.category)) {
+          final dateKey = _getDateKey(expense.date);
+          aggregated[dateKey] = (aggregated[dateKey] ?? 0) + expense.amount;
+        }
       }
     }
 

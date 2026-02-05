@@ -28,6 +28,8 @@ import 'package:wanzo/features/inventory/bloc/inventory_bloc.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_event.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_state.dart';
 import 'package:wanzo/features/dashboard/widgets/operations_dock.dart';
+import 'package:wanzo/core/services/sync_service.dart';
+import 'package:get_it/get_it.dart';
 
 enum _ExpandedView { none, operationsJournal }
 
@@ -80,6 +82,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // Souscription pour écouter les changements de dépenses
   StreamSubscription? _expenseSubscription;
+  // Souscription pour écouter la fin de synchronisation
+  StreamSubscription? _syncSubscription;
 
   String _getDisplayCurrencyCode(Settings settings) {
     final Currency activeAppCurrency = settings.activeCurrency;
@@ -124,12 +128,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _dashboardBloc.add(RefreshDashboardData(DateTime.now()));
       }
     });
+
+    // Écouter le SyncService pour recharger les ventes après synchronisation
+    if (GetIt.instance.isRegistered<SyncService>()) {
+      final syncService = GetIt.instance<SyncService>();
+      _syncSubscription = syncService.syncStatus.listen((status) {
+        if (status == SyncStatus.completed) {
+          debugPrint(
+            '🔄 Sync terminée - Rechargement des ventes pour le graphique',
+          );
+          final now = DateTime.now();
+          _salesBloc.add(
+            LoadSalesByDateRange(
+              startDate: now.subtract(const Duration(days: 365)),
+              endDate: now,
+            ),
+          );
+          _expenseBloc.add(
+            LoadExpensesByDateRange(
+              now.subtract(const Duration(days: 365)),
+              now,
+            ),
+          );
+          _dashboardBloc.add(RefreshDashboardData(now));
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
-    // Annuler la souscription pour éviter les fuites de mémoire
+    // Annuler les souscriptions pour éviter les fuites de mémoire
     _expenseSubscription?.cancel();
+    _syncSubscription?.cancel();
     super.dispose();
   }
 
@@ -1308,35 +1339,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         height:
                             MediaQuery.of(context).size.height *
                             0.75, // Utilisez plus de hauteur d'écran (75%)
-                        child: ListView.separated(
-                          padding:
-                              EdgeInsets.zero, // Supprime le padding par défaut
-                          shrinkWrap:
-                              false, // Don't shrink wrap, let the SizedBox handle the size
-                          physics:
-                              const AlwaysScrollableScrollPhysics(), // Enable scrolling
-                          itemCount: entriesToShow.length,
-                          separatorBuilder:
-                              (context, index) => const Divider(
-                                height: 0,
-                                thickness: 1,
-                                indent: 72,
-                                endIndent: 16,
-                              ),
-                          itemBuilder: (context, index) {
-                            final entry = entriesToShow[index];
-                            final entryCurrencyCode =
-                                entry.currencyCode ?? displayCurrencyCode;
-                            return _buildJournalEntry(
-                              context,
-                              entry,
-                              entryCurrencyCode,
-                              displayCurrencyCode,
-                              l10n,
-                              dateFormat,
-                              timeFormat,
-                            );
-                          },
+                        child: _buildOperationsDataTable(
+                          context,
+                          entriesToShow,
+                          displayCurrencyCode,
+                          l10n,
+                          dateFormat,
+                          timeFormat,
+                          isExpanded: true,
                         ),
                       )
                       : SizedBox(
@@ -1346,37 +1356,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Expanded(
-                              // Using Expanded inside fixed height SizedBox for proper constraint
-                              child: ListView.separated(
-                                padding:
-                                    EdgeInsets
-                                        .zero, // Supprime le padding par défaut
-                                shrinkWrap:
-                                    false, // Keep false as we're using Expanded in a fixed height container
-                                physics:
-                                    const BouncingScrollPhysics(), // Permet le défilement avec effet de rebond
-                                itemCount: entriesToShow.length,
-                                separatorBuilder:
-                                    (context, index) => const Divider(
-                                      height: 0,
-                                      thickness: 1,
-                                      indent: 72,
-                                      endIndent: 16,
-                                    ),
-                                itemBuilder: (context, index) {
-                                  final entry = entriesToShow[index];
-                                  final entryCurrencyCode =
-                                      entry.currencyCode ?? displayCurrencyCode;
-                                  return _buildJournalEntry(
-                                    context,
-                                    entry,
-                                    entryCurrencyCode,
-                                    displayCurrencyCode,
-                                    l10n,
-                                    dateFormat,
-                                    timeFormat,
-                                  );
-                                },
+                              child: _buildOperationsDataTable(
+                                context,
+                                entriesToShow,
+                                displayCurrencyCode,
+                                l10n,
+                                dateFormat,
+                                timeFormat,
+                                isExpanded: false,
                               ),
                             ),
                             if (hasMoreEntries)
@@ -1437,108 +1424,156 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ); // Closes Card
   }
 
-  Widget _buildJournalEntry(
+  /// Construit un DataTable pour afficher les opérations du journal
+  Widget _buildOperationsDataTable(
     BuildContext context,
-    OperationJournalEntry entry,
-    String entryCurrencyCode,
+    List<OperationJournalEntry> entries,
     String displayCurrencyCode,
     AppLocalizations l10n,
     DateFormat dateFormat,
-    DateFormat timeFormat,
-  ) {
-    String amountDisplay = "";
-    Color amountColor = Theme.of(context).colorScheme.onSurface;
-
-    // Utiliser le code de devise de l'entrée si disponible, sinon utiliser le code par défaut
-    final effectiveCurrencyCode = entry.currencyCode ?? entryCurrencyCode;
-
-    if (entry.isDebit) {
-      amountDisplay =
-          "- ${formatCurrency(entry.amount.abs(), effectiveCurrencyCode)}";
-      amountColor = Colors.redAccent;
-    } else if (entry.isCredit) {
-      amountDisplay =
-          "+ ${formatCurrency(entry.amount.abs(), effectiveCurrencyCode)}";
-      amountColor = Colors.green;
-    } else {
-      amountDisplay = formatCurrency(entry.amount, effectiveCurrencyCode);
-    }
-    return ListTile(
-      dense: true, // Rendre le ListTile plus compact
-      contentPadding: const EdgeInsets.only(
-        left: 8,
-        right: 8,
-      ), // Padding horizontal minimal
-      visualDensity: const VisualDensity(
-        vertical: -4,
-        horizontal: -4,
-      ), // Réduire encore plus l'espacement vertical et horizontal
-      minVerticalPadding: 0, // Minimiser le padding vertical
-      minLeadingWidth: 24, // Réduit l'espace alloué à l'icône leading
-      horizontalTitleGap: 8, // Réduit l'écart entre l'icône et le titre
-      leading: Icon(
-        entry.type.icon,
-        size: 14, // Réduire davantage la taille de l'icône
-        color: entry.isDebit ? Colors.redAccent : Colors.green,
-      ),
-      title: Text(
-        entry.description,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          fontWeight: FontWeight.w500,
-          fontSize:
-              11, // Réduire davantage la taille pour économiser de l'espace vertical
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        "${dateFormat.format(entry.date)} ${timeFormat.format(entry.date)}",
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          fontSize:
-              9, // Réduire davantage la taille pour économiser de l'espace vertical
-        ),
-      ),
-      trailing: SizedBox(
-        width: 100, // Width réduite
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize:
-              MainAxisSize.min, // Pour réduire la hauteur de la colonne
-          children: [
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerRight,
-              child: Text(
-                amountDisplay,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: amountColor,
-                  fontSize:
-                      10, // Taille uniforme et réduite pour tous les montants
+    DateFormat timeFormat, {
+    required bool isExpanded,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 600;
+        return SingleChildScrollView(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: DataTable(
+                showCheckboxColumn: false,
+                columnSpacing: isCompact ? 12 : 20,
+                dataRowMinHeight: 36,
+                dataRowMaxHeight: 48,
+                headingRowHeight: 40,
+                headingRowColor: WidgetStateProperty.all(
+                  Theme.of(context).colorScheme.surfaceContainerHighest,
                 ),
-                textAlign: TextAlign.right,
+                columns: [
+                  const DataColumn(label: Text('')), // Icône
+                  const DataColumn(label: Text('Description')),
+                  if (!isCompact) const DataColumn(label: Text('Type')),
+                  const DataColumn(label: Text('Date')),
+                  const DataColumn(label: Text('Montant'), numeric: true),
+                  if (!isCompact)
+                    DataColumn(
+                      label: Text(l10n.dashboardOperationsJournalBalanceLabel),
+                      numeric: true,
+                    ),
+                ],
+                rows:
+                    entries.map((entry) {
+                      final effectiveCurrencyCode =
+                          entry.currencyCode ?? displayCurrencyCode;
+                      String amountDisplay;
+                      Color amountColor;
+
+                      if (entry.isDebit) {
+                        amountDisplay =
+                            "- ${formatCurrency(entry.amount.abs(), effectiveCurrencyCode)}";
+                        amountColor = Colors.redAccent;
+                      } else if (entry.isCredit) {
+                        amountDisplay =
+                            "+ ${formatCurrency(entry.amount.abs(), effectiveCurrencyCode)}";
+                        amountColor = Colors.green;
+                      } else {
+                        amountDisplay = formatCurrency(
+                          entry.amount,
+                          effectiveCurrencyCode,
+                        );
+                        amountColor = Theme.of(context).colorScheme.onSurface;
+                      }
+
+                      return DataRow(
+                        onSelectChanged: (_) {
+                          debugPrint('Opération: ${entry.description}');
+                        },
+                        cells: [
+                          DataCell(
+                            Icon(
+                              entry.type.icon,
+                              size: 18,
+                              color:
+                                  entry.isDebit
+                                      ? Colors.redAccent
+                                      : Colors.green,
+                            ),
+                          ),
+                          DataCell(
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: isCompact ? 120 : 200,
+                              ),
+                              child: Text(
+                                entry.description,
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                          ),
+                          if (!isCompact)
+                            DataCell(
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: (entry.isDebit
+                                          ? Colors.redAccent
+                                          : Colors.green)
+                                      .withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  entry.type.displayName,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color:
+                                        entry.isDebit
+                                            ? Colors.redAccent
+                                            : Colors.green,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          DataCell(
+                            Text(
+                              "${dateFormat.format(entry.date)} ${timeFormat.format(entry.date)}",
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                          DataCell(
+                            Text(
+                              amountDisplay,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: amountColor,
+                              ),
+                            ),
+                          ),
+                          if (!isCompact)
+                            DataCell(
+                              Text(
+                                formatCurrency(
+                                  entry.cashBalance ?? 0.0,
+                                  displayCurrencyCode,
+                                ),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    }).toList(),
               ),
             ),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerRight,
-              child: Text(
-                '${l10n.dashboardOperationsJournalBalanceLabel}: ${formatCurrency(entry.cashBalance ?? 0.0, displayCurrencyCode)}',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  fontSize:
-                      8, // Taille réduite et uniforme pour tous les soldes
-                ),
-                textAlign: TextAlign.right,
-              ),
-            ),
-          ],
-        ),
-      ),
-      onTap: () {
-        // Vue détail d'opération non implémentée
-        debugPrint('Opération: ${entry.description}');
+          ),
+        );
       },
     );
   }

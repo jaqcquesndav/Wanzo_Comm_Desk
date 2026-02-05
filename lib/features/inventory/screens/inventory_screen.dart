@@ -363,93 +363,64 @@ class _InventoryScreenState extends State<InventoryScreen>
       appActiveDisplayCurrency = currencySettingsState.settings.activeCurrency;
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.all(WanzoSpacing.md),
-      itemCount: products.length,
-      separatorBuilder: (_, __) => const Divider(),
-      itemBuilder: (context, index) {
-        final product = products[index];
-        final isLowStock = product.stockQuantity <= product.alertThreshold;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Calculer le nombre de colonnes selon la largeur
+        final crossAxisCount =
+            constraints.maxWidth < 400
+                ? 2
+                : constraints.maxWidth < 700
+                ? 3
+                : constraints.maxWidth < 1000
+                ? 4
+                : 5;
 
-        final displayCurrencyCode = appActiveDisplayCurrency.code;
-        // Selling price in active display currency
-        // First, ensure product.sellingPriceInCdf is not null
-        final sellingPriceCdf = product.sellingPriceInCdf;
-        // Convert from CDF to the active display currency
-        final displaySellingPrice = currencyService.convertFromCdf(
-          sellingPriceCdf,
-          appActiveDisplayCurrency,
-        );
+        return GridView.builder(
+          padding: const EdgeInsets.all(WanzoSpacing.md),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            childAspectRatio: 0.75,
+            crossAxisSpacing: WanzoSpacing.sm,
+            mainAxisSpacing: WanzoSpacing.sm,
+          ),
+          itemCount: products.length,
+          itemBuilder: (context, index) {
+            final product = products[index];
+            final isLowStock = product.stockQuantity <= product.alertThreshold;
 
-        return ListTile(
-          leading:
-              product.imagePath != null && product.imagePath!.isNotEmpty
-                  ? Image.file(
-                    File(product.imagePath!),
-                    width: 50,
-                    height: 50,
-                    fit: BoxFit.cover,
-                    errorBuilder:
-                        (context, error, stackTrace) =>
-                            const Icon(Icons.broken_image, size: 50),
-                  )
-                  : const Icon(Icons.inventory_2, size: 50), // Placeholder icon
-          title: Text(
-            product.name,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${l10n.priceLabel}: ${formatCurrency(displaySellingPrice, displayCurrencyCode)} (${l10n.inputPriceLabel}: ${formatCurrency(product.sellingPriceInInputCurrency, product.inputCurrencyCode)}) ',
-              ),
-              Text(
-                '${l10n.stockLabel}: ${product.stockQuantity} ${_getUnitName(product.unit, l10n)}',
-                style: TextStyle(
-                  color:
-                      isLowStock ? Theme.of(context).colorScheme.error : null,
-                  fontWeight:
-                      isLowStock
-                          ? FontWeight.bold
-                          : null, // Corrected to FontWeight.bold
-                ),
-              ),
-            ],
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.edit),
-                onPressed: () {
-                  context
-                      .push('/inventory/edit/${product.id}', extra: product)
-                      .then((_) {
-                        // Recharger après modification
-                        if (mounted) {
-                          context.read<InventoryBloc>().add(
-                            const LoadProducts(),
-                          );
-                        }
-                      });
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.add_box),
-                onPressed: () => _showAddStockDialog(context, product, l10n),
-              ),
-            ],
-          ),
-          onTap: () {
-            context.push('/inventory/product/${product.id}', extra: product).then((
-              _,
-            ) {
-              // Recharger après retour des détails (au cas où il y a eu modification/suppression)
-              if (mounted) {
-                context.read<InventoryBloc>().add(const LoadProducts());
-              }
-            });
+            final displayCurrencyCode = appActiveDisplayCurrency.code;
+            final sellingPriceCdf = product.sellingPriceInCdf;
+            final displaySellingPrice = currencyService.convertFromCdf(
+              sellingPriceCdf,
+              appActiveDisplayCurrency,
+            );
+
+            return _ProductGridCard(
+              product: product,
+              isLowStock: isLowStock,
+              displaySellingPrice: displaySellingPrice,
+              displayCurrencyCode: displayCurrencyCode,
+              l10n: l10n,
+              onTap: () {
+                context
+                    .push('/inventory/product/${product.id}', extra: product)
+                    .then((_) {
+                      if (mounted) {
+                        context.read<InventoryBloc>().add(const LoadProducts());
+                      }
+                    });
+              },
+              onEdit: () {
+                context
+                    .push('/inventory/edit/${product.id}', extra: product)
+                    .then((_) {
+                      if (mounted) {
+                        context.read<InventoryBloc>().add(const LoadProducts());
+                      }
+                    });
+              },
+              onAddStock: () => _showAddStockDialog(context, product, l10n),
+            );
           },
         );
       },
@@ -767,5 +738,257 @@ class _InventoryScreenState extends State<InventoryScreen>
   String formatDate(DateTime date, AppLocalizations l10n) {
     // Simple date formatting, can be expanded with intl package for more complex needs
     return "${date.day}/${date.month}/${date.year}";
+  }
+}
+
+/// Carte produit pour l'affichage en grille
+class _ProductGridCard extends StatelessWidget {
+  final Product product;
+  final bool isLowStock;
+  final double displaySellingPrice;
+  final String displayCurrencyCode;
+  final AppLocalizations l10n;
+  final VoidCallback onTap;
+  final VoidCallback onEdit;
+  final VoidCallback onAddStock;
+
+  const _ProductGridCard({
+    required this.product,
+    required this.isLowStock,
+    required this.displaySellingPrice,
+    required this.displayCurrencyCode,
+    required this.l10n,
+    required this.onTap,
+    required this.onEdit,
+    required this.onAddStock,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side:
+            isLowStock
+                ? BorderSide(
+                  color: theme.colorScheme.error.withValues(alpha: 0.5),
+                  width: 2,
+                )
+                : BorderSide.none,
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Image du produit
+            Expanded(
+              flex: 3,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _buildProductImage(context),
+                  // Badge stock faible
+                  if (isLowStock)
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.error,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.warning,
+                              color: Colors.white,
+                              size: 12,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              'Stock bas',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  // Actions rapides
+                  Positioned(
+                    bottom: 4,
+                    right: 4,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildActionButton(
+                          context,
+                          Icons.edit,
+                          onEdit,
+                          theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 4),
+                        _buildActionButton(
+                          context,
+                          Icons.add_box,
+                          onAddStock,
+                          Colors.green,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Informations du produit
+            Expanded(
+              flex: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Nom du produit
+                    Text(
+                      product.name,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    // Prix
+                    Text(
+                      formatCurrency(displaySellingPrice, displayCurrencyCode),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    // Stock
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.inventory_2,
+                          size: 14,
+                          color:
+                              isLowStock
+                                  ? theme.colorScheme.error
+                                  : theme.colorScheme.onSurface.withValues(
+                                    alpha: 0.6,
+                                  ),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            '${product.stockQuantity} ${_getShortUnitName(product.unit)}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color:
+                                  isLowStock
+                                      ? theme.colorScheme.error
+                                      : theme.colorScheme.onSurface.withValues(
+                                        alpha: 0.7,
+                                      ),
+                              fontWeight:
+                                  isLowStock
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProductImage(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (product.imagePath != null && product.imagePath!.isNotEmpty) {
+      return Image.file(
+        File(product.imagePath!),
+        fit: BoxFit.cover,
+        errorBuilder:
+            (context, error, stackTrace) => _buildPlaceholderImage(theme),
+      );
+    }
+    return _buildPlaceholderImage(theme);
+  }
+
+  Widget _buildPlaceholderImage(ThemeData theme) {
+    return Container(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Center(
+        child: Icon(
+          Icons.inventory_2,
+          size: 48,
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButton(
+    BuildContext context,
+    IconData icon,
+    VoidCallback onPressed,
+    Color color,
+  ) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.9),
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(icon, size: 18, color: color),
+        ),
+      ),
+    );
+  }
+
+  String _getShortUnitName(ProductUnit unit) {
+    switch (unit) {
+      case ProductUnit.piece:
+        return 'pcs';
+      case ProductUnit.kg:
+        return 'kg';
+      case ProductUnit.g:
+        return 'g';
+      case ProductUnit.l:
+        return 'L';
+      case ProductUnit.ml:
+        return 'ml';
+      case ProductUnit.box:
+        return 'bte';
+      case ProductUnit.package:
+        return 'paq';
+      case ProductUnit.other:
+        return '';
+    }
   }
 }

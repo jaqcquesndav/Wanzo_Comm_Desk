@@ -105,6 +105,7 @@ dev_dependencies:
   # Test dependencies
   mockito: ^5.4.4
   bloc_test: ^10.0.0
+  msix: ^3.16.13
 
 flutter:
   uses-material-design: true
@@ -144,3 +145,17 @@ flutter_intl:
 
 dependency_overrides:
   record_linux: ^1.1.1
+
+# Configuration MSIX pour l'installateur Windows
+msix_config:
+  display_name: Wanzo Commerce
+  publisher_display_name: Wanzo
+  identity_name: com.wanzo.commerce
+  msix_version: 1.0.0.0
+  logo_path: assets/icons/app_icon.png
+  capabilities: internetClient, microphone
+  languages: fr-FR, en-US, sw-TZ
+  file_extension: .wanzo
+  protocol_activation: wanzo
+  execution_alias: wanzo
+  store: false

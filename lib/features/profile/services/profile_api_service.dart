@@ -12,7 +12,10 @@ class ProfileApiService {
   ProfileApiService(this._apiClient);
 
   Future<User> getCurrentUserProfile() async {
-    final response = await _apiClient.get('settings-user-profile/profile/me');
+    final response = await _apiClient.get(
+      'settings-user-profile/profile/me',
+      requiresAuth: true,
+    );
     return User.fromJson(response);
   }
 
@@ -174,6 +177,7 @@ class ProfileApiService {
   Future<Settings> getSettings() async {
     final response = await _apiClient.get(
       'settings-user-profile/application-settings',
+      requiresAuth: true,
     );
     return Settings.fromJson(response);
   }
@@ -235,6 +239,7 @@ class ProfileApiService {
   Future<List<BusinessSector>> getBusinessSectors() async {
     final response = await _apiClient.get(
       'settings-user-profile/business-sectors',
+      requiresAuth: true,
     );
     // Gérer les deux formats de réponse: liste directe ou objet avec 'data'
     final List<dynamic> data;

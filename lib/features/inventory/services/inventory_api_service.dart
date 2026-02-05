@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:wanzo/core/services/api_client.dart';
 import 'package:wanzo/core/exceptions/api_exceptions.dart';
@@ -538,27 +539,80 @@ class InventoryApiServiceImpl implements InventoryApiService {
     }
   }
 
+  /// Convertit notre StockTransactionType vers le type backend (stockIn/stockOut)
+  String _mapToBackendOperationType(StockTransactionType type) {
+    switch (type) {
+      // Entrées de stock → stockIn
+      case StockTransactionType.purchase:
+      case StockTransactionType.transferIn:
+      case StockTransactionType.returned:
+      case StockTransactionType.initialStock:
+        return 'stockIn';
+      // Sorties de stock → stockOut
+      case StockTransactionType.sale:
+      case StockTransactionType.transferOut:
+      case StockTransactionType.damaged:
+      case StockTransactionType.lost:
+        return 'stockOut';
+      // Ajustements : dépend de la quantité (positif = in, négatif = out)
+      case StockTransactionType.adjustment:
+        return 'stockIn'; // Sera déterminé par le signe de la quantité
+    }
+  }
+
   @override
   Future<ApiResponse<StockTransaction>> createStockTransaction(
     StockTransaction transaction,
   ) async {
     try {
+      // Mapper le type de transaction vers le format backend
+      String backendType = _mapToBackendOperationType(transaction.type);
+
+      // Pour les ajustements, vérifier le signe de la quantité
+      if (transaction.type == StockTransactionType.adjustment) {
+        backendType = transaction.quantity >= 0 ? 'stockIn' : 'stockOut';
+      }
+
+      // Construire le payload selon le format attendu par le backend
+      final payload = {
+        'type': backendType,
+        'productId': transaction.productId,
+        'quantity': transaction.quantity.abs(), // Toujours positif côté backend
+        'amount':
+            transaction
+                .totalValueInCdf, // Backend utilise 'amount' au lieu de 'totalValueInCdf'
+        'unitCost': transaction.unitCostInCdf,
+        'notes': transaction.notes ?? '',
+        'referenceId': transaction.referenceId,
+        'date': transaction.date.toIso8601String(),
+        // Champs Business Unit pour l'isolation multi-tenant
+        'companyId': transaction.companyId,
+        'businessUnitId': transaction.businessUnitId,
+        'businessUnitCode': transaction.businessUnitCode,
+        'businessUnitType': transaction.businessUnitType?.name,
+        // Conserver le type original pour référence
+        'originalType': transaction.type.name,
+      };
+
+      debugPrint('📤 Envoi opération stock au backend: $payload');
+
       final response = await _apiClient.post(
-        'stock-transactions',
-        body: transaction.toJson(),
+        'journal/operations', // Endpoint correct selon le backend
+        body: payload,
         requiresAuth: true,
       );
-      final transactionData = StockTransaction.fromJson(
-        response as Map<String, dynamic>,
-      );
 
+      debugPrint('📥 Réponse backend: $response');
+
+      // Retourner la transaction originale comme succès
       return ApiResponse<StockTransaction>(
         success: true,
-        data: transactionData,
-        message: 'Stock transaction created successfully',
+        data: transaction,
+        message: 'Stock operation synced successfully',
         statusCode: 201,
       );
     } on ApiException catch (e) {
+      debugPrint('❌ API Exception: ${e.message}');
       return ApiResponse<StockTransaction>(
         success: false,
         data: null,
@@ -566,6 +620,7 @@ class InventoryApiServiceImpl implements InventoryApiService {
         statusCode: e.statusCode ?? 500,
       );
     } catch (e) {
+      debugPrint('❌ Error creating stock transaction: $e');
       return ApiResponse<StockTransaction>(
         success: false,
         data: null,

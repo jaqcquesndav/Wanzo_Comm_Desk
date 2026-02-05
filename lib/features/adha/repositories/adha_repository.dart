@@ -41,7 +41,11 @@ class AdhaRepository {
   Future<void> init({String? userId}) async {
     // Si on change d'utilisateur, fermer l'ancienne box
     if (_currentUserId != userId && _conversationsBox != null) {
-      await _conversationsBox!.close();
+      try {
+        await _conversationsBox!.close();
+      } catch (e) {
+        debugPrint('[AdhaRepository] ⚠️ Erreur fermeture box: $e');
+      }
       _conversationsBox = null;
       debugPrint(
         '[AdhaRepository] 📦 Fermeture de la box pour changement d\'utilisateur',
@@ -63,19 +67,42 @@ class AdhaRepository {
         '[AdhaRepository] ⚠️ Erreur Hive, suppression de la box corrompue: $e',
       );
 
-      // Supprimer la box corrompue
-      try {
-        await Hive.deleteBoxFromDisk(boxName);
-        debugPrint('[AdhaRepository] ✅ Box supprimée avec succès');
-      } catch (deleteError) {
-        debugPrint(
-          '[AdhaRepository] Erreur lors de la suppression: $deleteError',
-        );
+      // Supprimer la box corrompue - plusieurs tentatives pour Windows
+      bool deleteSuccess = false;
+      for (int attempt = 0; attempt < 3 && !deleteSuccess; attempt++) {
+        try {
+          // Attendre un peu avant de réessayer (le fichier peut être en cours de libération)
+          if (attempt > 0) {
+            await Future.delayed(Duration(milliseconds: 500 * attempt));
+          }
+          await Hive.deleteBoxFromDisk(boxName);
+          deleteSuccess = true;
+          debugPrint(
+            '[AdhaRepository] ✅ Box supprimée avec succès (tentative ${attempt + 1})',
+          );
+        } catch (deleteError) {
+          debugPrint(
+            '[AdhaRepository] ⚠️ Tentative ${attempt + 1}/3 de suppression échouée: $deleteError',
+          );
+        }
       }
 
-      // Réouvrir une box vide
-      _conversationsBox = await Hive.openBox<AdhaConversation>(boxName);
-      debugPrint('[AdhaRepository] ✅ Nouvelle box créée');
+      // Si la suppression a échoué, on continue avec une box en mémoire temporaire
+      // ou on réessaye d'ouvrir la box (peut fonctionner si les données sont accessibles)
+      try {
+        _conversationsBox = await Hive.openBox<AdhaConversation>(boxName);
+        debugPrint('[AdhaRepository] ✅ Nouvelle box créée/ouverte');
+      } catch (reopenError) {
+        debugPrint('[AdhaRepository] ❌ Échec réouverture: $reopenError');
+        // Créer une box en mémoire comme fallback pour ne pas bloquer l'app
+        // L'utilisateur perdra l'historique local mais pourra continuer
+        debugPrint(
+          '[AdhaRepository] ⚠️ Utilisation d\'un cache mémoire temporaire',
+        );
+        // Note: Hive n'a pas de mode mémoire simple, on va ignorer le cache local
+        // et fonctionner uniquement avec l'API
+        _conversationsBox = null;
+      }
     }
   }
 
@@ -90,35 +117,50 @@ class AdhaRepository {
   }
 
   /// Vérifie que la box est initialisée
-  void _ensureInitialized() {
-    if (_conversationsBox == null || !_conversationsBox!.isOpen) {
-      throw StateError(
-        'AdhaRepository n\'est pas initialisé. Appelez init(userId) d\'abord.',
-      );
-    }
+  /// Retourne true si la box est disponible, false si on est en mode fallback
+  bool _isBoxAvailable() {
+    return _conversationsBox != null && _conversationsBox!.isOpen;
   }
 
   /// Récupère toutes les conversations (cache local)
+  /// Retourne une liste vide si le cache n'est pas disponible
   Future<List<AdhaConversation>> getConversations() async {
-    _ensureInitialized();
+    if (!_isBoxAvailable()) {
+      debugPrint(
+        '[AdhaRepository] ⚠️ Cache indisponible, liste vide retournée',
+      );
+      return [];
+    }
     return _conversationsBox!.values.toList();
   }
 
   /// Récupère une conversation spécifique (cache local)
+  /// Retourne null si le cache n'est pas disponible
   Future<AdhaConversation?> getConversation(String conversationId) async {
-    _ensureInitialized();
+    if (!_isBoxAvailable()) {
+      debugPrint('[AdhaRepository] ⚠️ Cache indisponible, null retourné');
+      return null;
+    }
     return _conversationsBox!.get(conversationId);
   }
 
   /// Sauvegarde une conversation (cache local)
+  /// Ne fait rien si le cache n'est pas disponible
   Future<void> saveConversation(AdhaConversation conversation) async {
-    _ensureInitialized();
+    if (!_isBoxAvailable()) {
+      debugPrint('[AdhaRepository] ⚠️ Cache indisponible, sauvegarde ignorée');
+      return;
+    }
     await _conversationsBox!.put(conversation.id, conversation);
   }
 
   /// Supprime une conversation (cache local)
+  /// Ne fait rien si le cache n'est pas disponible
   Future<void> deleteConversation(String conversationId) async {
-    _ensureInitialized();
+    if (!_isBoxAvailable()) {
+      debugPrint('[AdhaRepository] ⚠️ Cache indisponible, suppression ignorée');
+      return;
+    }
     await _conversationsBox!.delete(conversationId);
   }
 

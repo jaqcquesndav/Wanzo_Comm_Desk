@@ -47,23 +47,28 @@ class SaleItem extends Equatable {
 
   /// Code de la devise de la transaction (par exemple, "USD", "CDF")
   @HiveField(5)
+  @JsonKey(defaultValue: 'CDF')
   final String currencyCode;
 
   /// Taux de change vers CDF au moment de la transaction
   /// (Si currencyCode est "CDF", exchangeRate est 1.0)
   @HiveField(6)
+  @JsonKey(defaultValue: 1.0)
   final double exchangeRate;
 
   /// Prix unitaire en CDF
   @HiveField(7)
+  @JsonKey(defaultValue: 0.0)
   final double unitPriceInCdf;
 
   /// Montant total pour cet article en CDF
   @HiveField(8)
+  @JsonKey(defaultValue: 0.0)
   final double totalPriceInCdf;
 
   /// Type d'élément (produit ou service)
   @HiveField(9) // New HiveField index
+  @JsonKey(defaultValue: SaleItemType.product)
   final SaleItemType itemType;
 
   /// Taux de taxe applicable en pourcentage (optionnel)
@@ -87,11 +92,11 @@ class SaleItem extends Equatable {
     required this.unitPrice,
     this.discount,
     required this.totalPrice,
-    required this.currencyCode,
-    required this.exchangeRate,
-    required this.unitPriceInCdf,
-    required this.totalPriceInCdf,
-    required this.itemType,
+    this.currencyCode = 'CDF',
+    this.exchangeRate = 1.0,
+    this.unitPriceInCdf = 0.0,
+    this.totalPriceInCdf = 0.0,
+    this.itemType = SaleItemType.product,
     this.taxRate,
     this.taxAmount,
     this.notes,

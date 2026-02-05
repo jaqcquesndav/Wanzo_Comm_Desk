@@ -6,6 +6,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
+import 'package:wanzo/core/widgets/desktop/responsive_form_container.dart';
+import 'package:wanzo/core/platform/platform_service.dart';
 import '../bloc/settings_bloc.dart';
 import '../bloc/settings_event.dart';
 import '../bloc/settings_state.dart';
@@ -155,173 +157,191 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
             );
           }
         },
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
+        child: ResponsiveFormContainer(
+          maxWidth: 900,
           child: Form(
             key: _formKeyCompany,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Indicateur Business Unit actuelle
-                _buildCurrentBusinessUnitIndicator(context, l10n),
-                const SizedBox(height: 16),
-
-                // Logo de l'entreprise
-                Center(
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[200],
-                          shape: BoxShape.circle,
-                          image:
-                              _companyLogo != null && _companyLogo!.isNotEmpty
-                                  ? DecorationImage(
-                                    image: _getImageProvider(_companyLogo!),
-                                    fit: BoxFit.cover,
-                                  )
-                                  : null,
-                        ),
-                        child:
-                            _companyLogo == null || _companyLogo!.isEmpty
-                                ? Icon(
-                                  _getIconForUnitType(_businessUnitType),
-                                  size: 60,
-                                  color: Colors.grey,
-                                )
-                                : null,
-                      ),
-                      const SizedBox(height: 8),
-                      TextButton.icon(
-                        onPressed: () => _selectLogo(l10n),
-                        icon: const Icon(Icons.add_photo_alternate),
-                        label: Text(l10n.changeLogo),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Nom de l'entreprise
-                TextFormField(
-                  controller: _companyNameController,
-                  decoration: InputDecoration(
-                    labelText: '${l10n.companyName} *',
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.business),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return l10n.companyNameRequired;
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                // Adresse
-                TextFormField(
-                  controller: _companyAddressController,
-                  decoration: InputDecoration(
-                    labelText: l10n.address,
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.location_on),
-                  ),
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 16),
-
-                // Téléphone
-                TextFormField(
-                  controller: _companyPhoneController,
-                  decoration: InputDecoration(
-                    labelText: l10n.phoneNumber,
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.phone),
-                  ),
-                  keyboardType: TextInputType.phone,
-                ),
-                const SizedBox(height: 16),
-
-                // Email
-                TextFormField(
-                  controller: _companyEmailController,
-                  decoration: InputDecoration(
-                    labelText: l10n.email,
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.email),
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value != null && value.isNotEmpty) {
-                      final emailRegex = RegExp(
-                        r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-                      );
-                      if (!emailRegex.hasMatch(value)) {
-                        return l10n.invalidEmail;
-                      }
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                // Numéro d'identification fiscale
-                TextFormField(
-                  controller: _taxNumberController,
-                  decoration: InputDecoration(
-                    labelText: l10n.taxIdentificationNumber,
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.receipt),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Numéro RCCM
-                TextFormField(
-                  controller: _rccmNumberController,
-                  decoration: InputDecoration(
-                    labelText: l10n.rccmNumber,
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.book),
-                    helperText: l10n.rccmHelperText,
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Numéro ID NAT
-                TextFormField(
-                  controller: _idNatNumberController,
-                  decoration: InputDecoration(
-                    labelText: l10n.idNatNumber,
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.assignment_ind),
-                    helperText: l10n.idNatHelperText,
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Section Business Unit
-                _buildBusinessUnitSection(context, l10n),
-                const SizedBox(height: 24),
-
-                // Bouton d'enregistrement
-                if (_hasChanges)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _saveSettings,
-                      child: Text(l10n.saveChanges),
-                    ),
-                  ),
-              ],
-            ),
+            child: _buildFormContent(context, l10n),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildFormContent(BuildContext context, AppLocalizations l10n) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final platform = PlatformService.instance;
+    final isDesktop = screenWidth >= platform.desktopMinWidth;
+    final isTablet = screenWidth >= platform.tabletMinWidth && !isDesktop;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header responsive
+        ResponsiveFormHeader(
+          title: l10n.companyInformation,
+          subtitle: 'Configurez les informations de votre entreprise',
+          icon: Icons.business,
+        ),
+
+        // Indicateur Business Unit actuelle
+        _buildCurrentBusinessUnitIndicator(context, l10n),
+        const SizedBox(height: 24),
+
+        // Logo de l'entreprise (centré)
+        Center(
+          child: Column(
+            children: [
+              Container(
+                width: isDesktop ? 140 : 120,
+                height: isDesktop ? 140 : 120,
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  shape: BoxShape.circle,
+                  image:
+                      _companyLogo != null && _companyLogo!.isNotEmpty
+                          ? DecorationImage(
+                            image: _getImageProvider(_companyLogo!),
+                            fit: BoxFit.cover,
+                          )
+                          : null,
+                ),
+                child:
+                    _companyLogo == null || _companyLogo!.isEmpty
+                        ? Icon(
+                          _getIconForUnitType(_businessUnitType),
+                          size: isDesktop ? 70 : 60,
+                          color: Colors.grey,
+                        )
+                        : null,
+              ),
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: () => _selectLogo(l10n),
+                icon: const Icon(Icons.add_photo_alternate),
+                label: Text(l10n.changeLogo),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 32),
+
+        // Champs en grille sur desktop/tablet
+        ResponsiveFormFields(
+          desktopColumns: 2,
+          tabletColumns: 2,
+          spacing: 20,
+          runSpacing: 20,
+          children: [
+            // Nom de l'entreprise
+            TextFormField(
+              controller: _companyNameController,
+              decoration: InputDecoration(
+                labelText: '${l10n.companyName} *',
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.business),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return l10n.companyNameRequired;
+                }
+                return null;
+              },
+            ),
+            // Email
+            TextFormField(
+              controller: _companyEmailController,
+              decoration: InputDecoration(
+                labelText: l10n.email,
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.email),
+              ),
+              keyboardType: TextInputType.emailAddress,
+              validator: (value) {
+                if (value != null && value.isNotEmpty) {
+                  final emailRegex = RegExp(
+                    r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                  );
+                  if (!emailRegex.hasMatch(value)) {
+                    return l10n.invalidEmail;
+                  }
+                }
+                return null;
+              },
+            ),
+            // Téléphone
+            TextFormField(
+              controller: _companyPhoneController,
+              decoration: InputDecoration(
+                labelText: l10n.phoneNumber,
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.phone),
+              ),
+              keyboardType: TextInputType.phone,
+            ),
+            // Numéro d'identification fiscale
+            TextFormField(
+              controller: _taxNumberController,
+              decoration: InputDecoration(
+                labelText: l10n.taxIdentificationNumber,
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.receipt),
+              ),
+            ),
+            // Numéro RCCM
+            TextFormField(
+              controller: _rccmNumberController,
+              decoration: InputDecoration(
+                labelText: l10n.rccmNumber,
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.book),
+                helperText: l10n.rccmHelperText,
+              ),
+            ),
+            // Numéro ID NAT
+            TextFormField(
+              controller: _idNatNumberController,
+              decoration: InputDecoration(
+                labelText: l10n.idNatNumber,
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.assignment_ind),
+                helperText: l10n.idNatHelperText,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+
+        // Adresse (pleine largeur car multilignes)
+        TextFormField(
+          controller: _companyAddressController,
+          decoration: InputDecoration(
+            labelText: l10n.address,
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.location_on),
+          ),
+          maxLines: 2,
+        ),
+        const SizedBox(height: 24),
+
+        // Section Business Unit
+        _buildBusinessUnitSection(context, l10n),
+        const SizedBox(height: 32),
+
+        // Bouton d'enregistrement
+        if (_hasChanges)
+          Center(
+            child: SizedBox(
+              width: isDesktop || isTablet ? 300 : double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: _saveSettings,
+                icon: const Icon(Icons.save),
+                label: Text(l10n.saveChanges),
+              ),
+            ),
+          ),
+      ],
     );
   }
 

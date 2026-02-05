@@ -186,67 +186,17 @@ class _SalesListScreenState extends State<SalesListScreen> {
           ),
         ),
 
-        // Liste des ventes
+        // Tableau des ventes
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.all(8),
-            itemCount: sales.length,
-            itemBuilder: (context, index) {
-              final sale = sales[index];
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: sale.status.color.withValues(alpha: 0.2),
-                    child: Icon(Icons.receipt_long, color: sale.status.color),
-                  ),
-                  title: Text(
-                    sale.customerName,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        currencyFormat.format(sale.totalAmountInCdf),
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        dateFormat.format(sale.date),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: sale.status.color.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      sale.status.displayName,
-                      style: TextStyle(
-                        color: sale.status.color,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  isThreeLine: true,
-                  onTap: () {
-                    context.pushNamed(
-                      AppRoute.saleDetail.name,
-                      pathParameters: {'id': sale.id},
-                      extra: sale,
-                    );
-                  },
-                ),
+          child: _SalesDataTable(
+            sales: sales,
+            currencyFormat: currencyFormat,
+            dateFormat: dateFormat,
+            onSaleTap: (sale) {
+              context.pushNamed(
+                AppRoute.saleDetail.name,
+                pathParameters: {'id': sale.id},
+                extra: sale,
               );
             },
           ),
@@ -313,6 +263,221 @@ class _SalesListScreenState extends State<SalesListScreen> {
               ],
             );
           },
+        );
+      },
+    );
+  }
+}
+
+/// Widget DataTable pour afficher les ventes
+class _SalesDataTable extends StatelessWidget {
+  final List<Sale> sales;
+  final NumberFormat currencyFormat;
+  final DateFormat dateFormat;
+  final Function(Sale) onSaleTap;
+
+  const _SalesDataTable({
+    required this.sales,
+    required this.currencyFormat,
+    required this.dateFormat,
+    required this.onSaleTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 600;
+
+        return SingleChildScrollView(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: DataTable(
+                columnSpacing: isCompact ? 16 : 32,
+                horizontalMargin: isCompact ? 12 : 24,
+                dataRowMinHeight: 52,
+                dataRowMaxHeight: 72,
+                headingRowColor: WidgetStateProperty.all(
+                  theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.5,
+                  ),
+                ),
+                columns: [
+                  DataColumn(
+                    label: Text(
+                      'Client',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: Text(
+                      'Articles',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    numeric: true,
+                  ),
+                  DataColumn(
+                    label: Text(
+                      'Montant',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    numeric: true,
+                  ),
+                  DataColumn(
+                    label: Text(
+                      'Date',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: Text(
+                      'Statut',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  if (!isCompact)
+                    DataColumn(
+                      label: Text(
+                        'Payé',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      numeric: true,
+                    ),
+                ],
+                rows:
+                    sales.map((sale) {
+                      final itemsCount = sale.items.fold<int>(
+                        0,
+                        (sum, item) => sum + item.quantity,
+                      );
+
+                      return DataRow(
+                        onSelectChanged: (_) => onSaleTap(sale),
+                        cells: [
+                          // Client
+                          DataCell(
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: isCompact ? 100 : 180,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 16,
+                                    backgroundColor: sale.status.color
+                                        .withValues(alpha: 0.2),
+                                    child: Icon(
+                                      Icons.person,
+                                      size: 16,
+                                      color: sale.status.color,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      sale.customerName,
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          // Articles
+                          DataCell(
+                            Text(
+                              '$itemsCount',
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
+                          // Montant
+                          DataCell(
+                            Text(
+                              currencyFormat.format(sale.totalAmountInCdf),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                          // Date
+                          DataCell(
+                            Text(
+                              isCompact
+                                  ? DateFormat('dd/MM').format(sale.date)
+                                  : dateFormat.format(sale.date),
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ),
+                          // Statut
+                          DataCell(
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: sale.status.color.withValues(
+                                  alpha: 0.15,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: sale.status.color.withValues(
+                                    alpha: 0.3,
+                                  ),
+                                ),
+                              ),
+                              child: Text(
+                                sale.status.displayName,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: sale.status.color,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Payé (si pas compact)
+                          if (!isCompact)
+                            DataCell(
+                              Text(
+                                currencyFormat.format(sale.paidAmountInCdf),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color:
+                                      sale.paidAmountInCdf >=
+                                              sale.totalAmountInCdf
+                                          ? Colors.green
+                                          : Colors.orange,
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    }).toList(),
+              ),
+            ),
+          ),
         );
       },
     );

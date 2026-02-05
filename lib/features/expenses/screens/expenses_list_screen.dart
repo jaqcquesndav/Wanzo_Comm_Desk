@@ -190,73 +190,20 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
           ),
         ),
 
-        // Liste des dépenses
+        // Tableau des dépenses
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.all(8),
-            itemCount: expenses.length,
-            itemBuilder: (context, index) {
-              final expense = expenses[index];
-              final categoryColor = _getCategoryColor(expense.category);
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: categoryColor.withValues(alpha: 0.2),
-                    child: Icon(expense.category.icon, color: categoryColor),
-                  ),
-                  title: Text(
-                    expense.motif,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        currencyFormat.format(expense.amount),
-                        style: TextStyle(
-                          color: Colors.red[700],
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        dateFormat.format(expense.date),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: categoryColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      expense.category.displayName,
-                      style: TextStyle(
-                        color: categoryColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  isThreeLine: true,
-                  onTap: () {
-                    final idForNavigation = expense.hiveKey;
-                    if (idForNavigation.isNotEmpty) {
-                      context.pushNamed(
-                        AppRoute.expenseDetail.name,
-                        pathParameters: {'id': idForNavigation},
-                      );
-                    }
-                  },
-                ),
-              );
+          child: _ExpensesDataTable(
+            expenses: expenses,
+            currencyFormat: currencyFormat,
+            dateFormat: dateFormat,
+            onExpenseTap: (expense) {
+              final idForNavigation = expense.hiveKey;
+              if (idForNavigation.isNotEmpty) {
+                context.pushNamed(
+                  AppRoute.expenseDetail.name,
+                  pathParameters: {'id': idForNavigation},
+                );
+              }
             },
           ),
         ),
@@ -373,6 +320,184 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
               ],
             );
           },
+        );
+      },
+    );
+  }
+}
+
+/// Widget DataTable pour afficher les dépenses
+class _ExpensesDataTable extends StatelessWidget {
+  final List<Expense> expenses;
+  final NumberFormat currencyFormat;
+  final DateFormat dateFormat;
+  final Function(Expense) onExpenseTap;
+
+  const _ExpensesDataTable({
+    required this.expenses,
+    required this.currencyFormat,
+    required this.dateFormat,
+    required this.onExpenseTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 600;
+
+        return SingleChildScrollView(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: DataTable(
+                columnSpacing: isCompact ? 16 : 32,
+                horizontalMargin: isCompact ? 12 : 24,
+                dataRowMinHeight: 52,
+                dataRowMaxHeight: 72,
+                headingRowColor: WidgetStateProperty.all(
+                  theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.5,
+                  ),
+                ),
+                columns: [
+                  DataColumn(
+                    label: Text(
+                      'Catégorie',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: Text(
+                      'Motif',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: Text(
+                      'Montant',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    numeric: true,
+                  ),
+                  DataColumn(
+                    label: Text(
+                      'Date',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  if (!isCompact)
+                    DataColumn(
+                      label: Text(
+                        'Moyen paiement',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                ],
+                rows:
+                    expenses.map((expense) {
+                      final categoryColor = _getCategoryColor(expense.category);
+
+                      return DataRow(
+                        onSelectChanged: (_) => onExpenseTap(expense),
+                        cells: [
+                          // Catégorie
+                          DataCell(
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: categoryColor.withValues(
+                                    alpha: 0.2,
+                                  ),
+                                  child: Icon(
+                                    expense.category.icon,
+                                    size: 16,
+                                    color: categoryColor,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: categoryColor.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    expense.category.displayName,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: categoryColor,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Motif
+                          DataCell(
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: isCompact ? 100 : 200,
+                              ),
+                              child: Text(
+                                expense.motif,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                          // Montant
+                          DataCell(
+                            Text(
+                              currencyFormat.format(expense.amount),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red[700],
+                              ),
+                            ),
+                          ),
+                          // Date
+                          DataCell(
+                            Text(
+                              dateFormat.format(expense.date),
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ),
+                          // Moyen de paiement (si pas compact)
+                          if (!isCompact)
+                            DataCell(
+                              Text(
+                                expense.paymentMethod ?? '-',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ),
+                        ],
+                      );
+                    }).toList(),
+              ),
+            ),
+          ),
         );
       },
     );

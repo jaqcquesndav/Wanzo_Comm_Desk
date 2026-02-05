@@ -4,7 +4,7 @@ import 'package:wanzo/utils/theme.dart';
 import '../models/operation_journal_entry.dart';
 import '../widgets/product_operation_image.dart';
 
-/// Widget pour afficher la liste filtrée des opérations du journal
+/// Widget pour afficher la liste filtrée des opérations du journal en format tableau
 class JournalOperationsList extends StatelessWidget {
   final List<OperationJournalEntry> operations;
   final bool isLoading;
@@ -106,69 +106,192 @@ class JournalOperationsList extends StatelessWidget {
       );
     }
 
-    // Liste des opérations
-    return ListView.separated(
-      itemCount: operations.length,
-      separatorBuilder: (context, index) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        final operation = operations[index];
-        return _OperationTile(
-          operation: operation,
-          onTap:
-              onOperationTap != null ? () => onOperationTap!(operation) : null,
-        );
-      },
+    // Affichage en tableau
+    return _OperationsDataTable(
+      operations: operations,
+      onOperationTap: onOperationTap,
     );
   }
 }
 
-/// Tuile individuelle pour une opération
-class _OperationTile extends StatelessWidget {
-  final OperationJournalEntry operation;
-  final VoidCallback? onTap;
+/// Widget tableau pour les opérations
+class _OperationsDataTable extends StatelessWidget {
+  final List<OperationJournalEntry> operations;
+  final Function(OperationJournalEntry)? onOperationTap;
 
-  const _OperationTile({required this.operation, this.onTap});
+  const _OperationsDataTable({required this.operations, this.onOperationTap});
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dateFormat = DateFormat('dd/MM HH:mm');
+    final currencyFormat = NumberFormat.currency(locale: 'fr_FR', symbol: '');
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: WanzoTheme.spacingMd,
-            vertical: WanzoTheme.spacingSm,
-          ),
-          onTap: onTap,
-          leading: _buildOperationIcon(context),
-          title: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth:
-                  constraints.maxWidth * 0.6, // Limiter à 60% de la largeur
+        final isCompact = constraints.maxWidth < 600;
+
+        return SingleChildScrollView(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: DataTable(
+                columnSpacing: isCompact ? 12 : 24,
+                horizontalMargin: isCompact ? 8 : 16,
+                dataRowMinHeight: 48,
+                dataRowMaxHeight: 64,
+                headingRowColor: WidgetStateProperty.all(
+                  theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.5,
+                  ),
+                ),
+                columns: [
+                  const DataColumn(label: Text(''), numeric: false),
+                  DataColumn(
+                    label: Text(
+                      'Description',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: Text(
+                      'Type',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: Text(
+                      'Date',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: Text(
+                      'Montant',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    numeric: true,
+                  ),
+                  if (!isCompact)
+                    DataColumn(
+                      label: Text(
+                        'Solde',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      numeric: true,
+                    ),
+                ],
+                rows:
+                    operations.map((operation) {
+                      final isPositive = operation.amount >= 0;
+                      final amountColor =
+                          isPositive ? WanzoTheme.success : WanzoTheme.danger;
+
+                      return DataRow(
+                        onSelectChanged:
+                            onOperationTap != null
+                                ? (_) => onOperationTap!(operation)
+                                : null,
+                        cells: [
+                          // Icône/Image
+                          DataCell(_buildOperationIcon(context, operation)),
+                          // Description
+                          DataCell(
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: isCompact ? 120 : 200,
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    operation.description,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (operation.productName != null)
+                                    Text(
+                                      operation.productName!,
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme.colorScheme.onSurface
+                                                .withValues(alpha: 0.6),
+                                          ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          // Type
+                          DataCell(_buildTypeChip(context, operation)),
+                          // Date
+                          DataCell(
+                            Text(
+                              dateFormat.format(operation.date),
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ),
+                          // Montant
+                          DataCell(
+                            Text(
+                              '${isPositive ? '+' : ''}${currencyFormat.format(operation.amount)} ${operation.currencyCode}',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: amountColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          // Solde (si pas compact)
+                          if (!isCompact)
+                            DataCell(
+                              Text(
+                                '${currencyFormat.format(operation.getRelevantBalance() ?? 0)} ${operation.currencyCode}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(
+                                    alpha: 0.7,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    }).toList(),
+              ),
             ),
-            child: _buildOperationTitle(context),
           ),
-          subtitle: _buildOperationSubtitle(context),
-          trailing: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth:
-                  constraints.maxWidth * 0.3, // Limiter à 30% de la largeur
-            ),
-            child: _buildAmountWidget(context),
-          ),
-          dense: false,
         );
       },
     );
   }
 
-  Widget _buildOperationIcon(BuildContext context) {
+  Widget _buildOperationIcon(
+    BuildContext context,
+    OperationJournalEntry operation,
+  ) {
     // Pour les opérations liées aux produits, afficher l'image du produit
     if (operation.type == OperationType.saleCash ||
         operation.type == OperationType.saleCredit ||
         operation.type == OperationType.saleInstallment ||
         operation.type == OperationType.stockOut ||
         operation.type == OperationType.stockIn) {
-      return ProductOperationImage(operation: operation, size: 48.0);
+      return ProductOperationImage(operation: operation, size: 36.0);
     }
 
     // Pour les autres opérations, utiliser l'icône générique
@@ -205,157 +328,54 @@ class _OperationTile extends StatelessWidget {
 
     return CircleAvatar(
       backgroundColor: backgroundColor,
-      radius: 24,
-      child: Icon(operation.type.icon, color: iconColor, size: 20),
+      radius: 18,
+      child: Icon(operation.type.icon, color: iconColor, size: 16),
     );
   }
 
-  Widget _buildOperationTitle(BuildContext context) {
+  Widget _buildTypeChip(BuildContext context, OperationJournalEntry operation) {
     final theme = Theme.of(context);
 
-    return Row(
-      children: [
-        Expanded(
-          flex: 3, // Give more space to description
-          child: Text(
-            operation.description,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w500,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        const SizedBox(width: WanzoTheme.spacingSm),
-        Flexible(
-          // Make chip flexible instead of taking fixed space
-          child: _buildTypeChip(context),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildOperationSubtitle(BuildContext context) {
-    final theme = Theme.of(context);
-    final dateFormat = DateFormat.yMd().add_Hm();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 2),
-        Row(
-          children: [
-            Icon(
-              Icons.access_time,
-              size: 12,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              dateFormat.format(operation.date),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
-            ),
-          ],
-        ),
-        if (operation.productName != null) ...[
-          const SizedBox(height: 2),
-          Row(
-            children: [
-              Icon(
-                Icons.person_outline,
-                size: 12,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  operation.productName!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ],
-        if (operation.paymentMethod != null) ...[
-          const SizedBox(height: 2),
-          Row(
-            children: [
-              Icon(
-                Icons.payment,
-                size: 12,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                operation.paymentMethod!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildTypeChip(BuildContext context) {
-    final theme = Theme.of(context);
+    Color chipColor;
+    switch (operation.type) {
+      case OperationType.saleCash:
+      case OperationType.saleCredit:
+      case OperationType.saleInstallment:
+        chipColor = WanzoTheme.success;
+        break;
+      case OperationType.cashOut:
+      case OperationType.supplierPayment:
+        chipColor = WanzoTheme.danger;
+        break;
+      case OperationType.cashIn:
+      case OperationType.customerPayment:
+        chipColor = WanzoTheme.info;
+        break;
+      case OperationType.stockIn:
+        chipColor = Colors.teal;
+        break;
+      case OperationType.stockOut:
+        chipColor = Colors.orange;
+        break;
+      default:
+        chipColor = theme.colorScheme.outline;
+        break;
+    }
 
     return Container(
-      constraints: const BoxConstraints(
-        maxWidth: 80, // Limit chip width to prevent overflow
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: WanzoTheme.spacingSm,
-        vertical: 2,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
+        color: chipColor.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(WanzoTheme.borderRadiusSm),
+        border: Border.all(color: chipColor.withValues(alpha: 0.3)),
       ),
       child: Text(
         operation.type.displayName,
         style: theme.textTheme.labelSmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w500,
+          color: chipColor,
+          fontWeight: FontWeight.w600,
         ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
       ),
-    );
-  }
-
-  Widget _buildAmountWidget(BuildContext context) {
-    final theme = Theme.of(context);
-    final isPositive = operation.amount >= 0;
-    final color = isPositive ? WanzoTheme.success : WanzoTheme.danger;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(
-          '${isPositive ? '+' : ''}${NumberFormat.currency(locale: 'fr_FR', symbol: operation.currencyCode).format(operation.amount)}',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: color,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          '${operation.getBalanceLabel()}: ${NumberFormat.currency(locale: 'fr_FR', symbol: operation.currencyCode).format(operation.getRelevantBalance() ?? 0)}',
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-          ),
-        ),
-      ],
     );
   }
 }

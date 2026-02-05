@@ -184,14 +184,17 @@ class Product extends Equatable {
 
   /// Prix d'achat en CDF
   @HiveField(5)
+  @JsonKey(defaultValue: 0.0)
   final double costPriceInCdf;
 
   /// Prix de vente en CDF
   @HiveField(6)
+  @JsonKey(defaultValue: 0.0)
   final double sellingPriceInCdf;
 
   /// Quantité en stock
   @HiveField(7)
+  @JsonKey(defaultValue: 0.0)
   final double stockQuantity;
 
   /// Unité de mesure
@@ -220,18 +223,22 @@ class Product extends Equatable {
 
   /// Devise dans laquelle les prix ont été saisis
   @HiveField(13)
+  @JsonKey(defaultValue: 'CDF')
   final String inputCurrencyCode;
 
   /// Taux de change utilisé lors de la saisie (par rapport au CDF)
   @HiveField(14)
+  @JsonKey(defaultValue: 1.0)
   final double inputExchangeRate;
 
   /// Prix d'achat dans la devise de saisie
   @HiveField(15)
+  @JsonKey(defaultValue: 0.0)
   final double costPriceInInputCurrency;
 
   /// Prix de vente dans la devise de saisie
   @HiveField(16)
+  @JsonKey(defaultValue: 0.0)
   final double sellingPriceInInputCurrency;
 
   /// Liste des IDs de fournisseurs associés à ce produit

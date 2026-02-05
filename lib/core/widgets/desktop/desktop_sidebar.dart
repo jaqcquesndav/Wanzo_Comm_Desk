@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../constants/colors.dart';
+import '../../services/sync_service.dart';
+import 'package:get_it/get_it.dart';
 
 /// Item de navigation pour le sidebar desktop
 class DesktopNavItem {
@@ -315,6 +318,11 @@ class _DesktopSidebarState extends State<DesktopSidebar>
         children: [
           Divider(color: textColor.withValues(alpha: 0.2), thickness: 1),
           const SizedBox(height: 8),
+
+          // Bouton de synchronisation manuelle
+          _buildSyncButton(context, isExpanded, textColor, isDark),
+
+          const SizedBox(height: 12),
           if (isExpanded)
             Text(
               'Wanzo Desktop v1.0.0',
@@ -335,6 +343,246 @@ class _DesktopSidebarState extends State<DesktopSidebar>
           const SizedBox(height: 8),
         ],
       ),
+    );
+  }
+
+  /// Bouton de synchronisation manuelle avec barre de progression discrète
+  Widget _buildSyncButton(
+    BuildContext context,
+    bool isExpanded,
+    Color textColor,
+    bool isDark,
+  ) {
+    return _SyncButtonWidget(
+      isExpanded: isExpanded,
+      textColor: textColor,
+      isDark: isDark,
+    );
+  }
+}
+
+/// Widget autonome pour le bouton de synchronisation
+/// Utilise SyncService directement au lieu de SyncStatusBloc
+class _SyncButtonWidget extends StatefulWidget {
+  final bool isExpanded;
+  final Color textColor;
+  final bool isDark;
+
+  const _SyncButtonWidget({
+    required this.isExpanded,
+    required this.textColor,
+    required this.isDark,
+  });
+
+  @override
+  State<_SyncButtonWidget> createState() => _SyncButtonWidgetState();
+}
+
+class _SyncButtonWidgetState extends State<_SyncButtonWidget> {
+  bool _isSyncing = false;
+  bool _hasError = false;
+  SyncService? _syncService;
+  StreamSubscription<SyncStatus>? _syncStatusSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _initSyncService();
+  }
+
+  void _initSyncService() {
+    try {
+      _syncService = GetIt.instance<SyncService>();
+      // Écouter les changements de statut de synchronisation
+      _syncStatusSubscription = _syncService!.syncStatus.listen((status) {
+        if (mounted) {
+          setState(() {
+            _isSyncing = status == SyncStatus.syncing;
+            _hasError = status == SyncStatus.failed;
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('SyncService non disponible via GetIt: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _syncStatusSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _triggerManualSync() async {
+    if (_isSyncing || _syncService == null) return;
+
+    setState(() {
+      _isSyncing = true;
+      _hasError = false;
+    });
+
+    try {
+      final success = await _syncService!.syncData();
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+          _hasError = !success;
+        });
+
+        // Afficher un message de succès
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Synchronisation terminée avec succès'),
+              backgroundColor: WanzoColors.success,
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+          _hasError = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur de synchronisation: $e'),
+            backgroundColor: WanzoColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isExpanded = widget.isExpanded;
+    final textColor = widget.textColor;
+    final isDark = widget.isDark;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Bouton de sync
+        Tooltip(
+          message:
+              _isSyncing
+                  ? 'Synchronisation en cours...'
+                  : _hasError
+                  ? 'Erreur de synchronisation. Réessayer'
+                  : 'Synchroniser les données',
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _isSyncing ? null : _triggerManualSync,
+              borderRadius: BorderRadius.circular(12),
+              hoverColor: textColor.withValues(alpha: 0.1),
+              splashColor: WanzoColors.primary.withValues(alpha: 0.2),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: EdgeInsets.symmetric(
+                  horizontal: isExpanded ? 12 : 8,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color:
+                      _isSyncing
+                          ? WanzoColors.primary.withValues(alpha: 0.15)
+                          : _hasError
+                          ? Colors.red.withValues(alpha: 0.1)
+                          : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color:
+                        _isSyncing
+                            ? WanzoColors.primary.withValues(alpha: 0.4)
+                            : _hasError
+                            ? Colors.red.withValues(alpha: 0.4)
+                            : textColor.withValues(alpha: 0.2),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment:
+                      isExpanded
+                          ? MainAxisAlignment.start
+                          : MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Icône animée pendant la sync
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child:
+                          _isSyncing
+                              ? SizedBox(
+                                key: const ValueKey('syncing'),
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    isDark ? WanzoColors.primary : Colors.white,
+                                  ),
+                                ),
+                              )
+                              : Icon(
+                                key: const ValueKey('sync_icon'),
+                                _hasError ? Icons.sync_problem : Icons.sync,
+                                color:
+                                    _hasError
+                                        ? Colors.red.withValues(alpha: 0.8)
+                                        : textColor.withValues(alpha: 0.7),
+                                size: 18,
+                              ),
+                    ),
+
+                    if (isExpanded) ...[
+                      const SizedBox(width: 10),
+                      Text(
+                        _isSyncing ? 'Sync...' : 'Sync',
+                        style: TextStyle(
+                          color:
+                              _hasError
+                                  ? Colors.red.withValues(alpha: 0.8)
+                                  : textColor.withValues(alpha: 0.75),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // Barre de progression discrète en dessous du bouton
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          height: _isSyncing ? 3 : 0,
+          margin: const EdgeInsets.only(top: 2),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child:
+                _isSyncing
+                    ? LinearProgressIndicator(
+                      backgroundColor: textColor.withValues(alpha: 0.1),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        isDark
+                            ? WanzoColors.primary
+                            : Colors.white.withValues(alpha: 0.8),
+                      ),
+                    )
+                    : const SizedBox.shrink(),
+          ),
+        ),
+      ],
     );
   }
 }

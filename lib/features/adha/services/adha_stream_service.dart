@@ -97,20 +97,24 @@ class AdhaStreamService {
   /// S'assure que la connexion WebSocket est active
   ///
   /// Reconecte automatiquement si nécessaire.
+  /// [authToken] - Token JWT optionnel pour la reconnexion (si pas de token stocké)
   /// Retourne true si la connexion est active, false sinon.
-  Future<bool> ensureConnected() async {
+  Future<bool> ensureConnected({String? authToken}) async {
     if (isConnected) {
       debugPrint('[AdhaStreamService] ✅ Connexion déjà active');
       return true;
     }
 
-    if (_authToken == null || _authToken!.isEmpty) {
+    // Utiliser le token fourni ou le token stocké
+    final tokenToUse = authToken ?? _authToken;
+
+    if (tokenToUse == null || tokenToUse.isEmpty) {
       debugPrint('[AdhaStreamService] ❌ Pas de token pour reconnecter');
       return false;
     }
 
     debugPrint('[AdhaStreamService] 🔄 Reconnexion nécessaire...');
-    await connect(_authToken!);
+    await connect(tokenToUse);
 
     // Attendre un peu pour que la connexion soit établie
     int attempts = 0;
