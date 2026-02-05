@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Configuration des variables d'environnement pour l'application Wanzo
@@ -75,10 +76,10 @@ class EnvConfig {
     // Si l'URL contient toujours localhost mais qu'aucune adresse IP n'est configurée,
     // c'est probablement une erreur de configuration
     if (url.contains('localhost')) {
-      print(
+      debugPrint(
         'ATTENTION: URL avec "localhost" utilisée sur un appareil mobile: $url',
       );
-      print(
+      debugPrint(
         'Définissez DEV_IP_ADDRESS dans votre fichier .env ou utilisez une URL absolue.',
       );
     }

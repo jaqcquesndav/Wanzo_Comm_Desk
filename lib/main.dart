@@ -8,6 +8,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // Support SQLite pour Windows/Linux
 
 import 'package:wanzo/core/navigation/app_router.dart';
 import 'package:wanzo/core/services/api_client.dart';
@@ -78,6 +79,13 @@ import 'package:wanzo/features/settings/bloc/settings_event.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialiser sqflite_ffi pour Windows/Linux desktop
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    debugPrint('Main: SQLite FFI initialized for desktop platform');
+  }
 
   try {
     // 1. Chargement de la configuration (critique - doit être séquentiel)

@@ -681,24 +681,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         // Déterminer le nombre de colonnes dynamiquement
         int crossAxisCount;
-        double cardAspectRatio;
 
         if (availableWidth < mobileBreakpoint) {
           // Très petit écran: 1 colonne
           crossAxisCount = 1;
-          cardAspectRatio = 3.0;
         } else if (availableWidth < tabletBreakpoint) {
           // Mobile: 2 colonnes
           crossAxisCount = 2;
-          cardAspectRatio = 1.8;
         } else if (availableWidth < desktopBreakpoint) {
           // Tablet: 3 colonnes
           crossAxisCount = 3;
-          cardAspectRatio = 1.5;
         } else {
           // Desktop: 5 colonnes (toutes les cartes sur une ligne)
           crossAxisCount = 5;
-          cardAspectRatio = 1.3;
         }
 
         final kpiCards = [
@@ -765,7 +760,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               // Graphique à gauche avec contraintes minimales
               Expanded(
-                flex: 2,
+                flex: 3,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(
                     minWidth: 300,
@@ -779,25 +774,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: WanzoSpacing.md),
-              // Colonne des KPI à droite
-              Expanded(
-                flex: 1,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minWidth: minCardWidth,
-                    maxWidth: maxCardWidth * 1.5,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (int i = 0; i < kpiCards.length; i++) ...[
-                        kpiCards[i],
-                        if (i < kpiCards.length - 1)
-                          const SizedBox(height: WanzoSpacing.sm),
-                      ],
+              const SizedBox(width: WanzoSpacing.sm),
+              // Colonne des KPI à droite - compacte
+              SizedBox(
+                width: 160, // Largeur fixe compacte
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (int i = 0; i < kpiCards.length; i++) ...[
+                      kpiCards[i],
+                      if (i < kpiCards.length - 1)
+                        const SizedBox(height: WanzoSpacing.xs),
                     ],
-                  ),
+                  ],
                 ),
               ),
             ],
@@ -808,20 +797,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Grille adaptative des KPI
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: crossAxisCount,
-                mainAxisSpacing: WanzoSpacing.sm,
-                crossAxisSpacing: WanzoSpacing.sm,
-                childAspectRatio: cardAspectRatio,
-              ),
-              itemCount: kpiCards.length,
-              itemBuilder: (context, index) => kpiCards[index],
+            // Wrap adaptatif des KPI - taille basée sur contenu
+            Wrap(
+              spacing: WanzoSpacing.sm,
+              runSpacing: WanzoSpacing.sm,
+              alignment: WrapAlignment.center,
+              children:
+                  kpiCards.map((card) {
+                    // Largeur calculée pour s'adapter au nombre de colonnes
+                    final cardWidth =
+                        (availableWidth -
+                            (crossAxisCount - 1) * WanzoSpacing.sm) /
+                        crossAxisCount;
+                    return SizedBox(
+                      width: cardWidth.clamp(minCardWidth, maxCardWidth),
+                      child: card,
+                    );
+                  }).toList(),
             ),
-            const SizedBox(height: WanzoSpacing.lg),
+            const SizedBox(height: WanzoSpacing.md),
             // Graphique avec contraintes minimales
             ConstrainedBox(
               constraints: const BoxConstraints(minHeight: 250),
@@ -833,7 +827,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Carte KPI responsive qui s'adapte à la taille disponible
+  /// Carte KPI responsive compacte qui s'adapte à la taille disponible
   Widget _buildResponsiveStatCard(
     BuildContext context, {
     required String title,
@@ -847,46 +841,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final theme = Theme.of(context);
 
     return Card(
-      elevation: 2,
+      elevation: 1,
+      margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(WanzoBorderRadius.md),
+        borderRadius: BorderRadius.circular(WanzoBorderRadius.sm),
       ),
       child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: isCompact ? WanzoSpacing.sm : WanzoSpacing.md,
-          vertical: isCompact ? WanzoSpacing.xs : WanzoSpacing.sm,
-        ),
+        padding: EdgeInsets.all(isCompact ? WanzoSpacing.xs : WanzoSpacing.sm),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Titre et icône
+            // Titre et icône sur une ligne compacte
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                Icon(icon, color: color, size: isCompact ? 14 : 16),
+                const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      fontSize: isCompact ? 10 : 11,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      fontSize: isCompact ? 9 : 10,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                   ),
                 ),
-                Icon(icon, color: color, size: isCompact ? 14 : 16),
               ],
             ),
-            SizedBox(height: isCompact ? 2 : WanzoSpacing.xs / 2),
-            // Valeur - FittedBox pour éviter l'overflow
+            const SizedBox(height: 4),
+            // Valeur principale - FittedBox pour éviter l'overflow
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: Text(
                 value,
-                style: theme.textTheme.headlineSmall?.copyWith(
+                style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: color,
                   fontSize: isCompact ? 14 : 16,
@@ -898,33 +890,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
             if (subtitle != null)
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    subtitle,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontSize: isCompact ? 8 : 9,
-                      color: Colors.green.shade700,
-                      fontStyle: FontStyle.italic,
-                    ),
+                child: Text(
+                  subtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontSize: isCompact ? 8 : 9,
+                    color: Colors.green.shade700,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-            SizedBox(height: isCompact ? 2 : WanzoSpacing.xs / 2),
-            // Lien "Voir détails"
-            InkWell(
-              onTap: () {
-                debugPrint('Voir détails pour: $title');
-              },
-              child: Text(
-                l10n.dashboardCardViewDetails,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.primaryColor,
-                  fontSize: isCompact ? 9 : 10,
-                ),
-              ),
-            ),
           ],
         ),
       ),

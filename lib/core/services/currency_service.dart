@@ -1,4 +1,5 @@
 // filepath: c:\\Users\\DevSpace\\Flutter\\wanzo\\lib\\core\\services\\currency_service.dart
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../enums/currency_enum.dart';
@@ -20,7 +21,9 @@ class CurrencyService {
           jsonDecode(settingsString),
         );
       } catch (e) {
-        print('Error loading currency settings: $e. Using default settings.');
+        debugPrint(
+          'Error loading currency settings: $e. Using default settings.',
+        );
         _currentSettings = CurrencySettings.defaultSettings();
         // Optionally, clear the corrupted setting
         // await prefs.remove(_settingsKey);

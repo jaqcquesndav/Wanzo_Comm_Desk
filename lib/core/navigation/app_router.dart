@@ -97,9 +97,9 @@ class AppRouter {
         builder: (context, state) => const Auth0RedirectScreen(),
       ),
       // Routes legacy - redirigent vers auth0_info pour compatibilité
+      // Note: forgot-password n'est plus nécessaire car géré par Auth0 Universal Login
       GoRoute(path: '/login', redirect: (_, __) => '/auth0_info'),
       GoRoute(path: '/signup', redirect: (_, __) => '/auth0_info'),
-      GoRoute(path: '/forgot-password', redirect: (_, __) => '/auth0_info'),
       GoRoute(
         path: '/dashboard',
         builder: (context, state) => const DashboardScreen(),

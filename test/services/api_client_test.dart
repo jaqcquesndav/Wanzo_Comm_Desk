@@ -6,11 +6,14 @@ import 'package:wanzo/features/auth/services/auth0_service.dart';
 
 // Mock classes
 class MockHttpClient extends Mock implements http.Client {}
+
 class MockAuth0Service extends Mock implements Auth0Service {}
 
 void main() {
   group('ApiClient', () {
+    // ignore: unused_local_variable
     late ApiClient apiClient;
+    // ignore: unused_local_variable
     late MockHttpClient mockHttpClient;
 
     setUp(() {

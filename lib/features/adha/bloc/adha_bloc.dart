@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:async';
+import '../../../core/services/api_client.dart';
 import '../repositories/adha_repository.dart';
 import '../../auth/repositories/auth_repository.dart'; // Corrected path
 import '../../dashboard/repositories/operation_journal_repository.dart'; // Corrected path
@@ -1051,12 +1055,37 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     );
   }
 
-  /// Récupère le token d'authentification
+  /// Récupère le token d'authentification JWT pour les requêtes authentifiées
   Future<String> _getAuthToken() async {
-    // Implémentation à adapter selon votre système d'auth
-    final user = await authRepository.getCurrentUser();
-    // Utilisation d'un field qui existe dans le modèle User
-    return user?.id ?? ''; // ou user?.email ?? '' selon votre implémentation
+    try {
+      // Option 1: Via ApiClient configuré (utilise Auth0Service ou fallback storage)
+      final headers = await ApiClient().getHeaders(requiresAuth: true);
+      final authHeader = headers[HttpHeaders.authorizationHeader];
+      if (authHeader != null && authHeader.startsWith('Bearer ')) {
+        final token = authHeader.substring(7); // Retirer "Bearer "
+        if (token.isNotEmpty) {
+          debugPrint('[AdhaBloc] Token JWT récupéré via ApiClient');
+          return token;
+        }
+      }
+
+      // Option 2: Fallback direct vers secure storage (pour Desktop)
+      const storage = FlutterSecureStorage();
+      final token =
+          await storage.read(key: 'desktop_access_token') ??
+          await storage.read(key: 'access_token') ??
+          await storage.read(key: 'auth_token');
+      if (token != null && token.isNotEmpty) {
+        debugPrint('[AdhaBloc] Token JWT récupéré via FlutterSecureStorage');
+        return token;
+      }
+
+      debugPrint('[AdhaBloc] ⚠️ Aucun token JWT trouvé');
+      return '';
+    } catch (e) {
+      debugPrint('[AdhaBloc] Erreur récupération token: $e');
+      return '';
+    }
   }
 
   // ============================================================================

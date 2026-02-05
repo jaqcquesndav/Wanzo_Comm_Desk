@@ -18,7 +18,11 @@ class LocalAuthServer {
   final Completer<AuthorizationResponse> _completer =
       Completer<AuthorizationResponse>();
 
-  /// Port sur lequel le serveur écoute (0 = port automatique)
+  /// Port fixe pour le callback OAuth - doit correspondre à la config Auth0
+  /// Les ports à essayer dans l'ordre (le premier disponible sera utilisé)
+  static const List<int> _preferredPorts = [8089, 8090, 8091, 8092, 8093];
+
+  /// Port sur lequel le serveur écoute
   int? _port;
 
   /// Timeout pour l'attente du callback (défaut: 5 minutes)
@@ -38,9 +42,26 @@ class LocalAuthServer {
   /// ou une erreur si l'authentification a échoué.
   Future<AuthorizationResponse> startAndWaitForCallback() async {
     try {
-      // Trouver un port disponible
-      _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      _port = _server!.port;
+      // Essayer les ports préférés dans l'ordre
+      for (final port in _preferredPorts) {
+        try {
+          _server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
+          _port = port;
+          break;
+        } catch (e) {
+          debugPrint('LocalAuthServer: Port $port busy, trying next...');
+          continue;
+        }
+      }
+
+      // Si aucun port préféré n'est disponible, utiliser un port dynamique
+      if (_server == null) {
+        debugPrint(
+          'LocalAuthServer: All preferred ports busy, using dynamic port',
+        );
+        _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        _port = _server!.port;
+      }
 
       debugPrint('LocalAuthServer: Started on port $_port');
       debugPrint('LocalAuthServer: Callback URL: $callbackUrl');

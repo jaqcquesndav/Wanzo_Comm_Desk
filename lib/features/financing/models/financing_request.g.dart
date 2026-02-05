@@ -44,9 +44,10 @@ class FinancingRequestAdapter extends TypeAdapter<FinancingRequest> {
       durationUnit: fields[24] as String?,
       proposedStartDate: fields[25] as DateTime?,
       financialData: (fields[26] as Map?)?.cast<String, dynamic>(),
-      guarantees: (fields[27] as List?)
-          ?.map((dynamic e) => (e as Map).cast<String, dynamic>())
-          ?.toList(),
+      guarantees:
+          (fields[27] as List?)
+              ?.map((dynamic e) => (e as Map).cast<String, dynamic>())
+              .toList(),
       requestNumber: fields[28] as String?,
       statusDate: fields[29] as DateTime?,
       creditScore: fields[30] as int?,

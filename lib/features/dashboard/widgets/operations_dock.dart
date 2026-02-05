@@ -116,73 +116,79 @@ class _OperationsDockState extends State<OperationsDock>
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: WanzoSpacing.md,
-        vertical: WanzoSpacing.sm,
+        vertical:
+            WanzoSpacing.md, // Plus d'espace vertical pour l'animation de hover
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Bouton de réduction
-          _buildDockItem(
-            context: context,
-            icon: Icons.keyboard_arrow_down,
-            label: '',
-            onTap: _toggleExpanded,
-            color: theme.colorScheme.outline,
-            isCollapseButton: true,
-          ),
-          const SizedBox(width: WanzoSpacing.xs),
-          Container(
-            width: 1,
-            height: 40,
-            color: theme.colorScheme.outline.withValues(alpha: 0.3),
-          ),
-          const SizedBox(width: WanzoSpacing.sm),
-          // Actions rapides
-          _buildDockItem(
-            context: context,
-            icon: Icons.add_shopping_cart,
-            label: l10n.dashboardQuickActionsNewInvoice,
-            onTap: () => context.push('/sales/add'),
-            color: Colors.green,
-          ),
-          _buildDockItem(
-            context: context,
-            icon: Icons.inventory_2,
-            label: l10n.addProductTitle,
-            onTap: () => context.push('/inventory/add'),
-            color: Colors.orange,
-          ),
-          _buildDockItem(
-            context: context,
-            icon: Icons.monetization_on,
-            label: l10n.dashboardQuickActionsNewFinancing,
-            onTap: () => context.push('/financing/add'),
-            color: Colors.teal,
-          ),
-          _buildDockItem(
-            context: context,
-            icon: Icons.receipt_long,
-            label: l10n.dashboardQuickActionsNewExpense,
-            onTap: () => context.push('/expenses/add'),
-            color: Colors.redAccent,
-          ),
-          _buildDockItem(
-            context: context,
-            icon: Icons.person_add_alt_1,
-            label: l10n.dashboardQuickActionsNewClient,
-            onTap:
-                () => FormNavigationService.instance.openCustomerForm(context),
-            color: Colors.blueAccent,
-          ),
-          _buildDockItem(
-            context: context,
-            icon: Icons.store,
-            label: l10n.dashboardQuickActionsNewSupplier,
-            onTap:
-                () => FormNavigationService.instance.openSupplierForm(context),
-            color: Colors.purpleAccent,
-          ),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Bouton de réduction
+            _buildDockItem(
+              context: context,
+              icon: Icons.keyboard_arrow_down,
+              label: '',
+              onTap: _toggleExpanded,
+              color: theme.colorScheme.outline,
+              isCollapseButton: true,
+            ),
+            const SizedBox(width: WanzoSpacing.xs),
+            Container(
+              width: 1,
+              height: 40,
+              color: theme.colorScheme.outline.withValues(alpha: 0.3),
+            ),
+            const SizedBox(width: WanzoSpacing.sm),
+            // Actions rapides
+            _buildDockItem(
+              context: context,
+              icon: Icons.add_shopping_cart,
+              label: l10n.dashboardQuickActionsNewInvoice,
+              onTap: () => context.push('/sales/add'),
+              color: Colors.green,
+            ),
+            _buildDockItem(
+              context: context,
+              icon: Icons.inventory_2,
+              label: l10n.addProductTitle,
+              onTap: () => context.push('/inventory/add'),
+              color: Colors.orange,
+            ),
+            _buildDockItem(
+              context: context,
+              icon: Icons.monetization_on,
+              label: l10n.dashboardQuickActionsNewFinancing,
+              onTap: () => context.push('/financing/add'),
+              color: Colors.teal,
+            ),
+            _buildDockItem(
+              context: context,
+              icon: Icons.receipt_long,
+              label: l10n.dashboardQuickActionsNewExpense,
+              onTap: () => context.push('/expenses/add'),
+              color: Colors.redAccent,
+            ),
+            _buildDockItem(
+              context: context,
+              icon: Icons.person_add_alt_1,
+              label: l10n.dashboardQuickActionsNewClient,
+              onTap:
+                  () =>
+                      FormNavigationService.instance.openCustomerForm(context),
+              color: Colors.blueAccent,
+            ),
+            _buildDockItem(
+              context: context,
+              icon: Icons.store,
+              label: l10n.dashboardQuickActionsNewSupplier,
+              onTap:
+                  () =>
+                      FormNavigationService.instance.openSupplierForm(context),
+              color: Colors.purpleAccent,
+            ),
+          ],
+        ),
       ),
     );
   }

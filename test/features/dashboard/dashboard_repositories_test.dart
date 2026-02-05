@@ -12,9 +12,13 @@ import 'package:bloc_test/bloc_test.dart';
 
 // Manual mock implementations
 class MockSalesRepository extends Mock implements SalesRepository {}
+
 class MockCustomerRepository extends Mock implements CustomerRepository {}
+
 class MockTransactionRepository extends Mock implements TransactionRepository {}
+
 class MockExpenseRepository extends Mock implements ExpenseRepository {}
+
 class MockDashboardApiService extends Mock implements DashboardApiService {}
 
 void main() {
@@ -30,23 +34,32 @@ void main() {
       salesRepository = SalesRepository();
     });
 
-    test('getUniqueCustomersCountForDateRange should return a number', () async {
-      // Initialize repositories
-      await customerRepository.init();
-      await salesRepository.init();
+    test(
+      'getUniqueCustomersCountForDateRange should return a number',
+      () async {
+        // Initialize repositories
+        await customerRepository.init();
+        await salesRepository.init();
 
-      final today = DateTime.now();
-      final startOfDay = DateTime(today.year, today.month, today.day);
-      final endOfDay = DateTime(today.year, today.month, today.day, 23, 59, 59);
+        final today = DateTime.now();
+        final startOfDay = DateTime(today.year, today.month, today.day);
+        final endOfDay = DateTime(
+          today.year,
+          today.month,
+          today.day,
+          23,
+          59,
+          59,
+        );
 
-      // This should return a non-negative integer
-      final count = await customerRepository.getUniqueCustomersCountForDateRange(
-        startOfDay, endOfDay
-      );
+        // This should return a non-negative integer
+        final count = await customerRepository
+            .getUniqueCustomersCountForDateRange(startOfDay, endOfDay);
 
-      expect(count, isA<int>());
-      expect(count, greaterThanOrEqualTo(0));
-    });
+        expect(count, isA<int>());
+        expect(count, greaterThanOrEqualTo(0));
+      },
+    );
   });
 
   group('TransactionRepository Tests', () {
@@ -56,22 +69,31 @@ void main() {
       transactionRepository = TransactionRepository();
     });
 
-    test('getTotalExpensesForDateRange should handle errors gracefully', () async {
-      // Initialize repository
-      await transactionRepository.init();
+    test(
+      'getTotalExpensesForDateRange should handle errors gracefully',
+      () async {
+        // Initialize repository
+        await transactionRepository.init();
 
-      final today = DateTime.now();
-      final startOfDay = DateTime(today.year, today.month, today.day);
-      final endOfDay = DateTime(today.year, today.month, today.day, 23, 59, 59);
+        final today = DateTime.now();
+        final startOfDay = DateTime(today.year, today.month, today.day);
+        final endOfDay = DateTime(
+          today.year,
+          today.month,
+          today.day,
+          23,
+          59,
+          59,
+        );
 
-      // This should not throw any exception and return a valid double
-      final expenses = await transactionRepository.getTotalExpensesForDateRange(
-        startOfDay, endOfDay
-      );
+        // This should not throw any exception and return a valid double
+        final expenses = await transactionRepository
+            .getTotalExpensesForDateRange(startOfDay, endOfDay);
 
-      expect(expenses, isA<double>());
-      expect(expenses, greaterThanOrEqualTo(0));
-    });
+        expect(expenses, isA<double>());
+        expect(expenses, greaterThanOrEqualTo(0));
+      },
+    );
   });
 
   group('DashboardApiService Tests', () {
@@ -81,26 +103,38 @@ void main() {
     late ExpenseRepository mockExpenseRepository;
     late DashboardApiService dashboardApiService;
 
-    setUp(() {      // Create mock repositories for unit testing
+    setUp(() {
+      // Create mock repositories for unit testing
       mockSalesRepository = MockSalesRepository();
       mockCustomerRepository = MockCustomerRepository();
       mockTransactionRepository = MockTransactionRepository();
       mockExpenseRepository = MockExpenseRepository();
 
       // Create test dates to use as concrete values instead of 'any'
+      // ignore: unused_local_variable
       final testDate = DateTime(2025, 6, 7);
       final startOfDay = DateTime(2025, 6, 7, 0, 0, 0);
       final endOfDay = DateTime(2025, 6, 7, 23, 59, 59);
 
       // Configure the mock repositories to return test data with concrete date parameters
-      when(mockSalesRepository.getSalesByDateRange(startOfDay, endOfDay))
-          .thenAnswer((_) async => []);
-      when(mockSalesRepository.getTotalReceivables())
-          .thenAnswer((_) async => 5000.0);
-      when(mockCustomerRepository.getUniqueCustomersCountForDateRange(startOfDay, endOfDay))
-          .thenAnswer((_) async => 10);
-      when(mockTransactionRepository.getTotalExpensesForDateRange(startOfDay, endOfDay))
-          .thenAnswer((_) async => 2000.0);
+      when(
+        mockSalesRepository.getSalesByDateRange(startOfDay, endOfDay),
+      ).thenAnswer((_) async => []);
+      when(
+        mockSalesRepository.getTotalReceivables(),
+      ).thenAnswer((_) async => 5000.0);
+      when(
+        mockCustomerRepository.getUniqueCustomersCountForDateRange(
+          startOfDay,
+          endOfDay,
+        ),
+      ).thenAnswer((_) async => 10);
+      when(
+        mockTransactionRepository.getTotalExpensesForDateRange(
+          startOfDay,
+          endOfDay,
+        ),
+      ).thenAnswer((_) async => 2000.0);
 
       // Create the service with mock repositories
       dashboardApiService = DashboardApiService(
@@ -112,13 +146,15 @@ void main() {
     });
 
     test('getDashboardData should return a valid ApiResponse', () async {
-      final response = await dashboardApiService.getDashboardData(DateTime.now());
+      final response = await dashboardApiService.getDashboardData(
+        DateTime.now(),
+      );
 
       expect(response, isA<ApiResponse<DashboardData>>());
       expect(response.success, isTrue);
       expect(response.data, isNotNull);
       expect(response.statusCode, 200);
-      
+
       if (response.data != null) {
         expect(response.data!.clientsServedToday, 10);
         expect(response.data!.receivables, 5000.0);
@@ -127,7 +163,9 @@ void main() {
     });
 
     test('getClientsServedToday should return a valid count', () async {
-      final response = await dashboardApiService.getClientsServedToday(DateTime.now());
+      final response = await dashboardApiService.getClientsServedToday(
+        DateTime.now(),
+      );
 
       expect(response, isA<ApiResponse<int>>());
       expect(response.success, isTrue);
@@ -143,7 +181,9 @@ void main() {
     });
 
     test('getExpensesToday should return a valid amount', () async {
-      final response = await dashboardApiService.getExpensesToday(DateTime.now());
+      final response = await dashboardApiService.getExpensesToday(
+        DateTime.now(),
+      );
 
       expect(response, isA<ApiResponse<double>>());
       expect(response.success, isTrue);
@@ -155,23 +195,25 @@ void main() {
     late DashboardApiService mockDashboardApiService;
     late DashboardBloc dashboardBloc;
 
-    setUp(() {      mockDashboardApiService = MockDashboardApiService();
+    setUp(() {
+      mockDashboardApiService = MockDashboardApiService();
 
       // Configure the mock service to return test data with a specific date
       final testDate = DateTime(2025, 6, 7);
-      when(mockDashboardApiService.getDashboardData(testDate))
-          .thenAnswer((_) async => ApiResponse<DashboardData>(
-                success: true,
-                data: DashboardData(
-                  salesTodayCdf: 10000.0,
-                  salesTodayUsd: 50.0,
-                  clientsServedToday: 15,
-                  receivables: 8000.0,
-                  expenses: 3000.0,
-                ),
-                message: 'Test data loaded',
-                statusCode: 200,
-              ));
+      when(mockDashboardApiService.getDashboardData(testDate)).thenAnswer(
+        (_) async => ApiResponse<DashboardData>(
+          success: true,
+          data: DashboardData(
+            salesTodayCdf: 10000.0,
+            salesTodayUsd: 50.0,
+            clientsServedToday: 15,
+            receivables: 8000.0,
+            expenses: 3000.0,
+          ),
+          message: 'Test data loaded',
+          statusCode: 200,
+        ),
+      );
 
       // Create the bloc with required repositories
       // The real repositories are passed but won't be used since we're mocking the service
@@ -185,14 +227,12 @@ void main() {
 
     tearDown(() {
       dashboardBloc.close();
-    });    blocTest<DashboardBloc, DashboardState>(
+    });
+    blocTest<DashboardBloc, DashboardState>(
       'emits [DashboardLoading, DashboardLoaded] when LoadDashboardData is added',
       build: () => dashboardBloc,
       act: (bloc) => bloc.add(LoadDashboardData(date: DateTime(2025, 6, 7))),
-      expect: () => [
-        isA<DashboardLoading>(),
-        isA<DashboardLoaded>(),
-      ],
+      expect: () => [isA<DashboardLoading>(), isA<DashboardLoaded>()],
     );
   });
 }

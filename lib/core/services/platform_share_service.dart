@@ -67,6 +67,12 @@ class PlatformShareService {
 
       if (Platform.isLinux) {
         // Linux ne supporte pas le partage de fichiers, proposer alternatives
+        if (!context.mounted) {
+          return const ShareResult(
+            'Context not mounted',
+            ShareResultStatus.unavailable,
+          );
+        }
         return await _handleLinuxShare(filePath, subject, text, context);
       }
 
@@ -79,6 +85,12 @@ class PlatformShareService {
     } on MissingPluginException catch (e) {
       debugPrint('[PlatformShareService] MissingPluginException: $e');
       // Fallback: proposer d'enregistrer ou d'imprimer
+      if (!context.mounted) {
+        return const ShareResult(
+          'Context not mounted',
+          ShareResultStatus.unavailable,
+        );
+      }
       return await _handleMissingPluginFallback(
         filePath,
         subject,
@@ -87,6 +99,12 @@ class PlatformShareService {
       );
     } on PlatformException catch (e) {
       debugPrint('[PlatformShareService] PlatformException: $e');
+      if (!context.mounted) {
+        return const ShareResult(
+          'Context not mounted',
+          ShareResultStatus.unavailable,
+        );
+      }
       return await _handleMissingPluginFallback(
         filePath,
         subject,
@@ -135,41 +153,42 @@ class PlatformShareService {
     // Sur Linux, proposer d'ouvrir le fichier ou de copier le chemin
     final result = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Partager le document'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Le partage de fichiers n\'est pas disponible sur Linux. '
-              'Choisissez une alternative:',
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Partager le document'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Le partage de fichiers n\'est pas disponible sur Linux. '
+                  'Choisissez une alternative:',
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Fichier: ${filePath.split(Platform.pathSeparator).last}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Fichier: ${filePath.split(Platform.pathSeparator).last}',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('copy'),
-            child: const Text('Copier le chemin'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop('copy'),
+                child: const Text('Copier le chemin'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop('open'),
+                child: const Text('Ouvrir le dossier'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop('print'),
+                child: const Text('Imprimer'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop('cancel'),
+                child: const Text('Annuler'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('open'),
-            child: const Text('Ouvrir le dossier'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('print'),
-            child: const Text('Imprimer'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('cancel'),
-            child: const Text('Annuler'),
-          ),
-        ],
-      ),
     );
 
     switch (result) {
@@ -203,41 +222,42 @@ class PlatformShareService {
     // Proposer des alternatives
     final result = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Partage non disponible'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Le partage direct n\'est pas disponible sur cette plateforme. '
-              'Choisissez une alternative:',
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Partage non disponible'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Le partage direct n\'est pas disponible sur cette plateforme. '
+                  'Choisissez une alternative:',
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Document: ${filePath.split(Platform.pathSeparator).last}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Document: ${filePath.split(Platform.pathSeparator).last}',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('save'),
-            child: const Text('Enregistrer dans Documents'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop('save'),
+                child: const Text('Enregistrer dans Documents'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop('print'),
+                child: const Text('Imprimer'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop('copy'),
+                child: const Text('Copier le chemin'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop('cancel'),
+                child: const Text('Annuler'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('print'),
-            child: const Text('Imprimer'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('copy'),
-            child: const Text('Copier le chemin'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('cancel'),
-            child: const Text('Annuler'),
-          ),
-        ],
-      ),
     );
 
     switch (result) {

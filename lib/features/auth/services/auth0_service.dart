@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart'; // For kIsWeb if needed later
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:flutter/material.dart';
 import 'package:auth0_flutter/auth0_flutter.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -25,6 +26,12 @@ class Auth0Service {
   static const String _expiresAtKey = 'expires_at';
   static const String _demoUserKey = 'demo_user_active';
 
+  /// Retourne true si on est sur desktop (Windows/Linux) où auth0_flutter n'est pas supporté
+  bool get _isDesktopPlatform {
+    if (kIsWeb) return false;
+    return Platform.isWindows || Platform.isLinux;
+  }
+
   late Auth0 auth0;
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   final ConnectivityService _connectivityService = ConnectivityService();
@@ -46,7 +53,7 @@ class Auth0Service {
     // Initialiser le BusinessContextService
     await _businessContextService.initialize();
     debugPrint(
-      'Auth0Service: Initialized with offline JWT validator and BusinessContextService',
+      'Auth0Service: Initialized with offline JWT validator and BusinessContextService (desktop=$_isDesktopPlatform)',
     );
   }
 
@@ -73,7 +80,24 @@ class Auth0Service {
       return true;
     }
 
-    // 2. Vérifier la connectivité
+    // 2. Sur desktop (Windows/Linux), ne pas utiliser auth0_flutter SDK
+    // car il n'est pas supporté. Utiliser directement le cache offline.
+    if (_isDesktopPlatform) {
+      debugPrint('Auth0Service: Desktop platform - using offline auth check');
+      final offlineStatus = await offlineAuthService.checkOfflineAuthStatus();
+      if (offlineStatus.canAuthenticate) {
+        debugPrint(
+          'Auth0Service: Desktop authenticated via cached tokens - ${offlineStatus.reason}',
+        );
+        return true;
+      }
+      debugPrint(
+        'Auth0Service: Desktop not authenticated - ${offlineStatus.reason}',
+      );
+      return false;
+    }
+
+    // 3. Vérifier la connectivité (mobile/web uniquement)
     final isOnline = _connectivityService.isConnected;
 
     if (isOnline) {
@@ -92,7 +116,7 @@ class Auth0Service {
       }
     }
 
-    // 3. Hors ligne ou erreur: utiliser la validation JWKS locale
+    // 4. Hors ligne ou erreur: utiliser la validation JWKS locale
     debugPrint('Auth0Service: Checking offline authentication status...');
     final offlineStatus = await offlineAuthService.checkOfflineAuthStatus();
 
@@ -153,7 +177,16 @@ class Auth0Service {
   }
 
   /// Se connecte à Auth0 en utilisant les pages d'authentification d'Auth0 directement
+  /// Note: Sur desktop (Windows/Linux), cette méthode ne devrait PAS être appelée.
+  /// Utilisez DesktopAuthService à la place via AuthRepository.
   Future<User> login() async {
+    // Sur desktop, cette méthode ne devrait pas être appelée
+    if (_isDesktopPlatform) {
+      throw Exception(
+        'Auth0Service.login() should not be called on desktop. Use DesktopAuthService instead.',
+      );
+    }
+
     try {
       debugPrint(
         "Auth0Service: Attempting Auth0 login with hosted login page. Clearing demo user flag.",
@@ -297,9 +330,12 @@ class Auth0Service {
   Future<void> logout() async {
     try {
       final bool wasDemoUser = await isDemoUserActive();
-      debugPrint("Auth0Service: Logging out. Was demo user: $wasDemoUser");
+      debugPrint(
+        "Auth0Service: Logging out. Was demo user: $wasDemoUser, isDesktop: $_isDesktopPlatform",
+      );
 
-      if (!wasDemoUser) {
+      // Sur mobile/web uniquement: utiliser Auth0 SDK pour le logout
+      if (!wasDemoUser && !_isDesktopPlatform) {
         try {
           await auth0.webAuthentication(scheme: _auth0Scheme).logout();
           debugPrint("Auth0Service: Auth0 SDK web logout initiated.");
@@ -321,7 +357,8 @@ class Auth0Service {
       await _secureStorage.delete(key: _demoUserKey);
       debugPrint("Auth0Service: All local tokens and demo key deleted.");
 
-      if (!wasDemoUser) {
+      // Sur mobile/web uniquement: effacer les credentials du SDK Auth0
+      if (!wasDemoUser && !_isDesktopPlatform) {
         try {
           await auth0.credentialsManager.clearCredentials();
           debugPrint(
@@ -369,7 +406,25 @@ class Auth0Service {
       return await _secureStorage.read(key: _accessTokenKey);
     }
 
-    // Vérifier la connectivité
+    // Sur desktop (Windows/Linux), ne pas utiliser auth0_flutter SDK
+    // car il n'est pas supporté. Utiliser directement le cache.
+    if (_isDesktopPlatform) {
+      debugPrint('Auth0Service: Desktop platform - using cached access token');
+      final cachedToken = await offlineAuthService.getCachedAccessToken();
+      if (cachedToken != null) {
+        debugPrint('Auth0Service: Desktop - returning cached access token');
+        return cachedToken;
+      }
+      final storedToken = await _secureStorage.read(key: _accessTokenKey);
+      if (storedToken != null) {
+        debugPrint('Auth0Service: Desktop - returning stored access token');
+        return storedToken;
+      }
+      debugPrint('Auth0Service: Desktop - no access token available');
+      return null;
+    }
+
+    // Mobile/Web: Vérifier la connectivité
     final isOnline = _connectivityService.isConnected;
 
     if (isOnline) {
@@ -430,7 +485,20 @@ class Auth0Service {
       return await _secureStorage.read(key: _accessTokenKey);
     }
 
-    // Vérifier la connectivité
+    // Sur desktop (Windows/Linux), ne pas utiliser auth0_flutter SDK
+    // Le refresh doit se faire via DesktopAuthService
+    if (_isDesktopPlatform) {
+      debugPrint(
+        'Auth0Service: Desktop platform - returning cached token (no SDK refresh)',
+      );
+      final cachedToken = await offlineAuthService.getCachedAccessToken();
+      if (cachedToken != null) {
+        return cachedToken;
+      }
+      return await _secureStorage.read(key: _accessTokenKey);
+    }
+
+    // Mobile/Web: Vérifier la connectivité
     final isOnline = _connectivityService.isConnected;
 
     if (isOnline) {
@@ -490,7 +558,22 @@ class Auth0Service {
       return null;
     }
 
-    // Vérifier la connectivité
+    // Sur desktop (Windows/Linux), ne pas utiliser auth0_flutter SDK
+    // Retourner directement l'utilisateur en cache
+    if (_isDesktopPlatform) {
+      debugPrint('Auth0Service: Desktop platform - returning cached user');
+      final cachedUser = await offlineAuthService.getLastLoggedInUser();
+      if (cachedUser != null) {
+        debugPrint(
+          'Auth0Service: Desktop - found cached user: ${cachedUser.email}',
+        );
+        return cachedUser;
+      }
+      debugPrint('Auth0Service: Desktop - no cached user available');
+      return null;
+    }
+
+    // Mobile/Web: Vérifier la connectivité
     final isOnline = _connectivityService.isConnected;
 
     if (!isOnline) {
@@ -779,6 +862,12 @@ class Auth0Service {
     if (await isDemoUserActive()) {
       return await _secureStorage.read(key: _idTokenKey);
     }
+
+    // Sur desktop, retourner le token stocké
+    if (_isDesktopPlatform) {
+      return await _secureStorage.read(key: _idTokenKey);
+    }
+
     try {
       if (await auth0.credentialsManager.hasValidCredentials()) {
         final credentials = await auth0.credentialsManager.credentials();
