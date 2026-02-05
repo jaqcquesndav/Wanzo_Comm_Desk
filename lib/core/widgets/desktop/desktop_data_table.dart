@@ -1,5 +1,34 @@
 import 'package:flutter/material.dart';
 import '../../config/desktop_config.dart';
+import '../../../services/export/table_export_service.dart';
+import '../table_export_button.dart';
+
+/// Configuration pour l'export intégré à DesktopDataTable
+class DataTableExportConfig {
+  /// Titre pour l'export
+  final String title;
+
+  /// Sous-titre optionnel
+  final String? subtitle;
+
+  /// Nom du fichier (sans extension)
+  final String fileName;
+
+  /// Nom de l'entreprise (pour PDF)
+  final String? companyName;
+
+  /// Fonction pour extraire les valeurs d'export d'un item
+  /// Doit retourner une liste de valeurs dans l'ordre des colonnes
+  final List<dynamic> Function(dynamic item) rowDataExtractor;
+
+  const DataTableExportConfig({
+    required this.title,
+    this.subtitle,
+    required this.fileName,
+    this.companyName,
+    required this.rowDataExtractor,
+  });
+}
 
 /// DataTable amélioré pour la version desktop avec pagination, tri et recherche
 class DesktopDataTable<T> extends StatefulWidget {
@@ -19,6 +48,12 @@ class DesktopDataTable<T> extends StatefulWidget {
   final bool selectable;
   final void Function(List<T> selectedItems)? onSelectionChanged;
 
+  /// Configuration pour l'export (si null, le bouton d'export n'est pas affiché)
+  final DataTableExportConfig? exportConfig;
+
+  /// Labels des en-têtes pour l'export (requis si exportConfig est défini)
+  final List<String>? exportHeaders;
+
   const DesktopDataTable({
     super.key,
     required this.data,
@@ -36,6 +71,8 @@ class DesktopDataTable<T> extends StatefulWidget {
     this.onRowDoubleTap,
     this.selectable = false,
     this.onSelectionChanged,
+    this.exportConfig,
+    this.exportHeaders,
   });
 
   @override
@@ -200,6 +237,26 @@ class _DesktopDataTableState<T> extends State<DesktopDataTable<T>> {
                 },
               ),
             ),
+
+          // Bouton d'export (discret)
+          if (widget.exportConfig != null && widget.exportHeaders != null) ...[
+            const SizedBox(width: 16),
+            TableExportIconButton(
+              config: TableExportConfig(
+                title: widget.exportConfig!.title,
+                subtitle: widget.exportConfig!.subtitle,
+                headers: widget.exportHeaders!,
+                rows:
+                    _filteredData
+                        .map(
+                          (item) => widget.exportConfig!.rowDataExtractor(item),
+                        )
+                        .toList(),
+                fileName: widget.exportConfig!.fileName,
+                companyName: widget.exportConfig!.companyName,
+              ),
+            ),
+          ],
         ],
       ),
     );

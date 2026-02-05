@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 // import 'package:intl/intl.dart'; // Replaced with currency_formatter
+import 'package:intl/intl.dart'; // Needed for date formatting in export
 import 'dart:io'; // Added for File support
 import 'package:uuid/uuid.dart'; // Added for Uuid
 import '../../../constants/spacing.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
+import '../../../core/widgets/table_export_button.dart';
+import '../../../services/export/table_export_service.dart';
 import '../bloc/inventory_bloc.dart';
 import '../bloc/inventory_event.dart';
 import '../bloc/inventory_state.dart';
@@ -48,132 +51,194 @@ class _InventoryScreenState extends State<InventoryScreen>
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final dateFormat = DateFormat('dd/MM/yyyy', 'fr_FR');
     // Listen to currency setting changes
     context.watch<CurrencySettingsCubit>();
 
-    return WanzoScaffold(
-      currentIndex: 2, // Stock a l'index 2
-      title: l10n.inventoryScreenTitle,
-      appBarActions: [
-        // Bouton de recherche
-        IconButton(
-          icon: const Icon(Icons.search),
-          onPressed: () => _showSearchDialog(context, l10n),
-        ),
-        // Filtrer par catégorie
-        IconButton(
-          icon: const Icon(Icons.filter_list),
-          onPressed: () => _showFilterDialog(context, l10n),
-        ),
-      ],
-      body: Column(
-        children: [
-          // TabBar avec style uniforme comme la page Opérations
-          TabBar(
-            controller: _tabController,
-            tabs: [
-              Tab(text: l10n.allProductsTabLabel),
-              Tab(text: l10n.lowStockTabLabel),
-              Tab(text: l10n.transactionsTabLabel),
-            ],
-            labelColor: Theme.of(context).primaryColor,
-            unselectedLabelColor: Colors.grey,
-            onTap: (index) {
-              if (index == 0) {
-                context.read<InventoryBloc>().add(const LoadProducts());
-              } else if (index == 1) {
-                context.read<InventoryBloc>().add(const LoadLowStockProducts());
-              } else if (index == 2) {
-                context.read<InventoryBloc>().add(const LoadAllTransactions());
-              }
-            },
-          ),
-          // TabBarView remplit le reste de l'espace
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                // Onglet "Tous les produits"
-                BlocBuilder<InventoryBloc, InventoryState>(
-                  builder: (context, state) {
-                    if (state is InventoryLoading) {
-                      return const Center(child: CircularProgressIndicator());
-                    } else if (state is ProductsLoaded) {
-                      return _buildProductsList(context, state, l10n);
-                    } else if (state is InventoryError) {
-                      return _buildErrorWidget(context, state.message, l10n);
-                    } else {
-                      return Center(
-                        child: Text(l10n.noProductsAvailableMessage),
-                      );
-                    }
-                  },
+    return BlocBuilder<InventoryBloc, InventoryState>(
+      builder: (context, state) {
+        return WanzoScaffold(
+          currentIndex: 2, // Stock a l'index 2
+          title: l10n.inventoryScreenTitle,
+          appBarActions: [
+            // Bouton d'export
+            if (state is ProductsLoaded && state.products.isNotEmpty)
+              TableExportIconButton(
+                config: TableExportConfig(
+                  title: 'Inventaire des produits',
+                  subtitle: 'Exporté le ${dateFormat.format(DateTime.now())}',
+                  headers: [
+                    'Nom',
+                    'Catégorie',
+                    'Quantité',
+                    'Prix achat',
+                    'Prix vente',
+                    'Valeur stock',
+                  ],
+                  rows:
+                      state.products
+                          .map(
+                            (p) => [
+                              p.name,
+                              p.category.displayName,
+                              p.stockQuantity.toString(),
+                              '${p.costPriceInCdf.toStringAsFixed(2)} ${p.inputCurrencyCode}',
+                              '${p.sellingPriceInCdf.toStringAsFixed(2)} ${p.inputCurrencyCode}',
+                              '${(p.stockQuantity * p.costPriceInCdf).toStringAsFixed(2)} ${p.inputCurrencyCode}',
+                            ],
+                          )
+                          .toList(),
+                  fileName: 'inventaire',
+                  companyName: 'Wanzo',
                 ),
-                // Onglet "Stock faible"
-                BlocBuilder<InventoryBloc, InventoryState>(
-                  builder: (context, state) {
-                    if (state is InventoryLoading) {
-                      return const Center(child: CircularProgressIndicator());
-                    } else if (state is ProductsLoaded) {
-                      return _buildProductsList(
-                        context,
-                        state,
-                        l10n,
-                        lowStockOnly: true,
-                      );
-                    } else if (state is InventoryError) {
-                      return _buildErrorWidget(context, state.message, l10n);
-                    } else {
-                      return Center(
-                        child: Text(l10n.noLowStockProductsMessage),
-                      );
-                    }
-                  },
-                ),
-                // Onglet "Transactions"
-                BlocBuilder<InventoryBloc, InventoryState>(
-                  builder: (context, state) {
-                    if (state is InventoryLoading) {
-                      return const Center(child: CircularProgressIndicator());
-                    } else if (state is TransactionsLoaded) {
-                      return _buildTransactionsList(
-                        context,
-                        state.transactions,
-                        l10n,
-                      );
-                    } else if (state is InventoryError) {
-                      return _buildErrorWidget(context, state.message, l10n);
-                    } else {
-                      return Center(
-                        child: Text(l10n.noTransactionsAvailableMessage),
-                      );
-                    }
-                  },
-                ),
-              ],
+              ),
+            // Bouton de recherche
+            IconButton(
+              icon: const Icon(Icons.search),
+              onPressed: () => _showSearchDialog(context, l10n),
             ),
-          ),
-        ],
-      ),
-      floatingActionButton:
-          _tabController.index != 2
-              ? FloatingActionButton(
-                onPressed: () {
-                  context.push('/inventory/add').then((_) {
-                    // Recharger les produits après retour de l'écran d'ajout
-                    if (mounted) {
-                      context.read<InventoryBloc>().add(const LoadProducts());
-                    }
-                  });
+            // Filtrer par catégorie
+            IconButton(
+              icon: const Icon(Icons.filter_list),
+              onPressed: () => _showFilterDialog(context, l10n),
+            ),
+          ],
+          body: Column(
+            children: [
+              // TabBar avec style uniforme comme la page Opérations
+              TabBar(
+                controller: _tabController,
+                tabs: [
+                  Tab(text: l10n.allProductsTabLabel),
+                  Tab(text: l10n.lowStockTabLabel),
+                  Tab(text: l10n.transactionsTabLabel),
+                ],
+                labelColor: Theme.of(context).primaryColor,
+                unselectedLabelColor: Colors.grey,
+                onTap: (index) {
+                  if (index == 0) {
+                    context.read<InventoryBloc>().add(const LoadProducts());
+                  } else if (index == 1) {
+                    context.read<InventoryBloc>().add(
+                      const LoadLowStockProducts(),
+                    );
+                  } else if (index == 2) {
+                    context.read<InventoryBloc>().add(
+                      const LoadAllTransactions(),
+                    );
+                  }
                 },
-                backgroundColor:
-                    Theme.of(context).colorScheme.primary, // Use theme color
-                child: Icon(
-                  Icons.add,
-                  color: Theme.of(context).colorScheme.onPrimary,
-                ), // Use theme color for icon
-              )
-              : null,
+              ),
+              // TabBarView remplit le reste de l'espace
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    // Onglet "Tous les produits"
+                    BlocBuilder<InventoryBloc, InventoryState>(
+                      builder: (context, state) {
+                        if (state is InventoryLoading) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        } else if (state is ProductsLoaded) {
+                          return _buildProductsList(context, state, l10n);
+                        } else if (state is InventoryError) {
+                          return _buildErrorWidget(
+                            context,
+                            state.message,
+                            l10n,
+                          );
+                        } else {
+                          return Center(
+                            child: Text(l10n.noProductsAvailableMessage),
+                          );
+                        }
+                      },
+                    ),
+                    // Onglet "Stock faible"
+                    BlocBuilder<InventoryBloc, InventoryState>(
+                      builder: (context, state) {
+                        if (state is InventoryLoading) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        } else if (state is ProductsLoaded) {
+                          return _buildProductsList(
+                            context,
+                            state,
+                            l10n,
+                            lowStockOnly: true,
+                          );
+                        } else if (state is InventoryError) {
+                          return _buildErrorWidget(
+                            context,
+                            state.message,
+                            l10n,
+                          );
+                        } else {
+                          return Center(
+                            child: Text(l10n.noLowStockProductsMessage),
+                          );
+                        }
+                      },
+                    ),
+                    // Onglet "Transactions"
+                    BlocBuilder<InventoryBloc, InventoryState>(
+                      builder: (context, state) {
+                        if (state is InventoryLoading) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        } else if (state is TransactionsLoaded) {
+                          return _buildTransactionsList(
+                            context,
+                            state.transactions,
+                            l10n,
+                          );
+                        } else if (state is InventoryError) {
+                          return _buildErrorWidget(
+                            context,
+                            state.message,
+                            l10n,
+                          );
+                        } else {
+                          return Center(
+                            child: Text(l10n.noTransactionsAvailableMessage),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          floatingActionButton:
+              _tabController.index != 2
+                  ? FloatingActionButton(
+                    onPressed: () {
+                      context.push('/inventory/add').then((_) {
+                        // Recharger les produits après retour de l'écran d'ajout
+                        if (mounted) {
+                          context.read<InventoryBloc>().add(
+                            const LoadProducts(),
+                          );
+                        }
+                      });
+                    },
+                    backgroundColor:
+                        Theme.of(
+                          context,
+                        ).colorScheme.primary, // Use theme color
+                    child: Icon(
+                      Icons.add,
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    ), // Use theme color for icon
+                  )
+                  : null,
+        );
+      },
     );
   }
 

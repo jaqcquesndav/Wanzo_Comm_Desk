@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/navigation/app_router.dart';
+import '../../../core/widgets/table_export_button.dart';
+import '../../../services/export/table_export_service.dart';
 import '../bloc/sales_bloc.dart';
 import '../models/sale.dart';
 
@@ -55,67 +57,99 @@ class _SalesListScreenState extends State<SalesListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return WanzoScaffold(
-      currentIndex: 1, // Index pour Ventes dans le sidebar
-      title: 'Ventes',
-      appBarActions: [
-        IconButton(
-          icon: const Icon(Icons.filter_list),
-          onPressed: () => _showFilterDialog(context),
-          tooltip: 'Filtrer',
-        ),
-        IconButton(
-          icon: const Icon(Icons.refresh),
-          onPressed: () => context.read<SalesBloc>().add(const LoadSales()),
-          tooltip: 'Actualiser',
-        ),
-      ],
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/operations/sales/add'),
-        icon: const Icon(Icons.add),
-        label: const Text('Nouvelle vente'),
-      ),
-      body: BlocBuilder<SalesBloc, SalesState>(
-        builder: (context, state) {
-          if (state is SalesLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    final dateFormat = DateFormat('dd/MM/yyyy', 'fr_FR');
 
-          if (state is SalesError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
-                  const SizedBox(height: 16),
-                  Text('Erreur: ${state.message}', textAlign: TextAlign.center),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed:
-                        () => context.read<SalesBloc>().add(const LoadSales()),
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Réessayer'),
-                  ),
-                ],
+    return BlocBuilder<SalesBloc, SalesState>(
+      builder: (context, state) {
+        return WanzoScaffold(
+          currentIndex: 1, // Index pour Ventes dans le sidebar
+          title: 'Ventes',
+          appBarActions: [
+            // Bouton d'export
+            if (state is SalesLoaded && state.sales.isNotEmpty)
+              TableExportIconButton(
+                config: TableExportConfig(
+                  title: 'Liste des ventes',
+                  subtitle: 'Exporté le ${dateFormat.format(DateTime.now())}',
+                  headers: [
+                    'Date',
+                    'Client',
+                    'Produits',
+                    'Total',
+                    'Statut',
+                    'Paiement',
+                  ],
+                  rows:
+                      state.sales
+                          .map(
+                            (s) => [
+                              dateFormat.format(s.date),
+                              s.customerName,
+                              s.items.length.toString(),
+                              '${s.totalAmountInCdf.toStringAsFixed(2)} ${s.transactionCurrencyCode ?? "CDF"}',
+                              s.status.displayName,
+                              s.paymentMethod ?? '',
+                            ],
+                          )
+                          .toList(),
+                  fileName: 'ventes',
+                  companyName: 'Wanzo',
+                ),
               ),
-            );
-          }
-
-          if (state is SalesLoaded) {
-            if (state.sales.isEmpty) {
-              return _buildEmptyState(context);
-            }
-            return _buildSalesList(
-              context,
-              state.sales,
-              state.totalAmountInCdf,
-            );
-          }
-
-          return const Center(child: Text('Chargement...'));
-        },
-      ),
+            IconButton(
+              icon: const Icon(Icons.filter_list),
+              onPressed: () => _showFilterDialog(context),
+              tooltip: 'Filtrer',
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () => context.read<SalesBloc>().add(const LoadSales()),
+              tooltip: 'Actualiser',
+            ),
+          ],
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => context.push('/operations/sales/add'),
+            icon: const Icon(Icons.add),
+            label: const Text('Nouvelle vente'),
+          ),
+          body: _buildBody(context, state),
+        );
+      },
     );
+  }
+
+  Widget _buildBody(BuildContext context, SalesState state) {
+    if (state is SalesLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (state is SalesError) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
+            const SizedBox(height: 16),
+            Text('Erreur: ${state.message}', textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () => context.read<SalesBloc>().add(const LoadSales()),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Réessayer'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (state is SalesLoaded) {
+      if (state.sales.isEmpty) {
+        return _buildEmptyState(context);
+      }
+      return _buildSalesList(context, state.sales, state.totalAmountInCdf);
+    }
+
+    return const Center(child: Text('Chargement...'));
   }
 
   Widget _buildEmptyState(BuildContext context) {

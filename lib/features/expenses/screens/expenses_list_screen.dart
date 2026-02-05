@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/navigation/app_router.dart';
+import '../../../core/widgets/table_export_button.dart';
+import '../../../services/export/table_export_service.dart';
 import '../bloc/expense_bloc.dart';
 import '../models/expense.dart';
 
@@ -58,70 +60,92 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return WanzoScaffold(
-      currentIndex: 2, // Index pour Dépenses dans le sidebar
-      title: 'Dépenses',
-      appBarActions: [
-        IconButton(
-          icon: const Icon(Icons.filter_list),
-          onPressed: () => _showFilterDialog(context),
-          tooltip: 'Filtrer',
-        ),
-        IconButton(
-          icon: const Icon(Icons.refresh),
-          onPressed:
-              () => context.read<ExpenseBloc>().add(const LoadExpenses()),
-          tooltip: 'Actualiser',
-        ),
-      ],
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/expenses/add'),
-        icon: const Icon(Icons.add),
-        label: const Text('Nouvelle dépense'),
-      ),
-      body: BlocBuilder<ExpenseBloc, ExpenseState>(
-        builder: (context, state) {
-          if (state is ExpenseLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    final dateFormat = DateFormat('dd/MM/yyyy', 'fr_FR');
 
-          if (state is ExpenseError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
-                  const SizedBox(height: 16),
-                  Text('Erreur: ${state.message}', textAlign: TextAlign.center),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed:
-                        () => context.read<ExpenseBloc>().add(
-                          const LoadExpenses(),
-                        ),
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Réessayer'),
-                  ),
-                ],
+    return BlocBuilder<ExpenseBloc, ExpenseState>(
+      builder: (context, state) {
+        return WanzoScaffold(
+          currentIndex: 2, // Index pour Dépenses dans le sidebar
+          title: 'Dépenses',
+          appBarActions: [
+            // Bouton d'export
+            if (state is ExpensesLoaded && state.expenses.isNotEmpty)
+              TableExportIconButton(
+                config: TableExportConfig(
+                  title: 'Liste des dépenses',
+                  subtitle: 'Exporté le ${dateFormat.format(DateTime.now())}',
+                  headers: ['Date', 'Motif', 'Catégorie', 'Montant'],
+                  rows:
+                      state.expenses
+                          .map(
+                            (e) => [
+                              dateFormat.format(e.date),
+                              e.motif,
+                              e.category.displayName,
+                              '${e.amount.toStringAsFixed(2)} ${e.currencyCode ?? "CDF"}',
+                            ],
+                          )
+                          .toList(),
+                  fileName: 'depenses',
+                  companyName: 'Wanzo',
+                ),
               ),
-            );
-          }
-
-          if (state is ExpensesLoaded) {
-            if (state.expenses.isEmpty) {
-              return _buildEmptyState(context);
-            }
-            return _buildExpensesList(
-              context,
-              state.expenses,
-              state.totalExpenses,
-            );
-          }
-
-          return const Center(child: Text('Chargement...'));
-        },
-      ),
+            IconButton(
+              icon: const Icon(Icons.filter_list),
+              onPressed: () => _showFilterDialog(context),
+              tooltip: 'Filtrer',
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed:
+                  () => context.read<ExpenseBloc>().add(const LoadExpenses()),
+              tooltip: 'Actualiser',
+            ),
+          ],
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => context.push('/expenses/add'),
+            icon: const Icon(Icons.add),
+            label: const Text('Nouvelle dépense'),
+          ),
+          body: _buildBody(context, state),
+        );
+      },
     );
+  }
+
+  Widget _buildBody(BuildContext context, ExpenseState state) {
+    if (state is ExpenseLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (state is ExpenseError) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
+            const SizedBox(height: 16),
+            Text('Erreur: ${state.message}', textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed:
+                  () => context.read<ExpenseBloc>().add(const LoadExpenses()),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Réessayer'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (state is ExpensesLoaded) {
+      if (state.expenses.isEmpty) {
+        return _buildEmptyState(context);
+      }
+      return _buildExpensesList(context, state.expenses, state.totalExpenses);
+    }
+
+    return const Center(child: Text('Chargement...'));
   }
 
   Widget _buildEmptyState(BuildContext context) {

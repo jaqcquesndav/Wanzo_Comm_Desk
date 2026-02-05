@@ -349,7 +349,7 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // Welcome message
           Center(
@@ -391,55 +391,59 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
 
           const SizedBox(height: 24),
 
-          // Suggestions
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children:
-                suggestions.map((suggestion) {
-                  return InkWell(
-                    onTap:
-                        () => _sendSuggestion(suggestion['prompt'] as String),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color:
-                            isDark
-                                ? Colors.grey[800]?.withValues(alpha: 0.5)
-                                : Colors.grey[100],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
+          // Suggestions - centrées
+          Center(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              runAlignment: WrapAlignment.center,
+              children:
+                  suggestions.map((suggestion) {
+                    return InkWell(
+                      onTap:
+                          () => _sendSuggestion(suggestion['prompt'] as String),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
                           color:
                               isDark
-                                  ? Colors.grey[700]!.withValues(alpha: 0.5)
-                                  : Colors.grey[300]!,
+                                  ? Colors.grey[800]?.withValues(alpha: 0.5)
+                                  : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color:
+                                isDark
+                                    ? Colors.grey[700]!.withValues(alpha: 0.5)
+                                    : Colors.grey[300]!,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              suggestion['icon'] as IconData,
+                              size: 16,
+                              color: WanzoColors.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              suggestion['title'] as String,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            suggestion['icon'] as IconData,
-                            size: 16,
-                            color: WanzoColors.primary,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            suggestion['title'] as String,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: theme.colorScheme.onSurface,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
+                    );
+                  }).toList(),
+            ),
           ),
         ],
       ),

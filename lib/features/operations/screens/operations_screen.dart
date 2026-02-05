@@ -5,6 +5,8 @@ import 'package:wanzo/core/navigation/app_router.dart';
 import 'package:intl/intl.dart';
 
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
+import 'package:wanzo/core/widgets/table_export_button.dart';
+import 'package:wanzo/services/export/table_export_service.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/expenses/repositories/expense_repository.dart';
@@ -82,130 +84,241 @@ class _OperationsViewState extends State<_OperationsView>
   @override
   Widget build(BuildContext context) {
     const int operationsPageIndex = 1; // Index for Operations in BottomNavBar
+    final dateFormat = DateFormat('dd/MM/yyyy', 'fr_FR');
 
-    return WanzoScaffold(
-      currentIndex: operationsPageIndex,
-      title: 'Opérations', // Title for the WanzoAppBar
-      appBarActions: [
-        // Actions for the WanzoAppBar
-        IconButton(
-          icon: const Icon(Icons.filter_list),
-          onPressed: () {
-            _showFilterDialog(context);
-          },
-        ),
-      ],
-      body: Column(
-        children: [
-          TabBar(
-            controller: _tabController,
-            tabs: const [
-              Tab(text: 'Tout'),
-              Tab(text: 'Ventes'),
-              Tab(text: 'Dépenses'),
-              Tab(text: 'Financements'),
-            ],
-            labelColor: Theme.of(context).primaryColor,
-            unselectedLabelColor: Colors.grey,
-          ),
-          Expanded(
-            child: BlocBuilder<OperationsBloc, OperationsState>(
-              builder: (context, state) {
-                if (state is OperationsLoading) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (state is OperationsLoaded) {
-                  return TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildAllOperationsView(
-                        context,
-                        state.sales,
-                        state.expenses,
-                        state.financingRequests,
-                      ),
-                      _buildSalesView(context, state.sales),
-                      _buildExpensesView(context, state.expenses),
-                      _buildFinancingView(context, state.financingRequests),
-                    ],
-                  );
-                }
-                if (state is OperationsError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.error_outline,
-                            color: Colors.red[700],
-                            size: 50,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            state.message,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.red[700],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Réessayer'),
-                            onPressed: () {
-                              context.read<OperationsBloc>().add(
-                                const LoadOperations(),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Theme.of(context).primaryColor,
-                              foregroundColor: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }
-                return const Center(
-                  child: Text('Veuillez charger les opérations.'),
-                );
+    return BlocBuilder<OperationsBloc, OperationsState>(
+      builder: (context, state) {
+        return WanzoScaffold(
+          currentIndex: operationsPageIndex,
+          title: 'Opérations', // Title for the WanzoAppBar
+          appBarActions: [
+            // Bouton d'export
+            if (state is OperationsLoaded)
+              _buildExportButton(context, state, dateFormat),
+            // Actions for the WanzoAppBar
+            IconButton(
+              icon: const Icon(Icons.filter_list),
+              onPressed: () {
+                _showFilterDialog(context);
               },
             ),
+          ],
+          body: Column(
+            children: [
+              TabBar(
+                controller: _tabController,
+                tabs: const [
+                  Tab(text: 'Tout'),
+                  Tab(text: 'Ventes'),
+                  Tab(text: 'Dépenses'),
+                  Tab(text: 'Financements'),
+                ],
+                labelColor: Theme.of(context).primaryColor,
+                unselectedLabelColor: Colors.grey,
+              ),
+              Expanded(child: _buildTabContent(context, state)),
+            ],
           ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final operationsBloc = context.read<OperationsBloc>();
+          floatingActionButton: FloatingActionButton(
+            onPressed: () async {
+              final operationsBloc = context.read<OperationsBloc>();
 
-          if (_tabController.index == 0 || _tabController.index == 1) {
-            await context.pushNamed('add_sale_from_operations');
-          } else if (_tabController.index == 2) {
-            await context.pushNamed('add_expense_from_operations');
-          } else if (_tabController.index == 3) {
-            await context.pushNamed('add_financing_from_operations');
-          }
+              if (_tabController.index == 0 || _tabController.index == 1) {
+                await context.pushNamed('add_sale_from_operations');
+              } else if (_tabController.index == 2) {
+                await context.pushNamed('add_expense_from_operations');
+              } else if (_tabController.index == 3) {
+                await context.pushNamed('add_financing_from_operations');
+              }
 
-          // Toujours recharger après retour de la navigation
-          // Les données peuvent avoir changé même si l'utilisateur n'a pas explicitement ajouté quelque chose
-          if (mounted) {
-            operationsBloc.add(const LoadOperations());
-          }
-        },
-        tooltip:
-            _tabController.index <= 1
-                ? 'Ajouter une vente'
-                : (_tabController.index == 2
-                    ? 'Ajouter une dépense'
-                    : 'Ajouter un financement'),
-        child: const Icon(Icons.add),
+              // Toujours recharger après retour de la navigation
+              if (mounted) {
+                operationsBloc.add(const LoadOperations());
+              }
+            },
+            tooltip:
+                _tabController.index <= 1
+                    ? 'Ajouter une vente'
+                    : (_tabController.index == 2
+                        ? 'Ajouter une dépense'
+                        : 'Ajouter un financement'),
+            child: const Icon(Icons.add),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildExportButton(
+    BuildContext context,
+    OperationsLoaded state,
+    DateFormat dateFormat,
+  ) {
+    // Déterminer les données à exporter selon l'onglet actif
+    final tabIndex = _tabController.index;
+
+    String title;
+    String fileName;
+    List<String> headers;
+    List<List<dynamic>> rows;
+
+    switch (tabIndex) {
+      case 0: // Tout
+        title = 'Toutes les opérations';
+        fileName = 'operations';
+        headers = ['Type', 'Date', 'Description', 'Montant', 'Statut'];
+        rows = [
+          ...state.sales.map(
+            (s) => [
+              'Vente',
+              dateFormat.format(s.date),
+              s.customerName,
+              '${s.totalAmountInCdf.toStringAsFixed(2)} ${s.transactionCurrencyCode ?? "CDF"}',
+              s.status.displayName,
+            ],
+          ),
+          ...state.expenses.map(
+            (e) => [
+              'Dépense',
+              dateFormat.format(e.date),
+              e.motif,
+              '${e.amount.toStringAsFixed(2)} ${e.currencyCode ?? "CDF"}',
+              e.category.displayName,
+            ],
+          ),
+          ...state.financingRequests.map(
+            (f) => [
+              'Financement',
+              dateFormat.format(f.requestDate),
+              f.reason,
+              '${f.amount.toStringAsFixed(2)} ${f.currency}',
+              f.status,
+            ],
+          ),
+        ];
+        break;
+      case 1: // Ventes
+        title = 'Liste des ventes';
+        fileName = 'ventes';
+        headers = ['Date', 'Client', 'Total', 'Statut', 'Paiement'];
+        rows =
+            state.sales
+                .map(
+                  (s) => [
+                    dateFormat.format(s.date),
+                    s.customerName,
+                    '${s.totalAmountInCdf.toStringAsFixed(2)} ${s.transactionCurrencyCode ?? "CDF"}',
+                    s.status.displayName,
+                    s.paymentMethod ?? '',
+                  ],
+                )
+                .toList();
+        break;
+      case 2: // Dépenses
+        title = 'Liste des dépenses';
+        fileName = 'depenses';
+        headers = ['Date', 'Motif', 'Catégorie', 'Montant'];
+        rows =
+            state.expenses
+                .map(
+                  (e) => [
+                    dateFormat.format(e.date),
+                    e.motif,
+                    e.category.displayName,
+                    '${e.amount.toStringAsFixed(2)} ${e.currencyCode ?? "CDF"}',
+                  ],
+                )
+                .toList();
+        break;
+      case 3: // Financements
+        title = 'Liste des financements';
+        fileName = 'financements';
+        headers = ['Date demande', 'Objet', 'Type', 'Montant', 'Statut'];
+        rows =
+            state.financingRequests
+                .map(
+                  (f) => [
+                    dateFormat.format(f.requestDate),
+                    f.reason,
+                    f.type.displayName,
+                    '${f.amount.toStringAsFixed(2)} ${f.currency}',
+                    f.status,
+                  ],
+                )
+                .toList();
+        break;
+      default:
+        title = 'Opérations';
+        fileName = 'operations';
+        headers = [];
+        rows = [];
+    }
+
+    return TableExportIconButton(
+      config: TableExportConfig(
+        title: title,
+        subtitle: 'Exporté le ${dateFormat.format(DateTime.now())}',
+        headers: headers,
+        rows: rows,
+        fileName: fileName,
+        companyName: 'Wanzo',
       ),
     );
+  }
+
+  Widget _buildTabContent(BuildContext context, OperationsState state) {
+    if (state is OperationsLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (state is OperationsLoaded) {
+      return TabBarView(
+        controller: _tabController,
+        children: [
+          _buildAllOperationsView(
+            context,
+            state.sales,
+            state.expenses,
+            state.financingRequests,
+          ),
+          _buildSalesView(context, state.sales),
+          _buildExpensesView(context, state.expenses),
+          _buildFinancingView(context, state.financingRequests),
+        ],
+      );
+    }
+    if (state is OperationsError) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, color: Colors.red[700], size: 50),
+              const SizedBox(height: 16),
+              Text(
+                state.message,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, color: Colors.red[700]),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.refresh),
+                label: const Text('Réessayer'),
+                onPressed: () {
+                  context.read<OperationsBloc>().add(const LoadOperations());
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).primaryColor,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return const Center(child: Text('Veuillez charger les opérations.'));
   }
 
   Widget _buildAllOperationsView(

@@ -92,6 +92,10 @@ dependencies:
   printing: ^5.12.0
   share_plus: ^11.0.0
   fl_chart: ^1.0.0
+  
+  # Export (CSV, Excel)
+  csv: ^6.0.0
+  excel: ^4.0.3
 
 dev_dependencies:
   flutter_test:
