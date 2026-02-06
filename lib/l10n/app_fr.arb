@@ -1279,5 +1279,102 @@
   "userRoleSalesDescription": "Accès aux fonctions de vente",
   "userRoleInventoryManagerDescription": "Accès à la gestion des stocks",
   "userRoleStaffDescription": "Employé standard",
-  "userRoleCustomerSupportDescription": "Accès au support client"
+  "userRoleCustomerSupportDescription": "Accès au support client",
+
+  "sidebarRevenues": "Revenus",
+  "@sidebarRevenues": {
+    "description": "Label pour le menu Revenus (anciennement Ventes) dans le sidebar"
+  },
+  "sidebarCharges": "Charges",
+  "@sidebarCharges": {
+    "description": "Label pour le menu Charges (anciennement Dépenses) dans le sidebar"
+  },
+  "chartTitleAccountingView": "Activité commerciale",
+  "@chartTitleAccountingView": {
+    "description": "Titre du graphique en vue comptabilité"
+  },
+  "chartTitleCashFlowView": "Flux de trésorerie",
+  "@chartTitleCashFlowView": {
+    "description": "Titre du graphique en vue trésorerie"
+  },
+  "chartLegendRevenues": "Revenus (CA)",
+  "@chartLegendRevenues": {
+    "description": "Légende pour les revenus dans le graphique comptable"
+  },
+  "chartLegendCharges": "Charges",
+  "@chartLegendCharges": {
+    "description": "Légende pour les charges dans le graphique comptable"
+  },
+  "chartLegendCashIn": "Encaissements",
+  "@chartLegendCashIn": {
+    "description": "Légende pour les encaissements dans le graphique trésorerie"
+  },
+  "chartLegendCashOut": "Décaissements",
+  "@chartLegendCashOut": {
+    "description": "Légende pour les décaissements dans le graphique trésorerie"
+  },
+  "kpiTurnover": "Chiffre d'affaires",
+  "@kpiTurnover": {
+    "description": "KPI pour le chiffre d'affaires"
+  },
+  "kpiCashIn": "Encaissements",
+  "@kpiCashIn": {
+    "description": "KPI pour les encaissements"
+  },
+  "kpiCashOut": "Décaissements",
+  "@kpiCashOut": {
+    "description": "KPI pour les décaissements"
+  },
+  "kpiReceivables": "Créances clients",
+  "@kpiReceivables": {
+    "description": "KPI pour les créances clients"
+  },
+  "kpiPayables": "Dettes fournisseurs",
+  "@kpiPayables": {
+    "description": "KPI pour les dettes fournisseurs"
+  },
+  "filterCashFlowOnly": "Trésorerie",
+  "@filterCashFlowOnly": {
+    "description": "Filtre pour les opérations de trésorerie uniquement"
+  },
+  "filterAccountingOnly": "Comptabilité",
+  "@filterAccountingOnly": {
+    "description": "Filtre pour les opérations comptables"
+  },
+  "paymentStatusPaid": "Encaissé",
+  "@paymentStatusPaid": {
+    "description": "Statut de paiement: encaissé"
+  },
+  "paymentStatusPartial": "Partiel",
+  "@paymentStatusPartial": {
+    "description": "Statut de paiement: partiel"
+  },
+  "paymentStatusPending": "À encaisser",
+  "@paymentStatusPending": {
+    "description": "Statut de paiement: en attente d'encaissement"
+  },
+  "expensePaymentStatusPaid": "Décaissé",
+  "@expensePaymentStatusPaid": {
+    "description": "Statut de paiement dépense: décaissé"
+  },
+  "expensePaymentStatusPartial": "Partiel",
+  "@expensePaymentStatusPartial": {
+    "description": "Statut de paiement dépense: partiel"
+  },
+  "expensePaymentStatusPending": "À décaisser",
+  "@expensePaymentStatusPending": {
+    "description": "Statut de paiement dépense: en attente de décaissement"
+  },
+  "documentTypeInvoice": "Facture",
+  "@documentTypeInvoice": {
+    "description": "Type de document: facture (commercial)"
+  },
+  "documentTypeReceipt": "Ticket de caisse",
+  "@documentTypeReceipt": {
+    "description": "Type de document: ticket de caisse (trésorerie)"
+  },
+  "documentTypeCashVoucher": "Bon de sortie caisse",
+  "@documentTypeCashVoucher": {
+    "description": "Type de document: bon de sortie caisse"
+  }
 }

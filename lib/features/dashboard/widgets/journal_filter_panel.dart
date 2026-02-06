@@ -123,6 +123,15 @@ class _JournalFilterPanelState extends State<JournalFilterPanel> {
             _buildQuickFilterChip('Stock', JournalFilter.stockOnly()),
             _buildQuickFilterChip('Dépenses', JournalFilter.expensesOnly()),
             _buildQuickFilterChip('Dettes', JournalFilter.customerDebts()),
+            // Nouveaux filtres pour distinguer comptabilité et trésorerie
+            _buildQuickFilterChip(
+              '💰 Trésorerie',
+              JournalFilter.cashFlowOnly(),
+            ),
+            _buildQuickFilterChip(
+              '📊 Comptabilité',
+              JournalFilter.accountingOnly(),
+            ),
           ],
         ),
       ],

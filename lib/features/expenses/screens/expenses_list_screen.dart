@@ -42,6 +42,23 @@ Color _getCategoryColor(ExpenseCategory category) {
   }
 }
 
+/// Helper pour obtenir la couleur du statut de paiement
+/// Vue trésorerie: distinguer ce qui a impacté la caisse (décaissement effectif)
+Color getDecaissementStatusColor(ExpensePaymentStatus? status) {
+  switch (status) {
+    case ExpensePaymentStatus.paid:
+      return Colors.green; // ✅ Décaissé (sortie de caisse effective)
+    case ExpensePaymentStatus.partial:
+      return Colors.blue; // 🔵 Partiellement décaissé
+    case ExpensePaymentStatus.unpaid:
+      return Colors.orange; // ⚠️ Charge comptable, pas encore décaissé
+    case ExpensePaymentStatus.credit:
+      return Colors.purple; // 💳 À crédit (dette fournisseur)
+    default:
+      return Colors.grey;
+  }
+}
+
 /// Écran de liste des dépenses
 class ExpensesListScreen extends StatefulWidget {
   const ExpensesListScreen({super.key});
@@ -65,8 +82,8 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
     return BlocBuilder<ExpenseBloc, ExpenseState>(
       builder: (context, state) {
         return WanzoScaffold(
-          currentIndex: 2, // Index pour Dépenses dans le sidebar
-          title: 'Dépenses',
+          currentIndex: 2, // Index pour Charges dans le sidebar
+          title: 'Charges', // Terminologie comptable: Charges = Dépenses
           appBarActions: [
             // Bouton d'export
             if (state is ExpensesLoaded && state.expenses.isNotEmpty)
@@ -421,6 +438,15 @@ class _ExpensesDataTable extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Colonne statut de paiement (vue trésorerie)
+                  DataColumn(
+                    label: Text(
+                      'Décaissement', // Vue trésorerie
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
                   if (!isCompact)
                     DataColumn(
                       label: Text(
@@ -506,6 +532,36 @@ class _ExpensesDataTable extends StatelessWidget {
                             Text(
                               dateFormat.format(expense.date),
                               style: theme.textTheme.bodySmall,
+                            ),
+                          ),
+                          // Statut de paiement (vue trésorerie)
+                          DataCell(
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: getDecaissementStatusColor(
+                                  expense.paymentStatus,
+                                ).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: getDecaissementStatusColor(
+                                    expense.paymentStatus,
+                                  ).withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Text(
+                                expense.paymentStatus?.displayName ??
+                                    'Non spécifié',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: getDecaissementStatusColor(
+                                    expense.paymentStatus,
+                                  ),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
                           ),
                           // Moyen de paiement (si pas compact)

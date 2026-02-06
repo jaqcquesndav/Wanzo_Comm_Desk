@@ -203,10 +203,35 @@ class _EnhancedOperationJournalScreenState
   ) {
     final theme = Theme.of(context);
     final totalOperations = state.filteredOperations.length;
-    final totalAmount = state.filteredOperations.fold<double>(
-      0.0,
-      (sum, op) => sum + op.amount,
+
+    // === CALCUL PAR CATÉGORIE COMPTABLE (pas de mélange!) ===
+    // Trésorerie: opérations qui impactent la caisse
+    final cashOperations = state.filteredOperations.where(
+      (op) => op.type.impactsCash,
     );
+    final cashIn = cashOperations
+        .where((op) => op.amount > 0)
+        .fold<double>(0.0, (sum, op) => sum + op.amount);
+    final cashOut = cashOperations
+        .where((op) => op.amount < 0)
+        .fold<double>(0.0, (sum, op) => sum + op.amount.abs());
+    final netCash = cashIn - cashOut;
+
+    // Ventes: chiffre d'affaires
+    final salesTotal = state.filteredOperations
+        .where((op) => op.type.isSalesOperation)
+        .fold<double>(0.0, (sum, op) => sum + op.amount.abs());
+
+    // Stock: mouvements
+    final stockOperations = state.filteredOperations.where(
+      (op) => op.type.impactsStock,
+    );
+    final stockIn = stockOperations
+        .where((op) => op.type == OperationType.stockIn)
+        .fold<double>(0.0, (sum, op) => sum + op.amount.abs());
+    final stockOut = stockOperations
+        .where((op) => op.type == OperationType.stockOut)
+        .fold<double>(0.0, (sum, op) => sum + op.amount.abs());
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -218,14 +243,65 @@ class _EnhancedOperationJournalScreenState
           ),
         ),
         if (totalOperations > 0) ...[
-          const SizedBox(height: 2),
-          Text(
-            'Solde net: ${totalAmount.toStringAsFixed(2)} CDF',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: totalAmount >= 0 ? WanzoTheme.success : WanzoTheme.danger,
-              fontWeight: FontWeight.w500,
+          const SizedBox(height: 4),
+          // Résumé par catégorie (correctement séparé)
+          if (cashOperations.isNotEmpty)
+            Row(
+              children: [
+                Icon(
+                  Icons.account_balance_wallet,
+                  size: 12,
+                  color: Colors.blue.shade700,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Trésorerie: +${cashIn.toStringAsFixed(0)} / -${cashOut.toStringAsFixed(0)} = ',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                Text(
+                  '${netCash >= 0 ? '+' : ''}${netCash.toStringAsFixed(0)} CDF',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color:
+                        netCash >= 0 ? WanzoTheme.success : WanzoTheme.danger,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
-          ),
+          if (salesTotal > 0)
+            Row(
+              children: [
+                Icon(Icons.trending_up, size: 12, color: Colors.green.shade700),
+                const SizedBox(width: 4),
+                Text(
+                  'CA (Ventes): ${salesTotal.toStringAsFixed(0)} CDF',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: Colors.green.shade700,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          if (stockOperations.isNotEmpty)
+            Row(
+              children: [
+                Icon(
+                  Icons.inventory_2,
+                  size: 12,
+                  color: Colors.orange.shade700,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Stock: ↑${stockIn.toStringAsFixed(0)} / ↓${stockOut.toStringAsFixed(0)} CDF',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: Colors.orange.shade700,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
         ],
       ],
     );

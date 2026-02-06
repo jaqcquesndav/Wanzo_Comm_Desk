@@ -1266,5 +1266,102 @@
   "userRoleSalesDescription": "Access to sales functions",
   "userRoleInventoryManagerDescription": "Access to inventory management",
   "userRoleStaffDescription": "Standard employee",
-  "userRoleCustomerSupportDescription": "Access to customer support"
+  "userRoleCustomerSupportDescription": "Access to customer support",
+
+  "sidebarRevenues": "Revenues",
+  "@sidebarRevenues": {
+    "description": "Label for Revenues menu (formerly Sales) in sidebar"
+  },
+  "sidebarCharges": "Expenses",
+  "@sidebarCharges": {
+    "description": "Label for Expenses menu (formerly Expenses) in sidebar"
+  },
+  "chartTitleAccountingView": "Business Activity",
+  "@chartTitleAccountingView": {
+    "description": "Chart title in accounting view"
+  },
+  "chartTitleCashFlowView": "Cash Flow",
+  "@chartTitleCashFlowView": {
+    "description": "Chart title in cash flow view"
+  },
+  "chartLegendRevenues": "Revenues (Turnover)",
+  "@chartLegendRevenues": {
+    "description": "Legend for revenues in accounting chart"
+  },
+  "chartLegendCharges": "Expenses",
+  "@chartLegendCharges": {
+    "description": "Legend for expenses in accounting chart"
+  },
+  "chartLegendCashIn": "Cash In",
+  "@chartLegendCashIn": {
+    "description": "Legend for cash in in cash flow chart"
+  },
+  "chartLegendCashOut": "Cash Out",
+  "@chartLegendCashOut": {
+    "description": "Legend for cash out in cash flow chart"
+  },
+  "kpiTurnover": "Turnover",
+  "@kpiTurnover": {
+    "description": "KPI for turnover"
+  },
+  "kpiCashIn": "Cash In",
+  "@kpiCashIn": {
+    "description": "KPI for cash in"
+  },
+  "kpiCashOut": "Cash Out",
+  "@kpiCashOut": {
+    "description": "KPI for cash out"
+  },
+  "kpiReceivables": "Receivables",
+  "@kpiReceivables": {
+    "description": "KPI for customer receivables"
+  },
+  "kpiPayables": "Payables",
+  "@kpiPayables": {
+    "description": "KPI for supplier payables"
+  },
+  "filterCashFlowOnly": "Cash Flow",
+  "@filterCashFlowOnly": {
+    "description": "Filter for cash flow operations only"
+  },
+  "filterAccountingOnly": "Accounting",
+  "@filterAccountingOnly": {
+    "description": "Filter for accounting operations"
+  },
+  "paymentStatusPaid": "Collected",
+  "@paymentStatusPaid": {
+    "description": "Payment status: collected"
+  },
+  "paymentStatusPartial": "Partial",
+  "@paymentStatusPartial": {
+    "description": "Payment status: partial"
+  },
+  "paymentStatusPending": "To Collect",
+  "@paymentStatusPending": {
+    "description": "Payment status: pending collection"
+  },
+  "expensePaymentStatusPaid": "Disbursed",
+  "@expensePaymentStatusPaid": {
+    "description": "Expense payment status: disbursed"
+  },
+  "expensePaymentStatusPartial": "Partial",
+  "@expensePaymentStatusPartial": {
+    "description": "Expense payment status: partial"
+  },
+  "expensePaymentStatusPending": "To Disburse",
+  "@expensePaymentStatusPending": {
+    "description": "Expense payment status: pending disbursement"
+  },
+  "documentTypeInvoice": "Invoice",
+  "@documentTypeInvoice": {
+    "description": "Document type: invoice (commercial)"
+  },
+  "documentTypeReceipt": "Cash Receipt",
+  "@documentTypeReceipt": {
+    "description": "Document type: cash receipt (treasury)"
+  },
+  "documentTypeCashVoucher": "Cash Voucher",
+  "@documentTypeCashVoucher": {
+    "description": "Document type: cash voucher"
+  }
 }

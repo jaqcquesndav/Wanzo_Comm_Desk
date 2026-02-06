@@ -10,35 +10,81 @@ import 'package:wanzo/core/enums/currency_enum.dart'; // Import Currency enum
 import 'package:wanzo/features/dashboard/models/operation_journal_entry.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
 
+/// Service pour la génération du journal des opérations en PDF
+///
+/// IMPORTANT: Le journal est maintenant séparé par catégorie comptable:
+/// - Trésorerie (Classe 5 OHADA): Encaissements et Décaissements
+/// - Ventes/Revenus (Classe 7 OHADA): Chiffre d'affaires
+/// - Stock (Classe 3 OHADA): Mouvements d'inventaire
 class JournalService {
+  /// Génère un PDF du journal avec les opérations SÉPARÉES PAR CATÉGORIE
+  /// pour éviter les incohérences comptables
   Future<File?> generateJournalPdf(
     List<OperationJournalEntry> entries,
     DateTime startDate,
     DateTime endDate,
-    double openingBalance,
+    double openingBalance, // Utilisé comme solde d'ouverture de TRÉSORERIE
     AppLocalizations l10n,
     Settings settings,
   ) async {
-    // final font = await PdfGoogleFonts.nunitoExtraLight();
     pw.RichText.debug = true;
-    // print('Generating PDF with ${entries.length} entries.');
-    // print('Selected currency: ${settings.mainCurrency}');
 
     final pdf = pw.Document();
     final font = await PdfGoogleFonts.robotoRegular();
     final boldFont = await PdfGoogleFonts.robotoBold();
 
-    // Use currency code from settings and locale from l10n
     final currencyFormat = NumberFormat.currency(
-      locale: l10n.localeName, // Use locale from AppLocalizations
-      name: settings.activeCurrency.code, // Use currency code from Settings
-      // decimalDigits can be inferred by NumberFormat based on currency code and locale,
-      // or you can define it explicitly if needed, e.g., for specific currencies.
-      // decimalDigits: settings.activeCurrency.decimalDigits, // Assuming Currency enum has decimalDigits
+      locale: l10n.localeName,
+      name: settings.activeCurrency.code,
     );
 
     final dateFormat = DateFormat.yMMMd(l10n.localeName);
     final timeFormat = DateFormat.Hm(l10n.localeName);
+
+    // === SÉPARER LES OPÉRATIONS PAR CATÉGORIE COMPTABLE ===
+    final cashOperations = entries.where((e) => e.type.impactsCash).toList();
+    final salesOperations =
+        entries.where((e) => e.type.isSalesOperation).toList();
+    final stockOperations = entries.where((e) => e.type.impactsStock).toList();
+    final otherOperations =
+        entries
+            .where(
+              (e) =>
+                  !e.type.impactsCash &&
+                  !e.type.isSalesOperation &&
+                  !e.type.impactsStock,
+            )
+            .toList();
+
+    // === CALCULER LES TOTAUX PAR CATÉGORIE ===
+    double totalCashIn = 0.0;
+    double totalCashOut = 0.0;
+    double totalSales = 0.0;
+    double totalStockIn = 0.0;
+    double totalStockOut = 0.0;
+
+    for (final op in cashOperations) {
+      if (op.amount > 0) {
+        totalCashIn += op.amount;
+      } else {
+        totalCashOut += op.amount.abs();
+      }
+    }
+
+    for (final op in salesOperations) {
+      totalSales += op.amount.abs();
+    }
+
+    for (final op in stockOperations) {
+      if (op.type == OperationType.stockIn) {
+        totalStockIn += op.amount.abs();
+      } else {
+        totalStockOut += op.amount.abs();
+      }
+    }
+
+    // Solde final de trésorerie
+    final closingCashBalance = openingBalance + totalCashIn - totalCashOut;
 
     pdf.addPage(
       pw.MultiPage(
@@ -58,127 +104,558 @@ class JournalService {
             alignment: pw.Alignment.centerRight,
             margin: const pw.EdgeInsets.only(top: 10.0),
             child: pw.Text(
-              l10n.journalPdf_footer_pageInfo(pdfContext.pageNumber, pdfContext.pagesCount),
+              l10n.journalPdf_footer_pageInfo(
+                pdfContext.pageNumber,
+                pdfContext.pagesCount,
+              ),
               style: pw.TextStyle(font: font, fontSize: 8),
             ),
           );
         },
-        build: (pw.Context pdfContext) => [
-          pw.Header(
-            level: 1,
-            child: pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text(
-                  l10n.journalPdf_period(dateFormat.format(startDate), dateFormat.format(endDate)),
-                  style: pw.TextStyle(font: font, fontSize: 12),
+        build:
+            (pw.Context pdfContext) => [
+              // === EN-TÊTE AVEC PÉRIODE ===
+              pw.Header(
+                level: 1,
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      l10n.journalPdf_period(
+                        dateFormat.format(startDate),
+                        dateFormat.format(endDate),
+                      ),
+                      style: pw.TextStyle(font: font, fontSize: 12),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          pw.SizedBox(height: 20),
-          pw.TableHelper.fromTextArray(
-            // context: pdfContext, // context est implicite pour TableHelper
-            headerStyle: pw.TextStyle(font: boldFont, fontSize: 10),
-            cellStyle: pw.TextStyle(font: font, fontSize: 9),
-            headerDecoration: const pw.BoxDecoration(
-              border: pw.Border(
-                bottom: pw.BorderSide(color: PdfColors.grey600, width: 1.5),
               ),
-            ),
-            cellAlignment: pw.Alignment.centerLeft,
-            cellAlignments: {
-              0: pw.Alignment.centerLeft, // Date
-              1: pw.Alignment.centerLeft, // Heure
-              2: pw.Alignment.centerLeft, // Description
-              3: pw.Alignment.centerRight, // Débit
-              4: pw.Alignment.centerRight, // Crédit
-              5: pw.Alignment.centerRight, // Solde
-            },
-            headers: [
-              l10n.journalPdf_tableHeader_date,
-              l10n.journalPdf_tableHeader_time,
-              l10n.journalPdf_tableHeader_description,
-              l10n.journalPdf_tableHeader_debit,
-              l10n.journalPdf_tableHeader_credit,
-              l10n.journalPdf_tableHeader_balance,
-            ],
-            data: <List<String>>[
-              [
-                '',
-                '',
-                l10n.journalPdf_openingBalance, 
-                '',
-                '',
-                // Ensure openingBalance is formatted using the entry's currency if available,
-                // otherwise use the active currency. For simplicity, using active currency here.
-                currencyFormat.format(openingBalance),
-              ],
-              ...entries.map(
-                (entry) {
-                  // Determine the currency format for this specific entry
-                  final entryCurrencyFormat = NumberFormat.currency(
-                    locale: l10n.localeName,
-                    name: entry.currencyCode ?? settings.activeCurrency.code,
-                  );
-                  return [
-                    dateFormat.format(entry.date),
-                    timeFormat.format(entry.date),
-                    entry.description,
-                    entry.isDebit ? entryCurrencyFormat.format(entry.amount.abs()) : '', // Use .abs() for debit/credit amounts
-                    entry.isCredit ? entryCurrencyFormat.format(entry.amount.abs()) : '', // Use .abs()
-                    entryCurrencyFormat.format(entry.balanceAfter),
-                  ];
-                },
+              pw.SizedBox(height: 10),
+
+              // === RÉSUMÉ PAR CATÉGORIE ===
+              _buildSummarySection(
+                font: font,
+                boldFont: boldFont,
+                currencyFormat: currencyFormat,
+                openingBalance: openingBalance,
+                closingCashBalance: closingCashBalance,
+                totalCashIn: totalCashIn,
+                totalCashOut: totalCashOut,
+                totalSales: totalSales,
+                totalStockIn: totalStockIn,
+                totalStockOut: totalStockOut,
               ),
-              [
-                '',
-                '',
-                l10n.journalPdf_closingBalance,
-                '',
-                '',
-                // Format closing balance with the currency of the last entry or active currency
-                currencyFormat.format(entries.isNotEmpty ? entries.last.balanceAfter : openingBalance),
+              pw.SizedBox(height: 20),
+
+              // === SECTION 1: JOURNAL DE TRÉSORERIE ===
+              if (cashOperations.isNotEmpty) ...[
+                _buildSectionHeader(
+                  '📊 JOURNAL DE TRÉSORERIE',
+                  boldFont,
+                  PdfColors.blue700,
+                ),
+                pw.SizedBox(height: 5),
+                _buildCashTable(
+                  cashOperations,
+                  openingBalance,
+                  font,
+                  boldFont,
+                  currencyFormat,
+                  dateFormat,
+                  timeFormat,
+                  l10n,
+                  settings,
+                ),
+                pw.SizedBox(height: 20),
               ],
+
+              // === SECTION 2: JOURNAL DES VENTES ===
+              if (salesOperations.isNotEmpty) ...[
+                _buildSectionHeader(
+                  '💰 JOURNAL DES VENTES',
+                  boldFont,
+                  PdfColors.green700,
+                ),
+                pw.SizedBox(height: 5),
+                _buildSalesTable(
+                  salesOperations,
+                  font,
+                  boldFont,
+                  currencyFormat,
+                  dateFormat,
+                  timeFormat,
+                  l10n,
+                  settings,
+                ),
+                pw.SizedBox(height: 20),
+              ],
+
+              // === SECTION 3: JOURNAL DES STOCKS ===
+              if (stockOperations.isNotEmpty) ...[
+                _buildSectionHeader(
+                  '📦 JOURNAL DES STOCKS',
+                  boldFont,
+                  PdfColors.orange700,
+                ),
+                pw.SizedBox(height: 5),
+                _buildStockTable(
+                  stockOperations,
+                  font,
+                  boldFont,
+                  currencyFormat,
+                  dateFormat,
+                  timeFormat,
+                  l10n,
+                  settings,
+                ),
+                pw.SizedBox(height: 20),
+              ],
+
+              // === SECTION 4: AUTRES OPÉRATIONS ===
+              if (otherOperations.isNotEmpty) ...[
+                _buildSectionHeader(
+                  '📋 AUTRES OPÉRATIONS',
+                  boldFont,
+                  PdfColors.grey700,
+                ),
+                pw.SizedBox(height: 5),
+                _buildOtherTable(
+                  otherOperations,
+                  font,
+                  boldFont,
+                  currencyFormat,
+                  dateFormat,
+                  timeFormat,
+                  l10n,
+                  settings,
+                ),
+                pw.SizedBox(height: 20),
+              ],
+
+              // === PIED DE PAGE ===
+              pw.SizedBox(height: 30),
+              pw.Container(
+                alignment: pw.Alignment.center,
+                child: pw.Text(
+                  l10n.journalPdf_footer_generatedBy,
+                  style: pw.TextStyle(
+                    font: font,
+                    fontSize: 9,
+                    color: PdfColors.grey,
+                  ),
+                ),
+              ),
             ],
-          ),
-          pw.SizedBox(height: 30),
-          pw.Container(
-            alignment: pw.Alignment.center,
-            child: pw.Text(
-              l10n.journalPdf_footer_generatedBy,
-              style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.grey),
-            ),
-          )
-        ],
       ),
     );
 
     try {
       final outputDir = await getApplicationDocumentsDirectory();
       final downloadsDir = await getDownloadsDirectory();
-      final targetDir = downloadsDir ?? outputDir; // Préfère Téléchargements
+      final targetDir = downloadsDir ?? outputDir;
 
-      final String fileName = 'operation_journal_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.pdf';
+      final String fileName =
+          'operation_journal_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.pdf';
       final File file = File("${targetDir.path}/$fileName");
       await file.writeAsBytes(await pdf.save());
       return file;
     } catch (e) {
-      // print('Error generating PDF: $e');
       rethrow;
     }
   }
 
+  /// Section résumé avec les totaux par catégorie
+  pw.Widget _buildSummarySection({
+    required pw.Font font,
+    required pw.Font boldFont,
+    required NumberFormat currencyFormat,
+    required double openingBalance,
+    required double closingCashBalance,
+    required double totalCashIn,
+    required double totalCashOut,
+    required double totalSales,
+    required double totalStockIn,
+    required double totalStockOut,
+  }) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey400),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            'RÉSUMÉ DES OPÉRATIONS',
+            style: pw.TextStyle(font: boldFont, fontSize: 12),
+          ),
+          pw.Divider(thickness: 1, color: PdfColors.grey400),
+          pw.SizedBox(height: 8),
+
+          // Trésorerie
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                'Solde de trésorerie initial:',
+                style: pw.TextStyle(font: font, fontSize: 10),
+              ),
+              pw.Text(
+                currencyFormat.format(openingBalance),
+                style: pw.TextStyle(font: font, fontSize: 10),
+              ),
+            ],
+          ),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                '  + Encaissements:',
+                style: pw.TextStyle(
+                  font: font,
+                  fontSize: 10,
+                  color: PdfColors.green700,
+                ),
+              ),
+              pw.Text(
+                currencyFormat.format(totalCashIn),
+                style: pw.TextStyle(
+                  font: font,
+                  fontSize: 10,
+                  color: PdfColors.green700,
+                ),
+              ),
+            ],
+          ),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                '  - Décaissements:',
+                style: pw.TextStyle(
+                  font: font,
+                  fontSize: 10,
+                  color: PdfColors.red700,
+                ),
+              ),
+              pw.Text(
+                currencyFormat.format(totalCashOut),
+                style: pw.TextStyle(
+                  font: font,
+                  fontSize: 10,
+                  color: PdfColors.red700,
+                ),
+              ),
+            ],
+          ),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                '= Solde de trésorerie final:',
+                style: pw.TextStyle(font: boldFont, fontSize: 10),
+              ),
+              pw.Text(
+                currencyFormat.format(closingCashBalance),
+                style: pw.TextStyle(
+                  font: boldFont,
+                  fontSize: 10,
+                  color:
+                      closingCashBalance >= 0
+                          ? PdfColors.green700
+                          : PdfColors.red700,
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 8),
+          pw.Divider(thickness: 0.5, color: PdfColors.grey300),
+          pw.SizedBox(height: 8),
+
+          // Ventes
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                'Chiffre d\'affaires (Ventes):',
+                style: pw.TextStyle(font: font, fontSize: 10),
+              ),
+              pw.Text(
+                currencyFormat.format(totalSales),
+                style: pw.TextStyle(
+                  font: boldFont,
+                  fontSize: 10,
+                  color: PdfColors.blue700,
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 4),
+
+          // Stock
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                'Mouvements de stock:',
+                style: pw.TextStyle(font: font, fontSize: 10),
+              ),
+              pw.Text(
+                'Entrées: ${currencyFormat.format(totalStockIn)} | Sorties: ${currencyFormat.format(totalStockOut)}',
+                style: pw.TextStyle(font: font, fontSize: 10),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Construit un en-tête de section coloré
+  pw.Widget _buildSectionHeader(
+    String title,
+    pw.Font boldFont,
+    PdfColor color,
+  ) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: pw.BoxDecoration(
+        color: color,
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
+      ),
+      child: pw.Text(
+        title,
+        style: pw.TextStyle(
+          font: boldFont,
+          fontSize: 11,
+          color: PdfColors.white,
+        ),
+      ),
+    );
+  }
+
+  /// Table de trésorerie avec solde courant
+  pw.Widget _buildCashTable(
+    List<OperationJournalEntry> operations,
+    double openingBalance,
+    pw.Font font,
+    pw.Font boldFont,
+    NumberFormat currencyFormat,
+    DateFormat dateFormat,
+    DateFormat timeFormat,
+    AppLocalizations l10n,
+    Settings settings,
+  ) {
+    double runningBalance = openingBalance;
+
+    return pw.TableHelper.fromTextArray(
+      headerStyle: pw.TextStyle(font: boldFont, fontSize: 9),
+      cellStyle: pw.TextStyle(font: font, fontSize: 8),
+      headerDecoration: const pw.BoxDecoration(
+        color: PdfColors.blue50,
+        border: pw.Border(
+          bottom: pw.BorderSide(color: PdfColors.blue700, width: 1),
+        ),
+      ),
+      cellAlignments: {
+        0: pw.Alignment.centerLeft,
+        1: pw.Alignment.centerLeft,
+        2: pw.Alignment.centerRight,
+        3: pw.Alignment.centerRight,
+        4: pw.Alignment.centerRight,
+      },
+      headers: [
+        'Date',
+        'Description',
+        'Encaissement',
+        'Décaissement',
+        'Solde Caisse',
+      ],
+      data: <List<String>>[
+        [
+          '',
+          'Solde d\'ouverture',
+          '',
+          '',
+          currencyFormat.format(openingBalance),
+        ],
+        ...operations.map((entry) {
+          final entryCurrencyFormat = NumberFormat.currency(
+            locale: l10n.localeName,
+            name: entry.currencyCode ?? settings.activeCurrency.code,
+          );
+
+          final isIn = entry.amount > 0;
+          runningBalance += entry.amount;
+
+          return [
+            '${dateFormat.format(entry.date)} ${timeFormat.format(entry.date)}',
+            entry.description,
+            isIn ? entryCurrencyFormat.format(entry.amount) : '',
+            !isIn ? entryCurrencyFormat.format(entry.amount.abs()) : '',
+            entryCurrencyFormat.format(runningBalance),
+          ];
+        }),
+        ['', 'Solde de clôture', '', '', currencyFormat.format(runningBalance)],
+      ],
+    );
+  }
+
+  /// Table des ventes avec cumul
+  pw.Widget _buildSalesTable(
+    List<OperationJournalEntry> operations,
+    pw.Font font,
+    pw.Font boldFont,
+    NumberFormat currencyFormat,
+    DateFormat dateFormat,
+    DateFormat timeFormat,
+    AppLocalizations l10n,
+    Settings settings,
+  ) {
+    double runningTotal = 0.0;
+
+    return pw.TableHelper.fromTextArray(
+      headerStyle: pw.TextStyle(font: boldFont, fontSize: 9),
+      cellStyle: pw.TextStyle(font: font, fontSize: 8),
+      headerDecoration: const pw.BoxDecoration(
+        color: PdfColors.green50,
+        border: pw.Border(
+          bottom: pw.BorderSide(color: PdfColors.green700, width: 1),
+        ),
+      ),
+      cellAlignments: {
+        0: pw.Alignment.centerLeft,
+        1: pw.Alignment.centerLeft,
+        2: pw.Alignment.centerLeft,
+        3: pw.Alignment.centerRight,
+        4: pw.Alignment.centerRight,
+      },
+      headers: ['Date', 'Client', 'Type de vente', 'Montant', 'Cumul CA'],
+      data: <List<String>>[
+        ...operations.map((entry) {
+          final entryCurrencyFormat = NumberFormat.currency(
+            locale: l10n.localeName,
+            name: entry.currencyCode ?? settings.activeCurrency.code,
+          );
+
+          runningTotal += entry.amount.abs();
+
+          return [
+            '${dateFormat.format(entry.date)} ${timeFormat.format(entry.date)}',
+            entry.customerName ?? '-',
+            entry.type.displayName,
+            entryCurrencyFormat.format(entry.amount.abs()),
+            entryCurrencyFormat.format(runningTotal),
+          ];
+        }),
+        [
+          '',
+          '',
+          'TOTAL CHIFFRE D\'AFFAIRES',
+          '',
+          currencyFormat.format(runningTotal),
+        ],
+      ],
+    );
+  }
+
+  /// Table des stocks avec valeur
+  pw.Widget _buildStockTable(
+    List<OperationJournalEntry> operations,
+    pw.Font font,
+    pw.Font boldFont,
+    NumberFormat currencyFormat,
+    DateFormat dateFormat,
+    DateFormat timeFormat,
+    AppLocalizations l10n,
+    Settings settings,
+  ) {
+    return pw.TableHelper.fromTextArray(
+      headerStyle: pw.TextStyle(font: boldFont, fontSize: 9),
+      cellStyle: pw.TextStyle(font: font, fontSize: 8),
+      headerDecoration: const pw.BoxDecoration(
+        color: PdfColors.orange50,
+        border: pw.Border(
+          bottom: pw.BorderSide(color: PdfColors.orange700, width: 1),
+        ),
+      ),
+      cellAlignments: {
+        0: pw.Alignment.centerLeft,
+        1: pw.Alignment.centerLeft,
+        2: pw.Alignment.center,
+        3: pw.Alignment.centerRight,
+        4: pw.Alignment.centerRight,
+      },
+      headers: ['Date', 'Produit', 'Mouvement', 'Quantité', 'Valeur'],
+      data: <List<String>>[
+        ...operations.map((entry) {
+          final entryCurrencyFormat = NumberFormat.currency(
+            locale: l10n.localeName,
+            name: entry.currencyCode ?? settings.activeCurrency.code,
+          );
+
+          final isIn = entry.type == OperationType.stockIn;
+
+          return [
+            '${dateFormat.format(entry.date)} ${timeFormat.format(entry.date)}',
+            entry.productName ?? entry.description,
+            isIn ? '↑ Entrée' : '↓ Sortie',
+            entry.quantity?.toStringAsFixed(0) ?? '-',
+            entryCurrencyFormat.format(entry.amount.abs()),
+          ];
+        }),
+      ],
+    );
+  }
+
+  /// Table des autres opérations
+  pw.Widget _buildOtherTable(
+    List<OperationJournalEntry> operations,
+    pw.Font font,
+    pw.Font boldFont,
+    NumberFormat currencyFormat,
+    DateFormat dateFormat,
+    DateFormat timeFormat,
+    AppLocalizations l10n,
+    Settings settings,
+  ) {
+    return pw.TableHelper.fromTextArray(
+      headerStyle: pw.TextStyle(font: boldFont, fontSize: 9),
+      cellStyle: pw.TextStyle(font: font, fontSize: 8),
+      headerDecoration: const pw.BoxDecoration(
+        color: PdfColors.grey100,
+        border: pw.Border(
+          bottom: pw.BorderSide(color: PdfColors.grey700, width: 1),
+        ),
+      ),
+      cellAlignments: {
+        0: pw.Alignment.centerLeft,
+        1: pw.Alignment.centerLeft,
+        2: pw.Alignment.centerLeft,
+        3: pw.Alignment.centerRight,
+      },
+      headers: ['Date', 'Type', 'Description', 'Montant'],
+      data: <List<String>>[
+        ...operations.map((entry) {
+          final entryCurrencyFormat = NumberFormat.currency(
+            locale: l10n.localeName,
+            name: entry.currencyCode ?? settings.activeCurrency.code,
+          );
+
+          return [
+            '${dateFormat.format(entry.date)} ${timeFormat.format(entry.date)}',
+            entry.type.displayName,
+            entry.description,
+            entryCurrencyFormat.format(entry.amount),
+          ];
+        }),
+      ],
+    );
+  }
+
   // Placeholder for printJournalPdf
   Future<void> printJournalPdf(File pdfFile) async {
-    // This is a placeholder. Implementation would depend on the desired printing mechanism.
-    // For example, using the 'printing' package:
-    // await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdfFile.readAsBytes());
-    // Or, if you want to share/open the PDF:
-    // await Printing.sharePdf(bytes: await pdfFile.readAsBytes(), filename: pdfFile.path.split('/').last);
-    print("Printing PDF: ${pdfFile.path}"); // Placeholder action
-    // Depending on the app's requirements, you might use a package like `open_file` to open the PDF
-    // or `printing` to send it to a printer.
-    // For now, this method is a stub.
+    print("Printing PDF: ${pdfFile.path}");
   }
 }

@@ -41,18 +41,49 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
   ChartType _selectedChartType = ChartType.line;
   SalesFilter _selectedSalesFilter = SalesFilter.all;
   ExpenseCategoryFilter _selectedExpenseFilter = ExpenseCategoryFilter.all;
+  ChartViewMode _selectedViewMode =
+      ChartViewMode.accounting; // Vue comptable par défaut
+
+  /// Couleur pour les revenus/encaissements selon le mode de vue
+  Color get _incomeColor =>
+      _selectedViewMode == ChartViewMode.accounting
+          ? WanzoTheme.success
+          : Colors.blue;
+
+  /// Couleur pour les charges/décaissements selon le mode de vue
+  Color get _expenseColor =>
+      _selectedViewMode == ChartViewMode.accounting
+          ? WanzoTheme.danger
+          : Colors.orange;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    // Données comptables (toutes les ventes et dépenses)
     final dailySales = _aggregateSalesByPeriod();
     final dailyExpenses = _aggregateExpensesByPeriod();
 
-    final totalSales = dailySales.values.fold(0.0, (sum, val) => sum + val);
-    final totalExpenses = dailyExpenses.values.fold(
-      0.0,
-      (sum, val) => sum + val,
-    );
+    // Données de trésorerie (seulement les montants encaissés/décaissés)
+    final dailyCashIn = _aggregateCashInByPeriod();
+    final dailyCashOut = _aggregateCashOutByPeriod();
+
+    // Sélectionner les bonnes données selon le mode de vue
+    final Map<DateTime, double> incomeData =
+        _selectedViewMode == ChartViewMode.accounting
+            ? dailySales
+            : dailyCashIn;
+    final Map<DateTime, double> expenseData =
+        _selectedViewMode == ChartViewMode.accounting
+            ? dailyExpenses
+            : dailyCashOut;
+
+    final totalIncome = incomeData.values.fold(0.0, (sum, val) => sum + val);
+    final totalExpense = expenseData.values.fold(0.0, (sum, val) => sum + val);
+
+    // Labels dynamiques selon le mode
+    final String incomeLabel = _selectedViewMode.incomeLegend;
+    final String expenseLabel = _selectedViewMode.expenseLegend;
 
     return ConstrainedBox(
       constraints: const BoxConstraints(
@@ -84,12 +115,15 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Onglets de sélection de vue (Comptabilité / Trésorerie)
+                            _buildViewModeSelector(context),
+                            const SizedBox(height: WanzoTheme.spacingXs),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Flexible(
                                   child: Text(
-                                    'Ventes vs Dépenses',
+                                    _selectedViewMode.chartTitle,
                                     style: theme.textTheme.titleMedium
                                         ?.copyWith(fontWeight: FontWeight.bold),
                                     overflow: TextOverflow.ellipsis,
@@ -123,39 +157,50 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
                       }
 
                       // Layout horizontal pour grands écrans
-                      return Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Flexible(
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    'Ventes vs Dépenses',
-                                    style: theme.textTheme.titleLarge?.copyWith(
-                                      fontWeight: FontWeight.bold,
+                          // Onglets de sélection de vue (Comptabilité / Trésorerie)
+                          _buildViewModeSelector(context),
+                          const SizedBox(height: WanzoTheme.spacingXs),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Flexible(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        _selectedViewMode.chartTitle,
+                                        style: theme.textTheme.titleLarge
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                    const SizedBox(width: WanzoTheme.spacingSm),
+                                    _buildPeriodSelector(context),
+                                  ],
                                 ),
-                                const SizedBox(width: WanzoTheme.spacingSm),
-                                _buildPeriodSelector(context),
-                              ],
-                            ),
-                          ),
-                          if (widget.onToggleExpansion != null)
-                            IconButton(
-                              icon: Icon(
-                                widget.isExpanded
-                                    ? Icons.expand_less
-                                    : Icons.expand_more,
-                                color: theme.colorScheme.primary,
                               ),
-                              onPressed: widget.onToggleExpansion,
-                              tooltip:
-                                  widget.isExpanded ? 'Réduire' : 'Agrandir',
-                            ),
+                              if (widget.onToggleExpansion != null)
+                                IconButton(
+                                  icon: Icon(
+                                    widget.isExpanded
+                                        ? Icons.expand_less
+                                        : Icons.expand_more,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                  onPressed: widget.onToggleExpansion,
+                                  tooltip:
+                                      widget.isExpanded
+                                          ? 'Réduire'
+                                          : 'Agrandir',
+                                ),
+                            ],
+                          ),
                         ],
                       );
                     },
@@ -168,47 +213,79 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
                         // Layout vertical pour très petits écrans
                         return Column(
                           children: [
-                            // Barre de filtres compacte
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                _buildChartTypeSelector(context),
-                                _buildSalesFilterSelector(context),
-                                _buildExpenseFilterSelector(context),
-                              ],
+                            // Barre de filtres compacte (uniquement en mode comptabilité)
+                            if (_selectedViewMode == ChartViewMode.accounting)
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _buildChartTypeSelector(context),
+                                  _buildSalesFilterSelector(context),
+                                  _buildExpenseFilterSelector(context),
+                                ],
+                              )
+                            else
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [_buildChartTypeSelector(context)],
+                              ),
+                            const SizedBox(height: WanzoTheme.spacingXs),
+                            _buildLegendItem(
+                              context,
+                              incomeLabel +
+                                  (_selectedViewMode ==
+                                              ChartViewMode.accounting &&
+                                          _selectedSalesFilter !=
+                                              SalesFilter.all
+                                      ? " (${_selectedSalesFilter.displayName})"
+                                      : ""),
+                              _formatAmount(totalIncome),
+                              _selectedViewMode == ChartViewMode.accounting
+                                  ? WanzoTheme.success
+                                  : Colors.blue,
+                              _selectedViewMode == ChartViewMode.accounting
+                                  ? Icons.trending_up
+                                  : Icons.arrow_downward,
                             ),
                             const SizedBox(height: WanzoTheme.spacingXs),
                             _buildLegendItem(
                               context,
-                              'Ventes${_selectedSalesFilter != SalesFilter.all ? " (${_selectedSalesFilter.displayName})" : ""}',
-                              _formatAmount(totalSales),
-                              WanzoTheme.success,
-                              Icons.trending_up,
-                            ),
-                            const SizedBox(height: WanzoTheme.spacingXs),
-                            _buildLegendItem(
-                              context,
-                              'Dépenses${_selectedExpenseFilter != ExpenseCategoryFilter.all ? " (${_selectedExpenseFilter.displayName})" : ""}',
-                              _formatAmount(totalExpenses),
-                              WanzoTheme.danger,
-                              Icons.trending_down,
+                              expenseLabel +
+                                  (_selectedViewMode ==
+                                              ChartViewMode.accounting &&
+                                          _selectedExpenseFilter !=
+                                              ExpenseCategoryFilter.all
+                                      ? " (${_selectedExpenseFilter.displayName})"
+                                      : ""),
+                              _formatAmount(totalExpense),
+                              _selectedViewMode == ChartViewMode.accounting
+                                  ? WanzoTheme.danger
+                                  : Colors.orange,
+                              _selectedViewMode == ChartViewMode.accounting
+                                  ? Icons.trending_down
+                                  : Icons.arrow_upward,
                             ),
                           ],
                         );
                       }
                       return Column(
                         children: [
-                          // Barre de filtres
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              _buildChartTypeSelector(context),
-                              const SizedBox(width: WanzoTheme.spacingXs),
-                              _buildSalesFilterSelector(context),
-                              const SizedBox(width: WanzoTheme.spacingXs),
-                              _buildExpenseFilterSelector(context),
-                            ],
-                          ),
+                          // Barre de filtres (uniquement en mode comptabilité)
+                          if (_selectedViewMode == ChartViewMode.accounting)
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildChartTypeSelector(context),
+                                const SizedBox(width: WanzoTheme.spacingXs),
+                                _buildSalesFilterSelector(context),
+                                const SizedBox(width: WanzoTheme.spacingXs),
+                                _buildExpenseFilterSelector(context),
+                              ],
+                            )
+                          else
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [_buildChartTypeSelector(context)],
+                            ),
                           const SizedBox(height: WanzoTheme.spacingXs),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -216,19 +293,39 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
                               Flexible(
                                 child: _buildLegendItem(
                                   context,
-                                  'Ventes${_selectedSalesFilter != SalesFilter.all ? " (${_selectedSalesFilter.displayName})" : ""}',
-                                  _formatAmount(totalSales),
-                                  WanzoTheme.success,
-                                  Icons.trending_up,
+                                  incomeLabel +
+                                      (_selectedViewMode ==
+                                                  ChartViewMode.accounting &&
+                                              _selectedSalesFilter !=
+                                                  SalesFilter.all
+                                          ? " (${_selectedSalesFilter.displayName})"
+                                          : ""),
+                                  _formatAmount(totalIncome),
+                                  _selectedViewMode == ChartViewMode.accounting
+                                      ? WanzoTheme.success
+                                      : Colors.blue,
+                                  _selectedViewMode == ChartViewMode.accounting
+                                      ? Icons.trending_up
+                                      : Icons.arrow_downward,
                                 ),
                               ),
                               Flexible(
                                 child: _buildLegendItem(
                                   context,
-                                  'Dépenses${_selectedExpenseFilter != ExpenseCategoryFilter.all ? " (${_selectedExpenseFilter.displayName})" : ""}',
-                                  _formatAmount(totalExpenses),
-                                  WanzoTheme.danger,
-                                  Icons.trending_down,
+                                  expenseLabel +
+                                      (_selectedViewMode ==
+                                                  ChartViewMode.accounting &&
+                                              _selectedExpenseFilter !=
+                                                  ExpenseCategoryFilter.all
+                                          ? " (${_selectedExpenseFilter.displayName})"
+                                          : ""),
+                                  _formatAmount(totalExpense),
+                                  _selectedViewMode == ChartViewMode.accounting
+                                      ? WanzoTheme.danger
+                                      : Colors.orange,
+                                  _selectedViewMode == ChartViewMode.accounting
+                                      ? Icons.trending_down
+                                      : Icons.arrow_upward,
                                 ),
                               ),
                             ],
@@ -248,16 +345,85 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
               height: widget.isExpanded ? 350 : 200,
               padding: const EdgeInsets.all(WanzoTheme.spacingMd),
               child:
-                  (dailySales.isEmpty && dailyExpenses.isEmpty)
+                  (incomeData.isEmpty && expenseData.isEmpty)
                       ? _buildEmptyState(context)
-                      : _buildChart(dailySales, dailyExpenses, theme),
+                      : _buildChart(incomeData, expenseData, theme),
             ),
 
             // Statistiques détaillées en mode agrandi
             if (widget.isExpanded)
-              _buildExpandedStats(context, dailySales, dailyExpenses),
+              _buildExpandedStats(context, incomeData, expenseData),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Sélecteur du mode de vue (Comptabilité / Trésorerie)
+  Widget _buildViewModeSelector(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(WanzoTheme.borderRadiusSm),
+      ),
+      padding: const EdgeInsets.all(2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children:
+            ChartViewMode.values.map((mode) {
+              final isSelected = _selectedViewMode == mode;
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _selectedViewMode = mode;
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color:
+                        isSelected
+                            ? theme.colorScheme.primary
+                            : Colors.transparent,
+                    borderRadius: BorderRadius.circular(
+                      WanzoTheme.borderRadiusSm - 2,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        mode.icon,
+                        size: 14,
+                        color:
+                            isSelected
+                                ? theme.colorScheme.onPrimary
+                                : theme.colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        mode.displayName,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.normal,
+                          color:
+                              isSelected
+                                  ? theme.colorScheme.onPrimary
+                                  : theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
       ),
     );
   }
@@ -440,15 +606,12 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
         minY: 0,
         maxY: safeMaxY,
         lineBarsData: [
-          // Ligne des ventes (verte)
+          // Ligne des revenus/encaissements (couleur dynamique selon le mode)
           LineChartBarData(
             spots: salesSpots,
             isCurved: true,
             gradient: LinearGradient(
-              colors: [
-                WanzoTheme.success.withValues(alpha: 0.8),
-                WanzoTheme.success,
-              ],
+              colors: [_incomeColor.withValues(alpha: 0.8), _incomeColor],
             ),
             barWidth: 3,
             isStrokeCapRound: true,
@@ -457,7 +620,7 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
               getDotPainter: (spot, percent, barData, index) {
                 return FlDotCirclePainter(
                   radius: 4,
-                  color: WanzoTheme.success,
+                  color: _incomeColor,
                   strokeWidth: 2,
                   strokeColor: Colors.white,
                 );
@@ -467,23 +630,20 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
               show: true,
               gradient: LinearGradient(
                 colors: [
-                  WanzoTheme.success.withValues(alpha: 0.2),
-                  WanzoTheme.success.withValues(alpha: 0.05),
+                  _incomeColor.withValues(alpha: 0.2),
+                  _incomeColor.withValues(alpha: 0.05),
                 ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
             ),
           ),
-          // Ligne des dépenses (rouge)
+          // Ligne des charges/décaissements (couleur dynamique selon le mode)
           LineChartBarData(
             spots: expensesSpots,
             isCurved: true,
             gradient: LinearGradient(
-              colors: [
-                WanzoTheme.danger.withValues(alpha: 0.8),
-                WanzoTheme.danger,
-              ],
+              colors: [_expenseColor.withValues(alpha: 0.8), _expenseColor],
             ),
             barWidth: 3,
             isStrokeCapRound: true,
@@ -492,7 +652,7 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
               getDotPainter: (spot, percent, barData, index) {
                 return FlDotCirclePainter(
                   radius: 4,
-                  color: WanzoTheme.danger,
+                  color: _expenseColor,
                   strokeWidth: 2,
                   strokeColor: Colors.white,
                 );
@@ -510,12 +670,15 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
                 final dateIndex = barSpot.x.toInt();
                 if (dateIndex >= 0 && dateIndex < allDates.length) {
                   final date = allDates[dateIndex];
-                  final isSales = barSpot.barIndex == 0;
-                  final label = isSales ? 'Ventes' : 'Dépenses';
+                  final isIncome = barSpot.barIndex == 0;
+                  final label =
+                      isIncome
+                          ? _selectedViewMode.incomeLegend
+                          : _selectedViewMode.expenseLegend;
                   return LineTooltipItem(
                     '${DateFormat('dd MMM').format(date)}\n$label: ${_formatAmount(barSpot.y)}',
                     TextStyle(
-                      color: isSales ? WanzoTheme.success : WanzoTheme.danger,
+                      color: isIncome ? _incomeColor : _expenseColor,
                       fontWeight: FontWeight.bold,
                       fontSize: 11,
                     ),
@@ -565,12 +728,15 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
             getTooltipItem: (group, groupIndex, rod, rodIndex) {
               if (groupIndex < allDates.length) {
                 final date = allDates[groupIndex];
-                final isSales = rodIndex == 0;
-                final label = isSales ? 'Ventes' : 'Dépenses';
+                final isIncome = rodIndex == 0;
+                final label =
+                    isIncome
+                        ? _selectedViewMode.incomeLegend
+                        : _selectedViewMode.expenseLegend;
                 return BarTooltipItem(
                   '${DateFormat('dd MMM').format(date)}\n$label: ${_formatAmount(rod.toY)}',
                   TextStyle(
-                    color: isSales ? WanzoTheme.success : WanzoTheme.danger,
+                    color: isIncome ? _incomeColor : _expenseColor,
                     fontWeight: FontWeight.bold,
                     fontSize: 11,
                   ),
@@ -652,15 +818,15 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
         ),
         barGroups: List.generate(allDates.length, (index) {
           final date = allDates[index];
-          final salesValue = dailySales[date] ?? 0;
-          final expensesValue = dailyExpenses[date] ?? 0;
+          final incomeValue = dailySales[date] ?? 0;
+          final expenseValue = dailyExpenses[date] ?? 0;
 
           return BarChartGroupData(
             x: index,
             barRods: [
               BarChartRodData(
-                toY: salesValue,
-                color: WanzoTheme.success,
+                toY: incomeValue,
+                color: _incomeColor,
                 width: widget.isExpanded ? 8 : 6,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(4),
@@ -668,8 +834,8 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
                 ),
               ),
               BarChartRodData(
-                toY: expensesValue,
-                color: WanzoTheme.danger,
+                toY: expenseValue,
+                color: _expenseColor,
                 width: widget.isExpanded ? 8 : 6,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(4),
@@ -689,19 +855,19 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     Map<DateTime, double> dailyExpenses,
     ThemeData theme,
   ) {
-    final totalSales = dailySales.values.fold(0.0, (sum, val) => sum + val);
-    final totalExpenses = dailyExpenses.values.fold(
+    final totalIncome = dailySales.values.fold(0.0, (sum, val) => sum + val);
+    final totalExpense = dailyExpenses.values.fold(
       0.0,
       (sum, val) => sum + val,
     );
-    final total = totalSales + totalExpenses;
+    final total = totalIncome + totalExpense;
 
     if (total == 0) {
       return _buildEmptyState(context);
     }
 
-    final salesPercentage = (totalSales / total * 100).toStringAsFixed(1);
-    final expensesPercentage = (totalExpenses / total * 100).toStringAsFixed(1);
+    final incomePercentage = (totalIncome / total * 100).toStringAsFixed(1);
+    final expensePercentage = (totalExpense / total * 100).toStringAsFixed(1);
 
     return Row(
       children: [
@@ -714,9 +880,9 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
               centerSpaceRadius: widget.isExpanded ? 50 : 30,
               sections: [
                 PieChartSectionData(
-                  color: WanzoTheme.success,
-                  value: totalSales,
-                  title: '$salesPercentage%',
+                  color: _incomeColor,
+                  value: totalIncome,
+                  title: '$incomePercentage%',
                   radius: widget.isExpanded ? 80 : 50,
                   titleStyle: const TextStyle(
                     fontSize: 12,
@@ -728,11 +894,13 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
                           ? Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: WanzoTheme.success,
+                              color: _incomeColor,
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: const Icon(
-                              Icons.trending_up,
+                            child: Icon(
+                              _selectedViewMode == ChartViewMode.accounting
+                                  ? Icons.trending_up
+                                  : Icons.arrow_downward,
                               color: Colors.white,
                               size: 16,
                             ),
@@ -741,9 +909,9 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
                   badgePositionPercentageOffset: 1.2,
                 ),
                 PieChartSectionData(
-                  color: WanzoTheme.danger,
-                  value: totalExpenses,
-                  title: '$expensesPercentage%',
+                  color: _expenseColor,
+                  value: totalExpense,
+                  title: '$expensePercentage%',
                   radius: widget.isExpanded ? 80 : 50,
                   titleStyle: const TextStyle(
                     fontSize: 12,
@@ -755,11 +923,13 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
                           ? Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: WanzoTheme.danger,
+                              color: _expenseColor,
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: const Icon(
-                              Icons.trending_down,
+                            child: Icon(
+                              _selectedViewMode == ChartViewMode.accounting
+                                  ? Icons.trending_down
+                                  : Icons.arrow_upward,
                               color: Colors.white,
                               size: 16,
                             ),
@@ -780,17 +950,17 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildPieLegendItem(
-                  'Ventes',
-                  _formatAmount(totalSales),
-                  '$salesPercentage%',
-                  WanzoTheme.success,
+                  _selectedViewMode.incomeLegend,
+                  _formatAmount(totalIncome),
+                  '$incomePercentage%',
+                  _incomeColor,
                 ),
                 const SizedBox(height: WanzoTheme.spacingMd),
                 _buildPieLegendItem(
-                  'Dépenses',
-                  _formatAmount(totalExpenses),
-                  '$expensesPercentage%',
-                  WanzoTheme.danger,
+                  _selectedViewMode.expenseLegend,
+                  _formatAmount(totalExpense),
+                  '$expensePercentage%',
+                  _expenseColor,
                 ),
                 const SizedBox(height: WanzoTheme.spacingMd),
                 Divider(
@@ -798,13 +968,13 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
                 ),
                 const SizedBox(height: WanzoTheme.spacingSm),
                 Text(
-                  'Balance: ${_formatAmount(totalSales - totalExpenses)}',
+                  'Balance: ${_formatAmount(totalIncome - totalExpense)}',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                     color:
-                        totalSales >= totalExpenses
-                            ? WanzoTheme.success
-                            : WanzoTheme.danger,
+                        totalIncome >= totalExpense
+                            ? _incomeColor
+                            : _expenseColor,
                   ),
                 ),
               ],
@@ -1290,6 +1460,66 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
         if (_selectedExpenseFilter.matchesCategory(expense.category)) {
           final dateKey = _getDateKey(expense.date);
           aggregated[dateKey] = (aggregated[dateKey] ?? 0) + expense.amount;
+        }
+      }
+    }
+
+    // Remplir les périodes vides avec 0
+    return _fillMissingPeriods(aggregated, dateRange);
+  }
+
+  /// Agrège les ENCAISSEMENTS par période (vue trésorerie)
+  /// Ne prend en compte que les montants effectivement payés (paidAmountInCdf)
+  Map<DateTime, double> _aggregateCashInByPeriod() {
+    final Map<DateTime, double> aggregated = {};
+    final dateRange = _selectedPeriod.getDateRange(DateTime.now());
+
+    for (final sale in widget.sales) {
+      // Filtrer uniquement les ventes dans la période
+      if (sale.date.isAfter(dateRange.start) &&
+          sale.date.isBefore(dateRange.end.add(const Duration(seconds: 1)))) {
+        // Seulement les montants ENCAISSÉS (impact trésorerie)
+        if (sale.paidAmountInCdf > 0) {
+          final dateKey = _getDateKey(sale.date);
+          aggregated[dateKey] =
+              (aggregated[dateKey] ?? 0) + sale.paidAmountInCdf;
+        }
+      }
+    }
+
+    // Remplir les périodes vides avec 0
+    return _fillMissingPeriods(aggregated, dateRange);
+  }
+
+  /// Agrège les DÉCAISSEMENTS par période (vue trésorerie)
+  /// Ne prend en compte que les dépenses effectivement payées
+  Map<DateTime, double> _aggregateCashOutByPeriod() {
+    final Map<DateTime, double> aggregated = {};
+    final dateRange = _selectedPeriod.getDateRange(DateTime.now());
+
+    for (final expense in widget.expenses) {
+      // Filtrer uniquement les dépenses dans la période
+      if (expense.date.isAfter(dateRange.start) &&
+          expense.date.isBefore(
+            dateRange.end.add(const Duration(seconds: 1)),
+          )) {
+        // Seulement les dépenses DÉCAISSÉES (payées en totalité ou partiellement)
+        // Si paymentStatus est paid ou partial, on prend le montant payé
+        // Si paidAmount est disponible, on l'utilise, sinon on considère amount si paid
+        final bool isPaidOrPartial =
+            expense.paymentStatus == ExpensePaymentStatus.paid ||
+            expense.paymentStatus == ExpensePaymentStatus.partial;
+
+        if (isPaidOrPartial) {
+          final double paidAmount =
+              expense.paidAmount ??
+              (expense.paymentStatus == ExpensePaymentStatus.paid
+                  ? expense.amount
+                  : 0);
+          if (paidAmount > 0) {
+            final dateKey = _getDateKey(expense.date);
+            aggregated[dateKey] = (aggregated[dateKey] ?? 0) + paidAmount;
+          }
         }
       }
     }

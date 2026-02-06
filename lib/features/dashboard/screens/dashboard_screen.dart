@@ -723,49 +723,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
           // Tablet: 3 colonnes
           crossAxisCount = 3;
         } else {
-          // Desktop: 5 colonnes (toutes les cartes sur une ligne)
-          crossAxisCount = 5;
+          // Desktop: 6 colonnes (toutes les cartes sur une ligne)
+          crossAxisCount = 6;
         }
 
         final kpiCards = [
-          // 1. Ventes USD
+          // 1. Revenus USD (Vue comptable: chiffre d'affaires)
           _buildResponsiveStatCard(
             context,
-            title: '${l10n.dashboardHeaderSalesToday} (USD)',
+            title: 'Revenus (USD)', // Terminologie comptable
             value: formatCurrency(kpiData.salesTodayUsd, 'USD'),
-            icon: Icons.monetization_on,
+            icon: Icons.trending_up,
             color: Colors.blue,
             l10n: l10n,
+            subtitle: 'Chiffre d\'affaires',
             isCompact: availableWidth < mobileBreakpoint,
           ),
-          // 2. Ventes CDF
+          // 2. Revenus CDF (Vue comptable: chiffre d'affaires)
           _buildResponsiveStatCard(
             context,
-            title: '${l10n.dashboardHeaderSalesToday} (CDF)',
+            title: 'Revenus (CDF)', // Terminologie comptable
             value: formatCurrency(kpiData.salesTodayCdf, 'CDF'),
-            icon: Icons.monetization_on,
+            icon: Icons.trending_up,
             color: Colors.green,
             l10n: l10n,
+            subtitle: 'Chiffre d\'affaires',
             isCompact: availableWidth < mobileBreakpoint,
           ),
-          // 3. Dépenses USD
+          // 3. Charges USD (Vue comptable: dépenses engagées)
           _buildResponsiveStatCard(
             context,
-            title: 'Dépenses (USD)',
+            title: 'Charges (USD)', // Terminologie comptable
             value: formatCurrency(kpiData.expensesUsd, 'USD'),
-            icon: Icons.money_off,
+            icon: Icons.trending_down,
             color: Colors.red.shade300,
             l10n: l10n,
+            subtitle: 'Dépenses engagées',
             isCompact: availableWidth < mobileBreakpoint,
           ),
-          // 4. Dépenses CDF
+          // 4. Charges CDF (Vue comptable: dépenses engagées)
           _buildResponsiveStatCard(
             context,
-            title: 'Dépenses (CDF)',
+            title: 'Charges (CDF)', // Terminologie comptable
             value: formatCurrency(kpiData.expensesCdf, 'CDF'),
-            icon: Icons.money_off,
+            icon: Icons.trending_down,
             color: Colors.red,
             l10n: l10n,
+            subtitle: 'Dépenses engagées',
             isCompact: availableWidth < mobileBreakpoint,
           ),
           // 5. Valeur Stock
@@ -780,6 +784,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 kpiData.stockValueAtCost > 0
                     ? '+${formatCurrency(kpiData.potentialProfit, 'CDF')} potentiel'
                     : null,
+            isCompact: availableWidth < mobileBreakpoint,
+          ),
+          // 6. Créances à encaisser (Vue trésorerie: argent attendu)
+          _buildResponsiveStatCard(
+            context,
+            title: 'À encaisser', // Vue trésorerie
+            value: formatCurrency(kpiData.receivables, 'CDF'),
+            icon: Icons.schedule_send,
+            color: Colors.purple,
+            l10n: l10n,
+            subtitle: 'Créances clients',
             isCompact: availableWidth < mobileBreakpoint,
           ),
         ];
@@ -950,17 +965,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final kpiCards = [
       _buildStatCard(
         context,
-        title: '${l10n.dashboardHeaderSalesToday} (CDF)',
+        title: 'Revenus (CDF)', // Terminologie comptable
         value: formatCurrency(kpiData.salesTodayCdf, 'CDF'),
-        icon: Icons.monetization_on,
+        icon: Icons.trending_up,
         color: Colors.green,
         l10n: l10n,
       ),
       _buildStatCard(
         context,
-        title: '${l10n.dashboardHeaderSalesToday} (USD)',
+        title: 'Revenus (USD)', // Terminologie comptable
         value: formatCurrency(kpiData.salesTodayUsd, 'USD'),
-        icon: Icons.monetization_on,
+        icon: Icons.trending_up,
         color: Colors.blue,
         l10n: l10n,
       ),
@@ -978,9 +993,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       _buildStatCard(
         context,
-        title: 'Dépenses',
+        title: 'Charges', // Terminologie comptable
         value: formatCurrency(kpiData.expenses, displayCurrencyCode),
-        icon: Icons.money_off,
+        icon: Icons.trending_down,
         color: Colors.red,
         l10n: l10n,
       ),

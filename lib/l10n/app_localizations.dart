@@ -4227,6 +4227,150 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Access to customer support'**
   String get userRoleCustomerSupportDescription;
+
+  /// Label for Revenues menu (formerly Sales) in sidebar
+  ///
+  /// In en, this message translates to:
+  /// **'Revenues'**
+  String get sidebarRevenues;
+
+  /// Label for Expenses menu (formerly Expenses) in sidebar
+  ///
+  /// In en, this message translates to:
+  /// **'Expenses'**
+  String get sidebarCharges;
+
+  /// Chart title in accounting view
+  ///
+  /// In en, this message translates to:
+  /// **'Business Activity'**
+  String get chartTitleAccountingView;
+
+  /// Chart title in cash flow view
+  ///
+  /// In en, this message translates to:
+  /// **'Cash Flow'**
+  String get chartTitleCashFlowView;
+
+  /// Legend for revenues in accounting chart
+  ///
+  /// In en, this message translates to:
+  /// **'Revenues (Turnover)'**
+  String get chartLegendRevenues;
+
+  /// Legend for expenses in accounting chart
+  ///
+  /// In en, this message translates to:
+  /// **'Expenses'**
+  String get chartLegendCharges;
+
+  /// Legend for cash in in cash flow chart
+  ///
+  /// In en, this message translates to:
+  /// **'Cash In'**
+  String get chartLegendCashIn;
+
+  /// Legend for cash out in cash flow chart
+  ///
+  /// In en, this message translates to:
+  /// **'Cash Out'**
+  String get chartLegendCashOut;
+
+  /// KPI for turnover
+  ///
+  /// In en, this message translates to:
+  /// **'Turnover'**
+  String get kpiTurnover;
+
+  /// KPI for cash in
+  ///
+  /// In en, this message translates to:
+  /// **'Cash In'**
+  String get kpiCashIn;
+
+  /// KPI for cash out
+  ///
+  /// In en, this message translates to:
+  /// **'Cash Out'**
+  String get kpiCashOut;
+
+  /// KPI for customer receivables
+  ///
+  /// In en, this message translates to:
+  /// **'Receivables'**
+  String get kpiReceivables;
+
+  /// KPI for supplier payables
+  ///
+  /// In en, this message translates to:
+  /// **'Payables'**
+  String get kpiPayables;
+
+  /// Filter for cash flow operations only
+  ///
+  /// In en, this message translates to:
+  /// **'Cash Flow'**
+  String get filterCashFlowOnly;
+
+  /// Filter for accounting operations
+  ///
+  /// In en, this message translates to:
+  /// **'Accounting'**
+  String get filterAccountingOnly;
+
+  /// Payment status: collected
+  ///
+  /// In en, this message translates to:
+  /// **'Collected'**
+  String get paymentStatusPaid;
+
+  /// Payment status: partial
+  ///
+  /// In en, this message translates to:
+  /// **'Partial'**
+  String get paymentStatusPartial;
+
+  /// Payment status: pending collection
+  ///
+  /// In en, this message translates to:
+  /// **'To Collect'**
+  String get paymentStatusPending;
+
+  /// Expense payment status: disbursed
+  ///
+  /// In en, this message translates to:
+  /// **'Disbursed'**
+  String get expensePaymentStatusPaid;
+
+  /// Expense payment status: partial
+  ///
+  /// In en, this message translates to:
+  /// **'Partial'**
+  String get expensePaymentStatusPartial;
+
+  /// Expense payment status: pending disbursement
+  ///
+  /// In en, this message translates to:
+  /// **'To Disburse'**
+  String get expensePaymentStatusPending;
+
+  /// Document type: invoice (commercial)
+  ///
+  /// In en, this message translates to:
+  /// **'Invoice'**
+  String get documentTypeInvoice;
+
+  /// Document type: cash receipt (treasury)
+  ///
+  /// In en, this message translates to:
+  /// **'Cash Receipt'**
+  String get documentTypeReceipt;
+
+  /// Document type: cash voucher
+  ///
+  /// In en, this message translates to:
+  /// **'Cash Voucher'**
+  String get documentTypeCashVoucher;
 }
 
 class _AppLocalizationsDelegate

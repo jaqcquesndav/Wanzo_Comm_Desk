@@ -2276,4 +2276,76 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get userRoleCustomerSupportDescription => 'Accès au support client';
+
+  @override
+  String get sidebarRevenues => 'Revenus';
+
+  @override
+  String get sidebarCharges => 'Charges';
+
+  @override
+  String get chartTitleAccountingView => 'Activité commerciale';
+
+  @override
+  String get chartTitleCashFlowView => 'Flux de trésorerie';
+
+  @override
+  String get chartLegendRevenues => 'Revenus (CA)';
+
+  @override
+  String get chartLegendCharges => 'Charges';
+
+  @override
+  String get chartLegendCashIn => 'Encaissements';
+
+  @override
+  String get chartLegendCashOut => 'Décaissements';
+
+  @override
+  String get kpiTurnover => 'Chiffre d\'affaires';
+
+  @override
+  String get kpiCashIn => 'Encaissements';
+
+  @override
+  String get kpiCashOut => 'Décaissements';
+
+  @override
+  String get kpiReceivables => 'Créances clients';
+
+  @override
+  String get kpiPayables => 'Dettes fournisseurs';
+
+  @override
+  String get filterCashFlowOnly => 'Trésorerie';
+
+  @override
+  String get filterAccountingOnly => 'Comptabilité';
+
+  @override
+  String get paymentStatusPaid => 'Encaissé';
+
+  @override
+  String get paymentStatusPartial => 'Partiel';
+
+  @override
+  String get paymentStatusPending => 'À encaisser';
+
+  @override
+  String get expensePaymentStatusPaid => 'Décaissé';
+
+  @override
+  String get expensePaymentStatusPartial => 'Partiel';
+
+  @override
+  String get expensePaymentStatusPending => 'À décaisser';
+
+  @override
+  String get documentTypeInvoice => 'Facture';
+
+  @override
+  String get documentTypeReceipt => 'Ticket de caisse';
+
+  @override
+  String get documentTypeCashVoucher => 'Bon de sortie caisse';
 }

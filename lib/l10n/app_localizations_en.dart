@@ -2240,4 +2240,76 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get userRoleCustomerSupportDescription => 'Access to customer support';
+
+  @override
+  String get sidebarRevenues => 'Revenues';
+
+  @override
+  String get sidebarCharges => 'Expenses';
+
+  @override
+  String get chartTitleAccountingView => 'Business Activity';
+
+  @override
+  String get chartTitleCashFlowView => 'Cash Flow';
+
+  @override
+  String get chartLegendRevenues => 'Revenues (Turnover)';
+
+  @override
+  String get chartLegendCharges => 'Expenses';
+
+  @override
+  String get chartLegendCashIn => 'Cash In';
+
+  @override
+  String get chartLegendCashOut => 'Cash Out';
+
+  @override
+  String get kpiTurnover => 'Turnover';
+
+  @override
+  String get kpiCashIn => 'Cash In';
+
+  @override
+  String get kpiCashOut => 'Cash Out';
+
+  @override
+  String get kpiReceivables => 'Receivables';
+
+  @override
+  String get kpiPayables => 'Payables';
+
+  @override
+  String get filterCashFlowOnly => 'Cash Flow';
+
+  @override
+  String get filterAccountingOnly => 'Accounting';
+
+  @override
+  String get paymentStatusPaid => 'Collected';
+
+  @override
+  String get paymentStatusPartial => 'Partial';
+
+  @override
+  String get paymentStatusPending => 'To Collect';
+
+  @override
+  String get expensePaymentStatusPaid => 'Disbursed';
+
+  @override
+  String get expensePaymentStatusPartial => 'Partial';
+
+  @override
+  String get expensePaymentStatusPending => 'To Disburse';
+
+  @override
+  String get documentTypeInvoice => 'Invoice';
+
+  @override
+  String get documentTypeReceipt => 'Cash Receipt';
+
+  @override
+  String get documentTypeCashVoucher => 'Cash Voucher';
 }

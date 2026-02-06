@@ -62,8 +62,8 @@ class _SalesListScreenState extends State<SalesListScreen> {
     return BlocBuilder<SalesBloc, SalesState>(
       builder: (context, state) {
         return WanzoScaffold(
-          currentIndex: 1, // Index pour Ventes dans le sidebar
-          title: 'Ventes',
+          currentIndex: 1, // Index pour Revenus dans le sidebar
+          title: 'Revenus', // Terminologie comptable: Revenus = Ventes
           appBarActions: [
             // Bouton d'export
             if (state is SalesLoaded && state.sales.isNotEmpty)
@@ -386,12 +386,13 @@ class _SalesDataTable extends StatelessWidget {
                   if (!isCompact)
                     DataColumn(
                       label: Text(
-                        'Payé',
+                        'Encaissement', // Vue trésorerie
                         style: theme.textTheme.labelLarge?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      numeric: true,
+                      numeric:
+                          false, // Changed to false since we use badges now
                     ),
                 ],
                 rows:
@@ -492,18 +493,14 @@ class _SalesDataTable extends StatelessWidget {
                               ),
                             ),
                           ),
-                          // Payé (si pas compact)
+                          // Payé (si pas compact) - Vue trésorerie avec badge
                           if (!isCompact)
                             DataCell(
-                              Text(
-                                currencyFormat.format(sale.paidAmountInCdf),
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color:
-                                      sale.paidAmountInCdf >=
-                                              sale.totalAmountInCdf
-                                          ? Colors.green
-                                          : Colors.orange,
-                                ),
+                              _buildPaymentStatusBadge(
+                                context,
+                                sale.paidAmountInCdf,
+                                sale.totalAmountInCdf,
+                                currencyFormat,
                               ),
                             ),
                         ],
@@ -514,6 +511,74 @@ class _SalesDataTable extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  /// Badge de statut de paiement pour la vue trésorerie
+  /// Affiche clairement si le paiement a impacté la caisse
+  Widget _buildPaymentStatusBadge(
+    BuildContext context,
+    double paidAmount,
+    double totalAmount,
+    NumberFormat currencyFormat,
+  ) {
+    final theme = Theme.of(context);
+    final percentage = totalAmount > 0 ? (paidAmount / totalAmount * 100) : 0;
+    final isFullyPaid = paidAmount >= totalAmount;
+    final isPartiallyPaid = paidAmount > 0 && paidAmount < totalAmount;
+    final isNotPaid = paidAmount <= 0;
+
+    Color statusColor;
+    String statusText;
+    IconData statusIcon;
+
+    if (isFullyPaid) {
+      statusColor = Colors.green;
+      statusText = 'Encaissé';
+      statusIcon = Icons.check_circle;
+    } else if (isPartiallyPaid) {
+      statusColor = Colors.blue;
+      statusText = '${percentage.toStringAsFixed(0)}%';
+      statusIcon = Icons.pie_chart;
+    } else {
+      statusColor = Colors.orange;
+      statusText = 'Non encaissé';
+      statusIcon = Icons.schedule;
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: statusColor.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(statusIcon, size: 12, color: statusColor),
+              const SizedBox(width: 4),
+              Text(
+                statusText,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: statusColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (isPartiallyPaid || isNotPaid) ...[
+          const SizedBox(width: 8),
+          Text(
+            currencyFormat.format(paidAmount),
+            style: theme.textTheme.bodySmall?.copyWith(color: statusColor),
+          ),
+        ],
+      ],
     );
   }
 }

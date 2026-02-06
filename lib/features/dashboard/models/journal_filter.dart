@@ -58,10 +58,7 @@ class JournalFilter extends Equatable {
     return JournalFilter(
       startDate: startDate,
       endDate: endDate,
-      selectedTypes: {
-        OperationType.stockIn,
-        OperationType.stockOut,
-      },
+      selectedTypes: {OperationType.stockIn, OperationType.stockOut},
     );
   }
 
@@ -70,21 +67,57 @@ class JournalFilter extends Equatable {
     return JournalFilter(
       startDate: startDate,
       endDate: endDate,
-      selectedTypes: {
-        OperationType.cashOut,
-        OperationType.supplierPayment,
-      },
+      selectedTypes: {OperationType.cashOut, OperationType.supplierPayment},
     );
   }
 
   /// Filtre pour les dettes clients
-  factory JournalFilter.customerDebts({DateTime? startDate, DateTime? endDate}) {
+  factory JournalFilter.customerDebts({
+    DateTime? startDate,
+    DateTime? endDate,
+  }) {
+    return JournalFilter(
+      startDate: startDate,
+      endDate: endDate,
+      selectedTypes: {OperationType.saleCredit, OperationType.saleInstallment},
+    );
+  }
+
+  /// Filtre pour la TRÉSORERIE uniquement (opérations impactant la caisse)
+  /// Vue "Encaissements vs Décaissements"
+  factory JournalFilter.cashFlowOnly({DateTime? startDate, DateTime? endDate}) {
     return JournalFilter(
       startDate: startDate,
       endDate: endDate,
       selectedTypes: {
+        // Encaissements (entrées de caisse)
+        OperationType.cashIn,
+        OperationType.customerPayment,
+        // Décaissements (sorties de caisse)
+        OperationType.cashOut,
+        OperationType.supplierPayment,
+        OperationType.financingRepayment,
+      },
+    );
+  }
+
+  /// Filtre pour la vue COMPTABLE (toutes opérations économiques)
+  /// Vue "Revenus vs Charges" (indépendamment du paiement effectif)
+  factory JournalFilter.accountingOnly({
+    DateTime? startDate,
+    DateTime? endDate,
+  }) {
+    return JournalFilter(
+      startDate: startDate,
+      endDate: endDate,
+      selectedTypes: {
+        // Revenus (ventes = chiffre d'affaires)
+        OperationType.saleCash,
         OperationType.saleCredit,
         OperationType.saleInstallment,
+        // Charges (dépenses)
+        OperationType.cashOut,
+        OperationType.supplierPayment,
       },
     );
   }
@@ -106,7 +139,8 @@ class JournalFilter extends Equatable {
       endDate: endDate ?? this.endDate,
       selectedTypes: selectedTypes ?? this.selectedTypes,
       selectedCurrencies: selectedCurrencies ?? this.selectedCurrencies,
-      selectedPaymentMethods: selectedPaymentMethods ?? this.selectedPaymentMethods,
+      selectedPaymentMethods:
+          selectedPaymentMethods ?? this.selectedPaymentMethods,
       minAmount: minAmount ?? this.minAmount,
       maxAmount: maxAmount ?? this.maxAmount,
       searchQuery: searchQuery ?? this.searchQuery,
@@ -127,14 +161,14 @@ class JournalFilter extends Equatable {
     }
 
     // Filtre par devises
-    if (selectedCurrencies.isNotEmpty && 
+    if (selectedCurrencies.isNotEmpty &&
         !selectedCurrencies.contains(entry.currencyCode)) {
       return false;
     }
 
     // Filtre par méthodes de paiement
-    if (selectedPaymentMethods.isNotEmpty && 
-        entry.paymentMethod != null && 
+    if (selectedPaymentMethods.isNotEmpty &&
+        entry.paymentMethod != null &&
         !selectedPaymentMethods.contains(entry.paymentMethod)) {
       return false;
     }
@@ -159,35 +193,30 @@ class JournalFilter extends Equatable {
   /// Retourne true si le filtre a des critères actifs
   bool get hasActiveFilters {
     return selectedTypes.length != OperationType.values.length ||
-           selectedCurrencies.isNotEmpty ||
-           selectedPaymentMethods.isNotEmpty ||
-           minAmount != null ||
-           maxAmount != null ||
-           searchQuery?.isNotEmpty == true;
+        selectedCurrencies.isNotEmpty ||
+        selectedPaymentMethods.isNotEmpty ||
+        minAmount != null ||
+        maxAmount != null ||
+        searchQuery?.isNotEmpty == true;
   }
 
   @override
   List<Object?> get props => [
-        startDate,
-        endDate,
-        selectedTypes,
-        selectedCurrencies,
-        selectedPaymentMethods,
-        minAmount,
-        maxAmount,
-        searchQuery,
-        sortBy,
-        sortAscending,
-      ];
+    startDate,
+    endDate,
+    selectedTypes,
+    selectedCurrencies,
+    selectedPaymentMethods,
+    minAmount,
+    maxAmount,
+    searchQuery,
+    sortBy,
+    sortAscending,
+  ];
 }
 
 /// Options de tri pour le journal
-enum JournalSortOption {
-  date,
-  amount,
-  type,
-  description,
-}
+enum JournalSortOption { date, amount, type, description }
 
 extension JournalSortOptionExtension on JournalSortOption {
   String get displayName {

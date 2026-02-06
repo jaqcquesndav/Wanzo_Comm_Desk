@@ -85,14 +85,15 @@ class WanzoScaffold extends StatelessWidget {
       const SidebarNavItem(
         icon: Icons.point_of_sale_outlined,
         activeIcon: Icons.point_of_sale,
-        label: 'Ventes',
-        route: '/sales', // Route directe vers la page des ventes
+        label:
+            'Revenus', // Terminologie comptable : ventes = revenus / chiffre d'affaires
+        route: '/sales', // Route directe vers la page des revenus
       ),
       const SidebarNavItem(
         icon: Icons.receipt_long_outlined,
         activeIcon: Icons.receipt_long,
-        label: 'Dépenses',
-        route: '/expenses', // Route directe vers la page des dépenses
+        label: 'Charges', // Terminologie comptable : dépenses = charges
+        route: '/expenses', // Route directe vers la page des charges
       ),
       const SidebarNavItem(
         icon: Icons.inventory_2_outlined,

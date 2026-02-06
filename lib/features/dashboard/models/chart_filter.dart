@@ -10,6 +10,60 @@ enum ChartType {
   pie, // Secteurs (pour répartition)
 }
 
+/// Mode de vue du graphique : comptabilité ou trésorerie
+enum ChartViewMode {
+  accounting, // Vue comptable: Revenus vs Charges (toutes opérations)
+  cashFlow, // Vue trésorerie: Encaissements vs Décaissements (cash uniquement)
+}
+
+extension ChartViewModeExtension on ChartViewMode {
+  String get displayName {
+    switch (this) {
+      case ChartViewMode.accounting:
+        return 'Comptabilité';
+      case ChartViewMode.cashFlow:
+        return 'Trésorerie';
+    }
+  }
+
+  String get chartTitle {
+    switch (this) {
+      case ChartViewMode.accounting:
+        return 'Revenus vs Charges';
+      case ChartViewMode.cashFlow:
+        return 'Encaissements vs Décaissements';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case ChartViewMode.accounting:
+        return Icons.account_balance_wallet_outlined;
+      case ChartViewMode.cashFlow:
+        return Icons.payments_outlined;
+    }
+  }
+
+  /// Labels pour les séries de données
+  String get incomeLegend {
+    switch (this) {
+      case ChartViewMode.accounting:
+        return 'Revenus (CA)';
+      case ChartViewMode.cashFlow:
+        return 'Encaissements';
+    }
+  }
+
+  String get expenseLegend {
+    switch (this) {
+      case ChartViewMode.accounting:
+        return 'Charges';
+      case ChartViewMode.cashFlow:
+        return 'Décaissements';
+    }
+  }
+}
+
 extension ChartTypeExtension on ChartType {
   String get displayName {
     switch (this) {
