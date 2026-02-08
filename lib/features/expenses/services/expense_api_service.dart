@@ -184,19 +184,33 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
     try {
       List<String>? attachmentUrls;
       if (attachments != null && attachments.isNotEmpty) {
-        try {
+        debugPrint(
+          "Starting image uploads for expense creation: ${attachments.length} files",
+        );
+        // Utiliser uploadImagesWithDetails pour une gestion d'erreurs robuste
+        // Ne lance jamais d'exception - continue même si certains uploads échouent
+        final uploadResult = await _imageUploadService.uploadImagesWithDetails(
+          attachments,
+        );
+        attachmentUrls =
+            uploadResult.successfulUrls.isNotEmpty
+                ? uploadResult.successfulUrls
+                : null;
+
+        // Log des fichiers échoués (mais on continue quand même)
+        if (uploadResult.hasFailures) {
           debugPrint(
-            "Starting image uploads for expense creation: ${attachments.length} files",
+            "⚠️ Some attachments failed to upload: ${uploadResult.failedPaths.length} failed",
           );
-          attachmentUrls = await _imageUploadService.uploadImages(attachments);
-          debugPrint("Image upload successful: ${attachmentUrls.length} URLs");
-        } catch (e) {
-          debugPrint("Error uploading images: $e");
-          return ApiResponse<Expense>(
-            success: false,
-            data: null,
-            message: 'Failed to upload attachments: ${e.toString()}',
-            statusCode: 500,
+          for (final failedPath in uploadResult.failedPaths) {
+            debugPrint(
+              "  - $failedPath: ${uploadResult.errorMessages[failedPath]}",
+            );
+          }
+        }
+        if (uploadResult.hasSuccessfulUploads) {
+          debugPrint(
+            "✅ Image upload successful: ${uploadResult.successfulUrls.length} URLs",
           );
         }
       }
@@ -318,23 +332,33 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
     try {
       List<String>? uploadedAttachmentUrls;
       if (newAttachments != null && newAttachments.isNotEmpty) {
-        try {
+        debugPrint(
+          "Starting image uploads for expense update: ${newAttachments.length} files",
+        );
+        // Utiliser uploadImagesWithDetails pour une gestion d'erreurs robuste
+        // Ne lance jamais d'exception - continue même si certains uploads échouent
+        final uploadResult = await _imageUploadService.uploadImagesWithDetails(
+          newAttachments,
+        );
+        uploadedAttachmentUrls =
+            uploadResult.successfulUrls.isNotEmpty
+                ? uploadResult.successfulUrls
+                : null;
+
+        // Log des fichiers échoués (mais on continue quand même)
+        if (uploadResult.hasFailures) {
           debugPrint(
-            "Starting image uploads for expense update: ${newAttachments.length} files",
+            "⚠️ Some attachments failed to upload: ${uploadResult.failedPaths.length} failed",
           );
-          uploadedAttachmentUrls = await _imageUploadService.uploadImages(
-            newAttachments,
-          );
+          for (final failedPath in uploadResult.failedPaths) {
+            debugPrint(
+              "  - $failedPath: ${uploadResult.errorMessages[failedPath]}",
+            );
+          }
+        }
+        if (uploadResult.hasSuccessfulUploads) {
           debugPrint(
-            "Image upload successful: ${uploadedAttachmentUrls.length} URLs",
-          );
-        } catch (e) {
-          debugPrint("Error uploading images: $e");
-          return ApiResponse<Expense>(
-            success: false,
-            data: null,
-            message: 'Failed to upload attachments: ${e.toString()}',
-            statusCode: 500,
+            "✅ Image upload successful: ${uploadResult.successfulUrls.length} URLs",
           );
         }
       }

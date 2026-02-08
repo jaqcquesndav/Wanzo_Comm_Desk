@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:wanzo/core/enums/business_unit_enums.dart';
 
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/navigation/app_router.dart';
@@ -386,6 +387,15 @@ class _SalesDataTable extends StatelessWidget {
                   if (!isCompact)
                     DataColumn(
                       label: Text(
+                        'Unité',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  if (!isCompact)
+                    DataColumn(
+                      label: Text(
                         'Encaissement', // Vue trésorerie
                         style: theme.textTheme.labelLarge?.copyWith(
                           fontWeight: FontWeight.bold,
@@ -493,6 +503,16 @@ class _SalesDataTable extends StatelessWidget {
                               ),
                             ),
                           ),
+                          // Unité (si pas compact)
+                          if (!isCompact)
+                            DataCell(
+                              Text(
+                                sale.businessUnitCode != null
+                                    ? '${sale.businessUnitType?.code ?? 'company'} - ${sale.businessUnitCode}'
+                                    : sale.businessUnitType?.code ?? 'company',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ),
                           // Payé (si pas compact) - Vue trésorerie avec badge
                           if (!isCompact)
                             DataCell(

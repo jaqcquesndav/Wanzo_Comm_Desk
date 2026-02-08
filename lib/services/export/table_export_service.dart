@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:csv/csv.dart';
 import 'package:excel/excel.dart';
@@ -367,12 +366,13 @@ class TableExportService {
   CellValue _getCellValue(dynamic value) {
     if (value == null) return TextCellValue('');
     if (value is num) return DoubleCellValue(value.toDouble());
-    if (value is DateTime)
+    if (value is DateTime) {
       return DateCellValue(
         year: value.year,
         month: value.month,
         day: value.day,
       );
+    }
     if (value is bool) return TextCellValue(value ? 'Oui' : 'Non');
     return TextCellValue(value.toString());
   }

@@ -16,6 +16,7 @@ import '../models/product.dart';
 import '../models/stock_transaction.dart'; // Added import
 import 'package:wanzo/core/utils/currency_formatter.dart'; // Added
 import 'package:wanzo/core/enums/currency_enum.dart'; // Added
+import 'package:wanzo/core/enums/business_unit_enums.dart'; // For BusinessUnitTypeExtension
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart'; // Changed
 import 'package:wanzo/core/services/currency_service.dart'; // Added
 import 'package:wanzo/l10n/app_localizations.dart'; // Updated import
@@ -562,7 +563,7 @@ class _InventoryScreenState extends State<InventoryScreen>
               "${_getTransactionTypeName(transaction.type, l10n)}: ${product?.name ?? l10n.unknownProductLabel}",
             ),
             subtitle: Text(
-              "${l10n.quantityLabel}: ${transaction.quantity}, ${l10n.dateLabel}: ${formatDate(transaction.date, l10n)}\\n${l10n.valueLabel}: ${formatCurrency(displayValue, displayCurrencyCode)} (${formatCurrency(transaction.totalValueInCdf, Currency.CDF.code)})",
+              "${l10n.quantityLabel}: ${transaction.quantity}, ${l10n.dateLabel}: ${formatDate(transaction.date, l10n)}\\n${l10n.valueLabel}: ${formatCurrency(displayValue, displayCurrencyCode)} (${formatCurrency(transaction.totalValueInCdf, Currency.CDF.code)})\\nUnité: ${transaction.businessUnitCode != null ? '${transaction.businessUnitType?.code ?? 'company'} - ${transaction.businessUnitCode}' : transaction.businessUnitType?.code ?? 'company'}",
             ),
             leading: Icon(
               transaction.quantity > 0
@@ -934,6 +935,24 @@ class _ProductGridCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    // Business Unit
+                    if (product.businessUnitType != null ||
+                        product.businessUnitCode != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          product.businessUnitCode != null
+                              ? '${product.businessUnitType?.code ?? 'company'} - ${product.businessUnitCode}'
+                              : product.businessUnitType?.code ?? 'company',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.6,
+                            ),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     const SizedBox(height: 4),
                     // Prix
                     Text(

@@ -289,15 +289,56 @@ class SyncService {
         '✅ productsBox ouverte avec ${productBox.length} produits existants',
       );
 
-      // Collecter les produits locaux en attente de sync (créés en offline)
+      // ═══════════════════════════════════════════════════════════════════
+      // ÉTAPE 1: UPLOAD - Envoyer les produits locaux en attente au backend
+      // ═══════════════════════════════════════════════════════════════════
       final pendingProducts =
           productBox.values.where((p) => p.syncStatus == 'pending').toList();
-      debugPrint(
-        '📤 ${pendingProducts.length} produits en attente de synchronisation',
-      );
 
-      // Note: L'API backend ne supporte pas le paramètre updated_after
-      // Nous faisons donc une synchronisation complète à chaque fois
+      if (pendingProducts.isNotEmpty) {
+        debugPrint(
+          '📤 ${pendingProducts.length} produits en attente de synchronisation vers le backend',
+        );
+
+        for (var pendingProduct in pendingProducts) {
+          try {
+            final apiResponse = await _productApiService
+                .createProduct(pendingProduct)
+                .timeout(const Duration(seconds: 10));
+
+            if (apiResponse.success && apiResponse.data != null) {
+              final serverProduct = apiResponse.data!;
+              // Mettre à jour avec l'ID serveur et marquer comme synchronisé
+              final syncedProduct = serverProduct.copyWith(
+                stockQuantity:
+                    pendingProduct.stockQuantity, // Préserver stock local
+                syncStatus: 'synced',
+              );
+
+              // Si l'ID a changé, supprimer l'ancien et ajouter le nouveau
+              if (pendingProduct.id != serverProduct.id) {
+                await productBox.delete(pendingProduct.id);
+              }
+              await productBox.put(serverProduct.id, syncedProduct);
+
+              debugPrint(
+                '✅ Produit uploadé: ${pendingProduct.name} → ID serveur: ${serverProduct.id}',
+              );
+            } else {
+              debugPrint(
+                '⚠️ Échec upload produit ${pendingProduct.name}: ${apiResponse.message}',
+              );
+            }
+          } catch (e) {
+            debugPrint('❌ Erreur upload produit ${pendingProduct.name}: $e');
+            // Continuer avec le produit suivant
+          }
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════
+      // ÉTAPE 2: DOWNLOAD - Récupérer les produits du backend
+      // ═══════════════════════════════════════════════════════════════════
       debugPrint('🔄 Appel API getProducts (sync complet)...');
       final apiResponse = await _productApiService.getProducts();
 
@@ -401,8 +442,52 @@ class SyncService {
       final saleBox = Hive.box<Sale>('sales');
       debugPrint('📦 Box "sales" contient ${saleBox.length} ventes AVANT sync');
 
-      // Note: L'API backend ne supporte pas le paramètre updated_after
-      // Nous faisons donc une synchronisation complète à chaque fois
+      // ═══════════════════════════════════════════════════════════════════
+      // ÉTAPE 1: UPLOAD - Envoyer les ventes locales en attente au backend
+      // ═══════════════════════════════════════════════════════════════════
+      final pendingSales =
+          saleBox.values.where((s) => s.syncStatus == 'pending').toList();
+
+      if (pendingSales.isNotEmpty) {
+        debugPrint(
+          '📤 ${pendingSales.length} ventes en attente de synchronisation vers le backend',
+        );
+
+        for (var pendingSale in pendingSales) {
+          try {
+            final apiResponse = await _saleApiService
+                .createSale(pendingSale)
+                .timeout(const Duration(seconds: 10));
+
+            if (apiResponse.success && apiResponse.data != null) {
+              final serverSale = apiResponse.data!;
+              // Mettre à jour avec l'ID serveur et marquer comme synchronisé
+              final syncedSale = serverSale.copyWith(syncStatus: 'synced');
+
+              // Si l'ID a changé, supprimer l'ancien et ajouter le nouveau
+              if (pendingSale.id != serverSale.id) {
+                await saleBox.delete(pendingSale.id);
+              }
+              await saleBox.put(serverSale.id, syncedSale);
+
+              debugPrint(
+                '✅ Vente uploadée: ${pendingSale.id} → ID serveur: ${serverSale.id}',
+              );
+            } else {
+              debugPrint(
+                '⚠️ Échec upload vente ${pendingSale.id}: ${apiResponse.message}',
+              );
+            }
+          } catch (e) {
+            debugPrint('❌ Erreur upload vente ${pendingSale.id}: $e');
+            // Continuer avec la vente suivante
+          }
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════
+      // ÉTAPE 2: DOWNLOAD - Récupérer les ventes du backend
+      // ═══════════════════════════════════════════════════════════════════
       debugPrint('🔄 Appel API getSales (sync complet)...');
       final apiResponse = await _saleApiService.getSales();
       if (apiResponse.success && apiResponse.data != null) {
@@ -456,6 +541,67 @@ class SyncService {
         '📦 Box "expenses" contient ${expenseBox.length} dépenses AVANT sync',
       );
 
+      // ═══════════════════════════════════════════════════════════════════
+      // ÉTAPE 1: UPLOAD - Envoyer les dépenses locales en attente au backend
+      // ═══════════════════════════════════════════════════════════════════
+      final pendingExpenses =
+          expenseBox.values.where((e) => e.syncStatus == 'pending').toList();
+
+      if (pendingExpenses.isNotEmpty) {
+        debugPrint(
+          '📤 ${pendingExpenses.length} dépenses en attente de synchronisation vers le backend',
+        );
+
+        for (var pendingExpense in pendingExpenses) {
+          try {
+            final apiResponse = await _expenseApiService
+                .createExpense(
+                  pendingExpense.date,
+                  pendingExpense.amount,
+                  pendingExpense.motif,
+                  pendingExpense.category.name,
+                  pendingExpense.paymentMethod,
+                  pendingExpense.supplierId,
+                  paidAmount: pendingExpense.paidAmount,
+                  paymentStatus: pendingExpense.paymentStatus?.name,
+                  supplierName: pendingExpense.supplierName,
+                  currencyCode: pendingExpense.currencyCode,
+                  exchangeRate: pendingExpense.exchangeRate,
+                )
+                .timeout(const Duration(seconds: 15));
+
+            if (apiResponse.success && apiResponse.data != null) {
+              final serverExpense = apiResponse.data!;
+              // Mettre à jour avec l'ID serveur et marquer comme synchronisé
+              final syncedExpense = serverExpense.copyWith(
+                syncStatus: 'synced',
+              );
+
+              // Supprimer l'ancien enregistrement local et ajouter le nouveau
+              final oldKey = pendingExpense.localId ?? pendingExpense.id;
+              if (oldKey != serverExpense.id) {
+                await expenseBox.delete(oldKey);
+              }
+              await expenseBox.put(serverExpense.id, syncedExpense);
+
+              debugPrint(
+                '✅ Dépense uploadée: ${pendingExpense.motif} → ID serveur: ${serverExpense.id}',
+              );
+            } else {
+              debugPrint(
+                '⚠️ Échec upload dépense ${pendingExpense.motif}: ${apiResponse.message}',
+              );
+            }
+          } catch (e) {
+            debugPrint('❌ Erreur upload dépense ${pendingExpense.motif}: $e');
+            // Continuer avec la dépense suivante
+          }
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════
+      // ÉTAPE 2: DOWNLOAD - Récupérer les dépenses du backend
+      // ═══════════════════════════════════════════════════════════════════
       final String lastSyncKey = 'expense_last_sync';
       Map<String, String> queryParams = {};
 

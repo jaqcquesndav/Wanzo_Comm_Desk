@@ -97,7 +97,35 @@ class FinancingApiService {
       // Si des pièces jointes sont fournies, les téléverser d'abord
       List<String>? attachmentUrls;
       if (attachments != null && attachments.isNotEmpty) {
-        attachmentUrls = await _imageUploadService.uploadImages(attachments);
+        debugPrint(
+          "Starting image uploads for financing request: ${attachments.length} files",
+        );
+        // Utiliser uploadImagesWithDetails pour une gestion d'erreurs robuste
+        // Ne lance jamais d'exception - continue même si certains uploads échouent
+        final uploadResult = await _imageUploadService.uploadImagesWithDetails(
+          attachments,
+        );
+        attachmentUrls =
+            uploadResult.successfulUrls.isNotEmpty
+                ? uploadResult.successfulUrls
+                : null;
+
+        // Log des fichiers échoués (mais on continue quand même)
+        if (uploadResult.hasFailures) {
+          debugPrint(
+            "⚠️ Some attachments failed to upload: ${uploadResult.failedPaths.length} failed",
+          );
+          for (final failedPath in uploadResult.failedPaths) {
+            debugPrint(
+              "  - $failedPath: ${uploadResult.errorMessages[failedPath]}",
+            );
+          }
+        }
+        if (uploadResult.hasSuccessfulUploads) {
+          debugPrint(
+            "✅ Image upload successful: ${uploadResult.successfulUrls.length} URLs",
+          );
+        }
       }
 
       // Créer un objet de demande mis à jour avec les URLs des pièces jointes
@@ -466,8 +494,10 @@ class FinancingApiService {
     File file,
   ) async {
     try {
-      // Utilise le service d'upload d'image pour télécharger le fichier
-      final String? fileUrl = await _imageUploadService.uploadImage(file);
+      // Utilise le service d'upload d'image avec retry pour télécharger le fichier
+      final String? fileUrl = await _imageUploadService.uploadImageWithRetry(
+        file,
+      );
 
       if (fileUrl != null) {
         // Enregistre l'URL de la pièce jointe dans la demande de financement

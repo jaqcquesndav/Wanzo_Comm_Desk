@@ -16,5 +16,6 @@
 ///   ),
 /// )
 /// ```
+library;
 
 export 'table_export_service.dart';

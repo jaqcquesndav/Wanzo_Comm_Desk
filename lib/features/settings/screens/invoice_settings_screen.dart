@@ -411,11 +411,13 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
                     decimal: true,
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty)
+                    if (value == null || value.isEmpty) {
                       return l10n.errorFieldRequired;
+                    }
                     if (double.tryParse(value) == null ||
-                        double.parse(value) <= 0)
+                        double.parse(value) <= 0) {
                       return l10n.errorInvalidRate;
+                    }
                     return null;
                   },
                   onChanged: (_) => _onFieldChanged(),
@@ -432,11 +434,13 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
                     decimal: true,
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty)
+                    if (value == null || value.isEmpty) {
                       return l10n.errorFieldRequired;
+                    }
                     if (double.tryParse(value) == null ||
-                        double.parse(value) <= 0)
+                        double.parse(value) <= 0) {
                       return l10n.errorInvalidRate;
+                    }
                     return null;
                   },
                   onChanged: (_) => _onFieldChanged(),
@@ -532,11 +536,13 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
                   enabled: _showTaxes,
                   validator: (value) {
                     if (_showTaxes) {
-                      if (value == null || value.isEmpty)
+                      if (value == null || value.isEmpty) {
                         return l10n.errorFieldRequired;
+                      }
                       final rate = double.tryParse(value);
-                      if (rate == null || rate < 0 || rate > 100)
+                      if (rate == null || rate < 0 || rate > 100) {
                         return l10n.errorInvalidTaxRate;
+                      }
                     }
                     return null;
                   },

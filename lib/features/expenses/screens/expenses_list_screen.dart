@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:wanzo/core/enums/business_unit_enums.dart';
 
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/navigation/app_router.dart';
@@ -450,6 +451,15 @@ class _ExpensesDataTable extends StatelessWidget {
                   if (!isCompact)
                     DataColumn(
                       label: Text(
+                        'Unité',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  if (!isCompact)
+                    DataColumn(
+                      label: Text(
                         'Moyen paiement',
                         style: theme.textTheme.labelLarge?.copyWith(
                           fontWeight: FontWeight.bold,
@@ -564,6 +574,17 @@ class _ExpensesDataTable extends StatelessWidget {
                               ),
                             ),
                           ),
+                          // Unité (si pas compact)
+                          if (!isCompact)
+                            DataCell(
+                              Text(
+                                expense.businessUnitCode != null
+                                    ? '${expense.businessUnitType?.code ?? 'company'} - ${expense.businessUnitCode}'
+                                    : expense.businessUnitType?.code ??
+                                        'company',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ),
                           // Moyen de paiement (si pas compact)
                           if (!isCompact)
                             DataCell(
