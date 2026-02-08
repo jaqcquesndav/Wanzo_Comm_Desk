@@ -8,6 +8,7 @@ import 'package:wanzo/core/enums/currency_enum.dart'; // Corrected: Currency is 
 import 'package:wanzo/core/models/currency_settings_model.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/widgets/desktop/responsive_form_container.dart';
+import 'package:wanzo/core/widgets/smart_image.dart'; // SmartImage for Cloudinary URLs
 import 'package:wanzo/features/customer/bloc/customer_bloc.dart';
 import 'package:wanzo/features/customer/bloc/customer_event.dart';
 import 'package:wanzo/features/customer/bloc/customer_state.dart';
@@ -1359,29 +1360,18 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
               .firstOrNull;
     }
 
-    if (product?.imagePath != null && product!.imagePath!.isNotEmpty) {
+    if (product?.imagePath != null && product!.imagePath!.isNotEmpty ||
+        product?.imageUrl != null && product!.imageUrl!.isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(6),
         child: SizedBox(
           width: 28,
           height: 28,
-          child: Image.file(
-            File(product.imagePath!),
+          child: SmartImage(
+            imageUrl: product.imageUrl,
+            imagePath: product.imagePath,
             fit: BoxFit.cover,
-            errorBuilder:
-                (_, __, ___) => Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Icon(
-                    Icons.inventory_2,
-                    size: 16,
-                    color: Colors.blue,
-                  ),
-                ),
+            placeholderIcon: Icons.inventory_2,
           ),
         ),
       );
@@ -1619,13 +1609,15 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                   width: 40,
                   height: 40,
                   child:
-                      product.imagePath != null && product.imagePath!.isNotEmpty
-                          ? Image.file(
-                            File(product.imagePath!),
+                      (product.imagePath != null &&
+                                  product.imagePath!.isNotEmpty) ||
+                              (product.imageUrl != null &&
+                                  product.imageUrl!.isNotEmpty)
+                          ? SmartImage(
+                            imageUrl: product.imageUrl,
+                            imagePath: product.imagePath,
                             fit: BoxFit.cover,
-                            errorBuilder:
-                                (_, __, ___) =>
-                                    _buildCategoryIcon(product.category),
+                            placeholderIcon: Icons.inventory_2,
                           )
                           : _buildCategoryIcon(product.category),
                 ),
@@ -2593,15 +2585,15 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                           width: 48,
                           height: 48,
                           child:
-                              product.imagePath != null &&
-                                      product.imagePath!.isNotEmpty
-                                  ? Image.file(
-                                    File(product.imagePath!),
+                              (product.imagePath != null &&
+                                          product.imagePath!.isNotEmpty) ||
+                                      (product.imageUrl != null &&
+                                          product.imageUrl!.isNotEmpty)
+                                  ? SmartImage(
+                                    imageUrl: product.imageUrl,
+                                    imagePath: product.imagePath,
                                     fit: BoxFit.cover,
-                                    errorBuilder:
-                                        (_, __, ___) => _buildCategoryIcon(
-                                          product.category,
-                                        ),
+                                    placeholderIcon: Icons.inventory_2,
                                   )
                                   : _buildCategoryIcon(product.category),
                         ),

@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:get_it/get_it.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
+import 'package:wanzo/core/services/sync_service.dart';
 
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/navigation/app_router.dart';
@@ -49,11 +52,34 @@ class SalesListScreen extends StatefulWidget {
 }
 
 class _SalesListScreenState extends State<SalesListScreen> {
+  StreamSubscription<SyncStatus>? _syncSubscription;
+
   @override
   void initState() {
     super.initState();
     // Charger les ventes au démarrage
     context.read<SalesBloc>().add(const LoadSales());
+
+    // Écouter le SyncService pour recharger les ventes après synchronisation
+    _setupSyncListener();
+  }
+
+  void _setupSyncListener() {
+    if (GetIt.instance.isRegistered<SyncService>()) {
+      final syncService = GetIt.instance<SyncService>();
+      _syncSubscription = syncService.syncStatus.listen((status) {
+        if (status == SyncStatus.completed && mounted) {
+          debugPrint('🔄 Sync terminée - Rechargement des ventes');
+          context.read<SalesBloc>().add(const LoadSales());
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    super.dispose();
   }
 
   @override

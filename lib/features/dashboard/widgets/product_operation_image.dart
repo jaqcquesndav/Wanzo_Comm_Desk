@@ -1,6 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/features/dashboard/models/operation_journal_entry.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_bloc.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_state.dart';
@@ -61,8 +61,9 @@ class ProductOperationImage extends StatelessWidget {
               },
             );
 
-            if (product.imagePath != null && product.imagePath!.isNotEmpty) {
-              return _buildProductImage(product.imagePath!);
+            if (product.imagePath != null && product.imagePath!.isNotEmpty ||
+                product.imageUrl != null && product.imageUrl!.isNotEmpty) {
+              return _buildProductImage(product.imageUrl, product.imagePath);
             }
           }
 
@@ -100,8 +101,9 @@ class ProductOperationImage extends StatelessWidget {
                 },
               );
 
-              if (product.imagePath != null && product.imagePath!.isNotEmpty) {
-                return _buildProductImage(product.imagePath!);
+              if (product.imagePath != null && product.imagePath!.isNotEmpty ||
+                  product.imageUrl != null && product.imageUrl!.isNotEmpty) {
+                return _buildProductImage(product.imageUrl, product.imagePath);
               }
             }
 
@@ -127,7 +129,7 @@ class ProductOperationImage extends StatelessWidget {
     );
   }
 
-  Widget _buildProductImage(String imagePath) {
+  Widget _buildProductImage(String? imageUrl, String? imagePath) {
     return Container(
       width: size,
       height: size,
@@ -143,16 +145,13 @@ class ProductOperationImage extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: Image.file(
-          File(imagePath),
+        child: SmartImage(
+          imageUrl: imageUrl,
+          imagePath: imagePath,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return _buildGenericIcon(
-              context,
-              Icons.image_not_supported,
-              Colors.grey,
-            );
-          },
+          width: size,
+          height: size,
+          placeholderIcon: Icons.image_not_supported,
         ),
       ),
     );
@@ -280,14 +279,14 @@ class MultiProductOperationImages extends StatelessWidget {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(6),
                       child:
-                          product.imagePath != null &&
-                                  product.imagePath!.isNotEmpty
-                              ? Image.file(
-                                File(product.imagePath!),
+                          (product.imagePath != null &&
+                                      product.imagePath!.isNotEmpty) ||
+                                  (product.imageUrl != null &&
+                                      product.imageUrl!.isNotEmpty)
+                              ? SmartImage(
+                                imageUrl: product.imageUrl,
+                                imagePath: product.imagePath,
                                 fit: BoxFit.cover,
-                                errorBuilder:
-                                    (context, error, stackTrace) =>
-                                        _buildFallbackIcon(),
                               )
                               : _buildFallbackIcon(),
                     ),

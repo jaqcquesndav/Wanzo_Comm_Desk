@@ -135,7 +135,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _syncSubscription = syncService.syncStatus.listen((status) {
         if (status == SyncStatus.completed) {
           debugPrint(
-            '🔄 Sync terminée - Rechargement des ventes pour le graphique',
+            '🔄 Sync terminée - Rechargement des ventes, dépenses et journal pour le dashboard',
           );
           final now = DateTime.now();
           _salesBloc.add(
@@ -150,6 +150,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
               now,
             ),
           );
+          // Recharger le journal des opérations
+          _operationJournalBloc.add(
+            LoadOperations(
+              startDate: DateTime(now.year, now.month, 1),
+              endDate: DateTime(now.year, now.month + 1, 0, 23, 59, 59),
+            ),
+          );
+          // Recharger l'inventaire
+          context.read<InventoryBloc>().add(LoadProducts());
           _dashboardBloc.add(RefreshDashboardData(now));
         }
       });

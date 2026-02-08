@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:get_it/get_it.dart';
 import 'package:wanzo/l10n/app_localizations.dart'; // Import AppLocalizations
 import 'package:wanzo/core/services/currency_service.dart'; // Import CurrencyService
 import 'package:wanzo/core/utils/currency_formatter.dart'; // Added import
 import 'package:wanzo/core/enums/currency_enum.dart'; // Added import for Currency enum and extension
 import 'package:wanzo/core/services/form_navigation_service.dart';
+import 'package:wanzo/core/services/sync_service.dart';
 import '../bloc/supplier_bloc.dart';
 import '../bloc/supplier_event.dart';
 import '../bloc/supplier_state.dart';
@@ -22,17 +25,34 @@ class SuppliersScreen extends StatefulWidget {
 
 class _SuppliersScreenState extends State<SuppliersScreen> {
   final TextEditingController _searchController = TextEditingController();
+  StreamSubscription<SyncStatus>? _syncSubscription;
 
   @override
   void initState() {
     super.initState();
     // Charge la liste des fournisseurs au démarrage
     context.read<SupplierBloc>().add(const LoadSuppliers());
+
+    // Écouter le SyncService pour recharger les fournisseurs après synchronisation
+    _setupSyncListener();
+  }
+
+  void _setupSyncListener() {
+    if (GetIt.instance.isRegistered<SyncService>()) {
+      final syncService = GetIt.instance<SyncService>();
+      _syncSubscription = syncService.syncStatus.listen((status) {
+        if (status == SyncStatus.completed && mounted) {
+          debugPrint('🔄 Sync terminée - Rechargement des fournisseurs');
+          context.read<SupplierBloc>().add(const LoadSuppliers());
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _syncSubscription?.cancel();
     super.dispose();
   }
 

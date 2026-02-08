@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:get_it/get_it.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/services/currency_service.dart';
 import 'package:wanzo/core/services/form_navigation_service.dart';
+import 'package:wanzo/core/services/sync_service.dart';
 import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
 import '../bloc/customer_state.dart';
@@ -21,6 +24,7 @@ class CustomersScreen extends StatefulWidget {
 class _CustomersScreenState extends State<CustomersScreen> {
   final TextEditingController _searchController = TextEditingController();
   late CurrencyService _currencyService;
+  StreamSubscription<SyncStatus>? _syncSubscription;
 
   @override
   void initState() {
@@ -31,11 +35,27 @@ class _CustomersScreenState extends State<CustomersScreen> {
     _currencyService =
         CurrencyService(); // Initialize CurrencyService without settingsBloc
     _currencyService.loadSettings(); // Load currency settings
+
+    // Écouter le SyncService pour recharger les clients après synchronisation
+    _setupSyncListener();
+  }
+
+  void _setupSyncListener() {
+    if (GetIt.instance.isRegistered<SyncService>()) {
+      final syncService = GetIt.instance<SyncService>();
+      _syncSubscription = syncService.syncStatus.listen((status) {
+        if (status == SyncStatus.completed && mounted) {
+          debugPrint('🔄 Sync terminée - Rechargement des clients');
+          context.read<CustomerBloc>().add(const LoadCustomers());
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _syncSubscription?.cancel();
     super.dispose();
   }
 

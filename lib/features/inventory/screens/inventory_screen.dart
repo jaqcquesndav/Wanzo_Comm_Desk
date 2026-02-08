@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart'; // Needed for date formatting in export
 import 'dart:io'; // Added for File support
 import 'package:uuid/uuid.dart'; // Added for Uuid
+import 'package:get_it/get_it.dart';
+import 'package:wanzo/core/widgets/smart_image.dart'; // Added for smart image loading
 import '../../../constants/spacing.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/widgets/table_export_button.dart';
@@ -19,6 +22,7 @@ import 'package:wanzo/core/enums/currency_enum.dart'; // Added
 import 'package:wanzo/core/enums/business_unit_enums.dart'; // For BusinessUnitTypeExtension
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart'; // Changed
 import 'package:wanzo/core/services/currency_service.dart'; // Added
+import 'package:wanzo/core/services/sync_service.dart'; // Added for sync status
 import 'package:wanzo/l10n/app_localizations.dart'; // Updated import
 
 /// Écran principal de gestion de l'inventaire
@@ -33,6 +37,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
+  StreamSubscription<SyncStatus>? _syncSubscription;
 
   @override
   void initState() {
@@ -40,12 +45,36 @@ class _InventoryScreenState extends State<InventoryScreen>
     _tabController = TabController(length: 3, vsync: this);
     // Chargement initial des produits
     context.read<InventoryBloc>().add(const LoadProducts());
+
+    // Écouter le SyncService pour recharger les produits après synchronisation
+    _setupSyncListener();
+  }
+
+  void _setupSyncListener() {
+    if (GetIt.instance.isRegistered<SyncService>()) {
+      final syncService = GetIt.instance<SyncService>();
+      _syncSubscription = syncService.syncStatus.listen((status) {
+        if (status == SyncStatus.completed && mounted) {
+          debugPrint('🔄 Sync terminée - Rechargement de l\'inventaire');
+          // Recharger en fonction de l'onglet actif
+          final currentIndex = _tabController.index;
+          if (currentIndex == 0) {
+            context.read<InventoryBloc>().add(const LoadProducts());
+          } else if (currentIndex == 1) {
+            context.read<InventoryBloc>().add(const LoadLowStockProducts());
+          } else if (currentIndex == 2) {
+            context.read<InventoryBloc>().add(const LoadAllTransactions());
+          }
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _searchController.dispose();
+    _syncSubscription?.cancel();
     super.dispose();
   }
 
@@ -1009,17 +1038,13 @@ class _ProductGridCard extends StatelessWidget {
   }
 
   Widget _buildProductImage(BuildContext context) {
-    final theme = Theme.of(context);
-
-    if (product.imagePath != null && product.imagePath!.isNotEmpty) {
-      return Image.file(
-        File(product.imagePath!),
-        fit: BoxFit.cover,
-        errorBuilder:
-            (context, error, stackTrace) => _buildPlaceholderImage(theme),
-      );
-    }
-    return _buildPlaceholderImage(theme);
+    // Utilise SmartImage pour supporter les URLs Cloudinary et les fichiers locaux
+    return SmartImage(
+      imageUrl: product.imageUrl, // URL Cloudinary (prioritaire)
+      imagePath: product.imagePath, // Chemin local (fallback)
+      fit: BoxFit.cover,
+      placeholderIcon: Icons.inventory_2,
+    );
   }
 
   Widget _buildPlaceholderImage(ThemeData theme) {
