@@ -2312,4 +2312,37 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get documentTypeCashVoucher => 'Cash Voucher';
+
+  @override
+  String get subscriptionQuotaExhaustedTitle => 'Token quota exhausted';
+
+  @override
+  String get subscriptionExpiredTitle => 'Subscription expired';
+
+  @override
+  String get subscriptionPastDueTitle => 'Payment pending';
+
+  @override
+  String get subscriptionFeatureNotAvailableTitle => 'Feature not available';
+
+  @override
+  String subscriptionGracePeriodRemaining(int days) {
+    return 'You have $days day(s) left before service suspension.';
+  }
+
+  @override
+  String get subscriptionRenewButton => 'Renew my subscription';
+
+  @override
+  String get subscriptionPayNowButton => 'Pay now';
+
+  @override
+  String get subscriptionViewPlansButton => 'View available plans';
+
+  @override
+  String get subscriptionNewConversationButton => 'New conversation';
+
+  @override
+  String get subscriptionContactSupport =>
+      'Contact support if the problem persists.';
 }

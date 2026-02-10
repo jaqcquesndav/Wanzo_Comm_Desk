@@ -1170,11 +1170,20 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
 
       case AdhaStreamType.error:
         // Erreur pendant le streaming
+        // Extraire les métadonnées d'abonnement si présentes
         add(
           StreamError(
             conversationId: chunk.conversationId,
             errorMessage: chunk.content,
             requestMessageId: chunk.requestMessageId,
+            errorType: chunk.metadata?.errorType,
+            subscriptionRenewalUrl: chunk.metadata?.subscriptionRenewalUrl,
+            requiresAction: chunk.metadata?.requiresAction,
+            upgradeRequired: chunk.metadata?.upgradeRequired,
+            feature: chunk.metadata?.feature,
+            currentUsage: chunk.metadata?.currentUsage,
+            limit: chunk.metadata?.limit,
+            gracePeriodDaysRemaining: chunk.metadata?.gracePeriodDaysRemaining,
           ),
         );
         break;
@@ -1839,6 +1848,26 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
   ) async {
     _accumulatedStreamContent.clear();
     _currentStreamingRequestId = null;
+
+    // Vérifier si c'est une erreur liée à l'abonnement
+    if (event.isSubscriptionRelated) {
+      final errorType = SubscriptionErrorType.fromBackendType(event.errorType);
+      if (errorType != null) {
+        emit(
+          AdhaSubscriptionError(
+            errorType: errorType,
+            message: event.errorMessage,
+            renewalUrl: event.subscriptionRenewalUrl,
+            upgradeRequired: event.upgradeRequired ?? false,
+            feature: event.feature,
+            currentUsage: event.currentUsage,
+            limit: event.limit,
+            gracePeriodDaysRemaining: event.gracePeriodDaysRemaining,
+          ),
+        );
+        return;
+      }
+    }
 
     emit(AdhaError("Erreur de streaming: ${event.errorMessage}"));
 

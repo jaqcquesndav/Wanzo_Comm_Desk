@@ -2325,4 +2325,38 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get documentTypeCashVoucher => 'Cash Voucher';
+
+  @override
+  String get subscriptionQuotaExhaustedTitle =>
+      'Kiwango cha tokeni kimemalizika';
+
+  @override
+  String get subscriptionExpiredTitle => 'Usajili umeisha';
+
+  @override
+  String get subscriptionPastDueTitle => 'Malipo yanasubiri';
+
+  @override
+  String get subscriptionFeatureNotAvailableTitle => 'Kipengele hakipatikani';
+
+  @override
+  String subscriptionGracePeriodRemaining(int days) {
+    return 'Una siku $days zilizobaki kabla ya kusimamishwa kwa huduma.';
+  }
+
+  @override
+  String get subscriptionRenewButton => 'Sasisha usajili wangu';
+
+  @override
+  String get subscriptionPayNowButton => 'Lipa sasa';
+
+  @override
+  String get subscriptionViewPlansButton => 'Tazama mipango inayopatikana';
+
+  @override
+  String get subscriptionNewConversationButton => 'Mazungumzo mapya';
+
+  @override
+  String get subscriptionContactSupport =>
+      'Wasiliana na msaada ikiwa tatizo linaendelea.';
 }

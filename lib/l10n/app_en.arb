@@ -1363,5 +1363,52 @@
   "documentTypeCashVoucher": "Cash Voucher",
   "@documentTypeCashVoucher": {
     "description": "Document type: cash voucher"
+  },
+
+  "subscriptionQuotaExhaustedTitle": "Token quota exhausted",
+  "@subscriptionQuotaExhaustedTitle": {
+    "description": "Title when token quota is exhausted"
+  },
+  "subscriptionExpiredTitle": "Subscription expired",
+  "@subscriptionExpiredTitle": {
+    "description": "Title when subscription has expired"
+  },
+  "subscriptionPastDueTitle": "Payment pending",
+  "@subscriptionPastDueTitle": {
+    "description": "Title when payment is overdue"
+  },
+  "subscriptionFeatureNotAvailableTitle": "Feature not available",
+  "@subscriptionFeatureNotAvailableTitle": {
+    "description": "Title when a feature is not included in current plan"
+  },
+  "subscriptionGracePeriodRemaining": "You have {days} day(s) left before service suspension.",
+  "@subscriptionGracePeriodRemaining": {
+    "description": "Grace period warning message",
+    "placeholders": {
+      "days": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "subscriptionRenewButton": "Renew my subscription",
+  "@subscriptionRenewButton": {
+    "description": "Button label to renew subscription"
+  },
+  "subscriptionPayNowButton": "Pay now",
+  "@subscriptionPayNowButton": {
+    "description": "Button label to pay overdue balance"
+  },
+  "subscriptionViewPlansButton": "View available plans",
+  "@subscriptionViewPlansButton": {
+    "description": "Button label to view subscription plans"
+  },
+  "subscriptionNewConversationButton": "New conversation",
+  "@subscriptionNewConversationButton": {
+    "description": "Button label to start a new conversation"
+  },
+  "subscriptionContactSupport": "Contact support if the problem persists.",
+  "@subscriptionContactSupport": {
+    "description": "Message to contact support"
   }
 }

@@ -1376,5 +1376,52 @@
   "documentTypeCashVoucher": "Bon de sortie caisse",
   "@documentTypeCashVoucher": {
     "description": "Type de document: bon de sortie caisse"
+  },
+
+  "subscriptionQuotaExhaustedTitle": "Quota de tokens épuisé",
+  "@subscriptionQuotaExhaustedTitle": {
+    "description": "Titre quand le quota de tokens est épuisé"
+  },
+  "subscriptionExpiredTitle": "Abonnement expiré",
+  "@subscriptionExpiredTitle": {
+    "description": "Titre quand l'abonnement a expiré"
+  },
+  "subscriptionPastDueTitle": "Paiement en attente",
+  "@subscriptionPastDueTitle": {
+    "description": "Titre quand le paiement est en retard"
+  },
+  "subscriptionFeatureNotAvailableTitle": "Fonctionnalité non disponible",
+  "@subscriptionFeatureNotAvailableTitle": {
+    "description": "Titre quand une fonctionnalité n'est pas incluse dans le plan actuel"
+  },
+  "subscriptionGracePeriodRemaining": "Il vous reste {days} jour(s) avant la suspension du service.",
+  "@subscriptionGracePeriodRemaining": {
+    "description": "Message d'avertissement de période de grâce",
+    "placeholders": {
+      "days": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "subscriptionRenewButton": "Renouveler mon abonnement",
+  "@subscriptionRenewButton": {
+    "description": "Libellé du bouton pour renouveler l'abonnement"
+  },
+  "subscriptionPayNowButton": "Payer maintenant",
+  "@subscriptionPayNowButton": {
+    "description": "Libellé du bouton pour payer le solde en retard"
+  },
+  "subscriptionViewPlansButton": "Voir les plans disponibles",
+  "@subscriptionViewPlansButton": {
+    "description": "Libellé du bouton pour voir les plans d'abonnement"
+  },
+  "subscriptionNewConversationButton": "Nouvelle conversation",
+  "@subscriptionNewConversationButton": {
+    "description": "Libellé du bouton pour démarrer une nouvelle conversation"
+  },
+  "subscriptionContactSupport": "Contactez le support si le problème persiste.",
+  "@subscriptionContactSupport": {
+    "description": "Message pour contacter le support"
   }
 }

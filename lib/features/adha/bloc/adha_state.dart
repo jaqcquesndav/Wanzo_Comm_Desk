@@ -226,3 +226,95 @@ class AdhaStreamConnected extends AdhaState {
   @override
   List<Object?> get props => [connectionState, errorMessage];
 }
+
+// ============================================================================
+// ÉTATS D'ERREUR D'ABONNEMENT (v2.7.0)
+// ============================================================================
+
+/// Types d'erreurs liées à l'abonnement
+enum SubscriptionErrorType {
+  /// Quota de tokens épuisé
+  quotaExhausted,
+
+  /// Abonnement expiré
+  subscriptionExpired,
+
+  /// Paiement en retard (période de grâce)
+  subscriptionPastDue,
+
+  /// Fonctionnalité non disponible dans le plan actuel
+  featureNotAvailable;
+
+  /// Convertit un type d'erreur backend en SubscriptionErrorType
+  static SubscriptionErrorType? fromBackendType(String? errorType) {
+    if (errorType == null) return null;
+    switch (errorType) {
+      case 'quota_exhausted':
+        return SubscriptionErrorType.quotaExhausted;
+      case 'subscription_expired':
+        return SubscriptionErrorType.subscriptionExpired;
+      case 'subscription_past_due':
+        return SubscriptionErrorType.subscriptionPastDue;
+      case 'feature_not_available':
+        return SubscriptionErrorType.featureNotAvailable;
+      default:
+        return null;
+    }
+  }
+}
+
+/// État spécifique pour les erreurs liées à l'abonnement/quota
+///
+/// Cet état est émis lorsque le backend renvoie une erreur de type:
+/// - quota_exhausted: Quota de tokens épuisé
+/// - subscription_expired: Abonnement expiré
+/// - subscription_past_due: Paiement en retard
+/// - feature_not_available: Fonctionnalité non disponible
+class AdhaSubscriptionError extends AdhaState {
+  /// Type d'erreur d'abonnement
+  final SubscriptionErrorType errorType;
+
+  /// Message d'erreur lisible
+  final String message;
+
+  /// URL de renouvellement d'abonnement (fournie par le backend)
+  final String? renewalUrl;
+
+  /// Indique si un upgrade de plan est nécessaire
+  final bool upgradeRequired;
+
+  /// Fonctionnalité refusée (pour featureNotAvailable)
+  final String? feature;
+
+  /// Nombre de tokens/unités utilisés
+  final int? currentUsage;
+
+  /// Limite du plan actuel
+  final int? limit;
+
+  /// Jours restants de la période de grâce
+  final int? gracePeriodDaysRemaining;
+
+  const AdhaSubscriptionError({
+    required this.errorType,
+    required this.message,
+    this.renewalUrl,
+    this.upgradeRequired = false,
+    this.feature,
+    this.currentUsage,
+    this.limit,
+    this.gracePeriodDaysRemaining,
+  });
+
+  @override
+  List<Object?> get props => [
+    errorType,
+    message,
+    renewalUrl,
+    upgradeRequired,
+    feature,
+    currentUsage,
+    limit,
+    gracePeriodDaysRemaining,
+  ];
+}

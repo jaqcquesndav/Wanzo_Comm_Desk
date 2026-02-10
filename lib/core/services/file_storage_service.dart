@@ -1,26 +1,38 @@
-
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:wanzo/core/services/image_upload_service.dart';
 
 class FileStorageService {
+  final ImageUploadService _imageUploadService;
+
+  FileStorageService({ImageUploadService? imageUploadService})
+    : _imageUploadService = imageUploadService ?? ImageUploadService();
+
   /// Uploads a profile image for the given user.
   ///
   /// Returns the download URL of the uploaded image, or null on failure.
   Future<String?> uploadProfileImage(File imageFile, String userId) async {
-    // Simulate network delay for uploading
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      debugPrint(
+        '📤 Uploading profile image for user $userId. Image path: ${imageFile.path}',
+      );
 
-    // In a real application, you would upload the file to a cloud storage
-    // (e.g., Firebase Storage, AWS S3) or your own backend.
-    // For example:
-    // final storageRef = FirebaseStorage.instance.ref().child('profile_pictures').child('$userId.jpg');
-    // final uploadTask = storageRef.putFile(imageFile);
-    // final snapshot = await uploadTask.whenComplete(() => {});
-    // final downloadUrl = await snapshot.ref.getDownloadURL();
-    // return downloadUrl;
+      // Utiliser ImageUploadService pour uploader vers Cloudinary avec retry
+      final url = await _imageUploadService.uploadImageWithRetry(
+        imageFile,
+        publicId: 'profile_$userId',
+      );
 
-    // For now, return a dummy URL
-    debugPrint('Simulated image upload for user $userId. Image path: ${imageFile.path}');
-    return 'https://picsum.photos/seed/$userId/200/200'; // Placeholder URL
+      if (url != null) {
+        debugPrint('✅ Profile image uploaded successfully: $url');
+        return url;
+      } else {
+        debugPrint('❌ Failed to upload profile image to Cloudinary');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('❌ Error uploading profile image: $e');
+      return null;
+    }
   }
 }

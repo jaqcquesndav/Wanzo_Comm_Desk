@@ -4371,6 +4371,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Cash Voucher'**
   String get documentTypeCashVoucher;
+
+  /// Title when token quota is exhausted
+  ///
+  /// In en, this message translates to:
+  /// **'Token quota exhausted'**
+  String get subscriptionQuotaExhaustedTitle;
+
+  /// Title when subscription has expired
+  ///
+  /// In en, this message translates to:
+  /// **'Subscription expired'**
+  String get subscriptionExpiredTitle;
+
+  /// Title when payment is overdue
+  ///
+  /// In en, this message translates to:
+  /// **'Payment pending'**
+  String get subscriptionPastDueTitle;
+
+  /// Title when a feature is not included in current plan
+  ///
+  /// In en, this message translates to:
+  /// **'Feature not available'**
+  String get subscriptionFeatureNotAvailableTitle;
+
+  /// Grace period warning message
+  ///
+  /// In en, this message translates to:
+  /// **'You have {days} day(s) left before service suspension.'**
+  String subscriptionGracePeriodRemaining(int days);
+
+  /// Button label to renew subscription
+  ///
+  /// In en, this message translates to:
+  /// **'Renew my subscription'**
+  String get subscriptionRenewButton;
+
+  /// Button label to pay overdue balance
+  ///
+  /// In en, this message translates to:
+  /// **'Pay now'**
+  String get subscriptionPayNowButton;
+
+  /// Button label to view subscription plans
+  ///
+  /// In en, this message translates to:
+  /// **'View available plans'**
+  String get subscriptionViewPlansButton;
+
+  /// Button label to start a new conversation
+  ///
+  /// In en, this message translates to:
+  /// **'New conversation'**
+  String get subscriptionNewConversationButton;
+
+  /// Message to contact support
+  ///
+  /// In en, this message translates to:
+  /// **'Contact support if the problem persists.'**
+  String get subscriptionContactSupport;
 }
 
 class _AppLocalizationsDelegate

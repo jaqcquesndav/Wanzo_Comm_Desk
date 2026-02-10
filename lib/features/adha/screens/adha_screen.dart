@@ -11,6 +11,7 @@ import '../bloc/adha_state.dart';
 import '../models/adha_message.dart'; // Added import for AdhaMessage
 import '../models/adha_attachment.dart'; // Added for attachments
 import '../widgets/adha_error_widget.dart'; // Widget d'erreur user-friendly
+import '../widgets/adha_subscription_error_widget.dart'; // Widget d'erreur abonnement
 import 'chat_message_widget.dart';
 import 'streaming_message_widget.dart'; // Import du widget de streaming
 import '../models/adha_context_info.dart'; // Added for AdhaContextInfo
@@ -266,6 +267,16 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
                         onReauth: () {
                           // Naviguer vers l'écran de connexion
                           Navigator.of(context).pushReplacementNamed('/login');
+                        },
+                      );
+                    } else if (state is AdhaSubscriptionError) {
+                      // Erreur liée à l'abonnement/quota
+                      return AdhaSubscriptionErrorWidget(
+                        error: state,
+                        onNewConversation: () {
+                          context.read<AdhaBloc>().add(
+                            ClearCurrentConversation(),
+                          );
                         },
                       );
                     } else if (state is AdhaStreaming) {

@@ -1204,5 +1204,52 @@
   "sectorFinanceName": "Huduma za Kifedha",
   "sectorFinanceDescription": "Benki, bima, fedha ndogo",
   "sectorOtherName": "Nyingine",
-  "sectorOtherDescription": "Sekta zingine za biashara"
+  "sectorOtherDescription": "Sekta zingine za biashara",
+
+  "subscriptionQuotaExhaustedTitle": "Kiwango cha tokeni kimemalizika",
+  "@subscriptionQuotaExhaustedTitle": {
+    "description": "Kichwa wakati kiwango cha tokeni kinapomalizika"
+  },
+  "subscriptionExpiredTitle": "Usajili umeisha",
+  "@subscriptionExpiredTitle": {
+    "description": "Kichwa wakati usajili umeisha"
+  },
+  "subscriptionPastDueTitle": "Malipo yanasubiri",
+  "@subscriptionPastDueTitle": {
+    "description": "Kichwa wakati malipo yamechelewa"
+  },
+  "subscriptionFeatureNotAvailableTitle": "Kipengele hakipatikani",
+  "@subscriptionFeatureNotAvailableTitle": {
+    "description": "Kichwa wakati kipengele hakijajumuishwa katika mpango wa sasa"
+  },
+  "subscriptionGracePeriodRemaining": "Una siku {days} zilizobaki kabla ya kusimamishwa kwa huduma.",
+  "@subscriptionGracePeriodRemaining": {
+    "description": "Ujumbe wa onyo wa kipindi cha neema",
+    "placeholders": {
+      "days": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "subscriptionRenewButton": "Sasisha usajili wangu",
+  "@subscriptionRenewButton": {
+    "description": "Lebo ya kitufe cha kusasisha usajili"
+  },
+  "subscriptionPayNowButton": "Lipa sasa",
+  "@subscriptionPayNowButton": {
+    "description": "Lebo ya kitufe cha kulipa salio lililochelewe"
+  },
+  "subscriptionViewPlansButton": "Tazama mipango inayopatikana",
+  "@subscriptionViewPlansButton": {
+    "description": "Lebo ya kitufe cha kutazama mipango ya usajili"
+  },
+  "subscriptionNewConversationButton": "Mazungumzo mapya",
+  "@subscriptionNewConversationButton": {
+    "description": "Lebo ya kitufe cha kuanza mazungumzo mapya"
+  },
+  "subscriptionContactSupport": "Wasiliana na msaada ikiwa tatizo linaendelea.",
+  "@subscriptionContactSupport": {
+    "description": "Ujumbe wa kuwasiliana na msaada"
+  }
 }

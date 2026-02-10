@@ -190,7 +190,10 @@ Future<void> main() async {
     final adhaApiService = AdhaApiService(apiClient);
 
     // Services API pour Inventory et Sales (synchronisation)
-    final inventoryApiService = InventoryApiServiceImpl(apiClient);
+    final inventoryApiService = InventoryApiServiceImpl(
+      apiClient,
+      imageUploadService: imageUploadService,
+    );
     final salesApiService = SalesApiService(apiClient: apiClient);
 
     // Services API pour Customer et Supplier (synchronisation)

@@ -4,7 +4,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 // import 'package:intl/intl.dart'; // Replaced with currency_formatter
 import 'package:intl/intl.dart'; // Needed for date formatting in export
-import 'dart:io'; // Added for File support
 import 'package:uuid/uuid.dart'; // Added for Uuid
 import 'package:get_it/get_it.dart';
 import 'package:wanzo/core/widgets/smart_image.dart'; // Added for smart image loading
@@ -1044,19 +1043,6 @@ class _ProductGridCard extends StatelessWidget {
       imagePath: product.imagePath, // Chemin local (fallback)
       fit: BoxFit.cover,
       placeholderIcon: Icons.inventory_2,
-    );
-  }
-
-  Widget _buildPlaceholderImage(ThemeData theme) {
-    return Container(
-      color: theme.colorScheme.surfaceContainerHighest,
-      child: Center(
-        child: Icon(
-          Icons.inventory_2,
-          size: 48,
-          color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
-        ),
-      ),
     );
   }
 

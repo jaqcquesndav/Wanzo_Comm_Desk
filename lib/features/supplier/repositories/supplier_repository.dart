@@ -6,7 +6,8 @@ import '../services/supplier_api_service.dart';
 
 /// Repository pour la gestion des fournisseurs (API-First + Offline Fallback)
 class SupplierRepository {
-  static const _suppliersBoxName = 'suppliers';
+  static const _suppliersBoxName =
+      'suppliersBox'; // Correspond à hive_setup.dart et sync_service.dart
   late Box<Supplier> _suppliersBox;
   final _uuid = const Uuid();
   final SupplierApiService? _apiService;

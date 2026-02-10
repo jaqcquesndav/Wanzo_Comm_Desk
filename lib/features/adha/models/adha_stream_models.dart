@@ -152,19 +152,82 @@ class AdhaStreamMetadata extends Equatable {
   @HiveField(3)
   final bool? error;
 
+  // ========================================================================
+  // Champs pour les erreurs d'abonnement/quota (v2.7.0)
+  // ========================================================================
+
+  /// Type d'erreur spécifique ('quota_exhausted', 'subscription_expired', etc.)
+  @HiveField(4)
+  final String? errorType;
+
+  /// URL de renouvellement d'abonnement
+  @HiveField(5)
+  final String? subscriptionRenewalUrl;
+
+  /// Indique si une action utilisateur est requise
+  @HiveField(6)
+  final bool? requiresAction;
+
+  /// Indique si un upgrade de plan est nécessaire
+  @HiveField(7)
+  final bool? upgradeRequired;
+
+  /// Fonctionnalité refusée (pour 'feature_not_available')
+  @HiveField(8)
+  final String? feature;
+
+  /// Nombre de tokens/unités utilisés
+  @HiveField(9)
+  final int? currentUsage;
+
+  /// Limite du plan actuel
+  @HiveField(10)
+  final int? limit;
+
+  /// Jours restants de la période de grâce
+  @HiveField(11)
+  final int? gracePeriodDaysRemaining;
+
   const AdhaStreamMetadata({
     required this.source,
     required this.streamVersion,
     this.streamComplete,
     this.error,
+    this.errorType,
+    this.subscriptionRenewalUrl,
+    this.requiresAction,
+    this.upgradeRequired,
+    this.feature,
+    this.currentUsage,
+    this.limit,
+    this.gracePeriodDaysRemaining,
   });
 
   factory AdhaStreamMetadata.fromJson(Map<String, dynamic> json) {
     return AdhaStreamMetadata(
       source: json['source'] as String? ?? 'unknown',
-      streamVersion: json['streamVersion'] as String? ?? '1.0.0',
-      streamComplete: json['streamComplete'] as bool?,
+      streamVersion:
+          json['streamVersion'] as String? ??
+          json['stream_version'] as String? ??
+          '1.0.0',
+      streamComplete:
+          json['streamComplete'] as bool? ?? json['stream_complete'] as bool?,
       error: json['error'] as bool?,
+      errorType: json['error_type'] as String? ?? json['errorType'] as String?,
+      subscriptionRenewalUrl:
+          json['subscription_renewal_url'] as String? ??
+          json['subscriptionRenewalUrl'] as String?,
+      requiresAction:
+          json['requires_action'] as bool? ?? json['requiresAction'] as bool?,
+      upgradeRequired:
+          json['upgrade_required'] as bool? ?? json['upgradeRequired'] as bool?,
+      feature: json['feature'] as String?,
+      currentUsage:
+          json['current_usage'] as int? ?? json['currentUsage'] as int?,
+      limit: json['limit'] as int?,
+      gracePeriodDaysRemaining:
+          json['grace_period_days_remaining'] as int? ??
+          json['gracePeriodDaysRemaining'] as int?,
     );
   }
 
@@ -174,11 +237,57 @@ class AdhaStreamMetadata extends Equatable {
       'streamVersion': streamVersion,
       if (streamComplete != null) 'streamComplete': streamComplete,
       if (error != null) 'error': error,
+      if (errorType != null) 'error_type': errorType,
+      if (subscriptionRenewalUrl != null)
+        'subscription_renewal_url': subscriptionRenewalUrl,
+      if (requiresAction != null) 'requires_action': requiresAction,
+      if (upgradeRequired != null) 'upgrade_required': upgradeRequired,
+      if (feature != null) 'feature': feature,
+      if (currentUsage != null) 'current_usage': currentUsage,
+      if (limit != null) 'limit': limit,
+      if (gracePeriodDaysRemaining != null)
+        'grace_period_days_remaining': gracePeriodDaysRemaining,
     };
   }
 
+  // ========================================================================
+  // Getters utilitaires pour les erreurs d'abonnement
+  // ========================================================================
+
+  /// Vérifie si c'est une erreur de quota épuisé
+  bool get isQuotaExhausted => errorType == 'quota_exhausted';
+
+  /// Vérifie si c'est une erreur de fonctionnalité non disponible
+  bool get isFeatureNotAvailable => errorType == 'feature_not_available';
+
+  /// Vérifie si l'abonnement a expiré
+  bool get isSubscriptionExpired => errorType == 'subscription_expired';
+
+  /// Vérifie si l'abonnement est en période de grâce (paiement en retard)
+  bool get isSubscriptionPastDue => errorType == 'subscription_past_due';
+
+  /// Vérifie si l'erreur est liée à l'abonnement
+  bool get isSubscriptionRelated =>
+      isQuotaExhausted ||
+      isFeatureNotAvailable ||
+      isSubscriptionExpired ||
+      isSubscriptionPastDue;
+
   @override
-  List<Object?> get props => [source, streamVersion, streamComplete, error];
+  List<Object?> get props => [
+    source,
+    streamVersion,
+    streamComplete,
+    error,
+    errorType,
+    subscriptionRenewalUrl,
+    requiresAction,
+    upgradeRequired,
+    feature,
+    currentUsage,
+    limit,
+    gracePeriodDaysRemaining,
+  ];
 }
 
 /// Représente un chunk de réponse en streaming (v2.4.0)

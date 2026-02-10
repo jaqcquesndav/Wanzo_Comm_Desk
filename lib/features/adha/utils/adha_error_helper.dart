@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/adha_stream_models.dart';
 
 /// Helper pour afficher des messages d'erreur utilisateur-friendly
 /// Style ChatGPT/Gemini: messages clairs et orientés action
@@ -8,6 +9,66 @@ class AdhaErrorHelper {
   /// Transforme un message d'erreur technique en message utilisateur-friendly
   static AdhaFriendlyError parseError(String errorMessage) {
     final lowerError = errorMessage.toLowerCase();
+
+    // Erreurs de quota/abonnement (détection par mots clés dans le message)
+    if (lowerError.contains('quota') && lowerError.contains('exhausted') ||
+        lowerError.contains('quota épuisé') ||
+        lowerError.contains('tokens insuffisants')) {
+      return const AdhaFriendlyError(
+        type: AdhaErrorType.quotaExhausted,
+        title: 'Quota de tokens épuisé',
+        message:
+            'Votre quota de tokens pour ce mois est épuisé. Renouvelez votre abonnement ou passez à un plan supérieur.',
+        icon: Icons.token_rounded,
+        actionLabel: 'Renouveler',
+        canRetry: false,
+        upgradeRequired: true,
+      );
+    }
+
+    if (lowerError.contains('subscription expired') ||
+        lowerError.contains('abonnement expiré')) {
+      return const AdhaFriendlyError(
+        type: AdhaErrorType.subscriptionExpired,
+        title: 'Abonnement expiré',
+        message:
+            'Votre abonnement a expiré. Renouvelez-le pour continuer à utiliser ADHA.',
+        icon: Icons.event_busy_rounded,
+        actionLabel: 'Renouveler',
+        canRetry: false,
+        upgradeRequired: true,
+      );
+    }
+
+    if (lowerError.contains('past due') ||
+        lowerError.contains('paiement en attente') ||
+        lowerError.contains('période de grâce')) {
+      return const AdhaFriendlyError(
+        type: AdhaErrorType.subscriptionPastDue,
+        title: 'Paiement en attente',
+        message:
+            'Votre paiement est en retard. Régularisez votre situation pour éviter la suspension du service.',
+        icon: Icons.warning_amber_rounded,
+        actionLabel: 'Payer maintenant',
+        canRetry: false,
+        upgradeRequired: false,
+      );
+    }
+
+    if (lowerError.contains('feature not available') ||
+        lowerError.contains('fonctionnalité non disponible') ||
+        lowerError.contains('upgrade required')) {
+      return const AdhaFriendlyError(
+        type: AdhaErrorType.featureNotAvailable,
+        title: 'Fonctionnalité non disponible',
+        message:
+            'Cette fonctionnalité n\'est pas incluse dans votre plan actuel. Passez à un plan supérieur.',
+        icon: Icons.lock_rounded,
+        actionLabel: 'Voir les plans',
+        canRetry: false,
+        upgradeRequired: true,
+      );
+    }
 
     // Erreurs de connexion réseau
     if (lowerError.contains('socketexception') ||
@@ -197,9 +258,125 @@ class AdhaErrorHelper {
         return 'Vous êtes reconnecté. Comment puis-je vous aider ?';
       case AdhaErrorType.server:
         return 'Le service est de nouveau opérationnel.';
+      case AdhaErrorType.quotaExhausted:
+      case AdhaErrorType.subscriptionExpired:
+      case AdhaErrorType.subscriptionPastDue:
+      case AdhaErrorType.featureNotAvailable:
+        return 'Votre abonnement a été mis à jour. Comment puis-je vous aider ?';
       default:
         return 'Tout est rentré dans l\'ordre. Comment puis-je vous aider ?';
     }
+  }
+
+  /// Crée une erreur friendly à partir des métadonnées de streaming backend
+  static AdhaFriendlyError parseFromMetadata(
+    AdhaStreamMetadata metadata,
+    String fallbackMessage,
+  ) {
+    if (metadata.isQuotaExhausted) {
+      return AdhaFriendlyError(
+        type: AdhaErrorType.quotaExhausted,
+        title: 'Quota de tokens épuisé',
+        message: _buildQuotaMessage(metadata),
+        icon: Icons.token_rounded,
+        actionLabel: 'Renouveler mon abonnement',
+        canRetry: false,
+        upgradeRequired: metadata.upgradeRequired ?? true,
+        subscriptionRenewalUrl: metadata.subscriptionRenewalUrl,
+        feature: metadata.feature,
+        currentUsage: metadata.currentUsage,
+        limit: metadata.limit,
+        gracePeriodDaysRemaining: metadata.gracePeriodDaysRemaining,
+      );
+    }
+
+    if (metadata.isSubscriptionExpired) {
+      return AdhaFriendlyError(
+        type: AdhaErrorType.subscriptionExpired,
+        title: 'Abonnement expiré',
+        message:
+            'Votre abonnement a expiré. Renouvelez-le pour continuer à utiliser ADHA AI.',
+        icon: Icons.event_busy_rounded,
+        actionLabel: 'Renouveler mon abonnement',
+        canRetry: false,
+        upgradeRequired: true,
+        subscriptionRenewalUrl: metadata.subscriptionRenewalUrl,
+        gracePeriodDaysRemaining: metadata.gracePeriodDaysRemaining,
+      );
+    }
+
+    if (metadata.isSubscriptionPastDue) {
+      return AdhaFriendlyError(
+        type: AdhaErrorType.subscriptionPastDue,
+        title: 'Paiement en attente',
+        message: _buildGracePeriodMessage(metadata),
+        icon: Icons.warning_amber_rounded,
+        actionLabel: 'Payer maintenant',
+        canRetry: false,
+        upgradeRequired: false,
+        subscriptionRenewalUrl: metadata.subscriptionRenewalUrl,
+        gracePeriodDaysRemaining: metadata.gracePeriodDaysRemaining,
+      );
+    }
+
+    if (metadata.isFeatureNotAvailable) {
+      return AdhaFriendlyError(
+        type: AdhaErrorType.featureNotAvailable,
+        title: 'Fonctionnalité non disponible',
+        message: _buildFeatureMessage(metadata),
+        icon: Icons.lock_rounded,
+        actionLabel: 'Voir les plans disponibles',
+        canRetry: false,
+        upgradeRequired: true,
+        subscriptionRenewalUrl: metadata.subscriptionRenewalUrl,
+        feature: metadata.feature,
+      );
+    }
+
+    // Erreur générique si le type n'est pas reconnu
+    return AdhaFriendlyError(
+      type: AdhaErrorType.unknown,
+      title: 'Oups, quelque chose s\'est mal passé',
+      message: fallbackMessage,
+      icon: Icons.sentiment_dissatisfied_rounded,
+      actionLabel: 'Réessayer',
+      canRetry: true,
+    );
+  }
+
+  /// Construit le message pour le quota épuisé
+  static String _buildQuotaMessage(AdhaStreamMetadata metadata) {
+    final buffer = StringBuffer(
+      'Votre quota de tokens pour ce mois est épuisé.',
+    );
+
+    if (metadata.currentUsage != null && metadata.limit != null) {
+      buffer.write(
+        ' (${metadata.currentUsage}/${metadata.limit} tokens utilisés)',
+      );
+    }
+
+    buffer.write(
+      ' Pour continuer à utiliser ADHA AI, vous pouvez renouveler votre abonnement ou passer à un plan supérieur.',
+    );
+
+    return buffer.toString();
+  }
+
+  /// Construit le message pour la période de grâce
+  static String _buildGracePeriodMessage(AdhaStreamMetadata metadata) {
+    if (metadata.gracePeriodDaysRemaining != null) {
+      return 'Votre paiement est en retard. Il vous reste ${metadata.gracePeriodDaysRemaining} jour(s) avant la suspension du service. Régularisez votre situation.';
+    }
+    return 'Votre paiement est en retard. Régularisez votre situation pour éviter la suspension du service.';
+  }
+
+  /// Construit le message pour une fonctionnalité non disponible
+  static String _buildFeatureMessage(AdhaStreamMetadata metadata) {
+    if (metadata.feature != null) {
+      return 'La fonctionnalité "${metadata.feature}" n\'est pas incluse dans votre plan actuel. Passez à un plan supérieur pour y accéder.';
+    }
+    return 'Cette fonctionnalité n\'est pas incluse dans votre plan actuel. Passez à un plan supérieur.';
   }
 }
 
@@ -217,6 +394,11 @@ enum AdhaErrorType {
   circuitOpen,
   notConfigured,
   unknown,
+  // Types d'erreurs d'abonnement/quota (v2.7.0)
+  quotaExhausted,
+  subscriptionExpired,
+  subscriptionPastDue,
+  featureNotAvailable,
 }
 
 /// Représente une erreur formatée de manière user-friendly
@@ -231,6 +413,14 @@ class AdhaFriendlyError {
   final bool shouldStartNew;
   final String? technicalDetails;
 
+  // Champs pour les erreurs d'abonnement (v2.7.0)
+  final String? subscriptionRenewalUrl;
+  final bool upgradeRequired;
+  final String? feature;
+  final int? currentUsage;
+  final int? limit;
+  final int? gracePeriodDaysRemaining;
+
   const AdhaFriendlyError({
     required this.type,
     required this.title,
@@ -241,5 +431,18 @@ class AdhaFriendlyError {
     this.requiresReauth = false,
     this.shouldStartNew = false,
     this.technicalDetails,
+    this.subscriptionRenewalUrl,
+    this.upgradeRequired = false,
+    this.feature,
+    this.currentUsage,
+    this.limit,
+    this.gracePeriodDaysRemaining,
   });
+
+  /// Vérifie si l'erreur est liée à l'abonnement
+  bool get isSubscriptionRelated =>
+      type == AdhaErrorType.quotaExhausted ||
+      type == AdhaErrorType.subscriptionExpired ||
+      type == AdhaErrorType.subscriptionPastDue ||
+      type == AdhaErrorType.featureNotAvailable;
 }

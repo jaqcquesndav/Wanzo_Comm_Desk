@@ -2348,4 +2348,38 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get documentTypeCashVoucher => 'Bon de sortie caisse';
+
+  @override
+  String get subscriptionQuotaExhaustedTitle => 'Quota de tokens épuisé';
+
+  @override
+  String get subscriptionExpiredTitle => 'Abonnement expiré';
+
+  @override
+  String get subscriptionPastDueTitle => 'Paiement en attente';
+
+  @override
+  String get subscriptionFeatureNotAvailableTitle =>
+      'Fonctionnalité non disponible';
+
+  @override
+  String subscriptionGracePeriodRemaining(int days) {
+    return 'Il vous reste $days jour(s) avant la suspension du service.';
+  }
+
+  @override
+  String get subscriptionRenewButton => 'Renouveler mon abonnement';
+
+  @override
+  String get subscriptionPayNowButton => 'Payer maintenant';
+
+  @override
+  String get subscriptionViewPlansButton => 'Voir les plans disponibles';
+
+  @override
+  String get subscriptionNewConversationButton => 'Nouvelle conversation';
+
+  @override
+  String get subscriptionContactSupport =>
+      'Contactez le support si le problème persiste.';
 }

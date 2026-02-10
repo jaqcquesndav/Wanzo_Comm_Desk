@@ -61,13 +61,21 @@ class AdhaStreamMetadataAdapter extends TypeAdapter<AdhaStreamMetadata> {
       streamVersion: fields[1] as String,
       streamComplete: fields[2] as bool?,
       error: fields[3] as bool?,
+      errorType: fields[4] as String?,
+      subscriptionRenewalUrl: fields[5] as String?,
+      requiresAction: fields[6] as bool?,
+      upgradeRequired: fields[7] as bool?,
+      feature: fields[8] as String?,
+      currentUsage: fields[9] as int?,
+      limit: fields[10] as int?,
+      gracePeriodDaysRemaining: fields[11] as int?,
     );
   }
 
   @override
   void write(BinaryWriter writer, AdhaStreamMetadata obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.source)
       ..writeByte(1)
@@ -75,7 +83,23 @@ class AdhaStreamMetadataAdapter extends TypeAdapter<AdhaStreamMetadata> {
       ..writeByte(2)
       ..write(obj.streamComplete)
       ..writeByte(3)
-      ..write(obj.error);
+      ..write(obj.error)
+      ..writeByte(4)
+      ..write(obj.errorType)
+      ..writeByte(5)
+      ..write(obj.subscriptionRenewalUrl)
+      ..writeByte(6)
+      ..write(obj.requiresAction)
+      ..writeByte(7)
+      ..write(obj.upgradeRequired)
+      ..writeByte(8)
+      ..write(obj.feature)
+      ..writeByte(9)
+      ..write(obj.currentUsage)
+      ..writeByte(10)
+      ..write(obj.limit)
+      ..writeByte(11)
+      ..write(obj.gracePeriodDaysRemaining);
   }
 
   @override

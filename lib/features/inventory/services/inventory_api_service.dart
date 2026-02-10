@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:wanzo/core/services/api_client.dart';
+import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/core/exceptions/api_exceptions.dart';
 import 'package:wanzo/core/models/api_response.dart'; // Ajout de l'import
 import 'package:wanzo/features/inventory/models/product.dart';
@@ -51,8 +51,12 @@ abstract class InventoryApiService {
 
 class InventoryApiServiceImpl implements InventoryApiService {
   final ApiClient _apiClient;
+  final ImageUploadService _imageUploadService;
 
-  InventoryApiServiceImpl(this._apiClient);
+  InventoryApiServiceImpl(
+    this._apiClient, {
+    ImageUploadService? imageUploadService,
+  }) : _imageUploadService = imageUploadService ?? ImageUploadService();
   @override
   Future<ApiResponse<List<Product>>> getProducts({
     int? page,
@@ -203,39 +207,41 @@ class InventoryApiServiceImpl implements InventoryApiService {
     }
   }
 
-  /// Crée un produit avec une image en utilisant multipart/form-data
+  /// Crée un produit avec une image en uploadant d'abord sur Cloudinary
   Future<ApiResponse<Product>> _createProductWithImage(
     Product product,
     File image,
   ) async {
     try {
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse(_apiClient.getFullUrl('products')),
-      );
-      request.headers.addAll(await _apiClient.getHeaders(requiresAuth: true));
+      // 1. Upload image to Cloudinary first
+      debugPrint('📤 Uploading product image to Cloudinary...');
+      final imageUrl = await _imageUploadService.uploadImageWithRetry(image);
 
-      // Ajouter les champs du produit
-      final productJson = product.toJson();
-      for (final entry in productJson.entries) {
-        if (entry.value != null) {
-          request.fields[entry.key] = entry.value.toString();
-        }
+      if (imageUrl == null) {
+        debugPrint('⚠️ Failed to upload image, creating product without image');
+      } else {
+        debugPrint('✅ Image uploaded: $imageUrl');
       }
 
-      // Ajouter l'image
-      request.files.add(await http.MultipartFile.fromPath('image', image.path));
+      // 2. Create product JSON with imageUrl
+      final productJson = product.toJson();
+      if (imageUrl != null) {
+        productJson['imageUrl'] = imageUrl;
+      }
 
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-      final responseData = _apiClient.handleResponse(response);
+      // 3. Send JSON request to API
+      final response = await _apiClient.post(
+        'products',
+        body: productJson,
+        requiresAuth: true,
+      );
 
       Map<String, dynamic>? productDataJson;
-      if (responseData is Map<String, dynamic>) {
-        if (responseData['data'] is Map<String, dynamic>) {
-          productDataJson = responseData['data'] as Map<String, dynamic>;
+      if (response is Map<String, dynamic>) {
+        if (response['data'] is Map<String, dynamic>) {
+          productDataJson = response['data'] as Map<String, dynamic>;
         } else {
-          productDataJson = responseData;
+          productDataJson = response;
         }
       }
 
@@ -372,7 +378,7 @@ class InventoryApiServiceImpl implements InventoryApiService {
     }
   }
 
-  /// Met à jour un produit avec une image en utilisant multipart/form-data
+  /// Met à jour un produit avec une image en uploadant d'abord sur Cloudinary
   Future<ApiResponse<Product>> _updateProductWithImage(
     String id,
     Product product,
@@ -380,37 +386,40 @@ class InventoryApiServiceImpl implements InventoryApiService {
     bool? removeImage,
   ) async {
     try {
-      final request = http.MultipartRequest(
-        'PUT',
-        Uri.parse(_apiClient.getFullUrl('products/$id')),
-      );
-      request.headers.addAll(await _apiClient.getHeaders(requiresAuth: true));
+      // 1. Upload image to Cloudinary first
+      debugPrint('📤 Uploading product image to Cloudinary for update...');
+      final imageUrl = await _imageUploadService.uploadImageWithRetry(image);
 
-      // Ajouter les champs du produit
+      if (imageUrl == null) {
+        debugPrint(
+          '⚠️ Failed to upload image, updating product without new image',
+        );
+      } else {
+        debugPrint('✅ Image uploaded: $imageUrl');
+      }
+
+      // 2. Create product JSON with imageUrl
       final productJson = product.toJson();
-      for (final entry in productJson.entries) {
-        if (entry.value != null) {
-          request.fields[entry.key] = entry.value.toString();
-        }
+      if (imageUrl != null) {
+        productJson['imageUrl'] = imageUrl;
       }
-
       if (removeImage == true) {
-        request.fields['removeImage'] = 'true';
+        productJson['removeImage'] = true;
       }
 
-      // Ajouter l'image
-      request.files.add(await http.MultipartFile.fromPath('image', image.path));
-
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-      final responseData = _apiClient.handleResponse(response);
+      // 3. Send JSON request to API
+      final response = await _apiClient.put(
+        'products/$id',
+        body: productJson,
+        requiresAuth: true,
+      );
 
       Map<String, dynamic>? productDataJson;
-      if (responseData is Map<String, dynamic>) {
-        if (responseData['data'] is Map<String, dynamic>) {
-          productDataJson = responseData['data'] as Map<String, dynamic>;
+      if (response is Map<String, dynamic>) {
+        if (response['data'] is Map<String, dynamic>) {
+          productDataJson = response['data'] as Map<String, dynamic>;
         } else {
-          productDataJson = responseData;
+          productDataJson = response;
         }
       }
 

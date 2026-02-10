@@ -84,7 +84,9 @@ class InventoryRepository {
       category: product.category,
       costPriceInCdf: product.costPriceInCdf,
       sellingPriceInCdf: product.sellingPriceInCdf,
-      stockQuantity: 0, // Initialiser à 0, la transaction ajoutera la quantité
+      stockQuantity:
+          product
+              .stockQuantity, // Utiliser la quantité saisie par l'utilisateur
       unit: product.unit,
       alertThreshold: product.alertThreshold,
       createdAt: DateTime.now(),

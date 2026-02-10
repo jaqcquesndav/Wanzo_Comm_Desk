@@ -268,14 +268,51 @@ class StreamError extends AdhaEvent {
   final String errorMessage;
   final String? requestMessageId;
 
+  // Champs pour les erreurs d'abonnement/quota (v2.7.0)
+  final String? errorType;
+  final String? subscriptionRenewalUrl;
+  final bool? requiresAction;
+  final bool? upgradeRequired;
+  final String? feature;
+  final int? currentUsage;
+  final int? limit;
+  final int? gracePeriodDaysRemaining;
+
   const StreamError({
     required this.conversationId,
     required this.errorMessage,
     this.requestMessageId,
+    this.errorType,
+    this.subscriptionRenewalUrl,
+    this.requiresAction,
+    this.upgradeRequired,
+    this.feature,
+    this.currentUsage,
+    this.limit,
+    this.gracePeriodDaysRemaining,
   });
 
+  /// Vérifie si l'erreur est liée à l'abonnement
+  bool get isSubscriptionRelated =>
+      errorType == 'quota_exhausted' ||
+      errorType == 'subscription_expired' ||
+      errorType == 'subscription_past_due' ||
+      errorType == 'feature_not_available';
+
   @override
-  List<Object?> get props => [conversationId, errorMessage, requestMessageId];
+  List<Object?> get props => [
+    conversationId,
+    errorMessage,
+    requestMessageId,
+    errorType,
+    subscriptionRenewalUrl,
+    requiresAction,
+    upgradeRequired,
+    feature,
+    currentUsage,
+    limit,
+    gracePeriodDaysRemaining,
+  ];
 }
 
 /// Annule le streaming en cours
