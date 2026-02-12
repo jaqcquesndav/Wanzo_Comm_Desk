@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:wanzo/features/expenses/bloc/expense_bloc.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_app_bar.dart';
+import 'package:wanzo/core/shared_widgets/smart_attachment.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart'; // Pour le partage
@@ -776,7 +777,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                                     decoration: BoxDecoration(
                                       color: _getStatusColor(
                                         expense.paymentStatus,
-                                      ).withOpacity(0.2),
+                                      ).withValues(alpha: 0.2),
                                       borderRadius: BorderRadius.circular(20),
                                       border: Border.all(
                                         color: _getStatusColor(
@@ -974,9 +975,9 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                                 ],
                               ),
                               const SizedBox(height: 16),
-                              _buildAttachments(
-                                context,
-                                expense.attachmentUrls ?? [],
+                              SmartAttachmentGrid(
+                                urls: expense.attachmentUrls ?? [],
+                                localPaths: expense.localAttachmentPaths ?? [],
                               ),
                             ],
                           ),
@@ -1102,211 +1103,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildAttachments(BuildContext context, List<String> attachmentUrls) {
-    if (attachmentUrls.isEmpty) {
-      return Card(
-        elevation: 1,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        color: Colors.grey[100],
-        child: const Padding(
-          padding: EdgeInsets.all(16.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.info_outline, color: Colors.grey, size: 20),
-              SizedBox(width: 8),
-              Text(
-                'Aucune pièce jointe disponible',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // Utiliser GridView.builder pour les pièces jointes
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount:
-            MediaQuery.of(context).size.width > 600
-                ? 3
-                : 2, // Adaptif selon la largeur
-        childAspectRatio: 1.0,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-      ),
-      itemCount: attachmentUrls.length,
-      itemBuilder: (context, index) {
-        final url = attachmentUrls[index];
-        return Hero(
-          tag: url,
-          child: Card(
-            clipBehavior: Clip.antiAlias,
-            elevation: 3,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Image principale
-                GestureDetector(
-                  onTap: () {
-                    _openFullScreenImageViewer(context, attachmentUrls, index);
-                  },
-                  child: CachedNetworkImage(
-                    imageUrl: url,
-                    fit: BoxFit.cover,
-                    placeholder:
-                        (context, url) => Container(
-                          color: Colors.grey[200],
-                          child: const Center(
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                    errorWidget: (context, url, error) {
-                      // Si l'URL commence par "uploads/", c'est probablement une simulation locale
-                      if (url.startsWith('uploads/')) {
-                        return Container(
-                          color: Colors.grey[300],
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.broken_image,
-                                  color: Colors.grey[600],
-                                  size: 40,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Simulé',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
-                      return Container(
-                        color: Colors.grey[300],
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.error,
-                                color: Colors.red[400],
-                                size: 32,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Erreur de chargement',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.grey[600],
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-
-                // Superposition des boutons d'action
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 8,
-                      horizontal: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [
-                          Colors.black.withAlpha(179), // 0.7 * 255 = ~179
-                          Colors.transparent,
-                        ],
-                        stops: const [0.0, 0.8],
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        // Bouton de partage
-                        IconButton(
-                          icon: const Icon(
-                            Icons.share,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                          tooltip: 'Partager',
-                          onPressed: () => _shareAttachment(context, url),
-                          constraints: const BoxConstraints(),
-                          padding: EdgeInsets.zero,
-                          visualDensity: VisualDensity.compact,
-                        ),
-
-                        // Bouton de sauvegarde
-                        IconButton(
-                          icon: const Icon(
-                            Icons.save_alt,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                          tooltip: 'Sauvegarder',
-                          onPressed: () => _saveAttachment(context, url),
-                          constraints: const BoxConstraints(),
-                          padding: EdgeInsets.zero,
-                          visualDensity: VisualDensity.compact,
-                        ),
-
-                        // Bouton d'agrandissement
-                        IconButton(
-                          icon: const Icon(
-                            Icons.fullscreen,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                          tooltip: 'Agrandir',
-                          onPressed:
-                              () => _openFullScreenImageViewer(
-                                context,
-                                attachmentUrls,
-                                index,
-                              ),
-                          constraints: const BoxConstraints(),
-                          padding: EdgeInsets.zero,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 }

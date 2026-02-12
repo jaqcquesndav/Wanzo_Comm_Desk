@@ -1,14 +1,20 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/api_response.dart';
 import '../exceptions/api_exceptions.dart';
 import '../../features/inventory/models/product.dart';
 import './api_client.dart';
+import './image_upload_service.dart';
 
 class ProductApiService {
   final ApiClient _apiClient;
+  final ImageUploadService _imageUploadService;
 
-  ProductApiService({ApiClient? apiClient})
-    : _apiClient = apiClient ?? ApiClient();
+  ProductApiService({
+    ApiClient? apiClient,
+    ImageUploadService? imageUploadService,
+  }) : _apiClient = apiClient ?? ApiClient(),
+       _imageUploadService = imageUploadService ?? ImageUploadService();
 
   Future<ApiResponse<List<Product>>> getProducts({
     Map<String, String>? queryParameters,
@@ -110,9 +116,40 @@ class ProductApiService {
 
   Future<ApiResponse<Product>> createProduct(Product product) async {
     try {
+      // Vérifier si un imagePath local existe et uploader vers Cloudinary
+      String? imageUrl = product.imageUrl;
+      if (product.imagePath != null && product.imagePath!.isNotEmpty) {
+        final imageFile = File(product.imagePath!);
+        if (await imageFile.exists()) {
+          try {
+            debugPrint(
+              '[ProductAPI] 📤 Uploading local image to Cloudinary...',
+            );
+            imageUrl = await _imageUploadService.uploadImageWithRetry(
+              imageFile,
+              publicId: 'product_${product.id}',
+            );
+            if (imageUrl != null) {
+              debugPrint('[ProductAPI] ✅ Image uploaded: $imageUrl');
+            }
+          } catch (e) {
+            debugPrint('[ProductAPI] ⚠️ Image upload error: $e');
+          }
+        }
+      }
+
+      // Créer le JSON et SUPPRIMER imagePath (chemin local)
+      final productBody = product.toJson();
+      productBody.remove(
+        'imagePath',
+      ); // CRITIQUE: Ne pas envoyer le chemin local au backend
+      if (imageUrl != null) {
+        productBody['imageUrl'] = imageUrl;
+      }
+
       final response = await _apiClient.post(
         'products',
-        body: product.toJson(),
+        body: productBody,
         requiresAuth: true,
       );
       if (response != null && response['data'] != null) {
@@ -144,9 +181,38 @@ class ProductApiService {
 
   Future<ApiResponse<Product>> updateProduct(String id, Product product) async {
     try {
+      // Vérifier si un imagePath local existe et uploader vers Cloudinary
+      String? imageUrl = product.imageUrl;
+      if (product.imagePath != null && product.imagePath!.isNotEmpty) {
+        final imageFile = File(product.imagePath!);
+        if (await imageFile.exists()) {
+          try {
+            debugPrint('[ProductAPI] 📤 Uploading local image for update...');
+            imageUrl = await _imageUploadService.uploadImageWithRetry(
+              imageFile,
+              publicId: 'product_${product.id}',
+            );
+            if (imageUrl != null) {
+              debugPrint('[ProductAPI] ✅ Image uploaded: $imageUrl');
+            }
+          } catch (e) {
+            debugPrint('[ProductAPI] ⚠️ Image upload error: $e');
+          }
+        }
+      }
+
+      // Créer le JSON et SUPPRIMER imagePath (chemin local)
+      final productBody = product.toJson();
+      productBody.remove(
+        'imagePath',
+      ); // CRITIQUE: Ne pas envoyer le chemin local au backend
+      if (imageUrl != null) {
+        productBody['imageUrl'] = imageUrl;
+      }
+
       final response = await _apiClient.put(
         'products/$id',
-        body: product.toJson(),
+        body: productBody,
         requiresAuth: true,
       );
       if (response != null && response['data'] != null) {
