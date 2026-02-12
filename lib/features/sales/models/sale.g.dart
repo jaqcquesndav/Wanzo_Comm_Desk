@@ -36,13 +36,16 @@ class SaleAdapter extends TypeAdapter<Sale> {
       businessUnitId: fields[16] as String?,
       businessUnitCode: fields[17] as String?,
       businessUnitType: fields[18] as BusinessUnitType?,
+      attachmentUrls: (fields[19] as List?)?.cast<String>(),
+      localAttachmentPaths: (fields[20] as List?)?.cast<String>(),
+      paymentReference: fields[21] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Sale obj) {
     writer
-      ..writeByte(19)
+      ..writeByte(22)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -80,7 +83,13 @@ class SaleAdapter extends TypeAdapter<Sale> {
       ..writeByte(17)
       ..write(obj.businessUnitCode)
       ..writeByte(18)
-      ..write(obj.businessUnitType);
+      ..write(obj.businessUnitType)
+      ..writeByte(19)
+      ..write(obj.attachmentUrls)
+      ..writeByte(20)
+      ..write(obj.localAttachmentPaths)
+      ..writeByte(21)
+      ..write(obj.paymentReference);
   }
 
   @override
@@ -180,6 +189,10 @@ Sale _$SaleFromJson(Map<String, dynamic> json) => Sale(
       businessUnitCode: json['businessUnitCode'] as String?,
       businessUnitType:
           Sale._businessUnitTypeFromJson(json['businessUnitType'] as String?),
+      attachmentUrls: (json['attachmentUrls'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList(),
+      paymentReference: json['paymentReference'] as String?,
       userId: json['userId'] as String?,
       createdAt: json['createdAt'] == null
           ? null
@@ -223,6 +236,9 @@ Map<String, dynamic> _$SaleToJson(Sale instance) => <String, dynamic>{
       if (Sale._businessUnitTypeToJson(instance.businessUnitType)
           case final value?)
         'businessUnitType': value,
+      if (instance.attachmentUrls case final value?) 'attachmentUrls': value,
+      if (instance.paymentReference case final value?)
+        'paymentReference': value,
       if (instance.userId case final value?) 'userId': value,
       if (instance.createdAt?.toIso8601String() case final value?)
         'createdAt': value,

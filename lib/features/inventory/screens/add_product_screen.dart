@@ -55,6 +55,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
   Currency? _selectedInputCurrency;
   Currency _appActiveCurrency = Currency.CDF; // Default to CDF
 
+  // Expiration date fields
+  bool _hasExpirationDate = false;
+  DateTime? _expirationDate;
+
   late final ImagePickerServiceInterface _imagePickerService;
 
   @override
@@ -119,6 +123,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
     _selectedCategory = widget.product?.category ?? ProductCategory.other;
     _selectedUnit = widget.product?.unit ?? ProductUnit.piece;
+
+    // Initialize expiration date fields
+    _expirationDate = widget.product?.expirationDate;
+    _hasExpirationDate = _expirationDate != null;
   }
 
   @override
@@ -842,6 +850,114 @@ class _AddProductScreenState extends State<AddProductScreen> {
                             return null;
                           },
                         ),
+                        const SizedBox(height: WanzoSpacing.md),
+
+                        // ============= EXPIRATION DATE SECTION (DISCRETE) =============
+                        Theme(
+                          data: Theme.of(
+                            context,
+                          ).copyWith(dividerColor: Colors.transparent),
+                          child: ExpansionTile(
+                            tilePadding: EdgeInsets.zero,
+                            title: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.schedule,
+                                  size: 18,
+                                  color: Theme.of(context).colorScheme.outline,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Produit périssable',
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.bodyMedium?.copyWith(
+                                    color:
+                                        Theme.of(context).colorScheme.outline,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            trailing: Switch.adaptive(
+                              value: _hasExpirationDate,
+                              onChanged: (value) {
+                                setState(() {
+                                  _hasExpirationDate = value;
+                                  if (!value) {
+                                    _expirationDate = null;
+                                  }
+                                });
+                              },
+                            ),
+                            initiallyExpanded: _hasExpirationDate,
+                            onExpansionChanged: (expanded) {
+                              if (expanded && !_hasExpirationDate) {
+                                setState(() {
+                                  _hasExpirationDate = true;
+                                });
+                              }
+                            },
+                            children: [
+                              if (_hasExpirationDate)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    top: WanzoSpacing.sm,
+                                    bottom: WanzoSpacing.md,
+                                  ),
+                                  child: InkWell(
+                                    onTap: () => _selectExpirationDate(context),
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: InputDecorator(
+                                      decoration: InputDecoration(
+                                        labelText: 'Date d\'expiration',
+                                        border: const OutlineInputBorder(),
+                                        prefixIcon: Icon(
+                                          Icons.event,
+                                          color:
+                                              _expirationDate != null &&
+                                                      _expirationDate!.isBefore(
+                                                        DateTime.now(),
+                                                      )
+                                                  ? Colors.red
+                                                  : null,
+                                        ),
+                                        suffixIcon:
+                                            _expirationDate != null
+                                                ? IconButton(
+                                                  icon: const Icon(
+                                                    Icons.clear,
+                                                    size: 18,
+                                                  ),
+                                                  onPressed: () {
+                                                    setState(() {
+                                                      _expirationDate = null;
+                                                    });
+                                                  },
+                                                )
+                                                : const Icon(
+                                                  Icons.calendar_today,
+                                                ),
+                                      ),
+                                      child: Text(
+                                        _expirationDate != null
+                                            ? _formatDate(_expirationDate!)
+                                            : 'Sélectionner une date',
+                                        style: TextStyle(
+                                          color:
+                                              _expirationDate == null
+                                                  ? Theme.of(
+                                                    context,
+                                                  ).colorScheme.outline
+                                                  : null,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                         const SizedBox(height: WanzoSpacing.xl),
 
                         // Bouton de soumission
@@ -936,6 +1052,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       inputExchangeRate: exchangeRate, // Store the rate used for this product
       costPriceInInputCurrency: costPriceInput,
       sellingPriceInInputCurrency: sellingPriceInput,
+      expirationDate: _hasExpirationDate ? _expirationDate : null,
     );
 
     if (_isEditing) {
@@ -943,6 +1060,28 @@ class _AddProductScreenState extends State<AddProductScreen> {
     } else {
       context.read<InventoryBloc>().add(AddProduct(product));
     }
+  }
+
+  Future<void> _selectExpirationDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate:
+          _expirationDate ?? DateTime.now().add(const Duration(days: 30)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+      helpText: 'Date d\'expiration',
+      cancelText: 'Annuler',
+      confirmText: 'OK',
+    );
+    if (picked != null && picked != _expirationDate) {
+      setState(() {
+        _expirationDate = picked;
+      });
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 
   String _getCategoryName(ProductCategory category, AppLocalizations l10n) {

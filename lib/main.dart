@@ -29,6 +29,7 @@ import 'package:wanzo/features/adha/services/adha_api_service.dart'; // Added im
 import 'package:wanzo/features/settings/services/settings_api_service.dart'; // Settings API Service
 import 'package:wanzo/features/settings/services/financial_account_api_service.dart'; // Financial Account API Service
 import 'package:wanzo/features/inventory/services/inventory_api_service.dart'; // Inventory API Service
+import 'package:wanzo/features/inventory/services/expiration_alert_service.dart'; // Expiration Alert Service
 import 'package:wanzo/features/sales/services/sales_api_service.dart'; // Sales API Service
 import 'package:wanzo/features/customer/services/customer_api_service.dart'
     as customer_feature; // Customer Feature API Service
@@ -301,6 +302,19 @@ Future<void> main() async {
       final currencySettingsCubit =
           blocs['currencySettings'] as CurrencySettingsCubit;
       await currencySettingsCubit.loadSettings();
+
+      // 14. Vérifier les produits expirant (après chargement complet)
+      try {
+        final inventoryRepository =
+            repositories['inventory'] as InventoryRepository;
+        final expirationService = ExpirationAlertService(
+          inventoryRepository: inventoryRepository,
+          notificationService: notificationService,
+        );
+        await expirationService.checkExpirations();
+      } catch (e) {
+        debugPrint('⚠️ Erreur lors de la vérification des expirations: $e');
+      }
     });
   } catch (error, stackTrace) {
     // Gestion d'erreur critique au démarrage

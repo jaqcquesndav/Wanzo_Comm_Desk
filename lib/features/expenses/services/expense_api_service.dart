@@ -364,6 +364,8 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
       }
 
       // Construire le corps de la requête JSON
+      // Note: Le backend attend `attachmentUrls` qui remplace toutes les URLs existantes
+      // L'appelant doit gérer la fusion des URLs existantes avec les nouvelles
       final Map<String, dynamic> body = {
         if (date != null) 'date': date.toIso8601String(),
         if (amount != null) 'amount': amount,
@@ -376,10 +378,9 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
         if (supplierName != null) 'supplierName': supplierName,
         if (currencyCode != null) 'currencyCode': currencyCode,
         if (exchangeRate != null) 'exchangeRate': exchangeRate,
+        // `attachmentUrls` remplace toutes les URLs existantes (selon UpdateExpenseDto)
         if (uploadedAttachmentUrls != null && uploadedAttachmentUrls.isNotEmpty)
-          'newAttachmentUrls': uploadedAttachmentUrls,
-        if (attachmentUrlsToRemove != null && attachmentUrlsToRemove.isNotEmpty)
-          'attachmentUrlsToRemove': attachmentUrlsToRemove,
+          'attachmentUrls': uploadedAttachmentUrls,
       };
 
       debugPrint("[ExpenseAPI] Updating expense $id with body: $body");

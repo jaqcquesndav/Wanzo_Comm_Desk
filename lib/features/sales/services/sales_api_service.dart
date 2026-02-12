@@ -17,9 +17,12 @@ class SalesApiService {
     return {
       if (sale.localId != null) 'localId': sale.localId,
       'date': sale.date.toIso8601String(),
+      if (sale.dueDate != null) 'dueDate': sale.dueDate!.toIso8601String(),
       if (sale.customerId != null) 'customerId': sale.customerId,
       'customerName': sale.customerName,
       'paymentMethod': sale.paymentMethod,
+      if (sale.paymentReference != null)
+        'paymentReference': sale.paymentReference,
       'exchangeRate': sale.transactionExchangeRate ?? 1.0,
       if (sale.notes != null) 'notes': sale.notes,
       'amountPaidInCdf': sale.paidAmountInCdf,
@@ -27,6 +30,13 @@ class SalesApiService {
         'currencyCode': sale.transactionCurrencyCode,
       if (sale.discountPercentage > 0)
         'discountPercentage': sale.discountPercentage,
+      // Pièces jointes - URLs Cloudinary
+      if (sale.attachmentUrls != null && sale.attachmentUrls!.isNotEmpty)
+        'attachmentUrls': sale.attachmentUrls,
+      // Chemins locaux pour mode offline
+      if (sale.localAttachmentPaths != null &&
+          sale.localAttachmentPaths!.isNotEmpty)
+        'localAttachmentPaths': sale.localAttachmentPaths,
       // Champs Business Unit
       if (sale.companyId != null) 'companyId': sale.companyId,
       if (sale.businessUnitId != null) 'businessUnitId': sale.businessUnitId,

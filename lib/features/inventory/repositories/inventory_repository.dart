@@ -73,6 +73,37 @@ class InventoryRepository {
     return _productsBox.values.where((product) => product.isLowStock).toList();
   }
 
+  /// Obtenir les produits expirés
+  List<Product> getExpiredProducts() {
+    return _productsBox.values.where((product) => product.isExpired).toList();
+  }
+
+  /// Obtenir les produits qui expirent bientôt (dans les 30 jours)
+  List<Product> getExpiringSoonProducts() {
+    return _productsBox.values
+        .where(
+          (product) => product.isExpiringSoon || product.isExpiringVerySoon,
+        )
+        .toList();
+  }
+
+  /// Obtenir les produits qui expirent très bientôt (dans les 7 jours)
+  List<Product> getExpiringVerySoonProducts() {
+    return _productsBox.values
+        .where((product) => product.isExpiringVerySoon)
+        .toList();
+  }
+
+  /// Obtenir tous les produits avec problèmes (stock bas ou expiration)
+  List<Product> getProblematicProducts() {
+    return _productsBox.values
+        .where(
+          (product) =>
+              product.isLowStock || product.isExpired || product.isExpiringSoon,
+        )
+        .toList();
+  }
+
   /// Ajouter un nouveau produit
   Future<Product> addProduct(Product product) async {
     final newProductId = _uuid.v4();

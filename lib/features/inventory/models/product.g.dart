@@ -39,6 +39,8 @@ class ProductAdapter extends TypeAdapter<Product> {
       tags: (fields[18] as List?)?.cast<String>(),
       taxRate: fields[19] as double?,
       sku: fields[20] as String?,
+      attributes: (fields[29] as List?)?.cast<ProductAttribute>(),
+      expirationDate: fields[28] as DateTime?,
       companyId: fields[22] as String?,
       businessUnitId: fields[23] as String?,
       businessUnitCode: fields[24] as String?,
@@ -51,7 +53,7 @@ class ProductAdapter extends TypeAdapter<Product> {
   @override
   void write(BinaryWriter writer, Product obj) {
     writer
-      ..writeByte(28)
+      ..writeByte(30)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -96,6 +98,10 @@ class ProductAdapter extends TypeAdapter<Product> {
       ..write(obj.taxRate)
       ..writeByte(20)
       ..write(obj.sku)
+      ..writeByte(29)
+      ..write(obj.attributes)
+      ..writeByte(28)
+      ..write(obj.expirationDate)
       ..writeByte(22)
       ..write(obj.companyId)
       ..writeByte(23)
@@ -325,6 +331,12 @@ Product _$ProductFromJson(Map<String, dynamic> json) => Product(
       tags: (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList(),
       taxRate: (json['taxRate'] as num?)?.toDouble(),
       sku: json['sku'] as String?,
+      attributes: (json['attributes'] as List<dynamic>?)
+          ?.map((e) => ProductAttribute.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      expirationDate: json['expirationDate'] == null
+          ? null
+          : DateTime.parse(json['expirationDate'] as String),
       companyId: json['companyId'] as String?,
       businessUnitId: json['businessUnitId'] as String?,
       businessUnitCode: json['businessUnitCode'] as String?,
@@ -357,6 +369,11 @@ Map<String, dynamic> _$ProductToJson(Product instance) => <String, dynamic>{
       if (instance.tags case final value?) 'tags': value,
       if (instance.taxRate case final value?) 'taxRate': value,
       if (instance.sku case final value?) 'sku': value,
+      if (instance.attributes?.map((e) => e.toJson()).toList()
+          case final value?)
+        'attributes': value,
+      if (instance.expirationDate?.toIso8601String() case final value?)
+        'expirationDate': value,
       if (instance.companyId case final value?) 'companyId': value,
       if (instance.businessUnitId case final value?) 'businessUnitId': value,
       if (instance.businessUnitCode case final value?)

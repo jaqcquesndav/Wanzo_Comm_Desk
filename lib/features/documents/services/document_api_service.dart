@@ -1,69 +1,106 @@
 import 'dart:io';
-import 'dart:convert'; // For jsonDecode if needed for multipart
+import 'package:flutter/foundation.dart';
 import 'package:wanzo/core/services/api_client.dart';
+import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/core/models/api_response.dart';
 import 'package:wanzo/core/exceptions/api_exceptions.dart';
-import 'package:wanzo/features/documents/models/document_model.dart'; // Assurez-vous que ce modèle existe
+import 'package:wanzo/features/documents/models/document_model.dart';
+import 'package:path/path.dart' as path;
+import 'package:mime/mime.dart';
 
 class DocumentApiService {
   final ApiClient _apiClient;
+  final ImageUploadService _imageUploadService;
 
-  DocumentApiService({ApiClient? apiClient})
-    : _apiClient = apiClient ?? ApiClient();
+  DocumentApiService({
+    ApiClient? apiClient,
+    ImageUploadService? imageUploadService,
+  }) : _apiClient = apiClient ?? ApiClient(),
+       _imageUploadService = imageUploadService ?? ImageUploadService();
 
+  /// Crée un document en uploadant d'abord le fichier vers Cloudinary
+  /// puis en envoyant les métadonnées au backend
   Future<ApiResponse<Document>> uploadDocument({
     required File file,
     required String entityId,
-    required String entityType,
+    required DocumentRelatedEntityType entityType,
+    DocumentType? documentType,
+    String? description,
+    List<String>? tags,
   }) async {
     try {
-      final httpResponse = await _apiClient.postMultipart(
-        'documents/upload', // Assumed endpoint
-        file: file,
-        fileField: 'documentFile', // Backend expected field name for the file
-        fields: {
-          // Additional data sent along with the file
-          'entityId': entityId,
-          'entityType': entityType,
-        },
+      // 1. Upload du fichier vers Cloudinary
+      debugPrint('📤 Uploading document to Cloudinary...');
+      final cloudinaryUrl = await _imageUploadService.uploadImageWithRetry(
+        file,
+      );
+
+      if (cloudinaryUrl == null) {
+        debugPrint('❌ Failed to upload document to Cloudinary');
+        return ApiResponse<Document>(
+          success: false,
+          data: null,
+          message: 'Failed to upload document to Cloudinary',
+          statusCode: 500,
+        );
+      }
+
+      debugPrint('✅ Document uploaded to Cloudinary: $cloudinaryUrl');
+
+      // 2. Préparer les métadonnées du document (CreateDocumentDto)
+      final fileName = path.basename(file.path);
+      final mimeType = lookupMimeType(file.path) ?? 'application/octet-stream';
+      final fileSize = await file.length();
+
+      final documentDto = {
+        'fileName': fileName,
+        'fileType': mimeType,
+        'fileSize': fileSize,
+        'url': cloudinaryUrl,
+        if (documentType != null)
+          'documentType':
+              documentType.name.substring(0, 1).toUpperCase() +
+              documentType.name.substring(1),
+        'relatedToEntityType':
+            entityType.name.substring(0, 1).toUpperCase() +
+            entityType.name.substring(1),
+        'relatedToEntityId': entityId,
+        if (description != null) 'description': description,
+        if (tags != null && tags.isNotEmpty) 'tags': tags,
+      };
+
+      debugPrint('[DocumentAPI] Creating document with DTO: $documentDto');
+
+      // 3. Envoyer les métadonnées au backend
+      final response = await _apiClient.post(
+        'documents',
+        body: documentDto,
         requiresAuth: true,
       );
 
-      final Map<String, dynamic>? responseData =
-          httpResponse.body.isNotEmpty
-              ? jsonDecode(httpResponse.body) as Map<String, dynamic>?
-              : null;
-
-      if (httpResponse.statusCode >= 200 && httpResponse.statusCode < 300) {
-        if (responseData != null && responseData['data'] != null) {
-          final newDocument = Document.fromJson(
-            responseData['data'] as Map<String, dynamic>,
-          );
-          return ApiResponse<Document>(
-            success: true,
-            data: newDocument,
-            message:
-                responseData['message'] as String? ??
-                'Document uploaded successfully.',
-            statusCode: httpResponse.statusCode,
-          );
-        } else {
-          throw ApiExceptionFactory.fromStatusCode(
-            httpResponse.statusCode,
-            'Invalid response data format from server for document upload',
-            responseBody: httpResponse.body,
-          );
-        }
+      if (response != null && response['data'] != null) {
+        final newDocument = Document.fromJson(
+          response['data'] as Map<String, dynamic>,
+        );
+        return ApiResponse<Document>(
+          success: true,
+          data: newDocument,
+          message:
+              response['message'] as String? ??
+              'Document uploaded successfully.',
+          statusCode: response['statusCode'] as int? ?? 201,
+        );
       } else {
         throw ApiExceptionFactory.fromStatusCode(
-          httpResponse.statusCode,
-          responseData?['message'] as String? ?? 'Failed to upload document',
-          responseBody: httpResponse.body,
+          response?['statusCode'] as int? ?? 500,
+          'Invalid response data format from server for document upload',
+          responseBody: response,
         );
       }
     } on ApiException {
       rethrow;
     } catch (e) {
+      debugPrint('❌ Error uploading document: $e');
       throw ServerException(
         'Failed to upload document: An unexpected error occurred. $e',
       );
@@ -79,8 +116,9 @@ class DocumentApiService {
   }) async {
     try {
       final Map<String, String> queryParams = {};
-      if (entityId != null) queryParams['entityId'] = entityId;
-      if (entityType != null) queryParams['entityType'] = entityType;
+      // Utiliser les noms de champs du backend DTO
+      if (entityId != null) queryParams['relatedToEntityId'] = entityId;
+      if (entityType != null) queryParams['relatedToEntityType'] = entityType;
       if (documentType != null) queryParams['documentType'] = documentType;
       if (page != null) queryParams['page'] = page.toString();
       if (limit != null) queryParams['limit'] = limit.toString();

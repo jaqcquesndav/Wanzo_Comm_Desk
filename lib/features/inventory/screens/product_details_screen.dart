@@ -14,7 +14,8 @@ import '../models/stock_transaction.dart';
 import 'package:wanzo/features/settings/bloc/settings_bloc.dart';
 import 'package:wanzo/features/settings/bloc/settings_state.dart';
 import 'package:wanzo/core/enums/currency_enum.dart';
-import 'package:wanzo/core/utils/currency_formatter.dart' as currency_util; // Added import for currency_formatter
+import 'package:wanzo/core/utils/currency_formatter.dart'
+    as currency_util; // Added import for currency_formatter
 
 /// Écran de détails d'un produit
 class ProductDetailsScreen extends StatefulWidget {
@@ -34,7 +35,8 @@ class ProductDetailsScreen extends StatefulWidget {
   State<ProductDetailsScreen> createState() => _ProductDetailsScreenState();
 }
 
-class _ProductDetailsScreenState extends State<ProductDetailsScreen> with SingleTickerProviderStateMixin {
+class _ProductDetailsScreenState extends State<ProductDetailsScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
   @override
@@ -47,7 +49,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
       context.read<InventoryBloc>().add(LoadProduct(widget.productId));
     } else {
       // Charger les transactions pour ce produit
-      context.read<InventoryBloc>().add(LoadProductTransactions(widget.productId));
+      context.read<InventoryBloc>().add(
+        LoadProductTransactions(widget.productId),
+      );
     }
   }
 
@@ -62,15 +66,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
     return BlocConsumer<InventoryBloc, InventoryState>(
       listener: (context, state) {
         if (state is InventoryOperationSuccess) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.message)),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(state.message)));
         } else if (state is InventoryError) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: Colors.red,
-            ),
+            SnackBar(content: Text(state.message), backgroundColor: Colors.red),
           );
         }
       },
@@ -83,17 +84,15 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
           );
         }
 
-        final product = widget.product ??
-            (state is ProductLoaded ? state.product : null);
+        final product =
+            widget.product ?? (state is ProductLoaded ? state.product : null);
 
         if (product == null) {
           return WanzoScaffold(
             currentIndex: 2, // Stock a l'index 2
             title: 'Détails du produit',
             onBackPressed: () => context.pop(),
-            body: const Center(
-              child: Text('Produit non trouvé'),
-            ),
+            body: const Center(child: Text('Produit non trouvé')),
           );
         }
         final transactions = state is ProductLoaded ? state.transactions : [];
@@ -140,14 +139,16 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
               ),
             ],
           ),
-          floatingActionButton: _tabController.index == 1
-              ? FloatingActionButton(
-                  onPressed: () => _showAddTransactionDialog(context, product),
-                  tooltip: 'Ajouter une transaction',
-                  backgroundColor: WanzoColors.primary,
-                  child: const Icon(Icons.add),
-                )
-              : null,
+          floatingActionButton:
+              _tabController.index == 1
+                  ? FloatingActionButton(
+                    onPressed:
+                        () => _showAddTransactionDialog(context, product),
+                    tooltip: 'Ajouter une transaction',
+                    backgroundColor: WanzoColors.primary,
+                    child: const Icon(Icons.add),
+                  )
+                  : null,
         );
       },
     );
@@ -156,12 +157,15 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
   /// Construire les détails du produit
   Widget _buildProductDetails(BuildContext context, Product product) {
     final settingsState = context.watch<SettingsBloc>().state;
-    Currency currency = Currency.USD; // Changed CurrencyType to Currency and default value
+    Currency currency =
+        Currency.USD; // Changed CurrencyType to Currency and default value
 
     if (settingsState is SettingsLoaded) {
-      currency = settingsState.settings.activeCurrency; // Changed to activeCurrency
+      currency =
+          settingsState.settings.activeCurrency; // Changed to activeCurrency
     } else if (settingsState is SettingsUpdated) {
-      currency = settingsState.settings.activeCurrency; // Changed to activeCurrency
+      currency =
+          settingsState.settings.activeCurrency; // Changed to activeCurrency
     }
     // If settings are not loaded, it will use the default USD.
     // Consider showing a loading indicator or an error if settings are crucial and not loaded.
@@ -180,11 +184,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
           icon: Icons.info,
           content: Column(
             children: [
-              _buildInfoRow(
-                context,
-                label: 'Nom',
-                value: product.name,
-              ),
+              _buildInfoRow(context, label: 'Nom', value: product.name),
               if (product.description.isNotEmpty) ...[
                 const Divider(),
                 _buildInfoRow(
@@ -228,27 +228,41 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
               _buildInfoRow(
                 context,
                 label: 'Prix d\'achat',
-                value: currency_util.formatCurrency(product.costPriceInCdf, currency.code),
+                value: currency_util.formatCurrency(
+                  product.costPriceInCdf,
+                  currency.code,
+                ),
               ),
               const Divider(),
               _buildInfoRow(
                 context,
                 label: 'Prix de vente',
-                value: currency_util.formatCurrency(product.sellingPriceInCdf, currency.code),
+                value: currency_util.formatCurrency(
+                  product.sellingPriceInCdf,
+                  currency.code,
+                ),
               ),
               const Divider(),
               _buildInfoRow(
                 context,
                 label: 'Marge bénéficiaire',
-                value: currency_util.formatCurrency(product.profitMarginInCdf, currency.code),
-                valueColor: product.profitMarginInCdf > 0 ? Colors.green : Colors.red,
+                value: currency_util.formatCurrency(
+                  product.profitMarginInCdf,
+                  currency.code,
+                ),
+                valueColor:
+                    product.profitMarginInCdf > 0 ? Colors.green : Colors.red,
               ),
               const Divider(),
               _buildInfoRow(
                 context,
                 label: 'Marge (%)',
-                value: '${product.profitPercentageInCdf.toStringAsFixed(2)}%', // Corrected field name
-                valueColor: product.profitPercentageInCdf > 0 ? Colors.green : Colors.red, // Corrected field name
+                value:
+                    '${product.profitPercentageInCdf.toStringAsFixed(2)}%', // Corrected field name
+                valueColor:
+                    product.profitPercentageInCdf > 0
+                        ? Colors.green
+                        : Colors.red, // Corrected field name
               ),
             ],
           ),
@@ -265,20 +279,56 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
               _buildInfoRow(
                 context,
                 label: 'Quantité en stock',
-                value: '${product.stockQuantity.toStringAsFixed(product.stockQuantity.truncateToDouble() == product.stockQuantity ? 0 : 2)} ${_getUnitName(product.unit)}',
-                valueColor: product.isLowStock ? Colors.orange : (product.stockQuantity <= 0 ? Colors.red : null),
+                value:
+                    '${product.stockQuantity.toStringAsFixed(product.stockQuantity.truncateToDouble() == product.stockQuantity ? 0 : 2)} ${_getUnitName(product.unit)}',
+                valueColor:
+                    product.isLowStock
+                        ? Colors.orange
+                        : (product.stockQuantity <= 0 ? Colors.red : null),
               ),
               const Divider(),
               _buildInfoRow(
                 context,
                 label: 'Seuil d\'alerte',
-                value: '${product.alertThreshold.toStringAsFixed(product.alertThreshold.truncateToDouble() == product.alertThreshold ? 0 : 2)} ${_getUnitName(product.unit)}',
+                value:
+                    '${product.alertThreshold.toStringAsFixed(product.alertThreshold.truncateToDouble() == product.alertThreshold ? 0 : 2)} ${_getUnitName(product.unit)}',
               ),
+              // Expiration date (conditional)
+              if (product.hasExpirationDate) ...[
+                const Divider(),
+                _buildInfoRow(
+                  context,
+                  label: 'Date d\'expiration',
+                  value: DateFormat(
+                    'dd/MM/yyyy',
+                  ).format(product.expirationDate!),
+                  valueColor:
+                      product.isExpired
+                          ? Colors.red
+                          : product.isExpiringVerySoon
+                          ? Colors.orange
+                          : product.isExpiringSoon
+                          ? Colors.amber.shade700
+                          : null,
+                  icon:
+                      product.isExpired || product.isExpiringVerySoon
+                          ? Icon(
+                            product.isExpired ? Icons.error : Icons.warning,
+                            size: 16,
+                            color:
+                                product.isExpired ? Colors.red : Colors.orange,
+                          )
+                          : null,
+                ),
+              ],
               const Divider(),
               _buildInfoRow(
                 context,
                 label: 'Valeur du stock',
-                value: currency_util.formatCurrency(product.stockValueInCdf, currency.code),
+                value: currency_util.formatCurrency(
+                  product.stockValueInCdf,
+                  currency.code,
+                ),
               ),
             ],
           ),
@@ -307,7 +357,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
           ),
         ),
         const SizedBox(height: WanzoSpacing.lg),
-        
+
         // Bouton de suppression du produit
         SizedBox(
           width: double.infinity,
@@ -358,15 +408,13 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
               width: 70,
               height: 70,
               decoration: BoxDecoration(
-                color: statusColor.withAlpha((255 * 0.1).round()), // Used withAlpha instead of withOpacity
+                color: statusColor.withAlpha(
+                  (255 * 0.1).round(),
+                ), // Used withAlpha instead of withOpacity
                 borderRadius: BorderRadius.circular(35),
                 border: Border.all(color: statusColor),
               ),
-              child: Icon(
-                statusIcon,
-                color: statusColor,
-                size: 40,
-              ),
+              child: Icon(statusIcon, color: statusColor, size: 40),
             ),
             const SizedBox(width: WanzoSpacing.md),
 
@@ -403,7 +451,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
             IconButton(
               icon: const Icon(Icons.add_circle),
               color: Theme.of(context).primaryColor,
-              onPressed: () => _showQuickStockAdjustmentDialog(context, product, true),
+              onPressed:
+                  () => _showQuickStockAdjustmentDialog(context, product, true),
               tooltip: 'Ajouter du stock',
             ),
 
@@ -411,9 +460,14 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
             IconButton(
               icon: const Icon(Icons.remove_circle),
               color: Colors.redAccent,
-              onPressed: product.stockQuantity > 0
-                  ? () => _showQuickStockAdjustmentDialog(context, product, false)
-                  : null,
+              onPressed:
+                  product.stockQuantity > 0
+                      ? () => _showQuickStockAdjustmentDialog(
+                        context,
+                        product,
+                        false,
+                      )
+                      : null,
               tooltip: 'Retirer du stock',
             ),
           ],
@@ -461,6 +515,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
     required String label,
     required String value,
     Color? valueColor,
+    Widget? icon,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: WanzoSpacing.xs),
@@ -469,16 +524,22 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
         children: [
           Text(
             label,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.grey[600],
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
           ),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: valueColor,
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[icon, const SizedBox(width: 4)],
+              Text(
+                value,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: valueColor,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -486,18 +547,17 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
   }
 
   /// Construire l'historique des transactions
-  Widget _buildTransactionsHistory(BuildContext context, List<dynamic> transactions) {
+  Widget _buildTransactionsHistory(
+    BuildContext context,
+    List<dynamic> transactions,
+  ) {
     // Si aucune transaction n'est disponible
     if (transactions.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.history,
-              size: 80,
-              color: Colors.grey.shade300,
-            ),
+            Icon(Icons.history, size: 80, color: Colors.grey.shade300),
             const SizedBox(height: WanzoSpacing.md),
             const Text(
               'Aucune transaction pour ce produit',
@@ -536,7 +596,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
   }
 
   /// Afficher le dialogue d'ajustement rapide du stock
-  void _showQuickStockAdjustmentDialog(BuildContext context, Product product, bool isAddition) {
+  void _showQuickStockAdjustmentDialog(
+    BuildContext context,
+    Product product,
+    bool isAddition,
+  ) {
     final TextEditingController quantityController = TextEditingController();
 
     showDialog(
@@ -547,9 +611,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(isAddition
-                  ? 'Combien d\'unités souhaitez-vous ajouter au stock ?'
-                  : 'Combien d\'unités souhaitez-vous retirer du stock ?'),
+              Text(
+                isAddition
+                    ? 'Combien d\'unités souhaitez-vous ajouter au stock ?'
+                    : 'Combien d\'unités souhaitez-vous retirer du stock ?',
+              ),
               const SizedBox(height: WanzoSpacing.md),
               TextField(
                 controller: quantityController,
@@ -591,19 +657,26 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
                   final transaction = StockTransaction(
                     id: '', // Sera généré par le repository
                     productId: product.id,
-                    type: isAddition
-                        ? StockTransactionType.purchase
-                        : StockTransactionType.sale,
+                    type:
+                        isAddition
+                            ? StockTransactionType.purchase
+                            : StockTransactionType.sale,
                     quantity: adjustedQuantity,
                     date: DateTime.now(),
-                    notes: isAddition
-                        ? 'Ajout manuel de stock'
-                        : 'Retrait manuel de stock',
-                    unitCostInCdf: product.costPriceInCdf, // Added required parameter
-                    totalValueInCdf: product.costPriceInCdf * adjustedQuantity, // Added required parameter
+                    notes:
+                        isAddition
+                            ? 'Ajout manuel de stock'
+                            : 'Retrait manuel de stock',
+                    unitCostInCdf:
+                        product.costPriceInCdf, // Added required parameter
+                    totalValueInCdf:
+                        product.costPriceInCdf *
+                        adjustedQuantity, // Added required parameter
                   );
 
-                  context.read<InventoryBloc>().add(AddStockTransaction(transaction));
+                  context.read<InventoryBloc>().add(
+                    AddStockTransaction(transaction),
+                  );
                 }
               },
               child: const Text('Confirmer'),
@@ -644,12 +717,13 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
                       decoration: const InputDecoration(
                         border: OutlineInputBorder(),
                       ),
-                      items: StockTransactionType.values.map((type) {
-                        return DropdownMenuItem<StockTransactionType>(
-                          value: type,
-                          child: Text(_getTransactionTypeName(type)),
-                        );
-                      }).toList(),
+                      items:
+                          StockTransactionType.values.map((type) {
+                            return DropdownMenuItem<StockTransactionType>(
+                              value: type,
+                              child: Text(_getTransactionTypeName(type)),
+                            );
+                          }).toList(),
                       onChanged: (value) {
                         if (value != null) {
                           setState(() {
@@ -724,7 +798,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
                     }
 
                     // Vérifier s'il y a assez de stock pour les sorties
-                    if (adjustedQuantity < 0 && product.stockQuantity < quantity) {
+                    if (adjustedQuantity < 0 &&
+                        product.stockQuantity < quantity) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('Quantité insuffisante en stock'),
@@ -742,11 +817,16 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
                       quantity: adjustedQuantity,
                       date: DateTime.now(),
                       notes: notesController.text,
-                      unitCostInCdf: product.costPriceInCdf, // Added required parameter
-                      totalValueInCdf: product.costPriceInCdf * adjustedQuantity, // Added required parameter
+                      unitCostInCdf:
+                          product.costPriceInCdf, // Added required parameter
+                      totalValueInCdf:
+                          product.costPriceInCdf *
+                          adjustedQuantity, // Added required parameter
                     );
 
-                    context.read<InventoryBloc>().add(AddStockTransaction(transaction));
+                    context.read<InventoryBloc>().add(
+                      AddStockTransaction(transaction),
+                    );
                   },
                   child: const Text('Ajouter'),
                 ),
@@ -844,55 +924,61 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> with Single
         return 'Stock initial';
     }
   }
-  
+
   /// Affiche une boîte de dialogue pour confirmer la suppression du produit
   void _showDeleteProductConfirmation(BuildContext context, Product product) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirmer la suppression'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Êtes-vous sûr de vouloir supprimer ce produit ? Cette action est irréversible.'),
-            const SizedBox(height: WanzoSpacing.md),
-            Text(
-              'Produit: ${product.name}',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            if (product.stockQuantity > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 12.0),
-                child: Text(
-                  'Attention: Ce produit a ${product.stockQuantity} ${_getUnitName(product.unit)} en stock.',
-                  style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Confirmer la suppression'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Êtes-vous sûr de vouloir supprimer ce produit ? Cette action est irréversible.',
                 ),
-              ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              // Supprimer le produit
-              context.read<InventoryBloc>().add(DeleteProduct(product.id));
-              // Fermer la boîte de dialogue
-              Navigator.pop(context);
-              // Retourner à l'écran précédent
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
+                const SizedBox(height: WanzoSpacing.md),
+                Text(
+                  'Produit: ${product.name}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                if (product.stockQuantity > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12.0),
+                    child: Text(
+                      'Attention: Ce produit a ${product.stockQuantity} ${_getUnitName(product.unit)} en stock.',
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
             ),
-            child: const Text('Supprimer'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  // Supprimer le produit
+                  context.read<InventoryBloc>().add(DeleteProduct(product.id));
+                  // Fermer la boîte de dialogue
+                  Navigator.pop(context);
+                  // Retourner à l'écran précédent
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Supprimer'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 }

@@ -13,7 +13,7 @@ class DocumentRepository {
   Future<Document?> uploadDocument({
     required File file,
     required String entityId,
-    required String entityType,
+    required DocumentRelatedEntityType entityType,
   }) async {
     try {
       final response = await _apiService.uploadDocument(

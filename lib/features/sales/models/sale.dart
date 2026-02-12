@@ -128,6 +128,23 @@ class Sale extends Equatable {
   @JsonKey(fromJson: _businessUnitTypeFromJson, toJson: _businessUnitTypeToJson)
   final BusinessUnitType? businessUnitType;
 
+  // ============= ATTACHMENT FIELDS =============
+
+  /// URLs Cloudinary des pièces jointes (après synchronisation)
+  @HiveField(19)
+  @JsonKey(name: 'attachmentUrls', includeIfNull: false)
+  final List<String>? attachmentUrls;
+
+  /// Chemins locaux des pièces jointes (mode offline, avant synchronisation)
+  @HiveField(20)
+  @JsonKey(includeToJson: false, includeFromJson: false)
+  final List<String>? localAttachmentPaths;
+
+  /// Référence de paiement (ex: numéro de transaction mobile money)
+  @HiveField(21)
+  @JsonKey(includeIfNull: false)
+  final String? paymentReference;
+
   /// Identifiant de l'utilisateur
   @JsonKey(includeIfNull: false)
   final String? userId;
@@ -189,6 +206,10 @@ class Sale extends Equatable {
     this.businessUnitId,
     this.businessUnitCode,
     this.businessUnitType,
+    // Attachment fields
+    this.attachmentUrls,
+    this.localAttachmentPaths,
+    this.paymentReference,
     this.userId,
     this.createdAt,
     this.updatedAt,
@@ -233,6 +254,9 @@ class Sale extends Equatable {
     String? businessUnitId,
     String? businessUnitCode,
     BusinessUnitType? businessUnitType,
+    List<String>? attachmentUrls,
+    List<String>? localAttachmentPaths,
+    String? paymentReference,
     String? userId,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -271,6 +295,9 @@ class Sale extends Equatable {
       businessUnitId: businessUnitId ?? this.businessUnitId,
       businessUnitCode: businessUnitCode ?? this.businessUnitCode,
       businessUnitType: businessUnitType ?? this.businessUnitType,
+      attachmentUrls: attachmentUrls ?? this.attachmentUrls,
+      localAttachmentPaths: localAttachmentPaths ?? this.localAttachmentPaths,
+      paymentReference: paymentReference ?? this.paymentReference,
       userId: userId ?? this.userId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -306,6 +333,9 @@ class Sale extends Equatable {
     businessUnitId,
     businessUnitCode,
     businessUnitType,
+    attachmentUrls,
+    localAttachmentPaths,
+    paymentReference,
     userId,
     createdAt,
     updatedAt,

@@ -886,6 +886,13 @@ class _ProductGridCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   _buildProductImage(context),
+                  // Badge expiration (discret)
+                  if (product.hasExpirationDate)
+                    Positioned(
+                      top: 4,
+                      left: 4,
+                      child: _buildExpirationBadge(context, theme),
+                    ),
                   // Badge stock faible
                   if (isLowStock)
                     Positioned(
@@ -1085,5 +1092,59 @@ class _ProductGridCard extends StatelessWidget {
       case ProductUnit.other:
         return '';
     }
+  }
+
+  Widget _buildExpirationBadge(BuildContext context, ThemeData theme) {
+    final isExpired = product.isExpired;
+    final isExpiringVerySoon = product.isExpiringVerySoon;
+    final isExpiringSoon = product.isExpiringSoon;
+    final daysLeft = product.daysUntilExpiration;
+
+    // Couleur du badge selon l'urgence
+    Color backgroundColor;
+    Color textColor = Colors.white;
+    IconData icon;
+    String text;
+
+    if (isExpired) {
+      backgroundColor = Colors.red.shade700;
+      icon = Icons.error;
+      text = 'Expiré';
+    } else if (isExpiringVerySoon) {
+      backgroundColor = Colors.orange.shade700;
+      icon = Icons.warning;
+      text = '${daysLeft}j';
+    } else if (isExpiringSoon) {
+      backgroundColor = Colors.amber.shade600;
+      textColor = Colors.black87;
+      icon = Icons.schedule;
+      text = '${daysLeft}j';
+    } else {
+      // Plus de 30 jours - badge discret
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: textColor, size: 10),
+          const SizedBox(width: 2),
+          Text(
+            text,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: textColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 9,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -3,6 +3,7 @@ import 'package:hive/hive.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:flutter/material.dart'; // Ajout pour IconData et Icons
 import 'package:wanzo/core/enums/business_unit_enums.dart';
+import 'package:wanzo/features/inventory/models/product_attribute.dart';
 
 part 'product.g.dart';
 
@@ -257,6 +258,17 @@ class Product extends Equatable {
   @HiveField(20)
   final String? sku;
 
+  /// Attributs personnalisés du produit (ex: couleur, taille, capacité)
+  @HiveField(29)
+  final List<ProductAttribute>? attributes;
+
+  // ============= EXPIRATION FIELD =============
+
+  /// Date d'expiration du produit (optionnel - pour produits périssables)
+  @HiveField(28)
+  @JsonKey(includeIfNull: false)
+  final DateTime? expirationDate;
+
   // ============= BUSINESS UNIT FIELDS =============
 
   /// ID de l'entreprise associée
@@ -310,6 +322,8 @@ class Product extends Equatable {
     this.tags,
     this.taxRate,
     this.sku,
+    this.attributes,
+    this.expirationDate,
     // Business Unit fields
     this.companyId,
     this.businessUnitId,
@@ -344,6 +358,33 @@ class Product extends Equatable {
   /// Valeur totale du stock pour ce produit en CDF
   double get stockValueInCdf => stockQuantity * costPriceInCdf;
 
+  // ============= EXPIRATION HELPERS =============
+
+  /// Vérifie si le produit a une date d'expiration définie
+  bool get hasExpirationDate => expirationDate != null;
+
+  /// Vérifie si le produit est expiré
+  bool get isExpired =>
+      hasExpirationDate && expirationDate!.isBefore(DateTime.now());
+
+  /// Vérifie si le produit expire bientôt (dans les 30 jours)
+  bool get isExpiringSoon =>
+      hasExpirationDate &&
+      !isExpired &&
+      expirationDate!.isBefore(DateTime.now().add(const Duration(days: 30)));
+
+  /// Vérifie si le produit expire très bientôt (dans les 7 jours)
+  bool get isExpiringVerySoon =>
+      hasExpirationDate &&
+      !isExpired &&
+      expirationDate!.isBefore(DateTime.now().add(const Duration(days: 7)));
+
+  /// Nombre de jours jusqu'à l'expiration (négatif si expiré)
+  int? get daysUntilExpiration {
+    if (!hasExpirationDate) return null;
+    return expirationDate!.difference(DateTime.now()).inDays;
+  }
+
   /// Crée une copie du produit avec des attributs modifiés
   Product copyWith({
     String? id,
@@ -368,6 +409,8 @@ class Product extends Equatable {
     List<String>? tags,
     double? taxRate,
     String? sku,
+    List<ProductAttribute>? attributes,
+    DateTime? expirationDate,
     String? companyId,
     String? businessUnitId,
     String? businessUnitCode,
@@ -400,6 +443,8 @@ class Product extends Equatable {
       tags: tags ?? this.tags,
       taxRate: taxRate ?? this.taxRate,
       sku: sku ?? this.sku,
+      attributes: attributes ?? this.attributes,
+      expirationDate: expirationDate ?? this.expirationDate,
       companyId: companyId ?? this.companyId,
       businessUnitId: businessUnitId ?? this.businessUnitId,
       businessUnitCode: businessUnitCode ?? this.businessUnitCode,
@@ -433,6 +478,8 @@ class Product extends Equatable {
     tags,
     taxRate,
     sku,
+    attributes,
+    expirationDate,
     companyId,
     businessUnitId,
     businessUnitCode,

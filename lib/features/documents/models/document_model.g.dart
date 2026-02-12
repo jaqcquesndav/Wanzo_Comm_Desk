@@ -13,9 +13,14 @@ Document _$DocumentFromJson(Map<String, dynamic> json) => Document(
       url: json['url'] as String,
       uploadedAt: DateTime.parse(json['uploadedAt'] as String),
       userId: json['userId'] as String?,
-      entityId: json['entityId'] as String?,
-      entityType: json['entityType'] as String?,
       fileSize: (json['fileSize'] as num?)?.toInt(),
+      documentType:
+          $enumDecodeNullable(_$DocumentTypeEnumMap, json['documentType']),
+      entityId: json['relatedToEntityId'] as String?,
+      entityType: $enumDecodeNullable(
+          _$DocumentRelatedEntityTypeEnumMap, json['relatedToEntityType']),
+      description: json['description'] as String?,
+      tags: (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList(),
     );
 
 Map<String, dynamic> _$DocumentToJson(Document instance) => <String, dynamic>{
@@ -25,7 +30,31 @@ Map<String, dynamic> _$DocumentToJson(Document instance) => <String, dynamic>{
       'url': instance.url,
       'uploadedAt': instance.uploadedAt.toIso8601String(),
       if (instance.userId case final value?) 'userId': value,
-      if (instance.entityId case final value?) 'entityId': value,
-      if (instance.entityType case final value?) 'entityType': value,
       if (instance.fileSize case final value?) 'fileSize': value,
+      if (_$DocumentTypeEnumMap[instance.documentType] case final value?)
+        'documentType': value,
+      if (instance.entityId case final value?) 'relatedToEntityId': value,
+      if (_$DocumentRelatedEntityTypeEnumMap[instance.entityType]
+          case final value?)
+        'relatedToEntityType': value,
+      if (instance.description case final value?) 'description': value,
+      if (instance.tags case final value?) 'tags': value,
     };
+
+const _$DocumentTypeEnumMap = {
+  DocumentType.invoice: 'Invoice',
+  DocumentType.contract: 'Contract',
+  DocumentType.receipt: 'Receipt',
+  DocumentType.report: 'Report',
+  DocumentType.other: 'Other',
+};
+
+const _$DocumentRelatedEntityTypeEnumMap = {
+  DocumentRelatedEntityType.expense: 'Expense',
+  DocumentRelatedEntityType.sale: 'Sale',
+  DocumentRelatedEntityType.customer: 'Customer',
+  DocumentRelatedEntityType.supplier: 'Supplier',
+  DocumentRelatedEntityType.companyProfile: 'CompanyProfile',
+  DocumentRelatedEntityType.product: 'Product',
+  DocumentRelatedEntityType.other: 'Other',
+};
