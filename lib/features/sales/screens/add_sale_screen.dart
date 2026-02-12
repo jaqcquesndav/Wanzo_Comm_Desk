@@ -147,9 +147,12 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   double _paidAmount = 0.0;
   double _discountPercentage = 0.0; // Pourcentage de réduction (0-100)
 
-  // Pour l'ajout rapide par catégorie
-  ProductCategory? _selectedQuickCategory;
-  bool _showQuickAdd = false;
+  // Pour la recherche rapide de produits
+  final TextEditingController _productSearchController =
+      TextEditingController();
+  final FocusNode _productSearchFocusNode = FocusNode();
+  List<Product> _searchResults = [];
+  bool _showSearchResults = false;
 
   // Currency related state
   Currency _defaultCurrency = Currency.CDF; // App default
@@ -225,7 +228,49 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     _customerNameController.dispose();
     _customerPhoneController.dispose();
     _notesController.dispose();
+    _productSearchController.dispose();
+    _productSearchFocusNode.dispose();
     super.dispose();
+  }
+
+  /// Recherche les produits selon le terme saisi
+  void _searchProducts(String query, List<Product> allProducts) {
+    if (query.isEmpty) {
+      setState(() {
+        _searchResults = [];
+        _showSearchResults = false;
+      });
+      return;
+    }
+
+    final normalizedQuery = query.toLowerCase().trim();
+    final results =
+        allProducts
+            .where((product) {
+              // Recherche sur nom, barcode, catégorie et SKU
+              final nameMatch = product.name.toLowerCase().contains(
+                normalizedQuery,
+              );
+              final barcodeMatch = product.barcode.toLowerCase().contains(
+                normalizedQuery,
+              );
+              final categoryMatch = product.category.displayName
+                  .toLowerCase()
+                  .contains(normalizedQuery);
+              final skuMatch =
+                  product.sku?.toLowerCase().contains(normalizedQuery) ?? false;
+
+              // Ne montrer que les produits en stock
+              return (nameMatch || barcodeMatch || categoryMatch || skuMatch) &&
+                  product.stockQuantity > 0;
+            })
+            .take(8)
+            .toList();
+
+    setState(() {
+      _searchResults = results;
+      _showSearchResults = results.isNotEmpty;
+    });
   }
 
   Future<void> _searchCustomerByPhone(String phoneNumber) async {
@@ -1405,7 +1450,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     );
   }
 
-  /// Construit la section d'ajout rapide par catégorie
+  /// Construit la section de recherche rapide de produits
   Widget _buildQuickAddSection() {
     return BlocBuilder<InventoryBloc, InventoryState>(
       builder: (context, state) {
@@ -1413,163 +1458,110 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
           return const SizedBox.shrink();
         }
 
-        // Catégories disponibles (celles qui ont des produits)
-        final availableCategories =
-            state.products.map((p) => p.category).toSet().toList()
-              ..sort((a, b) => a.displayName.compareTo(b.displayName));
-
-        // Produits filtrés par catégorie sélectionnée
-        final filteredProducts =
-            _selectedQuickCategory != null
-                ? state.products
-                    .where(
-                      (p) =>
-                          p.category == _selectedQuickCategory &&
-                          p.stockQuantity > 0,
-                    )
-                    .toList()
-                : <Product>[];
+        final allProducts = state.products;
+        final primaryColor = Theme.of(context).colorScheme.primary;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Bouton pour afficher/masquer l'ajout rapide
-            InkWell(
-              onTap: () => setState(() => _showQuickAdd = !_showQuickAdd),
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      _showQuickAdd ? Icons.expand_less : Icons.flash_on,
-                      size: 18,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Ajout rapide',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.primary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const Spacer(),
-                    Icon(
-                      _showQuickAdd
-                          ? Icons.keyboard_arrow_up
-                          : Icons.keyboard_arrow_down,
-                      color: Theme.of(context).colorScheme.primary,
+            // Champ de recherche
+            TextField(
+              controller: _productSearchController,
+              focusNode: _productSearchFocusNode,
+              decoration: InputDecoration(
+                hintText: 'Rechercher un produit (nom, code, catégorie...)',
+                hintStyle: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                prefixIcon: Icon(
+                  Icons.search,
+                  size: 20,
+                  color: primaryColor.withValues(alpha: 0.7),
+                ),
+                suffixIcon:
+                    _productSearchController.text.isNotEmpty
+                        ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            _productSearchController.clear();
+                            _searchProducts('', allProducts);
+                            _productSearchFocusNode.unfocus();
+                          },
+                        )
+                        : null,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: primaryColor, width: 1.5),
+                ),
+                filled: true,
+                fillColor: Colors.grey.shade50,
+                isDense: true,
+              ),
+              style: const TextStyle(fontSize: 14),
+              onChanged: (value) => _searchProducts(value, allProducts),
+              onTap: () {
+                if (_productSearchController.text.isNotEmpty &&
+                    _searchResults.isNotEmpty) {
+                  setState(() => _showSearchResults = true);
+                }
+              },
+            ),
+
+            // Dropdown des résultats
+            if (_showSearchResults && _searchResults.isNotEmpty)
+              Container(
+                margin: const EdgeInsets.only(top: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
                   ],
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  itemCount: _searchResults.length,
+                  separatorBuilder:
+                      (_, __) =>
+                          Divider(height: 1, color: Colors.grey.shade200),
+                  itemBuilder:
+                      (context, index) =>
+                          _buildSearchResultTile(_searchResults[index]),
                 ),
               ),
-            ),
 
-            // Contenu de l'ajout rapide
-            AnimatedCrossFade(
-              firstChild: const SizedBox.shrink(),
-              secondChild: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 8),
-                  // Chips des catégories
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children:
-                          availableCategories.take(8).map((category) {
-                            final isSelected =
-                                _selectedQuickCategory == category;
-                            final productCount =
-                                state.products
-                                    .where(
-                                      (p) =>
-                                          p.category == category &&
-                                          p.stockQuantity > 0,
-                                    )
-                                    .length;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: FilterChip(
-                                selected: isSelected,
-                                showCheckmark: false,
-                                avatar: Icon(
-                                  category.icon,
-                                  size: 16,
-                                  color:
-                                      isSelected
-                                          ? Theme.of(
-                                            context,
-                                          ).colorScheme.onPrimaryContainer
-                                          : _getCategoryColor(category),
-                                ),
-                                label: Text(
-                                  '${category.displayName} ($productCount)',
-                                ),
-                                labelStyle: TextStyle(
-                                  fontSize: 12,
-                                  color:
-                                      isSelected
-                                          ? Theme.of(
-                                            context,
-                                          ).colorScheme.onPrimaryContainer
-                                          : null,
-                                ),
-                                selectedColor:
-                                    Theme.of(
-                                      context,
-                                    ).colorScheme.primaryContainer,
-                                onSelected: (selected) {
-                                  setState(() {
-                                    _selectedQuickCategory =
-                                        selected ? category : null;
-                                  });
-                                },
-                              ),
-                            );
-                          }).toList(),
-                    ),
+            // Message aucun résultat
+            if (_productSearchController.text.isNotEmpty &&
+                _searchResults.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'Aucun produit trouvé pour "${_productSearchController.text}"',
+                  style: TextStyle(
+                    fontStyle: FontStyle.italic,
+                    color: Colors.grey[600],
+                    fontSize: 13,
                   ),
-
-                  // Grille de produits de la catégorie sélectionnée
-                  if (_selectedQuickCategory != null &&
-                      filteredProducts.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 100,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: filteredProducts.length,
-                        itemBuilder: (context, index) {
-                          final product = filteredProducts[index];
-                          return _buildQuickAddProductTile(product);
-                        },
-                      ),
-                    ),
-                  ],
-
-                  if (_selectedQuickCategory != null &&
-                      filteredProducts.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Text(
-                        'Aucun produit disponible dans cette catégorie',
-                        style: TextStyle(
-                          fontStyle: FontStyle.italic,
-                          color: Colors.grey[600],
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                ],
+                ),
               ),
-              crossFadeState:
-                  _showQuickAdd
-                      ? CrossFadeState.showSecond
-                      : CrossFadeState.showFirst,
-              duration: const Duration(milliseconds: 200),
-            ),
+
             const SizedBox(height: 8),
           ],
         );
@@ -1577,8 +1569,9 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     );
   }
 
-  /// Construit une tuile de produit pour l'ajout rapide
-  Widget _buildQuickAddProductTile(Product product) {
+  /// Construit une tuile de résultat de recherche pour l'ajout rapide
+  Widget _buildSearchResultTile(Product product) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
     final displayPrice =
         _selectedTransactionCurrency != null
             ? formatCurrency(
@@ -1588,66 +1581,150 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             )
             : formatCurrency(product.sellingPriceInCdf, 'CDF');
 
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: InkWell(
-        onTap: () => _quickAddProduct(product),
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          width: 90,
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Image ou icône
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 40,
-                  height: 40,
-                  child:
-                      (product.imagePath != null &&
-                                  product.imagePath!.isNotEmpty) ||
-                              (product.imageUrl != null &&
-                                  product.imageUrl!.isNotEmpty)
-                          ? SmartImage(
-                            imageUrl: product.imageUrl,
-                            imagePath: product.imagePath,
-                            fit: BoxFit.cover,
-                            placeholderIcon: Icons.inventory_2,
-                          )
-                          : _buildCategoryIcon(product.category),
-                ),
+    final stockInfo = '${product.stockQuantity.toStringAsFixed(0)} en stock';
+    final isLowStock = product.stockQuantity <= product.alertThreshold;
+
+    return InkWell(
+      onTap: () {
+        _quickAddProduct(product);
+        // Fermer les résultats et vider la recherche après ajout
+        setState(() {
+          _showSearchResults = false;
+          _productSearchController.clear();
+          _searchResults = [];
+        });
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            // Image/icône produit
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child:
+                    (product.imagePath != null &&
+                                product.imagePath!.isNotEmpty) ||
+                            (product.imageUrl != null &&
+                                product.imageUrl!.isNotEmpty)
+                        ? SmartImage(
+                          imageUrl: product.imageUrl,
+                          imagePath: product.imagePath,
+                          fit: BoxFit.cover,
+                          placeholderIcon: Icons.inventory_2,
+                        )
+                        : _buildCategoryIcon(product.category),
               ),
-              const SizedBox(height: 4),
-              // Nom
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Text(
-                  product.name,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
+            ),
+            const SizedBox(width: 12),
+
+            // Infos produit
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    product.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Icon(
+                        product.category.icon,
+                        size: 12,
+                        color: _getCategoryColor(product.category),
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          product.category.displayName,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[600],
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Text(' • ', style: TextStyle(color: Colors.grey[400])),
+                      Text(
+                        stockInfo,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color:
+                              isLowStock
+                                  ? Colors.orange[700]
+                                  : Colors.grey[600],
+                          fontWeight:
+                              isLowStock ? FontWeight.w500 : FontWeight.normal,
+                        ),
+                      ),
+                      if (isLowStock) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          size: 12,
+                          color: Colors.orange[700],
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
               ),
-              // Prix
-              Text(
-                displayPrice,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.bold,
+            ),
+
+            const SizedBox(width: 8),
+
+            // Prix + bouton ajouter
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  displayPrice,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: primaryColor,
+                  ),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add, size: 14, color: primaryColor),
+                      const SizedBox(width: 2),
+                      Text(
+                        'Ajouter',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: primaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
