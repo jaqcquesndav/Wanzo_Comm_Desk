@@ -148,10 +148,41 @@ class InventoryApiServiceImpl implements InventoryApiService {
         return _createProductWithImage(product, image);
       }
 
-      // Sinon, utiliser une requête JSON standard
+      // Vérifier si un imagePath local existe et uploader vers Cloudinary
+      String? imageUrl = product.imageUrl;
+      if (product.imagePath != null && product.imagePath!.isNotEmpty) {
+        final imageFile = File(product.imagePath!);
+        if (await imageFile.exists()) {
+          try {
+            debugPrint(
+              '[InventoryAPI] 📤 Uploading local image to Cloudinary...',
+            );
+            imageUrl = await _imageUploadService.uploadImageWithRetry(
+              imageFile,
+              publicId: 'product_${product.id}',
+            );
+            if (imageUrl != null) {
+              debugPrint('[InventoryAPI] ✅ Image uploaded: $imageUrl');
+            }
+          } catch (e) {
+            debugPrint('[InventoryAPI] ⚠️ Image upload error: $e');
+          }
+        }
+      }
+
+      // Créer le JSON et SUPPRIMER imagePath (chemin local)
+      final productBody = product.toJson();
+      productBody.remove(
+        'imagePath',
+      ); // CRITIQUE: Ne pas envoyer le chemin local au backend
+      if (imageUrl != null) {
+        productBody['imageUrl'] = imageUrl;
+      }
+
+      // Utiliser une requête JSON standard
       final response = await _apiClient.post(
         'products',
-        body: product.toJson(),
+        body: productBody,
         requiresAuth: true,
       );
 
@@ -225,6 +256,9 @@ class InventoryApiServiceImpl implements InventoryApiService {
 
       // 2. Create product JSON with imageUrl
       final productJson = product.toJson();
+      productJson.remove(
+        'imagePath',
+      ); // CRITIQUE: Ne pas envoyer le chemin local au backend
       if (imageUrl != null) {
         productJson['imageUrl'] = imageUrl;
       }
@@ -320,11 +354,39 @@ class InventoryApiServiceImpl implements InventoryApiService {
         return _updateProductWithImage(id, product, image, removeImage);
       }
 
-      // Sinon, utiliser une requête JSON standard
+      // Vérifier si un imagePath local existe et uploader vers Cloudinary
+      String? imageUrl = product.imageUrl;
+      if (product.imagePath != null && product.imagePath!.isNotEmpty) {
+        final imageFile = File(product.imagePath!);
+        if (await imageFile.exists()) {
+          try {
+            debugPrint(
+              '[InventoryAPI] 📤 Uploading local image to Cloudinary for update...',
+            );
+            imageUrl = await _imageUploadService.uploadImageWithRetry(
+              imageFile,
+              publicId: 'product_${product.id}',
+            );
+            if (imageUrl != null) {
+              debugPrint('[InventoryAPI] ✅ Image uploaded: $imageUrl');
+            }
+          } catch (e) {
+            debugPrint('[InventoryAPI] ⚠️ Image upload error: $e');
+          }
+        }
+      }
+
+      // Créer le JSON et SUPPRIMER imagePath (chemin local)
       final Map<String, dynamic> body = {
         ...product.toJson(),
         if (removeImage == true) 'removeImage': true,
       };
+      body.remove(
+        'imagePath',
+      ); // CRITIQUE: Ne pas envoyer le chemin local au backend
+      if (imageUrl != null) {
+        body['imageUrl'] = imageUrl;
+      }
 
       final response = await _apiClient.put(
         'products/$id',
@@ -400,6 +462,9 @@ class InventoryApiServiceImpl implements InventoryApiService {
 
       // 2. Create product JSON with imageUrl
       final productJson = product.toJson();
+      productJson.remove(
+        'imagePath',
+      ); // CRITIQUE: Ne pas envoyer le chemin local au backend
       if (imageUrl != null) {
         productJson['imageUrl'] = imageUrl;
       }

@@ -94,16 +94,38 @@ class FinancingApiService {
     List<File>? attachments,
   }) async {
     try {
-      // Si des pièces jointes sont fournies, les téléverser d'abord
-      List<String>? attachmentUrls;
+      // Collecter tous les fichiers à uploader
+      List<File> filesToUpload = [];
+
+      // 1. Fichiers passés explicitement en paramètre
       if (attachments != null && attachments.isNotEmpty) {
+        filesToUpload.addAll(attachments);
+      }
+
+      // 2. Fichiers référencés dans attachmentPaths (chemins locaux)
+      if (request.attachmentPaths != null &&
+          request.attachmentPaths!.isNotEmpty) {
+        for (final path in request.attachmentPaths!) {
+          // Vérifier si c'est un chemin local (pas une URL)
+          if (!path.startsWith('http')) {
+            final file = File(path);
+            if (await file.exists()) {
+              filesToUpload.add(file);
+            }
+          }
+        }
+      }
+
+      // Uploader vers Cloudinary
+      List<String>? attachmentUrls;
+      if (filesToUpload.isNotEmpty) {
         debugPrint(
-          "Starting image uploads for financing request: ${attachments.length} files",
+          "[FinancingAPI] 📤 Starting image uploads: ${filesToUpload.length} files",
         );
         // Utiliser uploadImagesWithDetails pour une gestion d'erreurs robuste
         // Ne lance jamais d'exception - continue même si certains uploads échouent
         final uploadResult = await _imageUploadService.uploadImagesWithDetails(
-          attachments,
+          filesToUpload,
         );
         attachmentUrls =
             uploadResult.successfulUrls.isNotEmpty
@@ -113,7 +135,7 @@ class FinancingApiService {
         // Log des fichiers échoués (mais on continue quand même)
         if (uploadResult.hasFailures) {
           debugPrint(
-            "⚠️ Some attachments failed to upload: ${uploadResult.failedPaths.length} failed",
+            "[FinancingAPI] ⚠️ Some attachments failed to upload: ${uploadResult.failedPaths.length} failed",
           );
           for (final failedPath in uploadResult.failedPaths) {
             debugPrint(
@@ -123,13 +145,16 @@ class FinancingApiService {
         }
         if (uploadResult.hasSuccessfulUploads) {
           debugPrint(
-            "✅ Image upload successful: ${uploadResult.successfulUrls.length} URLs",
+            "[FinancingAPI] ✅ Image upload successful: ${uploadResult.successfulUrls.length} URLs",
           );
         }
       }
 
-      // Créer un objet de demande mis à jour avec les URLs des pièces jointes
+      // Préparer le payload
       final Map<String, dynamic> requestData = request.toJson();
+      requestData.remove(
+        'attachmentPaths',
+      ); // CRITIQUE: Ne pas envoyer les chemins locaux au backend
       if (attachmentUrls != null && attachmentUrls.isNotEmpty) {
         requestData['attachmentUrls'] = attachmentUrls;
       }
@@ -210,14 +235,77 @@ class FinancingApiService {
   }
 
   /// Met à jour une demande de financement existante
+  /// Paramètres:
+  /// - id: ID de la demande à mettre à jour
+  /// - request: Les nouvelles données de la demande
+  /// - newAttachments: Liste de nouveaux fichiers à joindre (optionnel)
   Future<ApiResponse<FinancingRequest>> updateFinancingRequest(
     String id,
-    FinancingRequest request,
-  ) async {
+    FinancingRequest request, {
+    List<File>? newAttachments,
+  }) async {
     try {
+      // Collecter tous les fichiers à uploader
+      List<File> filesToUpload = [];
+
+      // 1. Nouveaux fichiers passés explicitement en paramètre
+      if (newAttachments != null && newAttachments.isNotEmpty) {
+        filesToUpload.addAll(newAttachments);
+      }
+
+      // 2. Fichiers référencés dans attachmentPaths (chemins locaux)
+      if (request.attachmentPaths != null &&
+          request.attachmentPaths!.isNotEmpty) {
+        for (final path in request.attachmentPaths!) {
+          // Vérifier si c'est un chemin local (pas une URL)
+          if (!path.startsWith('http')) {
+            final file = File(path);
+            if (await file.exists()) {
+              filesToUpload.add(file);
+            }
+          }
+        }
+      }
+
+      // Uploader vers Cloudinary
+      List<String>? newAttachmentUrls;
+      if (filesToUpload.isNotEmpty) {
+        debugPrint(
+          "[FinancingAPI] 📤 Uploading ${filesToUpload.length} new attachments for update...",
+        );
+        final uploadResult = await _imageUploadService.uploadImagesWithDetails(
+          filesToUpload,
+        );
+        if (uploadResult.hasSuccessfulUploads) {
+          newAttachmentUrls = uploadResult.successfulUrls;
+          debugPrint(
+            "[FinancingAPI] ✅ ${newAttachmentUrls.length} attachments uploaded successfully",
+          );
+        }
+        if (uploadResult.hasFailures) {
+          debugPrint(
+            "[FinancingAPI] ⚠️ ${uploadResult.failedPaths.length} attachments failed to upload",
+          );
+        }
+      }
+
+      // Préparer le payload
+      final Map<String, dynamic> requestData = request.toJson();
+      requestData.remove(
+        'attachmentPaths',
+      ); // CRITIQUE: Ne pas envoyer les chemins locaux au backend
+
+      // Ajouter les nouvelles URLs Cloudinary uploadées
+      if (newAttachmentUrls != null && newAttachmentUrls.isNotEmpty) {
+        // Récupérer les URLs existantes du JSON ou une liste vide
+        final existingUrls =
+            (requestData['attachmentUrls'] as List<dynamic>?) ?? [];
+        requestData['attachmentUrls'] = [...existingUrls, ...newAttachmentUrls];
+      }
+
       final response = await _apiClient.put(
         'financing-requests/$id',
-        body: request.toJson(),
+        body: requestData,
         requiresAuth: true,
       );
 

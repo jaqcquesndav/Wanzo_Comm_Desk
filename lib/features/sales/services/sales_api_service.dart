@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:wanzo/core/services/api_client.dart';
+import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/core/models/api_response.dart';
 import 'package:wanzo/core/exceptions/api_exceptions.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
@@ -7,9 +9,13 @@ import 'package:wanzo/features/sales/models/sale.dart';
 /// Service API pour la gestion des ventes
 class SalesApiService {
   final ApiClient _apiClient;
+  final ImageUploadService _imageUploadService;
 
-  SalesApiService({ApiClient? apiClient})
-    : _apiClient = apiClient ?? ApiClient();
+  SalesApiService({
+    ApiClient? apiClient,
+    ImageUploadService? imageUploadService,
+  }) : _apiClient = apiClient ?? ApiClient(),
+       _imageUploadService = imageUploadService ?? ImageUploadService();
 
   /// Convertit un Sale en DTO optimisé pour l'API
   /// Envoie seulement les champs nécessaires, réduisant le payload de ~90%
@@ -33,10 +39,8 @@ class SalesApiService {
       // Pièces jointes - URLs Cloudinary
       if (sale.attachmentUrls != null && sale.attachmentUrls!.isNotEmpty)
         'attachmentUrls': sale.attachmentUrls,
-      // Chemins locaux pour mode offline
-      if (sale.localAttachmentPaths != null &&
-          sale.localAttachmentPaths!.isNotEmpty)
-        'localAttachmentPaths': sale.localAttachmentPaths,
+      // NOTE: localAttachmentPaths ne doit PAS être envoyé au backend
+      // Les fichiers locaux sont uploadés vers Cloudinary avant l'envoi
       // Champs Business Unit
       if (sale.companyId != null) 'companyId': sale.companyId,
       if (sale.businessUnitId != null) 'businessUnitId': sale.businessUnitId,
@@ -150,8 +154,51 @@ class SalesApiService {
   /// Crée une nouvelle vente
   Future<ApiResponse<Sale>> createSale(Sale sale) async {
     try {
+      // Upload local attachments to Cloudinary first
+      List<String>? uploadedUrls;
+      if (sale.localAttachmentPaths != null &&
+          sale.localAttachmentPaths!.isNotEmpty) {
+        final files = <File>[];
+        for (final path in sale.localAttachmentPaths!) {
+          final file = File(path);
+          if (await file.exists()) {
+            files.add(file);
+          }
+        }
+        if (files.isNotEmpty) {
+          debugPrint(
+            '[SalesAPI] 📤 Uploading ${files.length} local attachments to Cloudinary...',
+          );
+          final uploadResult = await _imageUploadService
+              .uploadImagesWithDetails(files);
+          if (uploadResult.hasSuccessfulUploads) {
+            uploadedUrls = uploadResult.successfulUrls;
+            debugPrint(
+              '[SalesAPI] ✅ ${uploadedUrls.length} attachments uploaded successfully',
+            );
+          }
+          if (uploadResult.hasFailures) {
+            debugPrint(
+              '[SalesAPI] ⚠️ ${uploadResult.failedPaths.length} attachments failed to upload',
+            );
+          }
+        }
+      }
+
       // Utiliser DTO optimisé au lieu de sale.toJson() pour réduire le payload de ~90%
       final body = _saleToCreateDto(sale);
+
+      // TOUJOURS supprimer localAttachmentPaths du payload
+      body.remove('localAttachmentPaths');
+
+      // Ajouter les URLs Cloudinary uploadées
+      if (uploadedUrls != null && uploadedUrls.isNotEmpty) {
+        body['attachmentUrls'] = [
+          ...(sale.attachmentUrls ?? []),
+          ...uploadedUrls,
+        ];
+      }
+
       debugPrint(
         '📤 Envoi vente optimisée: ${body.keys.length} champs au lieu du modèle complet',
       );
@@ -219,8 +266,45 @@ class SalesApiService {
   /// Met à jour une vente
   Future<ApiResponse<Sale>> updateSale(String id, Sale sale) async {
     try {
-      // Utiliser DTO optimisé au lieu de sale.toJson()
+      // Upload local attachments to Cloudinary first
+      List<String>? uploadedUrls;
+      if (sale.localAttachmentPaths != null &&
+          sale.localAttachmentPaths!.isNotEmpty) {
+        final files = <File>[];
+        for (final path in sale.localAttachmentPaths!) {
+          final file = File(path);
+          if (await file.exists()) {
+            files.add(file);
+          }
+        }
+        if (files.isNotEmpty) {
+          debugPrint(
+            '[SalesAPI] 📤 Uploading ${files.length} local attachments for update...',
+          );
+          final uploadResult = await _imageUploadService
+              .uploadImagesWithDetails(files);
+          if (uploadResult.hasSuccessfulUploads) {
+            uploadedUrls = uploadResult.successfulUrls;
+            debugPrint(
+              '[SalesAPI] ✅ ${uploadedUrls.length} attachments uploaded successfully',
+            );
+          }
+        }
+      }
+
+      // Utiliser DTO optimisé
       final body = _saleToCreateDto(sale);
+
+      // TOUJOURS supprimer localAttachmentPaths du payload
+      body.remove('localAttachmentPaths');
+
+      // Ajouter les URLs Cloudinary uploadées
+      if (uploadedUrls != null && uploadedUrls.isNotEmpty) {
+        body['attachmentUrls'] = [
+          ...(sale.attachmentUrls ?? []),
+          ...uploadedUrls,
+        ];
+      }
 
       final response = await _apiClient.put(
         'sales/$id',
@@ -347,8 +431,15 @@ class SalesApiService {
   Future<ApiResponse<List<Sale>>> syncSales(List<Sale> localSales) async {
     try {
       // Utiliser DTO optimisé pour réduire le payload de ~90%
+      // IMPORTANT: Supprimer localAttachmentPaths de chaque DTO
       final optimizedSales =
-          localSales.map((sale) => _saleToCreateDto(sale)).toList();
+          localSales.map((sale) {
+            final dto = _saleToCreateDto(sale);
+            dto.remove(
+              'localAttachmentPaths',
+            ); // Ne jamais envoyer les chemins locaux au backend
+            return dto;
+          }).toList();
       debugPrint('📤 Sync ${localSales.length} ventes avec payload optimisé');
 
       final response = await _apiClient.post(

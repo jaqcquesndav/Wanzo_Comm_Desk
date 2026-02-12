@@ -1,6 +1,7 @@
 // filepath: c:\Users\DevSpace\Flutter\wanzo\lib\core\services\sync_service.dart
 
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive/hive.dart';
@@ -554,6 +555,21 @@ class SyncService {
 
         for (var pendingExpense in pendingExpenses) {
           try {
+            // Convertir les chemins locaux en fichiers pour l'upload Cloudinary
+            List<File>? attachmentFiles;
+            if (pendingExpense.localAttachmentPaths != null &&
+                pendingExpense.localAttachmentPaths!.isNotEmpty) {
+              attachmentFiles = [];
+              for (final path in pendingExpense.localAttachmentPaths!) {
+                final file = File(path);
+                if (await file.exists()) {
+                  attachmentFiles.add(file);
+                }
+              }
+              if (attachmentFiles.isEmpty) attachmentFiles = null;
+            }
+
+            // Passer les fichiers au service qui fera l'upload vers Cloudinary
             final apiResponse = await _expenseApiService
                 .createExpense(
                   pendingExpense.date,
@@ -562,13 +578,17 @@ class SyncService {
                   pendingExpense.category.name,
                   pendingExpense.paymentMethod,
                   pendingExpense.supplierId,
+                  attachments:
+                      attachmentFiles, // Les fichiers seront uploadés vers Cloudinary
                   paidAmount: pendingExpense.paidAmount,
                   paymentStatus: pendingExpense.paymentStatus?.name,
                   supplierName: pendingExpense.supplierName,
                   currencyCode: pendingExpense.currencyCode,
                   exchangeRate: pendingExpense.exchangeRate,
                 )
-                .timeout(const Duration(seconds: 15));
+                .timeout(
+                  const Duration(seconds: 30),
+                ); // Timeout plus long pour upload
 
             if (apiResponse.success && apiResponse.data != null) {
               final serverExpense = apiResponse.data!;
