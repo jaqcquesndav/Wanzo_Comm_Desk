@@ -12,6 +12,7 @@ import 'package:wanzo/features/auth/services/offline_auth_service.dart';
 import 'package:wanzo/features/auth/services/jwt_offline_validator.dart';
 import 'package:wanzo/features/auth/services/local_auth_server.dart';
 import 'package:wanzo/features/auth/services/auth_backend_service.dart';
+import 'package:wanzo/features/auth/services/auth0_service.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:get_it/get_it.dart';
 
@@ -44,6 +45,9 @@ class DesktopAuthService {
   final BusinessContextService _businessContextService =
       BusinessContextService();
 
+  /// Référence vers Auth0Service pour propager _lastAuthMeResponse
+  Auth0Service? _auth0Service;
+
   // État d'authentification
   User? _currentUser;
   String? _accessToken;
@@ -53,8 +57,11 @@ class DesktopAuthService {
   // State pour la vérification CSRF
   String? _authState;
 
-  DesktopAuthService({required OfflineAuthService offlineAuthService})
-    : _offlineAuthService = offlineAuthService;
+  DesktopAuthService({
+    required OfflineAuthService offlineAuthService,
+    Auth0Service? auth0Service,
+  }) : _offlineAuthService = offlineAuthService,
+       _auth0Service = auth0Service;
 
   /// Vérifie si la plateforme actuelle nécessite l'authentification desktop
   static bool get isDesktopPlatform {
@@ -455,59 +462,50 @@ class DesktopAuthService {
     }
   }
 
-  /// Enrichit l'utilisateur Auth0 avec les données du backend via /users/me
+  /// Enrichit l'utilisateur Auth0 avec les données du backend via /auth/me
   ///
   /// Cette méthode récupère le companyId, businessUnitId et autres données
   /// depuis la base de données du backend.
+  /// Stocke la réponse pour le routage 3-cas dans Auth0Service.
   Future<User> _enrichUserWithBackendData(User auth0User) async {
     try {
       debugPrint(
-        'DesktopAuthService: Enriching user with backend data from /users/me...',
+        'DesktopAuthService: Enriching user with backend data from /auth/me...',
       );
 
-      // Utiliser AuthBackendService pour appeler /users/me
+      // Utiliser AuthBackendService pour appeler /auth/me
       final authBackendService = GetIt.instance<AuthBackendService>();
       final authMeResponse = await authBackendService.fetchAuthMe();
 
       if (authMeResponse != null) {
-        final backendProfile = authMeResponse.user;
         final company = authMeResponse.company;
-        final businessUnit = authMeResponse.businessUnit;
 
         debugPrint(
-          'DesktopAuthService: Backend profile fetched. CompanyId: ${backendProfile.companyId}',
+          'DesktopAuthService: Backend profile fetched. CompanyId: ${authMeResponse.user.companyId}',
         );
         debugPrint(
-          'DesktopAuthService: Company from /users/me: name=${company?.name}, id=${company?.id}',
+          'DesktopAuthService: Company from /auth/me: name=${company?.name}, id=${company?.id}',
         );
 
-        // Mettre à jour le BusinessContextService avec les données de /users/me
+        // Mettre à jour le BusinessContextService avec les données de /auth/me
         await _businessContextService.updateFromAuthMeResponse(authMeResponse);
         debugPrint(
-          'DesktopAuthService: BusinessContextService updated from /users/me',
+          'DesktopAuthService: BusinessContextService updated from /auth/me',
         );
 
-        // Fusionner les données Auth0 avec les données backend complètes
-        final companyName = company?.name ?? backendProfile.companyName;
-        return auth0User.copyWith(
-          companyId: backendProfile.companyId,
-          companyName: companyName ?? auth0User.companyName,
-          rccmNumber: backendProfile.rccmNumber ?? auth0User.rccmNumber,
-          companyLocation:
-              backendProfile.companyLocation ?? auth0User.companyLocation,
-          businessSector:
-              backendProfile.businessSector ?? auth0User.businessSector,
-          businessSectorId:
-              backendProfile.businessSectorId ?? auth0User.businessSectorId,
-          businessAddress:
-              backendProfile.businessAddress ?? auth0User.businessAddress,
-          businessLogoUrl:
-              backendProfile.businessLogoUrl ?? auth0User.businessLogoUrl,
-          jobTitle: backendProfile.jobTitle ?? auth0User.jobTitle,
-          physicalAddress:
-              backendProfile.physicalAddress ?? auth0User.physicalAddress,
-          businessUnitId: backendProfile.businessUnitId ?? businessUnit?.id,
-          businessUnitCode: businessUnit?.code,
+        // Propager la réponse à Auth0Service pour le routage 3-cas
+        _auth0Service?.lastAuthMeResponse = authMeResponse;
+        debugPrint(
+          'DesktopAuthService: lastAuthMeResponse propagated to Auth0Service '
+          '(syncPending=${authMeResponse.isSyncPending}, needsBU=${authMeResponse.needsBusinessUnitJoin})',
+        );
+
+        // Utiliser toUser() pour la conversion complète avec RCCM/NIF fallback
+        final enrichedUser = authMeResponse.toUser(token: auth0User.token);
+
+        // Conserver les données Auth0 non-backend
+        return enrichedUser.copyWith(
+          picture: auth0User.picture ?? enrichedUser.picture,
         );
       }
 
@@ -576,18 +574,20 @@ class DesktopAuthService {
   Future<void> logout() async {
     debugPrint('DesktopAuthService: Logging out');
 
+    // Sauvegarder le token avant de le supprimer pour la révocation
+    final tokenToRevoke = _refreshToken ?? _accessToken;
     await _clearCredentials();
     await _businessContextService.clear();
 
     // Optionnel: révoquer le token côté Auth0
-    if (_accessToken != null) {
+    if (tokenToRevoke != null) {
       try {
         await http.post(
           Uri.parse('https://$_auth0Domain/oauth/revoke'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             'client_id': _auth0ClientId,
-            'token': _refreshToken ?? _accessToken,
+            'token': tokenToRevoke,
           }),
         );
       } catch (e) {

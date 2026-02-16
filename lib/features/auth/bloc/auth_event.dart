@@ -62,3 +62,19 @@ class AuthUserProfileUpdated extends AuthEvent {
   @override
   List<Object?> get props => [updatedUser, profileImageFile]; // Updated props
 }
+
+/// Événement pour rejoindre une unité d'affaires via son code
+class AuthJoinBusinessUnitRequested extends AuthEvent {
+  final String businessUnitCode;
+
+  const AuthJoinBusinessUnitRequested({required this.businessUnitCode});
+
+  @override
+  List<Object?> get props => [businessUnitCode];
+}
+
+/// Événement pour rafraîchir le profil depuis /auth/me
+/// Utilisé pour le retry de sync pending ou après join BU
+class AuthRefreshProfileRequested extends AuthEvent {
+  const AuthRefreshProfileRequested();
+}

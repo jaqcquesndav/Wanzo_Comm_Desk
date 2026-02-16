@@ -78,6 +78,9 @@ import 'package:wanzo/features/expenses/bloc/expense_bloc.dart';
 import 'package:wanzo/features/financing/bloc/financing_bloc.dart';
 import 'package:wanzo/features/dashboard/bloc/dashboard_bloc.dart';
 
+import 'package:wanzo/features/business_unit/bloc/business_unit_bloc.dart';
+import 'package:wanzo/features/business_unit/repositories/business_unit_repository.dart';
+import 'package:wanzo/features/business_unit/services/business_unit_api_service.dart';
 import 'package:wanzo/features/settings/bloc/settings_event.dart';
 
 Future<void> main() async {
@@ -142,6 +145,7 @@ Future<void> main() async {
     if (isDesktopPlatform) {
       desktopAuthService = DesktopAuthService(
         offlineAuthService: offlineAuthService,
+        auth0Service: auth0Service,
       );
       await desktopAuthService.init();
       debugPrint(
@@ -396,6 +400,14 @@ Future<Map<String, dynamic>> _initializeRepositoriesOptimized({
       expenseApiService: expenseApiService,
     );
 
+    // Business Unit: API Service + Repository
+    final businessUnitApiService = BusinessUnitApiService(
+      auth0Service: auth0Service,
+    );
+    final businessUnitRepository = BusinessUnitRepository(
+      apiService: businessUnitApiService,
+    );
+
     // Initialiser en parallèle tous les repositories indépendants
     await Future.wait([
       authRepository.init(),
@@ -411,6 +423,7 @@ Future<Map<String, dynamic>> _initializeRepositoriesOptimized({
       transactionRepository.init(),
       adhaRepository.init(),
       expenseRepository.init(),
+      businessUnitRepository.init(),
     ]);
 
     // Ajouter au map
@@ -427,6 +440,7 @@ Future<Map<String, dynamic>> _initializeRepositoriesOptimized({
     repositories['transaction'] = transactionRepository;
     repositories['adha'] = adhaRepository;
     repositories['expense'] = expenseRepository;
+    repositories['businessUnit'] = businessUnitRepository;
 
     // Initialiser le service de notification avec les settings (dépendance)
     await notificationService.init(await settingsRepository.getSettings());
@@ -527,6 +541,11 @@ Map<String, dynamic> _initializeBlocsSync(
   final notificationsBloc = NotificationsBloc(notificationService);
   blocs['notifications'] = notificationsBloc;
 
+  final businessUnitBloc = BusinessUnitBloc(
+    repository: repositories['businessUnit'] as BusinessUnitRepository,
+  );
+  blocs['businessUnit'] = businessUnitBloc;
+
   final financingBloc = FinancingBloc(
     financingRepository: repositories['financing'] as FinancingRepository,
     operationJournalBloc: operationJournalBloc,
@@ -602,6 +621,9 @@ class WanzoApp extends StatelessWidget {
         BlocProvider<CurrencySettingsCubit>.value(
           value: blocs['currencySettings'] as CurrencySettingsCubit,
         ),
+        BlocProvider<BusinessUnitBloc>.value(
+          value: blocs['businessUnit'] as BusinessUnitBloc,
+        ),
       ],
       child: MultiRepositoryProvider(
         providers: [
@@ -657,6 +679,9 @@ class WanzoApp extends StatelessWidget {
           ),
           RepositoryProvider<SyncService>.value(
             value: services['sync'] as SyncService,
+          ),
+          RepositoryProvider<BusinessUnitRepository>.value(
+            value: repositories['businessUnit'] as BusinessUnitRepository,
           ),
         ],
         child: BlocBuilder<SettingsBloc, SettingsState>(

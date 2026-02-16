@@ -84,6 +84,17 @@ class _SplashScreenState extends State<SplashScreen>
     });
   }
 
+  void _navigateToRoute(String route) {
+    if (_hasNavigated || !mounted) return;
+    _hasNavigated = true;
+
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        context.go(route);
+      }
+    });
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -108,7 +119,11 @@ class _SplashScreenState extends State<SplashScreen>
 
         if (state is AuthAuthenticated) {
           _navigateToDashboard();
-        } else if (state is AuthUnauthenticated) {
+        } else if (state is AuthSyncPending) {
+          _navigateToRoute('/sync-pending');
+        } else if (state is AuthBusinessUnitRequired) {
+          _navigateToRoute('/join-business-unit');
+        } else if (state is AuthUnauthenticated || state is AuthFailure) {
           _navigateToOnboarding();
         }
       },

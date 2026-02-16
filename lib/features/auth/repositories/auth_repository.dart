@@ -4,6 +4,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 import '../services/auth0_service.dart';
+import '../services/auth_backend_service.dart';
 import '../services/desktop_auth_service.dart';
 import '../../../core/utils/connectivity_service.dart';
 
@@ -358,4 +359,37 @@ class AuthRepository {
   Future<void> setDemoUserActive(bool isActive) async {
     await _auth0Service.setDemoUserActive(isActive);
   }
+
+  // ============= NOUVELLES MÉTHODES POUR LE FLUX BU/SYNC =============
+
+  /// Expose la dernière AuthMeResponse pour le bloc
+  /// Permet au bloc de résoudre l'état d'auth selon les 3 cas backend
+  AuthMeResponse? getLastAuthMeResponse() => _auth0Service.lastAuthMeResponse;
+
+  /// Rejoindre une unité d'affaires via son code
+  Future<JoinBusinessUnitResponse> joinBusinessUnit(
+    String businessUnitCode,
+  ) async {
+    final authBackendService = AuthBackendService();
+    return await authBackendService.joinBusinessUnit(businessUnitCode);
+  }
+
+  /// Rafraîchir le profil utilisateur depuis /auth/me
+  /// Utilisé pour le retry de sync pending ou après join BU
+  Future<User?> refreshUserProfile() async {
+    final refreshedUser = await _auth0Service.refreshUserFromBackend();
+    if (refreshedUser != null) {
+      await _saveUserData(refreshedUser);
+      _currentUser = refreshedUser;
+    }
+    return refreshedUser;
+  }
+
+  /// Accesseur pour l'état de synchronisation
+  bool get isSyncPending =>
+      _auth0Service.lastAuthMeResponse?.isSyncPending ?? false;
+
+  /// Accesseur pour savoir si l'utilisateur doit rejoindre une BU
+  bool get needsBusinessUnitJoin =>
+      _auth0Service.lastAuthMeResponse?.needsBusinessUnitJoin ?? false;
 }

@@ -1,4 +1,5 @@
-import 'package:flutter_bloc/flutter_bloc.dart'; // Changed import
+import 'package:flutter/foundation.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'dart:io'; // Import for File type
 import '../models/user.dart';
@@ -18,9 +19,35 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthLoginWithAuth0Requested>(_onAuthLoginWithAuth0Requested);
     on<AuthLoginWithDemoAccountRequested>(_onAuthLoginWithDemoAccountRequested);
     on<AuthLogoutRequested>(_onAuthLogoutRequested);
-    on<AuthUserProfileUpdated>(
-      _onAuthUserProfileUpdated,
-    ); // Add handler for the new event
+    on<AuthUserProfileUpdated>(_onAuthUserProfileUpdated);
+    on<AuthJoinBusinessUnitRequested>(_onAuthJoinBusinessUnitRequested);
+    on<AuthRefreshProfileRequested>(_onAuthRefreshProfileRequested);
+  }
+
+  /// Résout l'état d'authentification selon les 3 cas de /auth/me
+  ///
+  /// - Cas 1: Profil complet → AuthAuthenticated
+  /// - Cas 2: Admin/Manager scope company → AuthAuthenticated, Non-admin sans BU → AuthBusinessUnitRequired
+  /// - Cas 3: Sync Kafka en cours → AuthSyncPending
+  AuthState _resolveAuthState(User user) {
+    final authMeResponse = _authRepository.getLastAuthMeResponse();
+    if (authMeResponse == null) {
+      // Mode offline ou pas de réponse backend — accès normal
+      return AuthAuthenticated(user);
+    }
+
+    // Cas 3: Synchronisation Kafka en cours
+    if (authMeResponse.isSyncPending) {
+      return AuthSyncPending(user, message: authMeResponse.syncStatus?.message);
+    }
+
+    // Cas 2: Utilisateur non-admin sans BU assignée
+    if (authMeResponse.needsBusinessUnitJoin) {
+      return AuthBusinessUnitRequired(user);
+    }
+
+    // Cas 1 ou Admin/Manager: Accès normal
+    return AuthAuthenticated(user);
   }
 
   /// Vérifie si l'utilisateur est authentifié au démarrage
@@ -34,7 +61,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       if (isLoggedIn) {
         final user = await _authRepository.getCurrentUser();
         if (user != null) {
-          emit(AuthAuthenticated(user));
+          emit(_resolveAuthState(user));
         } else {
           emit(const AuthUnauthenticated());
         }
@@ -54,7 +81,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(const AuthLoading());
     try {
       final user = await _authRepository.login(event.email, event.password);
-      emit(AuthAuthenticated(user));
+      emit(_resolveAuthState(user));
     } catch (e) {
       emit(AuthFailure(e.toString()));
     }
@@ -75,7 +102,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         event.email ?? '',
         event.password ?? '',
       );
-      emit(AuthAuthenticated(user));
+      emit(_resolveAuthState(user));
     } catch (e) {
       emit(AuthFailure(e.toString()));
     }
@@ -160,6 +187,72 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       }
     } else {
       emit(AuthFailure('User not authenticated, cannot update profile.'));
+    }
+  }
+
+  /// Gère la jonction à une unité d'affaires via code
+  Future<void> _onAuthJoinBusinessUnitRequested(
+    AuthJoinBusinessUnitRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    // Récupérer l'utilisateur actuel depuis l'état courant
+    User? currentUser;
+    if (state is AuthBusinessUnitRequired) {
+      currentUser = (state as AuthBusinessUnitRequired).user;
+    } else if (state is AuthJoinBusinessUnitFailure) {
+      currentUser = (state as AuthJoinBusinessUnitFailure).user;
+    } else if (state is AuthAuthenticated) {
+      currentUser = (state as AuthAuthenticated).user;
+    }
+
+    emit(const AuthJoinBusinessUnitInProgress());
+
+    try {
+      await _authRepository.joinBusinessUnit(event.businessUnitCode);
+
+      // Rafraîchir le profil pour obtenir les données mises à jour
+      final refreshedUser = await _authRepository.refreshUserProfile();
+      if (refreshedUser != null) {
+        emit(_resolveAuthState(refreshedUser));
+      } else if (currentUser != null) {
+        emit(_resolveAuthState(currentUser));
+      } else {
+        emit(const AuthUnauthenticated());
+      }
+    } catch (e) {
+      emit(
+        AuthJoinBusinessUnitFailure(
+          e.toString(),
+          user:
+              currentUser ??
+              User(
+                id: '',
+                name: '',
+                email: '',
+                phone: '',
+                role: '',
+                emailVerified: false,
+                phoneVerified: false,
+              ),
+        ),
+      );
+    }
+  }
+
+  /// Gère le rafraîchissement du profil (retry sync ou refresh manuel)
+  Future<void> _onAuthRefreshProfileRequested(
+    AuthRefreshProfileRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    try {
+      final refreshedUser = await _authRepository.refreshUserProfile();
+      if (refreshedUser != null) {
+        emit(_resolveAuthState(refreshedUser));
+      }
+      // Si refreshedUser est null, on garde l'état actuel
+    } catch (e) {
+      debugPrint('AuthBloc: Error refreshing profile: $e');
+      // Ne pas changer l'état en cas d'erreur de refresh
     }
   }
 }

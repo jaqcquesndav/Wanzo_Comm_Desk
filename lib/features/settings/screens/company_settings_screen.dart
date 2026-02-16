@@ -8,6 +8,8 @@ import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
 import 'package:wanzo/core/widgets/desktop/responsive_form_container.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
+import 'package:wanzo/features/auth/bloc/auth_bloc.dart';
+import 'package:wanzo/features/auth/services/auth_backend_service.dart';
 import '../bloc/settings_bloc.dart';
 import '../bloc/settings_event.dart';
 import '../bloc/settings_state.dart';
@@ -825,7 +827,9 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
   void _saveSettings() {
     if (_formKeyCompany.currentState?.validate() ?? false) {
       final businessUnitCode = _businessUnitCodeController.text.trim();
+      final oldCode = widget.settings.businessUnitCode ?? '';
 
+      // Sauvegarde locale via SettingsBloc
       context.read<SettingsBloc>().add(
         UpdateCompanyInfo(
           companyName: _companyNameController.text.trim(),
@@ -841,6 +845,52 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
               businessUnitCode.isNotEmpty ? businessUnitCode : null,
           businessUnitType: _businessUnitType,
           businessUnitName: _businessUnitName,
+        ),
+      );
+
+      // Si le code BU a changé et n'est pas vide, appeler le backend pour rejoindre l'unité
+      if (businessUnitCode.isNotEmpty && businessUnitCode != oldCode) {
+        _joinBusinessUnitWithCode(businessUnitCode);
+      }
+    }
+  }
+
+  /// Appelle le backend pour rejoindre une unité avec le code donné,
+  /// puis rafraîchit le profil utilisateur.
+  Future<void> _joinBusinessUnitWithCode(String code) async {
+    try {
+      final authBackendService = AuthBackendService();
+      final response = await authBackendService.joinBusinessUnit(code);
+
+      if (!mounted) return;
+
+      final ctx = context;
+      if (response.success) {
+        // Rafraîchir le profil pour récupérer les nouvelles données BU
+        ctx.read<AuthBloc>().add(const AuthRefreshProfileRequested());
+
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(response.message ?? 'Unité rejointe avec succès'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(
+              response.message ?? 'Échec de la jonction à l\'unité',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors de la jonction: $e'),
+          backgroundColor: Colors.red,
         ),
       );
     }

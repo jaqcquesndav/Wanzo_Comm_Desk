@@ -2,7 +2,6 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:auth0_flutter/auth0_flutter.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:wanzo/core/enums/business_unit_enums.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 // import '../../../core/services/auth0_management_api_service.dart'; // Unused
 import '../models/user.dart';
@@ -39,6 +38,11 @@ class Auth0Service {
   final JwtOfflineValidator _jwtValidator = JwtOfflineValidator();
   final BusinessContextService _businessContextService =
       BusinessContextService();
+
+  /// Stocke la dernière réponse /auth/me pour le routage 3-cas
+  AuthMeResponse? _lastAuthMeResponse;
+  AuthMeResponse? get lastAuthMeResponse => _lastAuthMeResponse;
+  set lastAuthMeResponse(AuthMeResponse? value) => _lastAuthMeResponse = value;
 
   Auth0Service({required this.offlineAuthService}) {
     auth0 = Auth0(_auth0Domain, _auth0ClientId);
@@ -695,13 +699,16 @@ class Auth0Service {
   Future<User> _enrichUserWithBackendData(User auth0User) async {
     try {
       debugPrint(
-        "Auth0Service: Enriching user with backend data from /users/me...",
+        "Auth0Service: Enriching user with backend data from /auth/me...",
       );
 
       // Utiliser la nouvelle méthode qui parse la réponse complète
       final authMeResponse = await _authBackendService.fetchAuthMe();
 
       if (authMeResponse != null) {
+        // Stocker la réponse pour le routage 3-cas
+        _lastAuthMeResponse = authMeResponse;
+
         final backendProfile = authMeResponse.user;
         final businessUnit = authMeResponse.businessUnit;
         final company = authMeResponse.company;
@@ -710,7 +717,7 @@ class Auth0Service {
           "Auth0Service: Backend profile fetched. CompanyId: ${backendProfile.companyId}",
         );
         debugPrint(
-          "Auth0Service: Company from /users/me: name=${company?.name}, id=${company?.id}",
+          "Auth0Service: Company from /auth/me: name=${company?.name}, id=${company?.id}",
         );
         debugPrint(
           "Auth0Service: BusinessUnitId: ${backendProfile.businessUnitId ?? businessUnit?.id}",
@@ -719,51 +726,32 @@ class Auth0Service {
           "Auth0Service: BusinessUnit scope: ${businessUnit?.scope ?? 'N/A'}",
         );
 
-        // Mettre à jour le BusinessContextService avec les données de /users/me
+        // Log le cas de réponse
+        if (authMeResponse.isSyncPending) {
+          debugPrint("Auth0Service: Cas 3 — Sync Kafka en cours");
+        } else if (authMeResponse.hasCompanyScope) {
+          debugPrint("Auth0Service: Cas 2 — Scope company");
+        } else if (authMeResponse.hasUnitScope) {
+          debugPrint("Auth0Service: Cas 1 — Scope unit");
+        }
+        if (authMeResponse.needsBusinessUnitJoin) {
+          debugPrint("Auth0Service: Utilisateur doit rejoindre une BU");
+        }
+
+        // Mettre à jour le BusinessContextService avec les données de /auth/me
         await _businessContextService.updateFromAuthMeResponse(authMeResponse);
         debugPrint(
-          "Auth0Service: BusinessContextService updated from /users/me",
+          "Auth0Service: BusinessContextService updated from /auth/me",
         );
 
-        // Fusionner les données Auth0 avec les données backend complètes
-        // Les données backend ont priorité pour companyId et autres champs business
-        // Note: company.name vient de l'objet company séparé, pas de user
-        final companyName =
-            authMeResponse.company?.name ?? backendProfile.companyName;
-        return auth0User.copyWith(
-          companyId: backendProfile.companyId,
-          companyName: companyName ?? auth0User.companyName,
-          rccmNumber: backendProfile.rccmNumber ?? auth0User.rccmNumber,
-          companyLocation:
-              backendProfile.companyLocation ?? auth0User.companyLocation,
-          businessSector:
-              backendProfile.businessSector ?? auth0User.businessSector,
-          businessSectorId:
-              backendProfile.businessSectorId ?? auth0User.businessSectorId,
-          businessAddress:
-              backendProfile.businessAddress ?? auth0User.businessAddress,
-          businessLogoUrl:
-              backendProfile.businessLogoUrl ?? auth0User.businessLogoUrl,
-          jobTitle: backendProfile.jobTitle ?? auth0User.jobTitle,
-          physicalAddress:
-              backendProfile.physicalAddress ?? auth0User.physicalAddress,
-          idCard: backendProfile.idCard ?? auth0User.idCard,
-          idCardStatus:
-              backendProfile.idCardStatus != null
-                  ? _parseIdStatus(backendProfile.idCardStatus)
-                  : auth0User.idCardStatus,
-          idCardStatusReason:
-              backendProfile.idCardStatusReason ?? auth0User.idCardStatusReason,
-          // Business Unit fields from /users/me response
-          businessUnitId: backendProfile.businessUnitId ?? businessUnit?.id,
-          businessUnitCode: businessUnit?.code,
-          businessUnitType:
-              backendProfile.businessUnitType != null
-                  ? _parseBusinessUnitType(backendProfile.businessUnitType)
-                  : businessUnit?.type != null
-                  ? _parseBusinessUnitType(businessUnit!.type)
-                  : null,
-          isActive: backendProfile.isActive,
+        // Utiliser toUser() pour la conversion complète avec RCCM/NIF fallback
+        final enrichedUser = authMeResponse.toUser(token: auth0User.token);
+
+        // Conserver les données Auth0 non-backend (picture, etc.)
+        return enrichedUser.copyWith(
+          picture: auth0User.picture ?? enrichedUser.picture,
+          emailVerified: auth0User.emailVerified,
+          phoneVerified: auth0User.phoneVerified,
         );
       } else {
         debugPrint(
@@ -777,21 +765,6 @@ class Auth0Service {
       debugPrint("Auth0Service: Error enriching user with backend data: $e");
       // En cas d'erreur, retourner l'utilisateur Auth0 sans les données backend
       return auth0User;
-    }
-  }
-
-  /// Parse le type de business unit depuis une chaîne
-  BusinessUnitType? _parseBusinessUnitType(String? value) {
-    if (value == null) return null;
-    switch (value.toLowerCase()) {
-      case 'company':
-        return BusinessUnitType.company;
-      case 'branch':
-        return BusinessUnitType.branch;
-      case 'pos':
-        return BusinessUnitType.pos;
-      default:
-        return null;
     }
   }
 
@@ -810,8 +783,8 @@ class Auth0Service {
 
       final authMeResponse = await _authBackendService.fetchAuthMe();
       if (authMeResponse != null) {
-        final backendProfile = authMeResponse.user;
-        final businessUnit = authMeResponse.businessUnit;
+        // Stocker la réponse pour le routage 3-cas
+        _lastAuthMeResponse = authMeResponse;
 
         // Mettre à jour le BusinessContextService
         await _businessContextService.updateFromAuthMeResponse(authMeResponse);
@@ -819,35 +792,19 @@ class Auth0Service {
           "Auth0Service: BusinessContextService updated during refresh",
         );
 
-        // Note: company.name vient de l'objet company séparé, pas de user
-        final companyName =
-            authMeResponse.company?.name ?? backendProfile.companyName;
-        final enrichedUser = currentUser.copyWith(
-          companyId: backendProfile.companyId,
-          companyName: companyName,
-          rccmNumber: backendProfile.rccmNumber,
-          companyLocation: backendProfile.companyLocation,
-          businessSector: backendProfile.businessSector,
-          businessSectorId: backendProfile.businessSectorId,
-          businessAddress: backendProfile.businessAddress,
-          businessLogoUrl: backendProfile.businessLogoUrl,
-          // Business Unit fields
-          businessUnitId: backendProfile.businessUnitId ?? businessUnit?.id,
-          businessUnitCode: businessUnit?.code,
-          businessUnitType:
-              backendProfile.businessUnitType != null
-                  ? _parseBusinessUnitType(backendProfile.businessUnitType)
-                  : businessUnit?.type != null
-                  ? _parseBusinessUnitType(businessUnit!.type)
-                  : null,
-          isActive: backendProfile.isActive,
+        // Utiliser toUser() pour la conversion complète avec RCCM/NIF fallback
+        final enrichedUser = authMeResponse.toUser(token: currentUser.token);
+
+        // Conserver picture du currentUser
+        final finalUser = enrichedUser.copyWith(
+          picture: currentUser.picture ?? enrichedUser.picture,
         );
 
-        await offlineAuthService.saveUserForOfflineLogin(enrichedUser);
+        await offlineAuthService.saveUserForOfflineLogin(finalUser);
         debugPrint(
-          "Auth0Service: User refreshed from backend. CompanyId: ${enrichedUser.companyId}, BusinessUnitId: ${enrichedUser.businessUnitId}",
+          "Auth0Service: User refreshed from backend. CompanyId: ${finalUser.companyId}, BusinessUnitId: ${finalUser.businessUnitId}",
         );
-        return enrichedUser;
+        return finalUser;
       }
 
       return currentUser;

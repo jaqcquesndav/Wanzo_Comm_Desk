@@ -3,22 +3,23 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i4;
-import 'dart:io' as _i11;
+import 'dart:async' as _i5;
+import 'dart:io' as _i12;
 
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:mockito/src/dummies.dart' as _i8;
-import 'package:wanzo/features/adha/models/adha_attachment.dart' as _i9;
-import 'package:wanzo/features/adha/models/adha_context_info.dart' as _i7;
-import 'package:wanzo/features/adha/models/adha_message.dart' as _i5;
-import 'package:wanzo/features/adha/repositories/adha_repository.dart' as _i3;
-import 'package:wanzo/features/adha/services/adha_api_service.dart' as _i6;
+import 'package:mockito/src/dummies.dart' as _i9;
+import 'package:wanzo/features/adha/models/adha_attachment.dart' as _i10;
+import 'package:wanzo/features/adha/models/adha_context_info.dart' as _i8;
+import 'package:wanzo/features/adha/models/adha_message.dart' as _i6;
+import 'package:wanzo/features/adha/repositories/adha_repository.dart' as _i4;
+import 'package:wanzo/features/adha/services/adha_api_service.dart' as _i7;
 import 'package:wanzo/features/auth/models/user.dart' as _i2;
-import 'package:wanzo/features/auth/repositories/auth_repository.dart' as _i10;
+import 'package:wanzo/features/auth/repositories/auth_repository.dart' as _i11;
+import 'package:wanzo/features/auth/services/auth_backend_service.dart' as _i3;
 import 'package:wanzo/features/dashboard/models/operation_journal_entry.dart'
-    as _i13;
+    as _i14;
 import 'package:wanzo/features/dashboard/repositories/operation_journal_repository.dart'
-    as _i12;
+    as _i13;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -44,80 +45,91 @@ class _FakeUser_0 extends _i1.SmartFake implements _i2.User {
         );
 }
 
+class _FakeJoinBusinessUnitResponse_1 extends _i1.SmartFake
+    implements _i3.JoinBusinessUnitResponse {
+  _FakeJoinBusinessUnitResponse_1(
+    Object parent,
+    Invocation parentInvocation,
+  ) : super(
+          parent,
+          parentInvocation,
+        );
+}
+
 /// A class which mocks [AdhaRepository].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockAdhaRepository extends _i1.Mock implements _i3.AdhaRepository {
+class MockAdhaRepository extends _i1.Mock implements _i4.AdhaRepository {
   MockAdhaRepository() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i4.Future<void> init({String? userId}) => (super.noSuchMethod(
+  _i5.Future<void> init({String? userId}) => (super.noSuchMethod(
         Invocation.method(
           #init,
           [],
           {#userId: userId},
         ),
-        returnValue: _i4.Future<void>.value(),
-        returnValueForMissingStub: _i4.Future<void>.value(),
-      ) as _i4.Future<void>);
+        returnValue: _i5.Future<void>.value(),
+        returnValueForMissingStub: _i5.Future<void>.value(),
+      ) as _i5.Future<void>);
 
   @override
-  _i4.Future<void> close() => (super.noSuchMethod(
+  _i5.Future<void> close() => (super.noSuchMethod(
         Invocation.method(
           #close,
           [],
         ),
-        returnValue: _i4.Future<void>.value(),
-        returnValueForMissingStub: _i4.Future<void>.value(),
-      ) as _i4.Future<void>);
+        returnValue: _i5.Future<void>.value(),
+        returnValueForMissingStub: _i5.Future<void>.value(),
+      ) as _i5.Future<void>);
 
   @override
-  _i4.Future<List<_i5.AdhaConversation>> getConversations() =>
+  _i5.Future<List<_i6.AdhaConversation>> getConversations() =>
       (super.noSuchMethod(
         Invocation.method(
           #getConversations,
           [],
         ),
-        returnValue: _i4.Future<List<_i5.AdhaConversation>>.value(
-            <_i5.AdhaConversation>[]),
-      ) as _i4.Future<List<_i5.AdhaConversation>>);
+        returnValue: _i5.Future<List<_i6.AdhaConversation>>.value(
+            <_i6.AdhaConversation>[]),
+      ) as _i5.Future<List<_i6.AdhaConversation>>);
 
   @override
-  _i4.Future<_i5.AdhaConversation?> getConversation(String? conversationId) =>
+  _i5.Future<_i6.AdhaConversation?> getConversation(String? conversationId) =>
       (super.noSuchMethod(
         Invocation.method(
           #getConversation,
           [conversationId],
         ),
-        returnValue: _i4.Future<_i5.AdhaConversation?>.value(),
-      ) as _i4.Future<_i5.AdhaConversation?>);
+        returnValue: _i5.Future<_i6.AdhaConversation?>.value(),
+      ) as _i5.Future<_i6.AdhaConversation?>);
 
   @override
-  _i4.Future<void> saveConversation(_i5.AdhaConversation? conversation) =>
+  _i5.Future<void> saveConversation(_i6.AdhaConversation? conversation) =>
       (super.noSuchMethod(
         Invocation.method(
           #saveConversation,
           [conversation],
         ),
-        returnValue: _i4.Future<void>.value(),
-        returnValueForMissingStub: _i4.Future<void>.value(),
-      ) as _i4.Future<void>);
+        returnValue: _i5.Future<void>.value(),
+        returnValueForMissingStub: _i5.Future<void>.value(),
+      ) as _i5.Future<void>);
 
   @override
-  _i4.Future<void> deleteConversation(String? conversationId) =>
+  _i5.Future<void> deleteConversation(String? conversationId) =>
       (super.noSuchMethod(
         Invocation.method(
           #deleteConversation,
           [conversationId],
         ),
-        returnValue: _i4.Future<void>.value(),
-        returnValueForMissingStub: _i4.Future<void>.value(),
-      ) as _i4.Future<void>);
+        returnValue: _i5.Future<void>.value(),
+        returnValueForMissingStub: _i5.Future<void>.value(),
+      ) as _i5.Future<void>);
 
   @override
-  _i4.Future<List<_i6.AdhaConversationSummary>> fetchConversationsFromServer({
+  _i5.Future<List<_i7.AdhaConversationSummary>> fetchConversationsFromServer({
     int? page = 1,
     int? limit = 10,
   }) =>
@@ -130,12 +142,12 @@ class MockAdhaRepository extends _i1.Mock implements _i3.AdhaRepository {
             #limit: limit,
           },
         ),
-        returnValue: _i4.Future<List<_i6.AdhaConversationSummary>>.value(
-            <_i6.AdhaConversationSummary>[]),
-      ) as _i4.Future<List<_i6.AdhaConversationSummary>>);
+        returnValue: _i5.Future<List<_i7.AdhaConversationSummary>>.value(
+            <_i7.AdhaConversationSummary>[]),
+      ) as _i5.Future<List<_i7.AdhaConversationSummary>>);
 
   @override
-  _i4.Future<List<_i5.AdhaMessage>> fetchConversationHistoryFromServer(
+  _i5.Future<List<_i6.AdhaMessage>> fetchConversationHistoryFromServer(
     String? conversationId, {
     int? page = 1,
     int? limit = 20,
@@ -150,14 +162,14 @@ class MockAdhaRepository extends _i1.Mock implements _i3.AdhaRepository {
           },
         ),
         returnValue:
-            _i4.Future<List<_i5.AdhaMessage>>.value(<_i5.AdhaMessage>[]),
-      ) as _i4.Future<List<_i5.AdhaMessage>>);
+            _i5.Future<List<_i6.AdhaMessage>>.value(<_i6.AdhaMessage>[]),
+      ) as _i5.Future<List<_i6.AdhaMessage>>);
 
   @override
-  _i4.Future<({String content, String conversationId})> sendMessage({
+  _i5.Future<({String content, String conversationId})> sendMessage({
     String? conversationId,
     required String? message,
-    _i7.AdhaContextInfo? contextInfo,
+    _i8.AdhaContextInfo? contextInfo,
     String? companyId,
     String? userId,
   }) =>
@@ -174,8 +186,8 @@ class MockAdhaRepository extends _i1.Mock implements _i3.AdhaRepository {
           },
         ),
         returnValue:
-            _i4.Future<({String content, String conversationId})>.value((
-          content: _i8.dummyValue<String>(
+            _i5.Future<({String content, String conversationId})>.value((
+          content: _i9.dummyValue<String>(
             this,
             Invocation.method(
               #sendMessage,
@@ -189,7 +201,7 @@ class MockAdhaRepository extends _i1.Mock implements _i3.AdhaRepository {
               },
             ),
           ),
-          conversationId: _i8.dummyValue<String>(
+          conversationId: _i9.dummyValue<String>(
             this,
             Invocation.method(
               #sendMessage,
@@ -204,15 +216,15 @@ class MockAdhaRepository extends _i1.Mock implements _i3.AdhaRepository {
             ),
           )
         )),
-      ) as _i4.Future<({String content, String conversationId})>);
+      ) as _i5.Future<({String content, String conversationId})>);
 
   @override
-  _i4.Future<({String conversationId, String requestMessageId})>
+  _i5.Future<({String conversationId, String requestMessageId})>
       sendStreamingMessage({
     String? conversationId,
     required String? message,
-    _i7.AdhaContextInfo? contextInfo,
-    List<_i9.AdhaAttachment>? attachments,
+    _i8.AdhaContextInfo? contextInfo,
+    List<_i10.AdhaAttachment>? attachments,
     String? companyId,
     String? userId,
   }) =>
@@ -229,9 +241,9 @@ class MockAdhaRepository extends _i1.Mock implements _i3.AdhaRepository {
                 #userId: userId,
               },
             ),
-            returnValue: _i4.Future<
+            returnValue: _i5.Future<
                 ({String conversationId, String requestMessageId})>.value((
-              conversationId: _i8.dummyValue<String>(
+              conversationId: _i9.dummyValue<String>(
                 this,
                 Invocation.method(
                   #sendStreamingMessage,
@@ -246,7 +258,7 @@ class MockAdhaRepository extends _i1.Mock implements _i3.AdhaRepository {
                   },
                 ),
               ),
-              requestMessageId: _i8.dummyValue<String>(
+              requestMessageId: _i9.dummyValue<String>(
                 this,
                 Invocation.method(
                   #sendStreamingMessage,
@@ -262,29 +274,41 @@ class MockAdhaRepository extends _i1.Mock implements _i3.AdhaRepository {
                 ),
               )
             )),
-          ) as _i4.Future<({String conversationId, String requestMessageId})>);
+          ) as _i5.Future<({String conversationId, String requestMessageId})>);
 }
 
 /// A class which mocks [AuthRepository].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockAuthRepository extends _i1.Mock implements _i10.AuthRepository {
+class MockAuthRepository extends _i1.Mock implements _i11.AuthRepository {
   MockAuthRepository() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i4.Future<void> init() => (super.noSuchMethod(
+  bool get isSyncPending => (super.noSuchMethod(
+        Invocation.getter(#isSyncPending),
+        returnValue: false,
+      ) as bool);
+
+  @override
+  bool get needsBusinessUnitJoin => (super.noSuchMethod(
+        Invocation.getter(#needsBusinessUnitJoin),
+        returnValue: false,
+      ) as bool);
+
+  @override
+  _i5.Future<void> init() => (super.noSuchMethod(
         Invocation.method(
           #init,
           [],
         ),
-        returnValue: _i4.Future<void>.value(),
-        returnValueForMissingStub: _i4.Future<void>.value(),
-      ) as _i4.Future<void>);
+        returnValue: _i5.Future<void>.value(),
+        returnValueForMissingStub: _i5.Future<void>.value(),
+      ) as _i5.Future<void>);
 
   @override
-  _i4.Future<_i2.User> login(
+  _i5.Future<_i2.User> login(
     String? email,
     String? password,
   ) =>
@@ -296,7 +320,7 @@ class MockAuthRepository extends _i1.Mock implements _i10.AuthRepository {
             password,
           ],
         ),
-        returnValue: _i4.Future<_i2.User>.value(_FakeUser_0(
+        returnValue: _i5.Future<_i2.User>.value(_FakeUser_0(
           this,
           Invocation.method(
             #login,
@@ -306,65 +330,65 @@ class MockAuthRepository extends _i1.Mock implements _i10.AuthRepository {
             ],
           ),
         )),
-      ) as _i4.Future<_i2.User>);
+      ) as _i5.Future<_i2.User>);
 
   @override
-  _i4.Future<_i2.User> loginWithDemoAccount() => (super.noSuchMethod(
+  _i5.Future<_i2.User> loginWithDemoAccount() => (super.noSuchMethod(
         Invocation.method(
           #loginWithDemoAccount,
           [],
         ),
-        returnValue: _i4.Future<_i2.User>.value(_FakeUser_0(
+        returnValue: _i5.Future<_i2.User>.value(_FakeUser_0(
           this,
           Invocation.method(
             #loginWithDemoAccount,
             [],
           ),
         )),
-      ) as _i4.Future<_i2.User>);
+      ) as _i5.Future<_i2.User>);
 
   @override
-  _i4.Future<void> logout() => (super.noSuchMethod(
+  _i5.Future<void> logout() => (super.noSuchMethod(
         Invocation.method(
           #logout,
           [],
         ),
-        returnValue: _i4.Future<void>.value(),
-        returnValueForMissingStub: _i4.Future<void>.value(),
-      ) as _i4.Future<void>);
+        returnValue: _i5.Future<void>.value(),
+        returnValueForMissingStub: _i5.Future<void>.value(),
+      ) as _i5.Future<void>);
 
   @override
-  _i4.Future<void> sendPasswordResetEmail(String? email) => (super.noSuchMethod(
+  _i5.Future<void> sendPasswordResetEmail(String? email) => (super.noSuchMethod(
         Invocation.method(
           #sendPasswordResetEmail,
           [email],
         ),
-        returnValue: _i4.Future<void>.value(),
-        returnValueForMissingStub: _i4.Future<void>.value(),
-      ) as _i4.Future<void>);
+        returnValue: _i5.Future<void>.value(),
+        returnValueForMissingStub: _i5.Future<void>.value(),
+      ) as _i5.Future<void>);
 
   @override
-  _i4.Future<_i2.User?> getCurrentUser() => (super.noSuchMethod(
+  _i5.Future<_i2.User?> getCurrentUser() => (super.noSuchMethod(
         Invocation.method(
           #getCurrentUser,
           [],
         ),
-        returnValue: _i4.Future<_i2.User?>.value(),
-      ) as _i4.Future<_i2.User?>);
+        returnValue: _i5.Future<_i2.User?>.value(),
+      ) as _i5.Future<_i2.User?>);
 
   @override
-  _i4.Future<bool> isLoggedIn() => (super.noSuchMethod(
+  _i5.Future<bool> isLoggedIn() => (super.noSuchMethod(
         Invocation.method(
           #isLoggedIn,
           [],
         ),
-        returnValue: _i4.Future<bool>.value(false),
-      ) as _i4.Future<bool>);
+        returnValue: _i5.Future<bool>.value(false),
+      ) as _i5.Future<bool>);
 
   @override
-  _i4.Future<void> updateUserProfile(
+  _i5.Future<void> updateUserProfile(
     _i2.User? user, {
-    _i11.File? profileImage,
+    _i12.File? profileImage,
   }) =>
       (super.noSuchMethod(
         Invocation.method(
@@ -372,47 +396,74 @@ class MockAuthRepository extends _i1.Mock implements _i10.AuthRepository {
           [user],
           {#profileImage: profileImage},
         ),
-        returnValue: _i4.Future<void>.value(),
-        returnValueForMissingStub: _i4.Future<void>.value(),
-      ) as _i4.Future<void>);
+        returnValue: _i5.Future<void>.value(),
+        returnValueForMissingStub: _i5.Future<void>.value(),
+      ) as _i5.Future<void>);
 
   @override
-  _i4.Future<void> updateLocalUser(_i2.User? user) => (super.noSuchMethod(
+  _i5.Future<void> updateLocalUser(_i2.User? user) => (super.noSuchMethod(
         Invocation.method(
           #updateLocalUser,
           [user],
         ),
-        returnValue: _i4.Future<void>.value(),
-        returnValueForMissingStub: _i4.Future<void>.value(),
-      ) as _i4.Future<void>);
+        returnValue: _i5.Future<void>.value(),
+        returnValueForMissingStub: _i5.Future<void>.value(),
+      ) as _i5.Future<void>);
 
   @override
-  _i4.Future<_i2.User?> getUser({bool? forceRemote = false}) =>
+  _i5.Future<_i2.User?> getUser({bool? forceRemote = false}) =>
       (super.noSuchMethod(
         Invocation.method(
           #getUser,
           [],
           {#forceRemote: forceRemote},
         ),
-        returnValue: _i4.Future<_i2.User?>.value(),
-      ) as _i4.Future<_i2.User?>);
+        returnValue: _i5.Future<_i2.User?>.value(),
+      ) as _i5.Future<_i2.User?>);
 
   @override
-  _i4.Future<void> setDemoUserActive(bool? isActive) => (super.noSuchMethod(
+  _i5.Future<void> setDemoUserActive(bool? isActive) => (super.noSuchMethod(
         Invocation.method(
           #setDemoUserActive,
           [isActive],
         ),
-        returnValue: _i4.Future<void>.value(),
-        returnValueForMissingStub: _i4.Future<void>.value(),
-      ) as _i4.Future<void>);
+        returnValue: _i5.Future<void>.value(),
+        returnValueForMissingStub: _i5.Future<void>.value(),
+      ) as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i3.JoinBusinessUnitResponse> joinBusinessUnit(
+          String? businessUnitCode) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #joinBusinessUnit,
+          [businessUnitCode],
+        ),
+        returnValue: _i5.Future<_i3.JoinBusinessUnitResponse>.value(
+            _FakeJoinBusinessUnitResponse_1(
+          this,
+          Invocation.method(
+            #joinBusinessUnit,
+            [businessUnitCode],
+          ),
+        )),
+      ) as _i5.Future<_i3.JoinBusinessUnitResponse>);
+
+  @override
+  _i5.Future<_i2.User?> refreshUserProfile() => (super.noSuchMethod(
+        Invocation.method(
+          #refreshUserProfile,
+          [],
+        ),
+        returnValue: _i5.Future<_i2.User?>.value(),
+      ) as _i5.Future<_i2.User?>);
 }
 
 /// A class which mocks [OperationJournalRepository].
 ///
 /// See the documentation for Mockito's code generation for more information.
 class MockOperationJournalRepository extends _i1.Mock
-    implements _i12.OperationJournalRepository {
+    implements _i13.OperationJournalRepository {
   MockOperationJournalRepository() {
     _i1.throwOnMissingStub(this);
   }
@@ -424,17 +475,17 @@ class MockOperationJournalRepository extends _i1.Mock
       ) as bool);
 
   @override
-  _i4.Future<void> init() => (super.noSuchMethod(
+  _i5.Future<void> init() => (super.noSuchMethod(
         Invocation.method(
           #init,
           [],
         ),
-        returnValue: _i4.Future<void>.value(),
-        returnValueForMissingStub: _i4.Future<void>.value(),
-      ) as _i4.Future<void>);
+        returnValue: _i5.Future<void>.value(),
+        returnValueForMissingStub: _i5.Future<void>.value(),
+      ) as _i5.Future<void>);
 
   @override
-  _i4.Future<List<_i13.OperationJournalEntry>> getOperations(
+  _i5.Future<List<_i14.OperationJournalEntry>> getOperations(
     DateTime? startDate,
     DateTime? endDate,
   ) =>
@@ -446,73 +497,73 @@ class MockOperationJournalRepository extends _i1.Mock
             endDate,
           ],
         ),
-        returnValue: _i4.Future<List<_i13.OperationJournalEntry>>.value(
-            <_i13.OperationJournalEntry>[]),
-      ) as _i4.Future<List<_i13.OperationJournalEntry>>);
+        returnValue: _i5.Future<List<_i14.OperationJournalEntry>>.value(
+            <_i14.OperationJournalEntry>[]),
+      ) as _i5.Future<List<_i14.OperationJournalEntry>>);
 
   @override
-  _i4.Future<Map<String, double>> getOpeningBalances(DateTime? forDate) =>
+  _i5.Future<Map<String, double>> getOpeningBalances(DateTime? forDate) =>
       (super.noSuchMethod(
         Invocation.method(
           #getOpeningBalances,
           [forDate],
         ),
-        returnValue: _i4.Future<Map<String, double>>.value(<String, double>{}),
-      ) as _i4.Future<Map<String, double>>);
+        returnValue: _i5.Future<Map<String, double>>.value(<String, double>{}),
+      ) as _i5.Future<Map<String, double>>);
 
   @override
-  _i4.Future<Map<String, Map<String, double>>> getOpeningBalancesByType(
+  _i5.Future<Map<String, Map<String, double>>> getOpeningBalancesByType(
           DateTime? forDate) =>
       (super.noSuchMethod(
         Invocation.method(
           #getOpeningBalancesByType,
           [forDate],
         ),
-        returnValue: _i4.Future<Map<String, Map<String, double>>>.value(
+        returnValue: _i5.Future<Map<String, Map<String, double>>>.value(
             <String, Map<String, double>>{}),
-      ) as _i4.Future<Map<String, Map<String, double>>>);
+      ) as _i5.Future<Map<String, Map<String, double>>>);
 
   @override
-  _i4.Future<double> getOpeningBalance(DateTime? forDate) =>
+  _i5.Future<double> getOpeningBalance(DateTime? forDate) =>
       (super.noSuchMethod(
         Invocation.method(
           #getOpeningBalance,
           [forDate],
         ),
-        returnValue: _i4.Future<double>.value(0.0),
-      ) as _i4.Future<double>);
+        returnValue: _i5.Future<double>.value(0.0),
+      ) as _i5.Future<double>);
 
   @override
-  _i4.Future<void> addOperation(_i13.OperationJournalEntry? entry) =>
+  _i5.Future<void> addOperation(_i14.OperationJournalEntry? entry) =>
       (super.noSuchMethod(
         Invocation.method(
           #addOperation,
           [entry],
         ),
-        returnValue: _i4.Future<void>.value(),
-        returnValueForMissingStub: _i4.Future<void>.value(),
-      ) as _i4.Future<void>);
+        returnValue: _i5.Future<void>.value(),
+        returnValueForMissingStub: _i5.Future<void>.value(),
+      ) as _i5.Future<void>);
 
   @override
-  _i4.Future<void> addOperationEntries(
-          List<_i13.OperationJournalEntry>? entries) =>
+  _i5.Future<void> addOperationEntries(
+          List<_i14.OperationJournalEntry>? entries) =>
       (super.noSuchMethod(
         Invocation.method(
           #addOperationEntries,
           [entries],
         ),
-        returnValue: _i4.Future<void>.value(),
-        returnValueForMissingStub: _i4.Future<void>.value(),
-      ) as _i4.Future<void>);
+        returnValue: _i5.Future<void>.value(),
+        returnValueForMissingStub: _i5.Future<void>.value(),
+      ) as _i5.Future<void>);
 
   @override
-  _i4.Future<bool> syncLocalOperationsToBackend() => (super.noSuchMethod(
+  _i5.Future<bool> syncLocalOperationsToBackend() => (super.noSuchMethod(
         Invocation.method(
           #syncLocalOperationsToBackend,
           [],
         ),
-        returnValue: _i4.Future<bool>.value(false),
-      ) as _i4.Future<bool>);
+        returnValue: _i5.Future<bool>.value(false),
+      ) as _i5.Future<bool>);
 
   @override
   void setOfflineMode(bool? isOffline) => super.noSuchMethod(
@@ -524,7 +575,7 @@ class MockOperationJournalRepository extends _i1.Mock
       );
 
   @override
-  _i4.Future<List<_i13.OperationJournalEntry>> getSalesOperations(
+  _i5.Future<List<_i14.OperationJournalEntry>> getSalesOperations(
     DateTime? startDate,
     DateTime? endDate,
   ) =>
@@ -536,12 +587,12 @@ class MockOperationJournalRepository extends _i1.Mock
             endDate,
           ],
         ),
-        returnValue: _i4.Future<List<_i13.OperationJournalEntry>>.value(
-            <_i13.OperationJournalEntry>[]),
-      ) as _i4.Future<List<_i13.OperationJournalEntry>>);
+        returnValue: _i5.Future<List<_i14.OperationJournalEntry>>.value(
+            <_i14.OperationJournalEntry>[]),
+      ) as _i5.Future<List<_i14.OperationJournalEntry>>);
 
   @override
-  _i4.Future<List<_i13.OperationJournalEntry>> getCashOperations(
+  _i5.Future<List<_i14.OperationJournalEntry>> getCashOperations(
     DateTime? startDate,
     DateTime? endDate,
   ) =>
@@ -553,12 +604,12 @@ class MockOperationJournalRepository extends _i1.Mock
             endDate,
           ],
         ),
-        returnValue: _i4.Future<List<_i13.OperationJournalEntry>>.value(
-            <_i13.OperationJournalEntry>[]),
-      ) as _i4.Future<List<_i13.OperationJournalEntry>>);
+        returnValue: _i5.Future<List<_i14.OperationJournalEntry>>.value(
+            <_i14.OperationJournalEntry>[]),
+      ) as _i5.Future<List<_i14.OperationJournalEntry>>);
 
   @override
-  _i4.Future<List<_i13.OperationJournalEntry>> getInventoryOperations(
+  _i5.Future<List<_i14.OperationJournalEntry>> getInventoryOperations(
     DateTime? startDate,
     DateTime? endDate,
   ) =>
@@ -570,15 +621,15 @@ class MockOperationJournalRepository extends _i1.Mock
             endDate,
           ],
         ),
-        returnValue: _i4.Future<List<_i13.OperationJournalEntry>>.value(
-            <_i13.OperationJournalEntry>[]),
-      ) as _i4.Future<List<_i13.OperationJournalEntry>>);
+        returnValue: _i5.Future<List<_i14.OperationJournalEntry>>.value(
+            <_i14.OperationJournalEntry>[]),
+      ) as _i5.Future<List<_i14.OperationJournalEntry>>);
 
   @override
-  _i4.Future<List<_i13.OperationJournalEntry>> getOperationsByType(
+  _i5.Future<List<_i14.OperationJournalEntry>> getOperationsByType(
     DateTime? startDate,
     DateTime? endDate,
-    _i13.OperationType? type,
+    _i14.OperationType? type,
   ) =>
       (super.noSuchMethod(
         Invocation.method(
@@ -589,29 +640,29 @@ class MockOperationJournalRepository extends _i1.Mock
             type,
           ],
         ),
-        returnValue: _i4.Future<List<_i13.OperationJournalEntry>>.value(
-            <_i13.OperationJournalEntry>[]),
-      ) as _i4.Future<List<_i13.OperationJournalEntry>>);
+        returnValue: _i5.Future<List<_i14.OperationJournalEntry>>.value(
+            <_i14.OperationJournalEntry>[]),
+      ) as _i5.Future<List<_i14.OperationJournalEntry>>);
 
   @override
-  _i4.Future<List<Map<String, dynamic>>> getRecentEntries({int? limit = 5}) =>
+  _i5.Future<List<Map<String, dynamic>>> getRecentEntries({int? limit = 5}) =>
       (super.noSuchMethod(
         Invocation.method(
           #getRecentEntries,
           [],
           {#limit: limit},
         ),
-        returnValue: _i4.Future<List<Map<String, dynamic>>>.value(
+        returnValue: _i5.Future<List<Map<String, dynamic>>>.value(
             <Map<String, dynamic>>[]),
-      ) as _i4.Future<List<Map<String, dynamic>>>);
+      ) as _i5.Future<List<Map<String, dynamic>>>);
 
   @override
-  _i4.Future<Map<String, dynamic>> getSummaryMetrics() => (super.noSuchMethod(
+  _i5.Future<Map<String, dynamic>> getSummaryMetrics() => (super.noSuchMethod(
         Invocation.method(
           #getSummaryMetrics,
           [],
         ),
         returnValue:
-            _i4.Future<Map<String, dynamic>>.value(<String, dynamic>{}),
-      ) as _i4.Future<Map<String, dynamic>>);
+            _i5.Future<Map<String, dynamic>>.value(<String, dynamic>{}),
+      ) as _i5.Future<Map<String, dynamic>>);
 }

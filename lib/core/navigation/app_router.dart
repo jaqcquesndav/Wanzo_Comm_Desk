@@ -6,6 +6,8 @@ import '../../features/auth/screens/splash_screen.dart';
 import '../../features/auth/screens/onboarding_screen.dart';
 import '../../features/auth/screens/auth0_redirect_screen.dart';
 import '../../features/auth/screens/auth0_info_screen.dart';
+import '../../features/auth/screens/sync_pending_screen.dart';
+import '../../features/auth/screens/join_business_unit_screen.dart';
 import '../../features/dashboard/screens/dashboard_screen.dart';
 import '../../features/inventory/models/product.dart';
 import '../../features/inventory/screens/add_product_screen.dart';
@@ -51,6 +53,10 @@ class AppRouter {
       final authState = authBloc.state;
       final isAuthenticated = authState is AuthAuthenticated;
       final isAuthenticating = authState is AuthLoading;
+      final isSyncPending = authState is AuthSyncPending;
+      final isBusinessUnitRequired = authState is AuthBusinessUnitRequired;
+      final isJoiningBU = authState is AuthJoinBusinessUnitInProgress;
+      final isJoinBUFailure = authState is AuthJoinBusinessUnitFailure;
       final isProfileUpdate =
           authState is AuthProfileUpdateInProgress ||
           authState is AuthProfileUpdateSuccess;
@@ -62,21 +68,52 @@ class AppRouter {
           state.matchedLocation == '/auth0_info' ||
           state.matchedLocation == '/auth0_redirect';
       final onSplashScreen = state.matchedLocation == '/';
+      final onSyncPending = state.matchedLocation == '/sync-pending';
+      final onJoinBU = state.matchedLocation == '/join-business-unit';
+      final onIntermediateScreens = onSyncPending || onJoinBU;
 
       // Ne pas rediriger pendant le chargement, les mises à jour de profil, ou sur splash avec état initial
       if (isAuthenticating ||
           isProfileUpdate ||
+          isJoiningBU ||
           (onSplashScreen && authState is AuthInitial)) {
         return null;
       }
 
-      // Si authentifié, rediriger vers dashboard depuis les écrans d'auth ou splash
-      if (isAuthenticated && (onAuthScreens || onSplashScreen)) {
+      // Sync Kafka en cours → rediriger vers l'écran d'attente
+      if (isSyncPending && !onSyncPending) {
+        return '/sync-pending';
+      }
+      if (isSyncPending && onSyncPending) {
+        return null;
+      }
+
+      // BU requise → rediriger vers l'écran de saisie code BU
+      if ((isBusinessUnitRequired || isJoinBUFailure) && !onJoinBU) {
+        return '/join-business-unit';
+      }
+      if ((isBusinessUnitRequired || isJoinBUFailure) && onJoinBU) {
+        return null;
+      }
+
+      // Si authentifié, rediriger vers dashboard depuis les écrans d'auth, splash, ou intermédiaires
+      if (isAuthenticated &&
+          (onAuthScreens || onSplashScreen || onIntermediateScreens)) {
         return '/dashboard';
       }
 
       // Si non authentifié et pas sur les écrans d'authentification ou de splash, rediriger vers auth0_info
-      if (!isAuthenticated && !onAuthScreens && !onSplashScreen) {
+      // AuthFailure sur splash → rediriger vers auth0_info
+      if (authState is AuthFailure && onSplashScreen) {
+        return '/auth0_info';
+      }
+
+      if (!isAuthenticated &&
+          !isSyncPending &&
+          !isBusinessUnitRequired &&
+          !isJoinBUFailure &&
+          !onAuthScreens &&
+          !onSplashScreen) {
         return '/auth0_info';
       }
 
@@ -95,6 +132,15 @@ class AppRouter {
       GoRoute(
         path: '/auth0_redirect',
         builder: (context, state) => const Auth0RedirectScreen(),
+      ),
+      // Routes intermédiaires pour le flux de synchronisation et BU
+      GoRoute(
+        path: '/sync-pending',
+        builder: (context, state) => const SyncPendingScreen(),
+      ),
+      GoRoute(
+        path: '/join-business-unit',
+        builder: (context, state) => const JoinBusinessUnitScreen(),
       ),
       // Routes legacy - redirigent vers auth0_info pour compatibilité
       // Note: forgot-password n'est plus nécessaire car géré par Auth0 Universal Login

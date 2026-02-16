@@ -20,25 +20,26 @@ class AuthBackendService {
 
   /// Récupère le profil utilisateur complet depuis le backend
   ///
-  /// Appelle GET /users/me après authentification Auth0 (endpoint recommandé)
+  /// Appelle GET /auth/me après authentification Auth0 (endpoint recommandé)
   /// Retourne une structure complète incluant:
   /// - user: Données de l'utilisateur avec companyId et businessUnitId
   /// - company: Informations de l'entreprise
   /// - businessUnit: Informations de l'unité commerciale avec scope
+  /// - syncStatus: État de synchronisation Kafka (cas 3)
   Future<AuthMeResponse?> fetchAuthMe() async {
     try {
       debugPrint(
-        'AuthBackendService: Fetching complete auth profile from backend /users/me',
+        'AuthBackendService: Fetching complete auth profile from backend /auth/me',
       );
 
-      final response = await _apiClient.get('users/me', requiresAuth: true);
+      final response = await _apiClient.get('auth/me', requiresAuth: true);
 
       // ignore: avoid_print
       print('');
       // ignore: avoid_print
       print('╔══════════════════════════════════════════════════════════════');
       // ignore: avoid_print
-      print('║ 👤 /users/me RESPONSE');
+      print('║ 👤 /auth/me RESPONSE');
       // ignore: avoid_print
       print('╠══════════════════════════════════════════════════════════════');
       // ignore: avoid_print
@@ -116,7 +117,7 @@ class AuthBackendService {
         }
       }
 
-      debugPrint('AuthBackendService: Failed to parse users/me response');
+      debugPrint('AuthBackendService: Failed to parse auth/me response');
       return null;
     } on NetworkException catch (e) {
       debugPrint(
@@ -210,6 +211,51 @@ class AuthBackendService {
     } catch (e) {
       debugPrint('AuthBackendService: Error updating profile: $e');
       return null;
+    }
+  }
+
+  /// Rejoint une unité d'affaires via son code
+  ///
+  /// Appelle POST /settings-user-profile/company/join-business-unit
+  /// Le code est communiqué par l'admin de l'entreprise.
+  Future<JoinBusinessUnitResponse> joinBusinessUnit(
+    String businessUnitCode,
+  ) async {
+    try {
+      debugPrint(
+        'AuthBackendService: Joining business unit with code: $businessUnitCode',
+      );
+
+      final response = await _apiClient.post(
+        'settings-user-profile/company/join-business-unit',
+        body: {'businessUnitCode': businessUnitCode},
+        requiresAuth: true,
+      );
+
+      if (response != null && response['success'] == true) {
+        final data = response['data'] as Map<String, dynamic>?;
+        if (data != null) {
+          debugPrint('AuthBackendService: Successfully joined business unit');
+          return JoinBusinessUnitResponse.fromJson(
+            data,
+            message: response['message'] as String?,
+          );
+        }
+      }
+
+      throw BadRequestException(
+        response?['message'] as String? ??
+            'Échec de la jonction à l\'unité d\'affaires',
+      );
+    } on NetworkException {
+      rethrow;
+    } on BadRequestException {
+      rethrow;
+    } on NotFoundException {
+      rethrow;
+    } catch (e) {
+      debugPrint('AuthBackendService: Error joining business unit: $e');
+      throw BadRequestException(e.toString());
     }
   }
 }
@@ -419,13 +465,24 @@ class BackendUserProfile {
 
   /// Convertit vers le modèle User de l'app
   ///
-  /// [overrideCompanyName] permet de passer le nom de l'entreprise depuis
-  /// BackendCompany quand il n'est pas directement dans le profil utilisateur
+  /// [businessUnit] et [company] permettent le fallback RCCM/NIF:
+  /// RCCM affiché = BU.registrationNumber > Company.registrationNumber > User.rccmNumber
+  /// NIF affiché  = BU.taxId > Company.taxId
   User toUser({
     String? token,
     BackendBusinessUnit? businessUnit,
-    String? overrideCompanyName,
+    BackendCompany? company,
   }) {
+    // Logique de fallback RCCM/NIF comme spécifié par le backend
+    final effectiveRccm =
+        businessUnit?.registrationNumber ??
+        company?.registrationNumber ??
+        rccmNumber;
+    final effectiveCompanyName = company?.name ?? companyName;
+    final effectiveLogoUrl = company?.logoUrl ?? businessLogoUrl;
+    final effectiveLocation = company?.address ?? companyLocation;
+    final effectiveSector = company?.sector ?? businessSector;
+
     return User(
       id: id,
       name: fullName ?? '$firstName $lastName'.trim(),
@@ -440,14 +497,13 @@ class BackendUserProfile {
       idCardStatus: _parseIdStatus(idCardStatus),
       idCardStatusReason: idCardStatusReason,
       companyId: companyId,
-      // Priorité: overrideCompanyName (depuis BackendCompany) > companyName (depuis user)
-      companyName: overrideCompanyName ?? companyName,
-      rccmNumber: rccmNumber,
-      companyLocation: companyLocation,
-      businessSector: businessSector,
+      companyName: effectiveCompanyName,
+      rccmNumber: effectiveRccm,
+      companyLocation: effectiveLocation,
+      businessSector: effectiveSector,
       businessSectorId: businessSectorId,
       businessAddress: businessAddress,
-      businessLogoUrl: businessLogoUrl,
+      businessLogoUrl: effectiveLogoUrl,
       emailVerified: emailVerified,
       phoneVerified: phoneVerified,
       // Business Unit fields from /auth/me response
@@ -480,32 +536,36 @@ class BackendUserProfile {
 
 /// Réponse complète du endpoint /auth/me
 ///
-/// Structure:
-/// {
-///   "success": true,
-///   "data": {
-///     "user": { ... },
-///     "company": { ... },
-///     "businessUnit": { ... }
-///   }
-/// }
+/// 3 cas possibles:
+/// - Cas 1: Profil complet (user + company + BU confirmée, scope unit)
+/// - Cas 2: Admin/Manager sans BU spécifique (scope company)
+/// - Cas 3: Synchronisation Kafka en cours (syncStatus.pending == true)
 class AuthMeResponse {
   /// Profil utilisateur complet
   final BackendUserProfile user;
 
-  /// Informations de l'entreprise (optionnel si utilisateur pas encore assigné)
+  /// Informations de l'entreprise (null en cas 3 — sync Kafka en cours)
   final BackendCompany? company;
 
   /// Informations de l'unité commerciale avec scope
   final BackendBusinessUnit? businessUnit;
 
-  const AuthMeResponse({required this.user, this.company, this.businessUnit});
+  /// État de synchronisation (présent uniquement en cas 3)
+  final SyncStatus? syncStatus;
+
+  const AuthMeResponse({
+    required this.user,
+    this.company,
+    this.businessUnit,
+    this.syncStatus,
+  });
 
   factory AuthMeResponse.fromJson(Map<String, dynamic> json) {
     // Support both nested structure and flat structure
     final userData = json['user'] as Map<String, dynamic>? ?? json;
     final companyData = json['company'] as Map<String, dynamic>?;
     final businessUnitData = json['businessUnit'] as Map<String, dynamic>?;
+    final syncStatusData = json['syncStatus'] as Map<String, dynamic>?;
 
     return AuthMeResponse(
       user: BackendUserProfile.fromJson(userData),
@@ -515,6 +575,8 @@ class AuthMeResponse {
           businessUnitData != null
               ? BackendBusinessUnit.fromJson(businessUnitData)
               : null,
+      syncStatus:
+          syncStatusData != null ? SyncStatus.fromJson(syncStatusData) : null,
     );
   }
 
@@ -523,10 +585,19 @@ class AuthMeResponse {
     return user.toUser(
       token: token,
       businessUnit: businessUnit,
-      // Passe le nom de l'entreprise depuis BackendCompany car il n'est pas
-      // directement dans l'objet user de la réponse /auth/me
-      overrideCompanyName: company?.name,
+      company: company,
     );
+  }
+
+  /// Vérifie si la synchronisation Kafka est en cours (cas 3)
+  bool get isSyncPending => syncStatus?.pending == true;
+
+  /// Vérifie si l'utilisateur non-admin doit rejoindre une BU
+  bool get needsBusinessUnitJoin {
+    final role = user.role.toLowerCase();
+    final isAdminOrManager = role == 'admin' || role == 'manager';
+    if (isAdminOrManager) return false;
+    return user.businessUnitId == null || user.businessUnitId!.isEmpty;
   }
 
   /// Vérifie si l'utilisateur a un accès niveau entreprise
@@ -536,15 +607,75 @@ class AuthMeResponse {
   bool get hasUnitScope => businessUnit?.scope == 'unit';
 }
 
+/// État de synchronisation Kafka (cas 3 de /auth/me)
+class SyncStatus {
+  final bool pending;
+  final String? message;
+
+  const SyncStatus({required this.pending, this.message});
+
+  factory SyncStatus.fromJson(Map<String, dynamic> json) {
+    return SyncStatus(
+      pending: json['pending'] as bool? ?? false,
+      message: json['message'] as String?,
+    );
+  }
+}
+
+/// Réponse du endpoint POST /settings-user-profile/company/join-business-unit
+class JoinBusinessUnitResponse {
+  final bool success;
+  final String businessUnitId;
+  final String businessUnitCode;
+  final String businessUnitType;
+  final String businessUnitName;
+  final String? message;
+
+  const JoinBusinessUnitResponse({
+    required this.success,
+    required this.businessUnitId,
+    required this.businessUnitCode,
+    required this.businessUnitType,
+    required this.businessUnitName,
+    this.message,
+  });
+
+  factory JoinBusinessUnitResponse.fromJson(
+    Map<String, dynamic> json, {
+    String? message,
+  }) {
+    return JoinBusinessUnitResponse(
+      success: true,
+      businessUnitId: (json['businessUnitId'] as String?) ?? '',
+      businessUnitCode: (json['businessUnitCode'] as String?) ?? '',
+      businessUnitType: (json['businessUnitType'] as String?) ?? '',
+      businessUnitName: (json['businessUnitName'] as String?) ?? '',
+      message: message ?? json['message'] as String?,
+    );
+  }
+}
+
 /// Informations de l'entreprise retournées par /auth/me
+/// Enrichi avec les champs légaux et métadonnées exposés par le backend
 class BackendCompany {
   final String id;
   final String name;
-  final String? registrationNumber;
+  final String? registrationNumber; // RCCM
+  final String? taxId; // NIF
+  final String? nationalId; // IdNat
+  final String? sector; // Secteur d'activité
+  final String? legalForm; // Forme juridique (SARL, SA...)
+  final double? capital; // Capital social
+  final String? capitalCurrency; // Devise du capital
+  final String? logoUrl; // URL du logo
   final String? address;
+  final String? city;
+  final String? province;
+  final String? country;
   final String? phone;
   final String? email;
   final String? website;
+  final bool isActive;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -552,10 +683,21 @@ class BackendCompany {
     required this.id,
     required this.name,
     this.registrationNumber,
+    this.taxId,
+    this.nationalId,
+    this.sector,
+    this.legalForm,
+    this.capital,
+    this.capitalCurrency,
+    this.logoUrl,
     this.address,
+    this.city,
+    this.province,
+    this.country,
     this.phone,
     this.email,
     this.website,
+    this.isActive = true,
     this.createdAt,
     this.updatedAt,
   });
@@ -565,10 +707,21 @@ class BackendCompany {
       id: (json['id'] as String?) ?? '',
       name: (json['name'] as String?) ?? '',
       registrationNumber: json['registrationNumber'] as String?,
+      taxId: json['taxId'] as String?,
+      nationalId: json['nationalId'] as String?,
+      sector: json['sector'] as String?,
+      legalForm: json['legalForm'] as String?,
+      capital: (json['capital'] as num?)?.toDouble(),
+      capitalCurrency: json['capitalCurrency'] as String?,
+      logoUrl: json['logoUrl'] as String?,
       address: json['address'] as String?,
+      city: json['city'] as String?,
+      province: json['province'] as String?,
+      country: json['country'] as String?,
       phone: json['phone'] as String?,
       email: json['email'] as String?,
       website: json['website'] as String?,
+      isActive: json['isActive'] as bool? ?? true,
       createdAt:
           json['createdAt'] != null
               ? DateTime.tryParse(json['createdAt'] as String)
@@ -582,18 +735,25 @@ class BackendCompany {
 }
 
 /// Informations de l'unité commerciale retournées par /auth/me
+/// Enrichi avec les champs légaux RCCM/NIF propres à la succursale
 class BackendBusinessUnit {
   final String id;
   final String name;
   final String code;
-  final String? type; // "COMPANY", "BRANCH", "POS"
+  final String? type; // "company", "branch", "pos"
+  final String? registrationNumber; // RCCM propre à la succursale
+  final String? taxId; // NIF propre à la succursale
   final int? hierarchyLevel;
   final String? hierarchyPath;
   final String? parentId;
   final String? address;
   final String? city;
+  final String? province;
+  final String? country;
   final String? phone;
   final String? email;
+  final String? currency;
+  final String? timezone;
   final String? managerId;
   final String? managerName;
   final bool isActive;
@@ -610,13 +770,19 @@ class BackendBusinessUnit {
     required this.name,
     required this.code,
     this.type,
+    this.registrationNumber,
+    this.taxId,
     this.hierarchyLevel,
     this.hierarchyPath,
     this.parentId,
     this.address,
     this.city,
+    this.province,
+    this.country,
     this.phone,
     this.email,
+    this.currency,
+    this.timezone,
     this.managerId,
     this.managerName,
     this.isActive = true,
@@ -631,13 +797,19 @@ class BackendBusinessUnit {
       name: (json['name'] as String?) ?? '',
       code: (json['code'] as String?) ?? '',
       type: json['type'] as String?,
+      registrationNumber: json['registrationNumber'] as String?,
+      taxId: json['taxId'] as String?,
       hierarchyLevel: json['hierarchyLevel'] as int?,
       hierarchyPath: json['hierarchyPath'] as String?,
       parentId: json['parentId'] as String?,
       address: json['address'] as String?,
       city: json['city'] as String?,
+      province: json['province'] as String?,
+      country: json['country'] as String?,
       phone: json['phone'] as String?,
       email: json['email'] as String?,
+      currency: json['currency'] as String?,
+      timezone: json['timezone'] as String?,
       managerId: json['managerId'] as String?,
       managerName: json['managerName'] as String?,
       isActive: json['isActive'] as bool? ?? true,
