@@ -86,25 +86,41 @@ class WanzoTheme {
         onSurface: const Color(0xFF111827),
         tertiary: warning, // Use WanzoTheme.warning for tertiary
         onTertiary: Colors.white,
-        surfaceTint: Colors.transparent, // Setting to transparent can help with shadow visibility
+        surfaceTint:
+            Colors
+                .transparent, // Setting to transparent can help with shadow visibility
         // Adding new theme colors
         primaryContainer: primaryLight,
         onPrimaryContainer: Colors.white,
-        secondaryContainer: successLight, // Use WanzoTheme.successLight for secondaryContainer
+        secondaryContainer:
+            successLight, // Use WanzoTheme.successLight for secondaryContainer
         onSecondaryContainer: Colors.white,
-        tertiaryContainer: warningLight, // Use WanzoTheme.warningLight for tertiaryContainer
+        tertiaryContainer:
+            warningLight, // Use WanzoTheme.warningLight for tertiaryContainer
         onTertiaryContainer: Colors.white,
-        errorContainer: error, // Consider a lighter error for containers if needed
+        errorContainer:
+            error, // Consider a lighter error for containers if needed
         onErrorContainer: Colors.white,
-        surfaceContainerHighest: const Color(0xFFF3F4F6), // A light grey for card backgrounds etc.
-        onSurfaceVariant: const Color(0xFF4B5563), // Text color for surfaceVariant
+        surfaceContainerHighest: const Color(
+          0xFFF3F4F6,
+        ), // A light grey for card backgrounds etc.
+        onSurfaceVariant: const Color(
+          0xFF4B5563,
+        ), // Text color for surfaceVariant
         outline: const Color(0xFFD1D5DB), // Border color
-        shadow: Colors.black.withValues(alpha: 0.15), // Increased shadow opacity slightly
-        inverseSurface: const Color(0xFF2C2E33), // For elements on dark background in light theme
+        shadow: Colors.black.withValues(
+          alpha: 0.15,
+        ), // Increased shadow opacity slightly
+        inverseSurface: const Color(
+          0xFF2C2E33,
+        ), // For elements on dark background in light theme
         onInverseSurface: Colors.white,
-        inversePrimary: primaryDark, // For primary elements on dark background in light theme
+        inversePrimary:
+            primaryDark, // For primary elements on dark background in light theme
       ),
-      scaffoldBackgroundColor: const Color(0xFFF9FAFB), // Slightly off-white for better contrast with cards
+      scaffoldBackgroundColor: const Color(
+        0xFFF9FAFB,
+      ), // Slightly off-white for better contrast with cards
       cardColor: Colors.white, // Explicitly set card color to white
       dividerColor: const Color(0xFFE5E7EB),
       textTheme: const TextTheme(
@@ -155,28 +171,53 @@ class WanzoTheme {
           ),
         ),
       ),
-      iconTheme: const IconThemeData(
-        color: Color(0xFF4B5563),
-      ),
+      iconTheme: const IconThemeData(color: Color(0xFF4B5563)),
       appBarTheme: const AppBarTheme(
         backgroundColor: primary,
         foregroundColor: Colors.white,
-        elevation: 0, // Set to 0 if you want a flat app bar, or a small value for a subtle shadow
+        elevation:
+            0, // Set to 0 if you want a flat app bar, or a small value for a subtle shadow
         scrolledUnderElevation: 2, // Shadow when content scrolls under app bar
       ),
       cardTheme: CardThemeData(
         elevation: 4, // Increased default card elevation
-        shadowColor: Colors.black.withValues(alpha: 0.2), // Explicit shadow color for cards
+        shadowColor: Colors.black.withValues(
+          alpha: 0.2,
+        ), // Explicit shadow color for cards
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(borderRadiusLg), // Consistent border radius
+          borderRadius: BorderRadius.circular(
+            borderRadiusLg,
+          ), // Consistent border radius
         ),
-        surfaceTintColor: Colors.transparent, // Important for M3 to show shadow color
+        surfaceTintColor:
+            Colors.transparent, // Important for M3 to show shadow color
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: const Color(0xFF2C2E33),
         contentTextStyle: const TextStyle(color: Colors.white),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(borderRadiusMd),
+        ),
+      ),
+      dataTableTheme: DataTableThemeData(
+        headingRowColor: WidgetStateProperty.all(
+          primary.withValues(alpha: 0.08),
+        ),
+        headingTextStyle: const TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: fontSizeSm,
+          color: primary,
+        ),
+        dataRowColor: WidgetStateProperty.resolveWith<Color?>((states) {
+          if (states.contains(WidgetState.hovered)) {
+            return primary.withValues(alpha: 0.06);
+          }
+          return null;
+        }),
+        dividerThickness: 0.5,
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+          borderRadius: BorderRadius.circular(borderRadiusLg),
         ),
       ),
     );
@@ -194,7 +235,9 @@ class WanzoTheme {
         onSecondary: Colors.white,
         error: error,
         onError: Colors.white,
-        surface: const Color(0xFF1F2937), // Darker surface for cards in dark mode
+        surface: const Color(
+          0xFF1F2937,
+        ), // Darker surface for cards in dark mode
         onSurface: const Color(0xFFF3F4F6),
         tertiary: warningLight, // Use WanzoTheme.warningLight for tertiary
         onTertiary: Colors.white,
@@ -208,15 +251,25 @@ class WanzoTheme {
         onTertiaryContainer: Colors.white,
         errorContainer: error, // Consider a darker error for containers
         onErrorContainer: Colors.white,
-        surfaceContainerHighest: const Color(0xFF374151), // Darker grey for card backgrounds etc.
-        onSurfaceVariant: const Color(0xFFD1D5DB), // Text color for surfaceVariant
+        surfaceContainerHighest: const Color(
+          0xFF374151,
+        ), // Darker grey for card backgrounds etc.
+        onSurfaceVariant: const Color(
+          0xFFD1D5DB,
+        ), // Text color for surfaceVariant
         outline: const Color(0xFF4B5563), // Border color
-        shadow: Colors.black.withValues(alpha: 0.25), // Slightly stronger shadow for dark mode
-        inverseSurface: const Color(0xFFF3F4F6), // For elements on light background in dark theme
+        shadow: Colors.black.withValues(
+          alpha: 0.25,
+        ), // Slightly stronger shadow for dark mode
+        inverseSurface: const Color(
+          0xFFF3F4F6,
+        ), // For elements on light background in dark theme
         onInverseSurface: const Color(0xFF111827),
         inversePrimary: primaryLight,
       ),
-      scaffoldBackgroundColor: const Color(0xFF111827), // Dark background for scaffold
+      scaffoldBackgroundColor: const Color(
+        0xFF111827,
+      ), // Dark background for scaffold
       cardColor: const Color(0xFF1F2937), // Dark card color
       dividerColor: const Color(0xFF374151),
       textTheme: const TextTheme(
@@ -267,9 +320,7 @@ class WanzoTheme {
           ),
         ),
       ),
-      iconTheme: const IconThemeData(
-        color: Color(0xFFD1D5DB),
-      ),
+      iconTheme: const IconThemeData(color: Color(0xFFD1D5DB)),
       appBarTheme: AppBarTheme(
         backgroundColor: const Color(0xFF1F2937), // Dark app bar
         foregroundColor: Colors.white,
@@ -279,17 +330,41 @@ class WanzoTheme {
       ),
       cardTheme: CardThemeData(
         elevation: 5, // Slightly more elevation for dark mode to pop
-        shadowColor: Colors.black.withValues(alpha: 0.3), // Explicit shadow color for cards
+        shadowColor: Colors.black.withValues(
+          alpha: 0.3,
+        ), // Explicit shadow color for cards
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(borderRadiusLg),
         ),
-        surfaceTintColor: Colors.transparent, // Important for M3 to show shadow color
+        surfaceTintColor:
+            Colors.transparent, // Important for M3 to show shadow color
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: const Color(0xFF3B3D42),
         contentTextStyle: const TextStyle(color: Colors.white),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(borderRadiusMd),
+        ),
+      ),
+      dataTableTheme: DataTableThemeData(
+        headingRowColor: WidgetStateProperty.all(
+          primaryLight.withValues(alpha: 0.12),
+        ),
+        headingTextStyle: const TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: fontSizeSm,
+          color: primaryLight,
+        ),
+        dataRowColor: WidgetStateProperty.resolveWith<Color?>((states) {
+          if (states.contains(WidgetState.hovered)) {
+            return primaryLight.withValues(alpha: 0.08);
+          }
+          return null;
+        }),
+        dividerThickness: 0.5,
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFF374151)),
+          borderRadius: BorderRadius.circular(borderRadiusLg),
         ),
       ),
     );

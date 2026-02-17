@@ -133,39 +133,78 @@ class _DesktopDataTableState<T> extends State<DesktopDataTable<T>> {
               _filteredData.isEmpty
                   ? _buildEmptyState(theme)
                   : SingleChildScrollView(
-                    child: SizedBox(
+                    child: Container(
                       width: double.infinity,
-                      child: DataTable(
-                        headingRowHeight: DesktopConfig.dataTableHeaderHeight,
-                        dataRowMinHeight: DesktopConfig.dataTableRowHeight,
-                        dataRowMaxHeight: DesktopConfig.dataTableRowHeight,
-                        showCheckboxColumn: widget.selectable,
-                        columns: widget.columns,
-                        rows:
-                            _paginatedData.map((item) {
-                              final row = widget.rowBuilder(item);
-                              return DataRow(
-                                selected: _selectedItems.contains(item),
-                                onSelectChanged:
-                                    widget.selectable
-                                        ? (selected) {
-                                          setState(() {
-                                            if (selected ?? false) {
-                                              _selectedItems.add(item);
-                                            } else {
-                                              _selectedItems.remove(item);
-                                            }
-                                          });
-                                          widget.onSelectionChanged?.call(
-                                            _selectedItems.toList(),
-                                          );
-                                        }
-                                        : null,
-                                onLongPress:
-                                    () => widget.onRowDoubleTap?.call(item),
-                                cells: row.cells,
-                              );
-                            }).toList(),
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: theme.dividerColor, width: 1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: DataTable(
+                          headingRowHeight: DesktopConfig.dataTableHeaderHeight,
+                          dataRowMinHeight: DesktopConfig.dataTableRowHeight,
+                          dataRowMaxHeight: DesktopConfig.dataTableRowHeight,
+                          showCheckboxColumn: widget.selectable,
+                          border: TableBorder(
+                            horizontalInside: BorderSide(
+                              color: theme.dividerColor.withValues(alpha: 0.5),
+                              width: 0.5,
+                            ),
+                          ),
+                          headingRowColor: WidgetStateProperty.all(
+                            theme.colorScheme.primary.withValues(alpha: 0.08),
+                          ),
+                          headingTextStyle: theme.textTheme.titleSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: theme.colorScheme.primary,
+                              ),
+                          columns: widget.columns,
+                          rows:
+                              _paginatedData.asMap().entries.map((entry) {
+                                final index = entry.key;
+                                final item = entry.value;
+                                final row = widget.rowBuilder(item);
+                                return DataRow(
+                                  color: WidgetStateProperty.resolveWith<
+                                    Color?
+                                  >((states) {
+                                    if (states.contains(WidgetState.hovered)) {
+                                      return theme.colorScheme.primary
+                                          .withValues(alpha: 0.06);
+                                    }
+                                    if (index.isOdd) {
+                                      return theme
+                                          .colorScheme
+                                          .surfaceContainerHighest
+                                          .withValues(alpha: 0.3);
+                                    }
+                                    return null;
+                                  }),
+                                  selected: _selectedItems.contains(item),
+                                  onSelectChanged:
+                                      widget.selectable
+                                          ? (selected) {
+                                            setState(() {
+                                              if (selected ?? false) {
+                                                _selectedItems.add(item);
+                                              } else {
+                                                _selectedItems.remove(item);
+                                              }
+                                            });
+                                            widget.onSelectionChanged?.call(
+                                              _selectedItems.toList(),
+                                            );
+                                          }
+                                          : null,
+                                  onLongPress:
+                                      () => widget.onRowDoubleTap?.call(item),
+                                  cells: row.cells,
+                                );
+                              }).toList(),
+                        ),
                       ),
                     ),
                   ),

@@ -46,7 +46,7 @@ class DesktopAuthService {
       BusinessContextService();
 
   /// Référence vers Auth0Service pour propager _lastAuthMeResponse
-  Auth0Service? _auth0Service;
+  final Auth0Service? _auth0Service;
 
   // État d'authentification
   User? _currentUser;

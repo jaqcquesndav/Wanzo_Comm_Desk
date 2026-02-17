@@ -11,6 +11,7 @@ import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/navigation/app_router.dart';
 import '../../../core/widgets/table_export_button.dart';
 import '../../../services/export/table_export_service.dart';
+import '../../../core/services/form_navigation_service.dart';
 import '../bloc/expense_bloc.dart';
 import '../models/expense.dart';
 
@@ -147,7 +148,13 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
             ),
           ],
           floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => context.push('/expenses/add'),
+            onPressed:
+                () => FormNavigationService.instance.openExpenseForm(
+                  context,
+                  onSuccess:
+                      () =>
+                          context.read<ExpenseBloc>().add(const LoadExpenses()),
+                ),
             icon: const Icon(Icons.add),
             label: const Text('Nouvelle dépense'),
           ),
@@ -214,7 +221,13 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: () => context.push('/expenses/add'),
+            onPressed:
+                () => FormNavigationService.instance.openExpenseForm(
+                  context,
+                  onSuccess:
+                      () =>
+                          context.read<ExpenseBloc>().add(const LoadExpenses()),
+                ),
             icon: const Icon(Icons.add),
             label: const Text('Ajouter une dépense'),
           ),
@@ -421,207 +434,194 @@ class _ExpensesDataTable extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: ConstrainedBox(
               constraints: BoxConstraints(minWidth: constraints.maxWidth),
-              child: DataTable(
-                columnSpacing: isCompact ? 16 : 32,
-                horizontalMargin: isCompact ? 12 : 24,
-                dataRowMinHeight: 52,
-                dataRowMaxHeight: 72,
-                headingRowColor: WidgetStateProperty.all(
-                  theme.colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.5,
-                  ),
+              child: Container(
+                margin: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: theme.dividerColor),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                columns: [
-                  DataColumn(
-                    label: Text(
-                      'Catégorie',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: DataTable(
+                    columnSpacing: isCompact ? 16 : 32,
+                    horizontalMargin: isCompact ? 12 : 24,
+                    dataRowMinHeight: 52,
+                    dataRowMaxHeight: 72,
+                    border: TableBorder(
+                      horizontalInside: BorderSide(
+                        color: theme.dividerColor.withValues(alpha: 0.5),
+                        width: 0.5,
                       ),
                     ),
-                  ),
-                  DataColumn(
-                    label: Text(
-                      'Motif',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    headingRowColor: WidgetStateProperty.all(
+                      theme.colorScheme.primary.withValues(alpha: 0.08),
                     ),
-                  ),
-                  DataColumn(
-                    label: Text(
-                      'Montant',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    headingTextStyle: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: theme.colorScheme.primary,
                     ),
-                    numeric: true,
-                  ),
-                  DataColumn(
-                    label: Text(
-                      'Date',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  // Colonne statut de paiement (vue trésorerie)
-                  DataColumn(
-                    label: Text(
-                      'Décaissement', // Vue trésorerie
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  if (!isCompact)
-                    DataColumn(
-                      label: Text(
-                        'Unité',
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  if (!isCompact)
-                    DataColumn(
-                      label: Text(
-                        'Moyen paiement',
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                ],
-                rows:
-                    expenses.map((expense) {
-                      final categoryColor = _getCategoryColor(expense.category);
+                    columns: [
+                      const DataColumn(label: Text('Catégorie')),
+                      const DataColumn(label: Text('Motif')),
+                      const DataColumn(label: Text('Montant'), numeric: true),
+                      const DataColumn(label: Text('Date')),
+                      const DataColumn(label: Text('Décaissement')),
+                      if (!isCompact) const DataColumn(label: Text('Unité')),
+                      if (!isCompact)
+                        const DataColumn(label: Text('Moyen paiement')),
+                    ],
+                    rows:
+                        expenses.asMap().entries.map((entry) {
+                          final idx = entry.key;
+                          final expense = entry.value;
+                          final categoryColor = _getCategoryColor(
+                            expense.category,
+                          );
 
-                      return DataRow(
-                        onSelectChanged: (_) => onExpenseTap(expense),
-                        cells: [
-                          // Catégorie
-                          DataCell(
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                CircleAvatar(
-                                  radius: 16,
-                                  backgroundColor: categoryColor.withValues(
-                                    alpha: 0.2,
+                          return DataRow(
+                            color: WidgetStateProperty.resolveWith<Color?>((
+                              states,
+                            ) {
+                              if (states.contains(WidgetState.hovered)) {
+                                return theme.colorScheme.primary.withValues(
+                                  alpha: 0.06,
+                                );
+                              }
+                              if (idx.isOdd) {
+                                return theme.colorScheme.surfaceContainerHighest
+                                    .withValues(alpha: 0.3);
+                              }
+                              return null;
+                            }),
+                            onSelectChanged: (_) => onExpenseTap(expense),
+                            cells: [
+                              // Catégorie
+                              DataCell(
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 16,
+                                      backgroundColor: categoryColor.withValues(
+                                        alpha: 0.2,
+                                      ),
+                                      child: Icon(
+                                        expense.category.icon,
+                                        size: 16,
+                                        color: categoryColor,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: categoryColor.withValues(
+                                          alpha: 0.1,
+                                        ),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        expense.category.displayName,
+                                        style: theme.textTheme.labelSmall
+                                            ?.copyWith(
+                                              color: categoryColor,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Motif
+                              DataCell(
+                                ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth: isCompact ? 100 : 200,
                                   ),
-                                  child: Icon(
-                                    expense.category.icon,
-                                    size: 16,
-                                    color: categoryColor,
+                                  child: Text(
+                                    expense.motif,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                const SizedBox(width: 8),
+                              ),
+                              // Montant
+                              DataCell(
+                                Text(
+                                  currencyFormat.format(expense.amount),
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.red[700],
+                                  ),
+                                ),
+                              ),
+                              // Date
+                              DataCell(
+                                Text(
+                                  dateFormat.format(expense.date),
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ),
+                              // Statut de paiement (vue trésorerie)
+                              DataCell(
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
+                                    horizontal: 10,
                                     vertical: 4,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: categoryColor.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(8),
+                                    color: getDecaissementStatusColor(
+                                      expense.paymentStatus,
+                                    ).withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: getDecaissementStatusColor(
+                                        expense.paymentStatus,
+                                      ).withValues(alpha: 0.3),
+                                    ),
                                   ),
                                   child: Text(
-                                    expense.category.displayName,
+                                    expense.paymentStatus?.displayName ??
+                                        'Non spécifié',
                                     style: theme.textTheme.labelSmall?.copyWith(
-                                      color: categoryColor,
+                                      color: getDecaissementStatusColor(
+                                        expense.paymentStatus,
+                                      ),
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                          // Motif
-                          DataCell(
-                            ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxWidth: isCompact ? 100 : 200,
                               ),
-                              child: Text(
-                                expense.motif,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ),
-                          // Montant
-                          DataCell(
-                            Text(
-                              currencyFormat.format(expense.amount),
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red[700],
-                              ),
-                            ),
-                          ),
-                          // Date
-                          DataCell(
-                            Text(
-                              dateFormat.format(expense.date),
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ),
-                          // Statut de paiement (vue trésorerie)
-                          DataCell(
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: getDecaissementStatusColor(
-                                  expense.paymentStatus,
-                                ).withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: getDecaissementStatusColor(
-                                    expense.paymentStatus,
-                                  ).withValues(alpha: 0.3),
-                                ),
-                              ),
-                              child: Text(
-                                expense.paymentStatus?.displayName ??
-                                    'Non spécifié',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: getDecaissementStatusColor(
-                                    expense.paymentStatus,
+                              // Unité (si pas compact)
+                              if (!isCompact)
+                                DataCell(
+                                  Text(
+                                    expense.businessUnitCode != null
+                                        ? '${expense.businessUnitType?.code ?? 'company'} - ${expense.businessUnitCode}'
+                                        : expense.businessUnitType?.code ??
+                                            'company',
+                                    style: theme.textTheme.bodySmall,
                                   ),
-                                  fontWeight: FontWeight.w600,
                                 ),
-                              ),
-                            ),
-                          ),
-                          // Unité (si pas compact)
-                          if (!isCompact)
-                            DataCell(
-                              Text(
-                                expense.businessUnitCode != null
-                                    ? '${expense.businessUnitType?.code ?? 'company'} - ${expense.businessUnitCode}'
-                                    : expense.businessUnitType?.code ??
-                                        'company',
-                                style: theme.textTheme.bodySmall,
-                              ),
-                            ),
-                          // Moyen de paiement (si pas compact)
-                          if (!isCompact)
-                            DataCell(
-                              Text(
-                                expense.paymentMethod ?? '-',
-                                style: theme.textTheme.bodySmall,
-                              ),
-                            ),
-                        ],
-                      );
-                    }).toList(),
+                              // Moyen de paiement (si pas compact)
+                              if (!isCompact)
+                                DataCell(
+                                  Text(
+                                    expense.paymentMethod ?? '-',
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                ),
+                            ],
+                          );
+                        }).toList(),
+                  ),
+                ),
               ),
             ),
           ),

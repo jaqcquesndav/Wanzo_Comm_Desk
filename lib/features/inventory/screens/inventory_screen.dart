@@ -18,6 +18,7 @@ import '../models/product.dart';
 import '../models/stock_transaction.dart'; // Added import
 import 'package:wanzo/core/utils/currency_formatter.dart'; // Added
 import 'package:wanzo/core/enums/currency_enum.dart'; // Added
+import 'package:wanzo/core/services/form_navigation_service.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart'; // For BusinessUnitTypeExtension
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart'; // Changed
 import 'package:wanzo/core/services/currency_service.dart'; // Added
@@ -247,14 +248,16 @@ class _InventoryScreenState extends State<InventoryScreen>
               _tabController.index != 2
                   ? FloatingActionButton(
                     onPressed: () {
-                      context.push('/inventory/add').then((_) {
-                        // Recharger les produits après retour de l'écran d'ajout
-                        if (mounted) {
-                          context.read<InventoryBloc>().add(
-                            const LoadProducts(),
-                          );
-                        }
-                      });
+                      FormNavigationService.instance.openProductForm(
+                        context,
+                        onSuccess: () {
+                          if (mounted) {
+                            context.read<InventoryBloc>().add(
+                              const LoadProducts(),
+                            );
+                          }
+                        },
+                      );
                     },
                     backgroundColor:
                         Theme.of(
@@ -437,7 +440,14 @@ class _InventoryScreenState extends State<InventoryScreen>
               const SizedBox(height: 24),
               if (!lowStockOnly)
                 ElevatedButton.icon(
-                  onPressed: () => context.push('/inventory/add'),
+                  onPressed:
+                      () => FormNavigationService.instance.openProductForm(
+                        context,
+                        onSuccess:
+                            () => context.read<InventoryBloc>().add(
+                              const LoadProducts(),
+                            ),
+                      ),
                   icon: const Icon(Icons.add),
                   label: Text(l10n.addProductButton),
                 ),

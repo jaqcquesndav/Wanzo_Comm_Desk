@@ -45,44 +45,147 @@ class JournalExportService {
       settings: settings,
     );
 
-    // Calculer les totaux globaux
-    final totals = _calculateTotals(operations);
+    // === SÉPARER LES OPÉRATIONS PAR CATÉGORIE COMPTABLE (OHADA) ===
+    final cashOperations = operations.where((e) => e.type.impactsCash).toList();
+    final salesOperations =
+        operations.where((e) => e.type.isSalesOperation).toList();
+    final stockOperations =
+        operations.where((e) => e.type.impactsStock).toList();
+    final otherOperations =
+        operations
+            .where(
+              (e) =>
+                  !e.type.impactsCash &&
+                  !e.type.isSalesOperation &&
+                  !e.type.impactsStock,
+            )
+            .toList();
 
-    // Grouper par devise pour un meilleur rendu
-    final groupedByDevise = _groupOperationsByCurrency(operations);
+    // Calculer les totaux PAR CATÉGORIE
+    final categoryTotals = _calculateCategoryTotals(
+      cashOperations: cashOperations,
+      salesOperations: salesOperations,
+      stockOperations: stockOperations,
+    );
+
+    // Extraire les totaux pour la synthèse de clôture
+    final cashIn = (categoryTotals['cashIn'] as double?) ?? 0.0;
+    final cashOut = (categoryTotals['cashOut'] as double?) ?? 0.0;
+    final cashNet = cashIn - cashOut;
+    final salesTotal = (categoryTotals['salesTotal'] as double?) ?? 0.0;
+    final stockIn = (categoryTotals['stockIn'] as double?) ?? 0.0;
+    final stockOut = (categoryTotals['stockOut'] as double?) ?? 0.0;
+    final otherTotal = otherOperations.fold<double>(
+      0.0,
+      (sum, e) => sum + e.amount,
+    );
+
+    // Solde d'ouverture = cashBalance de la 1ère opération de trésorerie - son montant
+    final openingBalance =
+        cashOperations.isNotEmpty && cashOperations.first.cashBalance != null
+            ? cashOperations.first.cashBalance! - cashOperations.first.amount
+            : 0.0;
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(30),
-        header: (context) => _buildSimpleHeader(
-          context,
-          settings,
-          font,
-          fontBold,
-          filter,
-          exportId,
-        ),
+        header:
+            (context) => _buildSimpleHeader(
+              context,
+              settings,
+              font,
+              fontBold,
+              filter,
+              exportId,
+            ),
         footer: (context) => _buildSimpleFooter(context, font, exportId),
-        build: (context) => [
-          // Métadonnées du rapport
-          _buildMetadataSection(
-            font,
-            fontBold,
-            filter,
-            currentUser,
-            operations.length,
-            qrData,
-          ),
-          pw.SizedBox(height: 15),
+        build:
+            (context) => [
+              // Métadonnées du rapport
+              _buildMetadataSection(
+                font,
+                fontBold,
+                filter,
+                currentUser,
+                operations.length,
+                qrData,
+              ),
+              pw.SizedBox(height: 15),
 
-          // Résumé financier compact
-          _buildCompactSummary(totals, font, fontBold),
-          pw.SizedBox(height: 20),
+              // Résumé PAR CATÉGORIE COMPTABLE (pas de mélange!)
+              _buildCategorizedSummary(categoryTotals, font, fontBold),
+              pw.SizedBox(height: 20),
 
-          // Tableau des opérations
-          ..._buildDataTable(groupedByDevise, font, fontBold),
-        ],
+              // === SECTION 1: TRÉSORERIE (Classe 5 OHADA) ===
+              if (cashOperations.isNotEmpty) ...[
+                _buildCategoryHeader(
+                  'TRESORERIE',
+                  'Encaissements et décaissements (Classe 5)',
+                  fontBold,
+                  PdfColors.blue800,
+                ),
+                pw.SizedBox(height: 5),
+                ..._buildCashCategoryTable(cashOperations, font, fontBold),
+                pw.SizedBox(height: 15),
+              ],
+
+              // === SECTION 2: VENTES / CA (Classe 7 OHADA) ===
+              if (salesOperations.isNotEmpty) ...[
+                _buildCategoryHeader(
+                  'CHIFFRE D\'AFFAIRES',
+                  'Ventes et revenus (Classe 7)',
+                  fontBold,
+                  PdfColors.green800,
+                ),
+                pw.SizedBox(height: 5),
+                ..._buildSalesCategoryTable(salesOperations, font, fontBold),
+                pw.SizedBox(height: 15),
+              ],
+
+              // === SECTION 3: STOCK (Classe 3 OHADA) ===
+              if (stockOperations.isNotEmpty) ...[
+                _buildCategoryHeader(
+                  'MOUVEMENTS DE STOCK',
+                  'Entrées et sorties d\'inventaire (Classe 3)',
+                  fontBold,
+                  PdfColors.orange800,
+                ),
+                pw.SizedBox(height: 5),
+                ..._buildStockCategoryTable(stockOperations, font, fontBold),
+                pw.SizedBox(height: 15),
+              ],
+
+              // === SECTION 4: AUTRES OPÉRATIONS ===
+              if (otherOperations.isNotEmpty) ...[
+                _buildCategoryHeader(
+                  'AUTRES OPERATIONS',
+                  'Financement et autres',
+                  fontBold,
+                  PdfColors.grey700,
+                ),
+                pw.SizedBox(height: 5),
+                ..._buildOtherCategoryTable(otherOperations, font, fontBold),
+                pw.SizedBox(height: 15),
+              ],
+
+              // === SYNTHÈSE DE CLÔTURE PAR CLASSE COMPTABLE ===
+              pw.SizedBox(height: 10),
+              _buildClosingSynthesis(
+                font: font,
+                fontBold: fontBold,
+                openingBalance: openingBalance,
+                cashIn: cashIn,
+                cashOut: cashOut,
+                cashNet: cashNet,
+                salesTotal: salesTotal,
+                stockIn: stockIn,
+                stockOut: stockOut,
+                otherTotal: otherTotal,
+                cashOperations: cashOperations,
+                stockOperations: stockOperations,
+              ),
+            ],
       ),
     );
 
@@ -373,15 +476,18 @@ class JournalExportService {
     );
   }
 
-  /// Résumé financier compact
-  static pw.Widget _buildCompactSummary(
-    Map<String, dynamic> totals,
+  /// Résumé financier PAR CATÉGORIE COMPTABLE (pas de mélange!)
+  static pw.Widget _buildCategorizedSummary(
+    Map<String, dynamic> categoryTotals,
     pw.Font font,
     pw.Font fontBold,
   ) {
-    final netBalance =
-        (totals['totalInflow'] as double) - (totals['totalOutflow'] as double);
-    final isPositive = netBalance >= 0;
+    final cashIn = categoryTotals['cashIn'] as double;
+    final cashOut = categoryTotals['cashOut'] as double;
+    final netCash = cashIn - cashOut;
+    final salesTotal = categoryTotals['salesTotal'] as double;
+    final stockIn = categoryTotals['stockIn'] as double;
+    final stockOut = categoryTotals['stockOut'] as double;
 
     return pw.Container(
       padding: const pw.EdgeInsets.all(8),
@@ -389,122 +495,231 @@ class JournalExportService {
         color: PdfColors.grey100,
         border: pw.Border.all(width: 0.5, color: PdfColors.grey400),
       ),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          _buildSummaryItem(
-            'ENTREES',
-            totals['totalInflow'],
-            PdfColors.green800,
-            fontBold,
+          pw.Text(
+            'RESUME PAR CATEGORIE COMPTABLE',
+            style: pw.TextStyle(font: fontBold, fontSize: _fontSize),
           ),
-          pw.Container(width: 1, height: 25, color: PdfColors.grey400),
-          _buildSummaryItem(
-            'SORTIES',
-            totals['totalOutflow'],
-            PdfColors.red800,
-            fontBold,
+          pw.SizedBox(height: 6),
+
+          // Trésorerie
+          pw.Row(
+            children: [
+              pw.Container(
+                width: 8,
+                height: 8,
+                decoration: const pw.BoxDecoration(color: PdfColors.blue800),
+              ),
+              pw.SizedBox(width: 4),
+              pw.Expanded(
+                child: pw.Text(
+                  'Trésorerie (Classe 5)',
+                  style: pw.TextStyle(font: fontBold, fontSize: _fontSizeSmall),
+                ),
+              ),
+              pw.Text(
+                '+${_formatNumber(cashIn)}',
+                style: pw.TextStyle(
+                  fontSize: _fontSizeSmall,
+                  color: PdfColors.green800,
+                ),
+              ),
+              pw.Text(
+                ' / -${_formatNumber(cashOut)}',
+                style: pw.TextStyle(
+                  fontSize: _fontSizeSmall,
+                  color: PdfColors.red800,
+                ),
+              ),
+              pw.Text(
+                ' = ${netCash >= 0 ? '+' : ''}${_formatNumber(netCash)} CDF',
+                style: pw.TextStyle(
+                  font: fontBold,
+                  fontSize: _fontSizeSmall,
+                  color: netCash >= 0 ? PdfColors.green800 : PdfColors.red800,
+                ),
+              ),
+            ],
           ),
-          pw.Container(width: 1, height: 25, color: PdfColors.grey400),
-          _buildSummaryItem(
-            'SOLDE NET',
-            netBalance,
-            isPositive ? PdfColors.green800 : PdfColors.red800,
-            fontBold,
+          pw.SizedBox(height: 3),
+
+          // Ventes / CA
+          pw.Row(
+            children: [
+              pw.Container(
+                width: 8,
+                height: 8,
+                decoration: const pw.BoxDecoration(color: PdfColors.green800),
+              ),
+              pw.SizedBox(width: 4),
+              pw.Expanded(
+                child: pw.Text(
+                  'Chiffre d\'affaires (Classe 7)',
+                  style: pw.TextStyle(font: fontBold, fontSize: _fontSizeSmall),
+                ),
+              ),
+              pw.Text(
+                '${_formatNumber(salesTotal)} CDF',
+                style: pw.TextStyle(
+                  font: fontBold,
+                  fontSize: _fontSizeSmall,
+                  color: PdfColors.blue800,
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 3),
+
+          // Stock
+          pw.Row(
+            children: [
+              pw.Container(
+                width: 8,
+                height: 8,
+                decoration: const pw.BoxDecoration(color: PdfColors.orange800),
+              ),
+              pw.SizedBox(width: 4),
+              pw.Expanded(
+                child: pw.Text(
+                  'Stock (Classe 3)',
+                  style: pw.TextStyle(font: fontBold, fontSize: _fontSizeSmall),
+                ),
+              ),
+              pw.Text(
+                'Entrées: ${_formatNumber(stockIn)} / Sorties: ${_formatNumber(stockOut)} CDF',
+                style: pw.TextStyle(fontSize: _fontSizeSmall),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  /// Élément du résumé
-  static pw.Widget _buildSummaryItem(
-    String label,
-    double value,
-    PdfColor color,
+  /// En-tête de section catégorie
+  static pw.Widget _buildCategoryHeader(
+    String title,
+    String subtitle,
     pw.Font fontBold,
+    PdfColor color,
   ) {
-    return pw.Column(
-      children: [
-        pw.Text(
-          label,
-          style: pw.TextStyle(fontSize: 6, color: PdfColors.grey700),
-        ),
-        pw.SizedBox(height: 2),
-        pw.Text(
-          _formatCurrency(value),
-          style: pw.TextStyle(font: fontBold, fontSize: 9, color: color),
-        ),
-      ],
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(top: 10),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: pw.BoxDecoration(
+        color: color,
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            title,
+            style: pw.TextStyle(
+              font: fontBold,
+              fontSize: _fontSize,
+              color: PdfColors.white,
+            ),
+          ),
+          pw.Text(
+            subtitle,
+            style: pw.TextStyle(
+              fontSize: _fontSizeSmall,
+              color: PdfColors.white,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  /// Construit le tableau de données optimisé pour plusieurs pages
-  static List<pw.Widget> _buildDataTable(
-    Map<String, List<OperationJournalEntry>> groupedOperations,
+  /// Table de TRÉSORERIE avec solde courant propre
+  static List<pw.Widget> _buildCashCategoryTable(
+    List<OperationJournalEntry> operations,
     pw.Font font,
     pw.Font fontBold,
   ) {
     final List<pw.Widget> widgets = [];
+    final grouped = _groupOperationsByCurrency(operations);
 
-    for (final entry in groupedOperations.entries) {
+    for (final entry in grouped.entries) {
       final currency = entry.key;
-      final operations = entry.value;
+      final ops = entry.value;
+      if (ops.isEmpty) continue;
 
-      if (operations.isEmpty) continue;
+      double runningBalance = 0.0;
+      // Try to get opening balance from first operation's cashBalance
+      if (ops.first.cashBalance != null) {
+        runningBalance = ops.first.cashBalance! - ops.first.amount;
+      }
 
-      // Titre de la section devise (si plusieurs devises)
-      if (groupedOperations.length > 1) {
+      if (grouped.length > 1) {
         widgets.add(
           pw.Container(
-            margin: const pw.EdgeInsets.only(top: 10, bottom: 5),
+            margin: const pw.EdgeInsets.only(top: 5, bottom: 3),
             child: pw.Text(
               '--- $currency ---',
-              style: pw.TextStyle(font: fontBold, fontSize: _fontSize),
+              style: pw.TextStyle(font: fontBold, fontSize: _fontSizeSmall),
             ),
           ),
         );
       }
 
-      // Utiliser pw.Table pour un meilleur rendu multi-pages
       widgets.add(
         pw.Table(
           border: pw.TableBorder.all(width: 0.5, color: PdfColors.grey400),
           columnWidths: const {
-            0: pw.FixedColumnWidth(55), // Date
-            1: pw.FlexColumnWidth(2.5), // Description
-            2: pw.FixedColumnWidth(55), // Type
-            3: pw.FixedColumnWidth(70), // Débit
-            4: pw.FixedColumnWidth(70), // Crédit
-            5: pw.FixedColumnWidth(75), // Solde
+            0: pw.FixedColumnWidth(55),
+            1: pw.FlexColumnWidth(2.5),
+            2: pw.FixedColumnWidth(70),
+            3: pw.FixedColumnWidth(70),
+            4: pw.FixedColumnWidth(75),
           },
           children: [
-            // En-tête
             pw.TableRow(
-              decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+              decoration: const pw.BoxDecoration(color: PdfColors.blue50),
               children: [
                 _buildHeaderCell('DATE', fontBold),
                 _buildHeaderCell('DESCRIPTION', fontBold),
-                _buildHeaderCell('TYPE', fontBold),
-                _buildHeaderCell('DEBIT', fontBold, align: pw.TextAlign.right),
-                _buildHeaderCell('CREDIT', fontBold, align: pw.TextAlign.right),
-                _buildHeaderCell('SOLDE', fontBold, align: pw.TextAlign.right),
+                _buildHeaderCell(
+                  'ENCAISSEMENT',
+                  fontBold,
+                  align: pw.TextAlign.right,
+                ),
+                _buildHeaderCell(
+                  'DECAISSEMENT',
+                  fontBold,
+                  align: pw.TextAlign.right,
+                ),
+                _buildHeaderCell(
+                  'SOLDE CAISSE',
+                  fontBold,
+                  align: pw.TextAlign.right,
+                ),
               ],
             ),
-            // Lignes de données
-            ...operations.asMap().entries.map((e) {
+            ...ops.asMap().entries.map((e) {
               final index = e.key;
               final op = e.value;
               final isAlternate = index % 2 == 1;
+              runningBalance += op.amount;
 
               return pw.TableRow(
-                decoration: isAlternate
-                    ? const pw.BoxDecoration(color: PdfColors.grey50)
-                    : null,
+                decoration:
+                    isAlternate
+                        ? const pw.BoxDecoration(color: PdfColors.grey50)
+                        : null,
                 children: [
                   _buildDataCell(DateFormat('dd/MM/yy').format(op.date), font),
-                  _buildDataCell(_truncateText(op.description, 45), font),
-                  _buildDataCell(op.type.shortName, font),
+                  _buildDataCell(_truncateText(op.description, 40), font),
+                  _buildDataCell(
+                    op.amount > 0 ? _formatNumber(op.amount) : '',
+                    font,
+                    align: pw.TextAlign.right,
+                    color: PdfColors.green800,
+                  ),
                   _buildDataCell(
                     op.amount < 0 ? _formatNumber(op.amount.abs()) : '',
                     font,
@@ -512,13 +727,7 @@ class JournalExportService {
                     color: PdfColors.red800,
                   ),
                   _buildDataCell(
-                    op.amount >= 0 ? _formatNumber(op.amount) : '',
-                    font,
-                    align: pw.TextAlign.right,
-                    color: PdfColors.green800,
-                  ),
-                  _buildDataCell(
-                    _formatNumber(_getRelevantBalance(op)),
+                    _formatNumber(op.cashBalance ?? runningBalance),
                     font,
                     align: pw.TextAlign.right,
                   ),
@@ -529,46 +738,333 @@ class JournalExportService {
         ),
       );
 
-      // Sous-total par devise
-      final currencyTotals = _calculateTotals(operations);
+      // Sous-total
+      final cashIn = ops
+          .where((o) => o.amount > 0)
+          .fold<double>(0.0, (s, o) => s + o.amount);
+      final cashOut = ops
+          .where((o) => o.amount < 0)
+          .fold<double>(0.0, (s, o) => s + o.amount.abs());
       widgets.add(
-        pw.Container(
-          padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 5),
-          decoration: const pw.BoxDecoration(
-            border: pw.Border(
-              left: pw.BorderSide(width: 0.5, color: PdfColors.grey400),
-              right: pw.BorderSide(width: 0.5, color: PdfColors.grey400),
-              bottom: pw.BorderSide(width: 0.5, color: PdfColors.grey400),
-            ),
-          ),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.end,
-            children: [
-              pw.Text(
-                'Total $currency: ',
-                style: pw.TextStyle(font: fontBold, fontSize: _fontSizeSmall),
-              ),
-              pw.Text(
-                'Entrées: ${_formatNumber(currencyTotals['totalInflow'])} | ',
-                style: pw.TextStyle(
-                  fontSize: _fontSizeSmall,
-                  color: PdfColors.green800,
-                ),
-              ),
-              pw.Text(
-                'Sorties: ${_formatNumber(currencyTotals['totalOutflow'])}',
-                style: pw.TextStyle(
-                  fontSize: _fontSizeSmall,
-                  color: PdfColors.red800,
-                ),
-              ),
-            ],
-          ),
+        _buildSubtotalRow(
+          'Total $currency: +${_formatNumber(cashIn)} / -${_formatNumber(cashOut)} = ${_formatNumber(cashIn - cashOut)}',
+          fontBold,
         ),
       );
     }
-
     return widgets;
+  }
+
+  /// Table des VENTES avec cumul CA
+  static List<pw.Widget> _buildSalesCategoryTable(
+    List<OperationJournalEntry> operations,
+    pw.Font font,
+    pw.Font fontBold,
+  ) {
+    final List<pw.Widget> widgets = [];
+    final grouped = _groupOperationsByCurrency(operations);
+
+    for (final entry in grouped.entries) {
+      final currency = entry.key;
+      final ops = entry.value;
+      if (ops.isEmpty) continue;
+
+      double runningTotal = 0.0;
+
+      if (grouped.length > 1) {
+        widgets.add(
+          pw.Container(
+            margin: const pw.EdgeInsets.only(top: 5, bottom: 3),
+            child: pw.Text(
+              '--- $currency ---',
+              style: pw.TextStyle(font: fontBold, fontSize: _fontSizeSmall),
+            ),
+          ),
+        );
+      }
+
+      widgets.add(
+        pw.Table(
+          border: pw.TableBorder.all(width: 0.5, color: PdfColors.grey400),
+          columnWidths: const {
+            0: pw.FixedColumnWidth(55),
+            1: pw.FlexColumnWidth(2),
+            2: pw.FixedColumnWidth(55),
+            3: pw.FixedColumnWidth(70),
+            4: pw.FixedColumnWidth(75),
+          },
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: PdfColors.green50),
+              children: [
+                _buildHeaderCell('DATE', fontBold),
+                _buildHeaderCell('CLIENT / DESCRIPTION', fontBold),
+                _buildHeaderCell('TYPE', fontBold),
+                _buildHeaderCell(
+                  'MONTANT',
+                  fontBold,
+                  align: pw.TextAlign.right,
+                ),
+                _buildHeaderCell(
+                  'CUMUL CA',
+                  fontBold,
+                  align: pw.TextAlign.right,
+                ),
+              ],
+            ),
+            ...ops.asMap().entries.map((e) {
+              final index = e.key;
+              final op = e.value;
+              final isAlternate = index % 2 == 1;
+              runningTotal += op.amount.abs();
+
+              return pw.TableRow(
+                decoration:
+                    isAlternate
+                        ? const pw.BoxDecoration(color: PdfColors.grey50)
+                        : null,
+                children: [
+                  _buildDataCell(DateFormat('dd/MM/yy').format(op.date), font),
+                  _buildDataCell(
+                    _truncateText(op.customerName ?? op.description, 35),
+                    font,
+                  ),
+                  _buildDataCell(op.type.shortName, font),
+                  _buildDataCell(
+                    _formatNumber(op.amount.abs()),
+                    font,
+                    align: pw.TextAlign.right,
+                    color: PdfColors.green800,
+                  ),
+                  _buildDataCell(
+                    _formatNumber(op.salesBalance ?? runningTotal),
+                    font,
+                    align: pw.TextAlign.right,
+                  ),
+                ],
+              );
+            }),
+          ],
+        ),
+      );
+
+      // Sous-total
+      final total = ops.fold<double>(0.0, (s, o) => s + o.amount.abs());
+      widgets.add(
+        _buildSubtotalRow(
+          'Total CA $currency: ${_formatNumber(total)}',
+          fontBold,
+        ),
+      );
+    }
+    return widgets;
+  }
+
+  /// Table de STOCK avec entrées/sorties
+  static List<pw.Widget> _buildStockCategoryTable(
+    List<OperationJournalEntry> operations,
+    pw.Font font,
+    pw.Font fontBold,
+  ) {
+    final List<pw.Widget> widgets = [];
+    final grouped = _groupOperationsByCurrency(operations);
+
+    for (final entry in grouped.entries) {
+      final currency = entry.key;
+      final ops = entry.value;
+      if (ops.isEmpty) continue;
+
+      if (grouped.length > 1) {
+        widgets.add(
+          pw.Container(
+            margin: const pw.EdgeInsets.only(top: 5, bottom: 3),
+            child: pw.Text(
+              '--- $currency ---',
+              style: pw.TextStyle(font: fontBold, fontSize: _fontSizeSmall),
+            ),
+          ),
+        );
+      }
+
+      widgets.add(
+        pw.Table(
+          border: pw.TableBorder.all(width: 0.5, color: PdfColors.grey400),
+          columnWidths: const {
+            0: pw.FixedColumnWidth(55),
+            1: pw.FlexColumnWidth(2),
+            2: pw.FixedColumnWidth(55),
+            3: pw.FixedColumnWidth(50),
+            4: pw.FixedColumnWidth(70),
+          },
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: PdfColors.orange50),
+              children: [
+                _buildHeaderCell('DATE', fontBold),
+                _buildHeaderCell('PRODUIT', fontBold),
+                _buildHeaderCell('MOUVEMENT', fontBold),
+                _buildHeaderCell('QTE', fontBold, align: pw.TextAlign.right),
+                _buildHeaderCell('VALEUR', fontBold, align: pw.TextAlign.right),
+              ],
+            ),
+            ...ops.asMap().entries.map((e) {
+              final index = e.key;
+              final op = e.value;
+              final isAlternate = index % 2 == 1;
+              final isIn = op.type == OperationType.stockIn;
+
+              return pw.TableRow(
+                decoration:
+                    isAlternate
+                        ? const pw.BoxDecoration(color: PdfColors.grey50)
+                        : null,
+                children: [
+                  _buildDataCell(DateFormat('dd/MM/yy').format(op.date), font),
+                  _buildDataCell(
+                    _truncateText(op.productName ?? op.description, 35),
+                    font,
+                  ),
+                  _buildDataCell(
+                    isIn ? 'ENTREE' : 'SORTIE',
+                    font,
+                    color: isIn ? PdfColors.green800 : PdfColors.red800,
+                  ),
+                  _buildDataCell(
+                    op.quantity?.toStringAsFixed(0) ?? '-',
+                    font,
+                    align: pw.TextAlign.right,
+                  ),
+                  _buildDataCell(
+                    _formatNumber(op.amount.abs()),
+                    font,
+                    align: pw.TextAlign.right,
+                    color: isIn ? PdfColors.green800 : PdfColors.red800,
+                  ),
+                ],
+              );
+            }),
+          ],
+        ),
+      );
+
+      // Sous-total
+      final stockIn = ops
+          .where((o) => o.type == OperationType.stockIn)
+          .fold<double>(0.0, (s, o) => s + o.amount.abs());
+      final stockOut = ops
+          .where((o) => o.type == OperationType.stockOut)
+          .fold<double>(0.0, (s, o) => s + o.amount.abs());
+      widgets.add(
+        _buildSubtotalRow(
+          'Stock $currency: Entrées ${_formatNumber(stockIn)} / Sorties ${_formatNumber(stockOut)}',
+          fontBold,
+        ),
+      );
+    }
+    return widgets;
+  }
+
+  /// Table des AUTRES opérations
+  static List<pw.Widget> _buildOtherCategoryTable(
+    List<OperationJournalEntry> operations,
+    pw.Font font,
+    pw.Font fontBold,
+  ) {
+    final List<pw.Widget> widgets = [];
+    final grouped = _groupOperationsByCurrency(operations);
+
+    for (final entry in grouped.entries) {
+      final currency = entry.key;
+      final ops = entry.value;
+      if (ops.isEmpty) continue;
+
+      if (grouped.length > 1) {
+        widgets.add(
+          pw.Container(
+            margin: const pw.EdgeInsets.only(top: 5, bottom: 3),
+            child: pw.Text(
+              '--- $currency ---',
+              style: pw.TextStyle(font: fontBold, fontSize: _fontSizeSmall),
+            ),
+          ),
+        );
+      }
+
+      widgets.add(
+        pw.Table(
+          border: pw.TableBorder.all(width: 0.5, color: PdfColors.grey400),
+          columnWidths: const {
+            0: pw.FixedColumnWidth(55),
+            1: pw.FixedColumnWidth(55),
+            2: pw.FlexColumnWidth(2.5),
+            3: pw.FixedColumnWidth(75),
+          },
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+              children: [
+                _buildHeaderCell('DATE', fontBold),
+                _buildHeaderCell('TYPE', fontBold),
+                _buildHeaderCell('DESCRIPTION', fontBold),
+                _buildHeaderCell(
+                  'MONTANT',
+                  fontBold,
+                  align: pw.TextAlign.right,
+                ),
+              ],
+            ),
+            ...ops.asMap().entries.map((e) {
+              final index = e.key;
+              final op = e.value;
+              final isAlternate = index % 2 == 1;
+
+              return pw.TableRow(
+                decoration:
+                    isAlternate
+                        ? const pw.BoxDecoration(color: PdfColors.grey50)
+                        : null,
+                children: [
+                  _buildDataCell(DateFormat('dd/MM/yy').format(op.date), font),
+                  _buildDataCell(op.type.shortName, font),
+                  _buildDataCell(_truncateText(op.description, 45), font),
+                  _buildDataCell(
+                    _formatNumber(op.amount),
+                    font,
+                    align: pw.TextAlign.right,
+                    color:
+                        op.amount >= 0 ? PdfColors.green800 : PdfColors.red800,
+                  ),
+                ],
+              );
+            }),
+          ],
+        ),
+      );
+    }
+    return widgets;
+  }
+
+  /// Ligne de sous-total
+  static pw.Widget _buildSubtotalRow(String text, pw.Font fontBold) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 5),
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(
+          left: pw.BorderSide(width: 0.5, color: PdfColors.grey400),
+          right: pw.BorderSide(width: 0.5, color: PdfColors.grey400),
+          bottom: pw.BorderSide(width: 0.5, color: PdfColors.grey400),
+        ),
+      ),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.end,
+        children: [
+          pw.Text(
+            text,
+            style: pw.TextStyle(font: fontBold, fontSize: _fontSizeSmall),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Cellule d'en-tête
@@ -610,29 +1106,286 @@ class JournalExportService {
     return '${text.substring(0, maxLength - 2)}..';
   }
 
+  /// Construit la SYNTHÈSE DE CLÔTURE PAR CLASSE COMPTABLE
+  /// Tableau récapitulatif : Ouverture | Entrées | Sorties | Clôture par classe
+  static pw.Widget _buildClosingSynthesis({
+    required pw.Font font,
+    required pw.Font fontBold,
+    required double openingBalance,
+    required double cashIn,
+    required double cashOut,
+    required double cashNet,
+    required double salesTotal,
+    required double stockIn,
+    required double stockOut,
+    required double otherTotal,
+    required List<OperationJournalEntry> cashOperations,
+    required List<OperationJournalEntry> stockOperations,
+  }) {
+    // Calcul du solde de clôture trésorerie
+    final cashClosing = openingBalance + cashNet;
+
+    // Dernière valeur de stock connue via stockValue, sinon calcul
+    final stockClosing =
+        stockOperations.isNotEmpty && stockOperations.last.stockValue != null
+            ? stockOperations.last.stockValue!
+            : (stockIn - stockOut);
+
+    // Style commun pour les cellules
+    pw.Widget cell(
+      String text, {
+      bool bold = false,
+      pw.Alignment align = pw.Alignment.centerRight,
+      PdfColor? bg,
+    }) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+        color: bg,
+        alignment: align,
+        child: pw.Text(
+          text,
+          style: pw.TextStyle(
+            font: bold ? fontBold : font,
+            fontSize: _fontSizeSmall,
+          ),
+        ),
+      );
+    }
+
+    // Construction des lignes du tableau
+    final rows = <pw.TableRow>[
+      // En-tête
+      pw.TableRow(
+        decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+        children: [
+          cell('Classe Comptable', bold: true, align: pw.Alignment.centerLeft),
+          cell('Ouverture', bold: true),
+          cell('Entrées (+)', bold: true),
+          cell('Sorties (-)', bold: true),
+          cell('Clôture', bold: true),
+        ],
+      ),
+
+      // Ligne Trésorerie (Classe 5)
+      pw.TableRow(
+        children: [
+          cell(
+            'Classe 5 – Trésorerie',
+            bold: true,
+            align: pw.Alignment.centerLeft,
+            bg: PdfColors.blue50,
+          ),
+          cell(_formatNumber(openingBalance), bg: PdfColors.blue50),
+          cell(_formatNumber(cashIn), bg: PdfColors.blue50),
+          cell(_formatNumber(cashOut), bg: PdfColors.blue50),
+          cell(_formatNumber(cashClosing), bold: true, bg: PdfColors.blue50),
+        ],
+      ),
+
+      // Ligne CA / Ventes (Classe 7)
+      pw.TableRow(
+        children: [
+          cell(
+            'Classe 7 – CA / Ventes',
+            bold: true,
+            align: pw.Alignment.centerLeft,
+          ),
+          cell('–'),
+          cell(_formatNumber(salesTotal)),
+          cell('–'),
+          cell(_formatNumber(salesTotal), bold: true),
+        ],
+      ),
+
+      // Ligne Stocks (Classe 3)
+      pw.TableRow(
+        children: [
+          cell(
+            'Classe 3 – Stocks',
+            bold: true,
+            align: pw.Alignment.centerLeft,
+            bg: PdfColors.orange50,
+          ),
+          cell('–', bg: PdfColors.orange50),
+          cell(_formatNumber(stockIn), bg: PdfColors.orange50),
+          cell(_formatNumber(stockOut), bg: PdfColors.orange50),
+          cell(_formatNumber(stockClosing), bold: true, bg: PdfColors.orange50),
+        ],
+      ),
+    ];
+
+    // Ligne Autres opérations (conditionnelle)
+    if (otherTotal.abs() > 0) {
+      rows.add(
+        pw.TableRow(
+          children: [
+            cell(
+              'Autres opérations',
+              bold: true,
+              align: pw.Alignment.centerLeft,
+              bg: PdfColors.grey100,
+            ),
+            cell('–', bg: PdfColors.grey100),
+            cell(
+              otherTotal > 0 ? _formatNumber(otherTotal) : '–',
+              bg: PdfColors.grey100,
+            ),
+            cell(
+              otherTotal < 0 ? _formatNumber(otherTotal.abs()) : '–',
+              bg: PdfColors.grey100,
+            ),
+            cell(_formatNumber(otherTotal), bold: true, bg: PdfColors.grey100),
+          ],
+        ),
+      );
+    }
+
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey400, width: 0.8),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          // Titre
+          pw.Container(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: const pw.BoxDecoration(
+              color: PdfColors.grey200,
+              borderRadius: pw.BorderRadius.only(
+                topLeft: pw.Radius.circular(4),
+                topRight: pw.Radius.circular(4),
+              ),
+            ),
+            child: pw.Text(
+              'SYNTHÈSE DE CLÔTURE PAR CLASSE COMPTABLE',
+              style: pw.TextStyle(
+                font: fontBold,
+                fontSize: _fontSize,
+                color: PdfColors.grey800,
+              ),
+              textAlign: pw.TextAlign.center,
+            ),
+          ),
+
+          // Tableau
+          pw.Table(
+            border: pw.TableBorder.all(width: 0.5, color: PdfColors.grey400),
+            columnWidths: const {
+              0: pw.FlexColumnWidth(2.5),
+              1: pw.FlexColumnWidth(1.5),
+              2: pw.FlexColumnWidth(1.5),
+              3: pw.FlexColumnWidth(1.5),
+              4: pw.FlexColumnWidth(1.5),
+            },
+            children: rows,
+          ),
+
+          // Bandeau bleu – Solde de clôture en caisse
+          pw.Container(
+            padding: const pw.EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 10,
+            ),
+            decoration: const pw.BoxDecoration(
+              color: PdfColors.blue800,
+              borderRadius: pw.BorderRadius.only(
+                bottomLeft: pw.Radius.circular(4),
+                bottomRight: pw.Radius.circular(4),
+              ),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  'SOLDE DE CLÔTURE EN CAISSE',
+                  style: pw.TextStyle(
+                    font: fontBold,
+                    fontSize: _fontSize,
+                    color: PdfColors.white,
+                  ),
+                ),
+                pw.Text(
+                  '${_formatNumber(cashClosing)} CDF',
+                  style: pw.TextStyle(
+                    font: fontBold,
+                    fontSize: _fontSize + 1,
+                    color: PdfColors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Formate un nombre
   static String _formatNumber(double value) {
     return NumberFormat('#,##0.00', 'fr_FR').format(value);
   }
 
-  /// Formate en devise
-  static String _formatCurrency(double value) {
-    return '${_formatNumber(value)} CDF';
-  }
-
   /// Récupère le solde approprié selon le type d'opération
+  /// Utilise les soldes typés en priorité, fallback sur balanceAfter pour rétrocompatibilité
   static double _getRelevantBalance(OperationJournalEntry operation) {
     if (operation.type.impactsCash) {
+      // ignore: deprecated_member_use_from_same_package
       return operation.cashBalance ?? operation.balanceAfter;
     } else if (operation.type.isSalesOperation) {
+      // ignore: deprecated_member_use_from_same_package
       return operation.salesBalance ?? operation.balanceAfter;
     } else if (operation.type.impactsStock) {
+      // ignore: deprecated_member_use_from_same_package
       return operation.stockValue ?? operation.balanceAfter;
     }
+    // ignore: deprecated_member_use_from_same_package
     return operation.balanceAfter;
   }
 
-  /// Calcule les totaux des opérations
+  /// Calcule les totaux PAR CATÉGORIE COMPTABLE
+  /// Évite le mélange de classes comptables incompatibles (OHADA SYSCOHADA)
+  static Map<String, dynamic> _calculateCategoryTotals({
+    required List<OperationJournalEntry> cashOperations,
+    required List<OperationJournalEntry> salesOperations,
+    required List<OperationJournalEntry> stockOperations,
+  }) {
+    double cashIn = 0.0;
+    double cashOut = 0.0;
+    for (final op in cashOperations) {
+      if (op.amount > 0) {
+        cashIn += op.amount;
+      } else {
+        cashOut += op.amount.abs();
+      }
+    }
+
+    double salesTotal = 0.0;
+    for (final op in salesOperations) {
+      salesTotal += op.amount.abs();
+    }
+
+    double stockIn = 0.0;
+    double stockOut = 0.0;
+    for (final op in stockOperations) {
+      if (op.type == OperationType.stockIn) {
+        stockIn += op.amount.abs();
+      } else {
+        stockOut += op.amount.abs();
+      }
+    }
+
+    return {
+      'cashIn': cashIn,
+      'cashOut': cashOut,
+      'salesTotal': salesTotal,
+      'stockIn': stockIn,
+      'stockOut': stockOut,
+    };
+  }
+
+  /// Calcule les totaux des opérations (conservé pour QR code et usage interne)
   static Map<String, dynamic> _calculateTotals(
     List<OperationJournalEntry> operations,
   ) {

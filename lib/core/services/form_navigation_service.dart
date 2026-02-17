@@ -5,8 +5,12 @@ import '../platform/platform_service.dart';
 // Import des modals de formulaire
 import '../../../features/customer/widgets/customer_form_modal.dart';
 import '../../../features/supplier/widgets/supplier_form_modal.dart';
+import '../../../features/expenses/widgets/expense_form_modal.dart';
+import '../../../features/financing/widgets/financing_form_modal.dart';
+import '../../../features/inventory/widgets/product_form_modal.dart';
 import '../../../features/customer/models/customer.dart';
 import '../../../features/supplier/models/supplier.dart';
+import '../../../features/inventory/models/product.dart';
 
 /// Service centralisé pour la navigation adaptative vers les formulaires
 /// Sur desktop: ouvre une modal
@@ -89,32 +93,74 @@ class FormNavigationService {
     }
   }
 
-  // ===== QUICK ACTIONS =====
-  // Ces méthodes sont utilisées pour les actions rapides du dashboard
-  // Pour les formulaires complexes (ventes, dépenses, produits),
-  // on garde la navigation car ils nécessitent plus d'espace
+  // ===== SALE =====
 
   /// Ouvre le formulaire de nouvelle vente
-  /// Toujours en navigation car formulaire complexe
+  /// Toujours en navigation car formulaire très complexe (multi-items)
   Future<void> openSaleForm(BuildContext context) async {
     await context.push('/sales/add');
   }
 
-  /// Ouvre le formulaire de nouvelle dépense
-  /// Toujours en navigation car formulaire complexe
-  Future<void> openExpenseForm(BuildContext context) async {
-    await context.push('/expenses/add');
+  // ===== EXPENSE =====
+
+  /// Ouvre le formulaire d'ajout de dépense
+  /// Retourne true si la dépense a été créée avec succès
+  Future<bool?> openExpenseForm(
+    BuildContext context, {
+    VoidCallback? onSuccess,
+  }) async {
+    if (shouldUseModal(context)) {
+      return ExpenseFormModal.show(context, onSuccess: onSuccess);
+    } else {
+      final result = await context.push<bool>('/expenses/add');
+      if (result == true) onSuccess?.call();
+      return result;
+    }
   }
 
-  /// Ouvre le formulaire de nouveau produit
-  /// Toujours en navigation car formulaire complexe
-  Future<void> openProductForm(BuildContext context) async {
-    await context.push('/inventory/add');
+  // ===== PRODUCT =====
+
+  /// Ouvre le formulaire d'ajout/édition de produit
+  /// Retourne true si le produit a été créé/modifié avec succès
+  Future<bool?> openProductForm(
+    BuildContext context, {
+    Product? product,
+    VoidCallback? onSuccess,
+  }) async {
+    if (shouldUseModal(context)) {
+      return ProductFormModal.show(
+        context,
+        product: product,
+        onSuccess: onSuccess,
+      );
+    } else {
+      final route = product != null ? '/inventory/edit' : '/inventory/add';
+      if (product != null) {
+        final result = await context.push<bool>(route, extra: product);
+        if (result == true) onSuccess?.call();
+        return result;
+      } else {
+        final result = await context.push<bool>(route);
+        if (result == true) onSuccess?.call();
+        return result;
+      }
+    }
   }
+
+  // ===== FINANCING =====
 
   /// Ouvre le formulaire de nouvelle demande de financement
-  /// Toujours en navigation car formulaire complexe
-  Future<void> openFinancingForm(BuildContext context) async {
-    await context.push('/financing/add');
+  /// Retourne true si la demande a été créée avec succès
+  Future<bool?> openFinancingForm(
+    BuildContext context, {
+    VoidCallback? onSuccess,
+  }) async {
+    if (shouldUseModal(context)) {
+      return FinancingFormModal.show(context, onSuccess: onSuccess);
+    } else {
+      final result = await context.push<bool>('/financing/add');
+      if (result == true) onSuccess?.call();
+      return result;
+    }
   }
 }

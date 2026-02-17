@@ -136,143 +136,145 @@ class _OperationsDataTable extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: ConstrainedBox(
               constraints: BoxConstraints(minWidth: constraints.maxWidth),
-              child: DataTable(
-                columnSpacing: isCompact ? 12 : 24,
-                horizontalMargin: isCompact ? 8 : 16,
-                dataRowMinHeight: 48,
-                dataRowMaxHeight: 64,
-                headingRowColor: WidgetStateProperty.all(
-                  theme.colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.5,
-                  ),
+              child: Container(
+                margin: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: theme.dividerColor),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                columns: [
-                  const DataColumn(label: Text(''), numeric: false),
-                  DataColumn(
-                    label: Text(
-                      'Description',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: DataTable(
+                    columnSpacing: isCompact ? 12 : 24,
+                    horizontalMargin: isCompact ? 8 : 16,
+                    dataRowMinHeight: 48,
+                    dataRowMaxHeight: 64,
+                    border: TableBorder(
+                      horizontalInside: BorderSide(
+                        color: theme.dividerColor.withValues(alpha: 0.5),
+                        width: 0.5,
                       ),
                     ),
-                  ),
-                  DataColumn(
-                    label: Text(
-                      'Type',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    headingRowColor: WidgetStateProperty.all(
+                      theme.colorScheme.primary.withValues(alpha: 0.08),
                     ),
-                  ),
-                  DataColumn(
-                    label: Text(
-                      'Date',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    headingTextStyle: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: theme.colorScheme.primary,
                     ),
-                  ),
-                  DataColumn(
-                    label: Text(
-                      'Montant',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    numeric: true,
-                  ),
-                  if (!isCompact)
-                    DataColumn(
-                      label: Text(
-                        'Solde',
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      numeric: true,
-                    ),
-                ],
-                rows:
-                    operations.map((operation) {
-                      final isPositive = operation.amount >= 0;
-                      final amountColor =
-                          isPositive ? WanzoTheme.success : WanzoTheme.danger;
+                    columns: [
+                      const DataColumn(label: Text(''), numeric: false),
+                      const DataColumn(label: Text('Description')),
+                      const DataColumn(label: Text('Type')),
+                      const DataColumn(label: Text('Date')),
+                      const DataColumn(label: Text('Montant'), numeric: true),
+                      if (!isCompact)
+                        const DataColumn(label: Text('Solde'), numeric: true),
+                    ],
+                    rows:
+                        operations.asMap().entries.map((entry) {
+                          final idx = entry.key;
+                          final operation = entry.value;
+                          final isPositive = operation.amount >= 0;
+                          final amountColor =
+                              isPositive
+                                  ? WanzoTheme.success
+                                  : WanzoTheme.danger;
 
-                      return DataRow(
-                        onSelectChanged:
-                            onOperationTap != null
-                                ? (_) => onOperationTap!(operation)
-                                : null,
-                        cells: [
-                          // Icône/Image
-                          DataCell(_buildOperationIcon(context, operation)),
-                          // Description
-                          DataCell(
-                            ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxWidth: isCompact ? 120 : 200,
-                              ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    operation.description,
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                          return DataRow(
+                            color: WidgetStateProperty.resolveWith<Color?>((
+                              states,
+                            ) {
+                              if (states.contains(WidgetState.hovered)) {
+                                return theme.colorScheme.primary.withValues(
+                                  alpha: 0.06,
+                                );
+                              }
+                              if (idx.isOdd) {
+                                return theme.colorScheme.surfaceContainerHighest
+                                    .withValues(alpha: 0.3);
+                              }
+                              return null;
+                            }),
+                            onSelectChanged:
+                                onOperationTap != null
+                                    ? (_) => onOperationTap!(operation)
+                                    : null,
+                            cells: [
+                              // Icône/Image
+                              DataCell(_buildOperationIcon(context, operation)),
+                              // Description
+                              DataCell(
+                                ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth: isCompact ? 120 : 200,
                                   ),
-                                  if (operation.productName != null)
-                                    Text(
-                                      operation.productName!,
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: theme.colorScheme.onSurface
-                                                .withValues(alpha: 0.6),
-                                          ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          // Type
-                          DataCell(_buildTypeChip(context, operation)),
-                          // Date
-                          DataCell(
-                            Text(
-                              dateFormat.format(operation.date),
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ),
-                          // Montant
-                          DataCell(
-                            Text(
-                              '${isPositive ? '+' : ''}${currencyFormat.format(operation.amount)} ${operation.currencyCode}',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: amountColor,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          // Solde (si pas compact)
-                          if (!isCompact)
-                            DataCell(
-                              Text(
-                                '${currencyFormat.format(operation.getRelevantBalance() ?? 0)} ${operation.currencyCode}',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurface.withValues(
-                                    alpha: 0.7,
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        operation.description,
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      if (operation.productName != null)
+                                        Text(
+                                          operation.productName!,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: theme
+                                                    .colorScheme
+                                                    .onSurface
+                                                    .withValues(alpha: 0.6),
+                                              ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                    ],
                                   ),
                                 ),
                               ),
-                            ),
-                        ],
-                      );
-                    }).toList(),
+                              // Type
+                              DataCell(_buildTypeChip(context, operation)),
+                              // Date
+                              DataCell(
+                                Text(
+                                  dateFormat.format(operation.date),
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ),
+                              // Montant
+                              DataCell(
+                                Text(
+                                  '${isPositive ? '+' : ''}${currencyFormat.format(operation.amount)} ${operation.currencyCode}',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: amountColor,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              // Solde (si pas compact)
+                              if (!isCompact)
+                                DataCell(
+                                  Text(
+                                    '${currencyFormat.format(operation.getRelevantBalance() ?? 0)} ${operation.currencyCode}',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurface
+                                          .withValues(alpha: 0.7),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          );
+                        }).toList(),
+                  ),
+                ),
               ),
             ),
           ),

@@ -152,21 +152,25 @@ class _OperationsDockState extends State<OperationsDock>
               context: context,
               icon: Icons.inventory_2,
               label: l10n.addProductTitle,
-              onTap: () => context.push('/inventory/add'),
+              onTap:
+                  () => FormNavigationService.instance.openProductForm(context),
               color: Colors.orange,
             ),
             _buildDockItem(
               context: context,
               icon: Icons.monetization_on,
               label: l10n.dashboardQuickActionsNewFinancing,
-              onTap: () => context.push('/financing/add'),
+              onTap:
+                  () =>
+                      FormNavigationService.instance.openFinancingForm(context),
               color: Colors.teal,
             ),
             _buildDockItem(
               context: context,
               icon: Icons.receipt_long,
               label: l10n.dashboardQuickActionsNewExpense,
-              onTap: () => context.push('/expenses/add'),
+              onTap:
+                  () => FormNavigationService.instance.openExpenseForm(context),
               color: Colors.redAccent,
             ),
             _buildDockItem(

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
+import 'package:intl/intl.dart';
 import 'package:wanzo/l10n/app_localizations.dart'; // Import AppLocalizations
 import 'package:wanzo/core/services/currency_service.dart'; // Import CurrencyService
 import 'package:wanzo/core/utils/currency_formatter.dart'; // Added import
@@ -273,109 +274,224 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
       children: [
         if (header != null) header,
         Expanded(
-          child: ListView.builder(
-            itemCount: suppliers.length,
-            itemBuilder: (context, index) {
-              final supplier = suppliers[index];
-              return _buildSupplierListItem(context, supplier); // Pass context
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final currencyService = context.read<CurrencyService>();
+              final String currencyCode =
+                  currencyService.currentSettings.activeCurrency.code;
+              final theme = Theme.of(context);
+              final dateFormat = DateFormat('dd/MM/yyyy');
+
+              return SingleChildScrollView(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                    child: Container(
+                      margin: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: theme.dividerColor),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: DataTable(
+                          columnSpacing: 24,
+                          horizontalMargin: 16,
+                          dataRowMinHeight: 52,
+                          dataRowMaxHeight: 72,
+                          border: TableBorder(
+                            horizontalInside: BorderSide(
+                              color: theme.dividerColor.withValues(alpha: 0.5),
+                              width: 0.5,
+                            ),
+                          ),
+                          headingRowColor: WidgetStateProperty.all(
+                            theme.colorScheme.primary.withValues(alpha: 0.08),
+                          ),
+                          headingTextStyle: theme.textTheme.titleSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: theme.colorScheme.primary,
+                              ),
+                          columns: const [
+                            DataColumn(label: Text('Fournisseur')),
+                            DataColumn(label: Text('Contact')),
+                            DataColumn(label: Text('Téléphone')),
+                            DataColumn(
+                              label: Text('Total achats'),
+                              numeric: true,
+                            ),
+                            DataColumn(label: Text('Dernier achat')),
+                            DataColumn(label: Text('Actions')),
+                          ],
+                          rows:
+                              suppliers.asMap().entries.map((entry) {
+                                final idx = entry.key;
+                                final supplier = entry.value;
+                                final categoryColor = _getCategoryColor(
+                                  context,
+                                  supplier.category,
+                                );
+
+                                return DataRow(
+                                  color: WidgetStateProperty.resolveWith<
+                                    Color?
+                                  >((states) {
+                                    if (states.contains(WidgetState.hovered)) {
+                                      return theme.colorScheme.primary
+                                          .withValues(alpha: 0.06);
+                                    }
+                                    if (idx.isOdd) {
+                                      return theme
+                                          .colorScheme
+                                          .surfaceContainerHighest
+                                          .withValues(alpha: 0.3);
+                                    }
+                                    return null;
+                                  }),
+                                  onSelectChanged:
+                                      (_) => _navigateToSupplierDetails(
+                                        context,
+                                        supplier,
+                                      ),
+                                  cells: [
+                                    DataCell(
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 16,
+                                            backgroundColor: categoryColor,
+                                            child: Text(
+                                              supplier.name.isNotEmpty
+                                                  ? supplier.name[0]
+                                                      .toUpperCase()
+                                                  : '?',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color:
+                                                    theme
+                                                        .colorScheme
+                                                        .onPrimaryContainer,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          ConstrainedBox(
+                                            constraints: const BoxConstraints(
+                                              maxWidth: 160,
+                                            ),
+                                            child: Text(
+                                              supplier.name,
+                                              style: theme.textTheme.bodyMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Text(
+                                        supplier.contactPerson.isNotEmpty
+                                            ? supplier.contactPerson
+                                            : '-',
+                                        style: theme.textTheme.bodyMedium,
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Text(
+                                        supplier.phoneNumber,
+                                        style: theme.textTheme.bodyMedium,
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Text(
+                                        formatCurrency(
+                                          supplier.totalPurchases,
+                                          currencyCode,
+                                        ),
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.bold,
+                                              color: theme.colorScheme.primary,
+                                            ),
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Text(
+                                        supplier.lastPurchaseDate != null
+                                            ? dateFormat.format(
+                                              supplier.lastPurchaseDate!,
+                                            )
+                                            : '-',
+                                        style: theme.textTheme.bodySmall,
+                                      ),
+                                    ),
+                                    DataCell(
+                                      PopupMenuButton<String>(
+                                        icon: const Icon(
+                                          Icons.more_vert,
+                                          size: 20,
+                                        ),
+                                        tooltip:
+                                            localizations.moreOptionsTooltip,
+                                        onSelected: (value) {
+                                          if (value == 'details') {
+                                            _navigateToSupplierDetails(
+                                              context,
+                                              supplier,
+                                            );
+                                          } else if (value == 'edit') {
+                                            _navigateToEditSupplier(
+                                              context,
+                                              supplier,
+                                            );
+                                          } else if (value == 'delete') {
+                                            _showDeleteConfirmation(
+                                              context,
+                                              supplier,
+                                            );
+                                          }
+                                        },
+                                        itemBuilder:
+                                            (BuildContext ctx) => [
+                                              PopupMenuItem<String>(
+                                                value: 'details',
+                                                child: Text(
+                                                  localizations.viewDetails,
+                                                ),
+                                              ),
+                                              PopupMenuItem<String>(
+                                                value: 'edit',
+                                                child: Text(localizations.edit),
+                                              ),
+                                              PopupMenuItem<String>(
+                                                value: 'delete',
+                                                child: Text(
+                                                  localizations.delete,
+                                                ),
+                                              ),
+                                            ],
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
             },
           ),
         ),
       ],
-    );
-  }
-
-  /// Construit un élément de la liste des fournisseurs
-  Widget _buildSupplierListItem(BuildContext context, Supplier supplier) {
-    // Add context
-    final localizations =
-        AppLocalizations.of(context)!; // Add localizations instance
-    final currencyService =
-        context.read<CurrencyService>(); // Get CurrencyService instance
-
-    final lastPurchaseText =
-        supplier.lastPurchaseDate != null
-            ? localizations.lastPurchaseDate(
-              _formatDate(supplier.lastPurchaseDate!),
-            ) // Localized & Positional
-            : localizations.noRecentPurchase; // Localized
-
-    final categoryColor = _getCategoryColor(context, supplier.category);
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: categoryColor,
-          child: Text(
-            supplier.name.isNotEmpty ? supplier.name[0].toUpperCase() : '?',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onPrimaryContainer,
-            ),
-          ),
-        ),
-        title: Text(supplier.name),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              supplier.contactPerson.isNotEmpty
-                  ? localizations.contactPerson(
-                    supplier.contactPerson,
-                  ) // Localized & Positional
-                  : supplier.phoneNumber,
-            ),
-            Builder(
-              builder: (context) {
-                // Access the 'code' getter from the Currency enum extension
-                final String currencyCode =
-                    currencyService.currentSettings.activeCurrency.code;
-                final String formattedTotalPurchases = formatCurrency(
-                  supplier.totalPurchases,
-                  currencyCode,
-                );
-                return Text(
-                  localizations.totalPurchasesAmount(
-                    formattedTotalPurchases,
-                  ), // Localized & Positional
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                );
-              },
-            ),
-            Text(lastPurchaseText),
-          ],
-        ),
-        trailing: PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert),
-          tooltip: localizations.moreOptionsTooltip, // Localized
-          onSelected: (value) {
-            if (value == 'details') {
-              _navigateToSupplierDetails(context, supplier);
-            } else if (value == 'edit') {
-              _navigateToEditSupplier(context, supplier);
-            } else if (value == 'delete') {
-              _showDeleteConfirmation(context, supplier);
-            }
-          },
-          itemBuilder:
-              (BuildContext context) => [
-                PopupMenuItem<String>(
-                  value: 'details',
-                  child: Text(localizations.viewDetails), // Localized
-                ),
-                PopupMenuItem<String>(
-                  value: 'edit',
-                  child: Text(localizations.edit), // Localized
-                ),
-                PopupMenuItem<String>(
-                  value: 'delete',
-                  child: Text(localizations.delete), // Localized
-                ),
-              ],
-        ),
-        onTap: () => _navigateToSupplierDetails(context, supplier),
-      ),
     );
   }
 
@@ -514,18 +630,20 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
   }
 
   /// Navigation vers l\'écran de détails d\'un fournisseur
-  void _navigateToSupplierDetails(BuildContext context, Supplier supplier) {
-    Navigator.push(
-      context,
+  Future<void> _navigateToSupplierDetails(
+    BuildContext ctx,
+    Supplier supplier,
+  ) async {
+    await Navigator.push(
+      ctx,
       MaterialPageRoute(
         builder: (context) => SupplierDetailsScreen(supplier: supplier),
       ),
-    ).then((_) {
-      // Recharger les fournisseurs après retour des détails (au cas où il y a eu modification/suppression)
-      if (mounted) {
-        context.read<SupplierBloc>().add(const LoadSuppliers());
-      }
-    });
+    );
+    // Recharger les fournisseurs après retour des détails (au cas où il y a eu modification/suppression)
+    if (!mounted) return;
+    // ignore: use_build_context_synchronously
+    ctx.read<SupplierBloc>().add(const LoadSuppliers());
   }
 
   /// Navigation vers l'écran d'ajout d'un fournisseur
@@ -597,11 +715,5 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
         return localizations
             .supplierCategoryOnline; // Assuming this localization exists
     }
-  }
-
-  /// Formate une date
-  String _formatDate(DateTime date) {
-    // Consider using DateFormat from intl package for more robust and locale-aware formatting
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}'; // Corrected string escaping
   }
 }

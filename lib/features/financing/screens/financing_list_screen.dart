@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
+import '../../../core/services/form_navigation_service.dart';
 import '../bloc/financing_bloc.dart';
 import '../models/financing_request.dart';
 
@@ -44,7 +45,14 @@ class _FinancingListScreenState extends State<FinancingListScreen> {
         ),
       ],
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/operations/financing/add'),
+        onPressed:
+            () => FormNavigationService.instance.openFinancingForm(
+              context,
+              onSuccess:
+                  () => context.read<FinancingBloc>().add(
+                    const LoadFinancingRequests(),
+                  ),
+            ),
         icon: const Icon(Icons.add),
         label: const Text('Nouvelle demande'),
       ),
@@ -115,7 +123,14 @@ class _FinancingListScreenState extends State<FinancingListScreen> {
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: () => context.push('/operations/financing/add'),
+            onPressed:
+                () => FormNavigationService.instance.openFinancingForm(
+                  context,
+                  onSuccess:
+                      () => context.read<FinancingBloc>().add(
+                        const LoadFinancingRequests(),
+                      ),
+                ),
             icon: const Icon(Icons.add),
             label: const Text('Nouvelle demande'),
           ),
@@ -160,76 +175,178 @@ class _FinancingListScreenState extends State<FinancingListScreen> {
           ),
         ),
 
-        // Liste des financements
+        // Tableau des financements
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.all(8),
-            itemCount: requests.length,
-            itemBuilder: (context, index) {
-              final request = requests[index];
-              final statusColor = _getStatusColor(request.status);
-              final statusText = _getStatusText(request.status);
-
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: statusColor.withValues(alpha: 0.2),
-                    child: Icon(Icons.account_balance, color: statusColor),
-                  ),
-                  title: Text(
-                    request.type.displayName,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        request.institution.displayName,
-                        style: Theme.of(context).textTheme.bodyMedium,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                    child: Container(
+                      margin: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Theme.of(context).dividerColor,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      Text(
-                        NumberFormat.currency(
-                          locale: 'fr_FR',
-                          symbol: request.currency,
-                        ).format(request.amount),
-                        style: TextStyle(
-                          color: Colors.purple[700],
-                          fontWeight: FontWeight.w500,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: DataTable(
+                          columnSpacing: 24,
+                          horizontalMargin: 16,
+                          dataRowMinHeight: 52,
+                          dataRowMaxHeight: 72,
+                          border: TableBorder(
+                            horizontalInside: BorderSide(
+                              color: Theme.of(
+                                context,
+                              ).dividerColor.withValues(alpha: 0.5),
+                              width: 0.5,
+                            ),
+                          ),
+                          headingRowColor: WidgetStateProperty.all(
+                            Theme.of(
+                              context,
+                            ).colorScheme.primary.withValues(alpha: 0.08),
+                          ),
+                          headingTextStyle: Theme.of(
+                            context,
+                          ).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          columns: const [
+                            DataColumn(label: Text('Type')),
+                            DataColumn(label: Text('Institution')),
+                            DataColumn(label: Text('Montant'), numeric: true),
+                            DataColumn(label: Text('Date')),
+                            DataColumn(label: Text('Statut')),
+                          ],
+                          rows:
+                              requests.asMap().entries.map((entry) {
+                                final idx = entry.key;
+                                final request = entry.value;
+                                final statusColor = _getStatusColor(
+                                  request.status,
+                                );
+                                final statusText = _getStatusText(
+                                  request.status,
+                                );
+                                final theme = Theme.of(context);
+
+                                return DataRow(
+                                  color: WidgetStateProperty.resolveWith<
+                                    Color?
+                                  >((states) {
+                                    if (states.contains(WidgetState.hovered)) {
+                                      return theme.colorScheme.primary
+                                          .withValues(alpha: 0.06);
+                                    }
+                                    if (idx.isOdd) {
+                                      return theme
+                                          .colorScheme
+                                          .surfaceContainerHighest
+                                          .withValues(alpha: 0.3);
+                                    }
+                                    return null;
+                                  }),
+                                  onSelectChanged: (_) {
+                                    context.pushNamed(
+                                      'financing_detail',
+                                      pathParameters: {'id': request.id},
+                                      extra: request,
+                                    );
+                                  },
+                                  cells: [
+                                    DataCell(
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 16,
+                                            backgroundColor: statusColor
+                                                .withValues(alpha: 0.2),
+                                            child: Icon(
+                                              Icons.account_balance,
+                                              size: 16,
+                                              color: statusColor,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            request.type.displayName,
+                                            style: theme.textTheme.bodyMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Text(
+                                        request.institution.displayName,
+                                        style: theme.textTheme.bodyMedium,
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Text(
+                                        NumberFormat.currency(
+                                          locale: 'fr_FR',
+                                          symbol: request.currency,
+                                        ).format(request.amount),
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.purple[700],
+                                            ),
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Text(
+                                        dateFormat.format(request.requestDate),
+                                        style: theme.textTheme.bodySmall,
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: statusColor.withValues(
+                                            alpha: 0.15,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: statusColor.withValues(
+                                              alpha: 0.3,
+                                            ),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          statusText,
+                                          style: theme.textTheme.labelSmall
+                                              ?.copyWith(
+                                                color: statusColor,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
                         ),
                       ),
-                      Text(
-                        dateFormat.format(request.requestDate),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      statusText,
-                      style: TextStyle(
-                        color: statusColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
                     ),
                   ),
-                  isThreeLine: true,
-                  onTap: () {
-                    context.pushNamed(
-                      'financing_detail',
-                      pathParameters: {'id': request.id},
-                      extra: request,
-                    );
-                  },
                 ),
               );
             },

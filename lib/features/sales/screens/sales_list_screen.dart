@@ -357,201 +357,185 @@ class _SalesDataTable extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: ConstrainedBox(
               constraints: BoxConstraints(minWidth: constraints.maxWidth),
-              child: DataTable(
-                columnSpacing: isCompact ? 16 : 32,
-                horizontalMargin: isCompact ? 12 : 24,
-                dataRowMinHeight: 52,
-                dataRowMaxHeight: 72,
-                headingRowColor: WidgetStateProperty.all(
-                  theme.colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.5,
+              child: Container(
+                margin: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: theme.dividerColor),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: DataTable(
+                    columnSpacing: isCompact ? 16 : 32,
+                    horizontalMargin: isCompact ? 12 : 24,
+                    dataRowMinHeight: 52,
+                    dataRowMaxHeight: 72,
+                    border: TableBorder(
+                      horizontalInside: BorderSide(
+                        color: theme.dividerColor.withValues(alpha: 0.5),
+                        width: 0.5,
+                      ),
+                    ),
+                    headingRowColor: WidgetStateProperty.all(
+                      theme.colorScheme.primary.withValues(alpha: 0.08),
+                    ),
+                    headingTextStyle: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: theme.colorScheme.primary,
+                    ),
+                    columns: [
+                      const DataColumn(label: Text('Client')),
+                      const DataColumn(label: Text('Articles'), numeric: true),
+                      const DataColumn(label: Text('Montant'), numeric: true),
+                      const DataColumn(label: Text('Date')),
+                      const DataColumn(label: Text('Statut')),
+                      if (!isCompact) const DataColumn(label: Text('Unité')),
+                      if (!isCompact)
+                        const DataColumn(
+                          label: Text('Encaissement'),
+                          numeric: false,
+                        ),
+                    ],
+                    rows:
+                        sales.asMap().entries.map((entry) {
+                          final idx = entry.key;
+                          final sale = entry.value;
+                          final itemsCount = sale.items.fold<int>(
+                            0,
+                            (sum, item) => sum + item.quantity,
+                          );
+
+                          return DataRow(
+                            color: WidgetStateProperty.resolveWith<Color?>((
+                              states,
+                            ) {
+                              if (states.contains(WidgetState.hovered)) {
+                                return theme.colorScheme.primary.withValues(
+                                  alpha: 0.06,
+                                );
+                              }
+                              if (idx.isOdd) {
+                                return theme.colorScheme.surfaceContainerHighest
+                                    .withValues(alpha: 0.3);
+                              }
+                              return null;
+                            }),
+                            onSelectChanged: (_) => onSaleTap(sale),
+                            cells: [
+                              // Client
+                              DataCell(
+                                ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth: isCompact ? 100 : 180,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 16,
+                                        backgroundColor: sale.status.color
+                                            .withValues(alpha: 0.2),
+                                        child: Icon(
+                                          Icons.person,
+                                          size: 16,
+                                          color: sale.status.color,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          sale.customerName,
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              // Articles
+                              DataCell(
+                                Text(
+                                  '$itemsCount',
+                                  style: theme.textTheme.bodyMedium,
+                                ),
+                              ),
+                              // Montant
+                              DataCell(
+                                Text(
+                                  currencyFormat.format(sale.totalAmountInCdf),
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ),
+                              // Date
+                              DataCell(
+                                Text(
+                                  isCompact
+                                      ? DateFormat('dd/MM').format(sale.date)
+                                      : dateFormat.format(sale.date),
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ),
+                              // Statut
+                              DataCell(
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: sale.status.color.withValues(
+                                      alpha: 0.15,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: sale.status.color.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    sale.status.displayName,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: sale.status.color,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // Unité (si pas compact)
+                              if (!isCompact)
+                                DataCell(
+                                  Text(
+                                    sale.businessUnitCode != null
+                                        ? '${sale.businessUnitType?.code ?? 'company'} - ${sale.businessUnitCode}'
+                                        : sale.businessUnitType?.code ??
+                                            'company',
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                ),
+                              // Payé (si pas compact) - Vue trésorerie avec badge
+                              if (!isCompact)
+                                DataCell(
+                                  _buildPaymentStatusBadge(
+                                    context,
+                                    sale.paidAmountInCdf,
+                                    sale.totalAmountInCdf,
+                                    currencyFormat,
+                                  ),
+                                ),
+                            ],
+                          );
+                        }).toList(),
                   ),
                 ),
-                columns: [
-                  DataColumn(
-                    label: Text(
-                      'Client',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  DataColumn(
-                    label: Text(
-                      'Articles',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    numeric: true,
-                  ),
-                  DataColumn(
-                    label: Text(
-                      'Montant',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    numeric: true,
-                  ),
-                  DataColumn(
-                    label: Text(
-                      'Date',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  DataColumn(
-                    label: Text(
-                      'Statut',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  if (!isCompact)
-                    DataColumn(
-                      label: Text(
-                        'Unité',
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  if (!isCompact)
-                    DataColumn(
-                      label: Text(
-                        'Encaissement', // Vue trésorerie
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      numeric:
-                          false, // Changed to false since we use badges now
-                    ),
-                ],
-                rows:
-                    sales.map((sale) {
-                      final itemsCount = sale.items.fold<int>(
-                        0,
-                        (sum, item) => sum + item.quantity,
-                      );
-
-                      return DataRow(
-                        onSelectChanged: (_) => onSaleTap(sale),
-                        cells: [
-                          // Client
-                          DataCell(
-                            ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxWidth: isCompact ? 100 : 180,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  CircleAvatar(
-                                    radius: 16,
-                                    backgroundColor: sale.status.color
-                                        .withValues(alpha: 0.2),
-                                    child: Icon(
-                                      Icons.person,
-                                      size: 16,
-                                      color: sale.status.color,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Flexible(
-                                    child: Text(
-                                      sale.customerName,
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          // Articles
-                          DataCell(
-                            Text(
-                              '$itemsCount',
-                              style: theme.textTheme.bodyMedium,
-                            ),
-                          ),
-                          // Montant
-                          DataCell(
-                            Text(
-                              currencyFormat.format(sale.totalAmountInCdf),
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                          ),
-                          // Date
-                          DataCell(
-                            Text(
-                              isCompact
-                                  ? DateFormat('dd/MM').format(sale.date)
-                                  : dateFormat.format(sale.date),
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ),
-                          // Statut
-                          DataCell(
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: sale.status.color.withValues(
-                                  alpha: 0.15,
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: sale.status.color.withValues(
-                                    alpha: 0.3,
-                                  ),
-                                ),
-                              ),
-                              child: Text(
-                                sale.status.displayName,
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: sale.status.color,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                          // Unité (si pas compact)
-                          if (!isCompact)
-                            DataCell(
-                              Text(
-                                sale.businessUnitCode != null
-                                    ? '${sale.businessUnitType?.code ?? 'company'} - ${sale.businessUnitCode}'
-                                    : sale.businessUnitType?.code ?? 'company',
-                                style: theme.textTheme.bodySmall,
-                              ),
-                            ),
-                          // Payé (si pas compact) - Vue trésorerie avec badge
-                          if (!isCompact)
-                            DataCell(
-                              _buildPaymentStatusBadge(
-                                context,
-                                sale.paidAmountInCdf,
-                                sale.totalAmountInCdf,
-                                currencyFormat,
-                              ),
-                            ),
-                        ],
-                      );
-                    }).toList(),
               ),
             ),
           ),
