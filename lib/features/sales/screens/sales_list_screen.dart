@@ -9,6 +9,7 @@ import 'package:wanzo/core/services/sync_service.dart';
 
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/navigation/app_router.dart';
+import '../../../core/services/form_navigation_service.dart';
 import '../../../core/widgets/table_export_button.dart';
 import '../../../services/export/table_export_service.dart';
 import '../bloc/sales_bloc.dart';
@@ -135,7 +136,12 @@ class _SalesListScreenState extends State<SalesListScreen> {
             ),
           ],
           floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => context.push('/operations/sales/add'),
+            onPressed:
+                () => FormNavigationService.instance.openSaleForm(
+                  context,
+                  onSuccess:
+                      () => context.read<SalesBloc>().add(const LoadSales()),
+                ),
             icon: const Icon(Icons.add),
             label: const Text('Nouvelle vente'),
           ),
@@ -173,7 +179,10 @@ class _SalesListScreenState extends State<SalesListScreen> {
       if (state.sales.isEmpty) {
         return _buildEmptyState(context);
       }
-      return _buildSalesList(context, state.sales, state.totalAmountInCdf);
+      // Tri chronologique : plus récentes en premier
+      final sortedSales = List<Sale>.from(state.sales)
+        ..sort((a, b) => b.date.compareTo(a.date));
+      return _buildSalesList(context, sortedSales, state.totalAmountInCdf);
     }
 
     return const Center(child: Text('Chargement...'));
@@ -201,7 +210,12 @@ class _SalesListScreenState extends State<SalesListScreen> {
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: () => context.push('/operations/sales/add'),
+            onPressed:
+                () => FormNavigationService.instance.openSaleForm(
+                  context,
+                  onSuccess:
+                      () => context.read<SalesBloc>().add(const LoadSales()),
+                ),
             icon: const Icon(Icons.add),
             label: const Text('Créer une vente'),
           ),

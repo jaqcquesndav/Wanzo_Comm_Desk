@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:wanzo/constants/spacing.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/services/form_navigation_service.dart';
@@ -145,7 +144,7 @@ class _OperationsDockState extends State<OperationsDock>
               context: context,
               icon: Icons.add_shopping_cart,
               label: l10n.dashboardQuickActionsNewInvoice,
-              onTap: () => context.push('/sales/add'),
+              onTap: () => FormNavigationService.instance.openSaleForm(context),
               color: Colors.green,
             ),
             _buildDockItem(

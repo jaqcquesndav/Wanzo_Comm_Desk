@@ -17,7 +17,10 @@ import '../services/institution_metadata_service.dart';
 import '../../../core/enums/currency_enum.dart';
 
 class AddFinancingRequestScreen extends StatefulWidget {
-  const AddFinancingRequestScreen({super.key});
+  /// Callback appelé après sauvegarde réussie (mode modal).
+  final VoidCallback? onSaved;
+
+  const AddFinancingRequestScreen({super.key, this.onSaved});
 
   @override
   State<AddFinancingRequestScreen> createState() =>
@@ -276,720 +279,721 @@ class _AddFinancingRequestScreenState extends State<AddFinancingRequestScreen> {
           currencySymbol = currentCurrency.symbol; // Used .symbol getter
         }
 
-        return WanzoScaffold(
-          title: 'Nouvelle Demande de Financement',
-          currentIndex: 0,
-          body: BlocListener<FinancingBloc, FinancingState>(
-            listener: (context, financingBlocState) {
-              if (financingBlocState is FinancingOperationSuccess) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(financingBlocState.message)),
-                );
-                if (context.canPop()) {
-                  context.pop();
-                }
-              } else if (financingBlocState is FinancingError) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Erreur: ${financingBlocState.message}'),
-                  ),
-                );
+        final bodyContent = BlocListener<FinancingBloc, FinancingState>(
+          listener: (context, financingBlocState) {
+            if (financingBlocState is FinancingOperationSuccess) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(financingBlocState.message)),
+              );
+              if (widget.onSaved != null) {
+                widget.onSaved!();
+              } else if (context.canPop()) {
+                context.pop();
               }
-            },
-            child: ResponsiveFormWrapper(
-              child: Padding(
-                padding: const EdgeInsets.all(WanzoSpacing.md),
-                child: Form(
-                  key: _formKey,
-                  child: ListView(
-                    children: <Widget>[
-                      // Carte du score de crédit avec style Wanzo
-                      Card(
-                        elevation: 2,
-                        margin: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(
+            } else if (financingBlocState is FinancingError) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Erreur: ${financingBlocState.message}'),
+                ),
+              );
+            }
+          },
+          child: ResponsiveFormWrapper(
+            child: Padding(
+              padding: const EdgeInsets.all(WanzoSpacing.md),
+              child: Form(
+                key: _formKey,
+                child: ListView(
+                  children: <Widget>[
+                    // Carte du score de crédit avec style Wanzo
+                    Card(
+                      elevation: 2,
+                      margin: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(WanzoRadius.md),
+                      ),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Theme.of(
+                                context,
+                              ).colorScheme.primary.withAlpha(20),
+                              Theme.of(
+                                context,
+                              ).colorScheme.primary.withAlpha(10),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
                           borderRadius: BorderRadius.circular(WanzoRadius.md),
                         ),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Theme.of(
-                                  context,
-                                ).colorScheme.primary.withAlpha(20),
-                                Theme.of(
-                                  context,
-                                ).colorScheme.primary.withAlpha(10),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.all(WanzoSpacing.md),
+                          leading: Container(
+                            padding: const EdgeInsets.all(WanzoSpacing.sm),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary,
+                              borderRadius: BorderRadius.circular(
+                                WanzoRadius.sm,
+                              ),
                             ),
-                            borderRadius: BorderRadius.circular(WanzoRadius.md),
+                            child: const Icon(
+                              Icons.shield_outlined,
+                              color: Colors.white,
+                              size: 24,
+                            ),
                           ),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.all(
-                              WanzoSpacing.md,
+                          title: Text(
+                            _isLoadingCreditScore
+                                ? 'Chargement du score...'
+                                : _creditScoreError != null
+                                ? 'Score indisponible'
+                                : 'Votre Cote de Crédit: ${_creditScore ?? 'N/A'} / 100',
+                            style: Theme.of(
+                              context,
+                            ).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.primary,
                             ),
-                            leading: Container(
-                              padding: const EdgeInsets.all(WanzoSpacing.sm),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primary,
-                                borderRadius: BorderRadius.circular(
-                                  WanzoRadius.sm,
-                                ),
-                              ),
-                              child: const Icon(
-                                Icons.shield_outlined,
-                                color: Colors.white,
-                                size: 24,
-                              ),
-                            ),
-                            title: Text(
-                              _isLoadingCreditScore
-                                  ? 'Chargement du score...'
-                                  : _creditScoreError != null
-                                  ? 'Score indisponible'
-                                  : 'Votre Cote de Crédit: ${_creditScore ?? 'N/A'} / 100',
-                              style: Theme.of(
+                          ),
+                          subtitle: Text(
+                            'Excellent profil de crédit',
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(
                                 context,
-                              ).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
+                              ).colorScheme.primary.withAlpha(180),
                             ),
-                            subtitle: Text(
-                              'Excellent profil de crédit',
-                              style: Theme.of(
-                                context,
-                              ).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.primary.withAlpha(180),
-                              ),
+                          ),
+                          trailing: IconButton(
+                            icon: Icon(
+                              Icons.info_outline,
+                              color: Theme.of(context).colorScheme.primary,
                             ),
-                            trailing: IconButton(
-                              icon: Icon(
-                                Icons.info_outline,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                              onPressed: _showCreditScoreInfo,
-                              tooltip: 'Plus d\'informations sur votre cote',
-                            ),
+                            onPressed: _showCreditScoreInfo,
+                            tooltip: 'Plus d\'informations sur votre cote',
                           ),
                         ),
                       ),
-                      const SizedBox(height: WanzoSpacing.lg),
+                    ),
+                    const SizedBox(height: WanzoSpacing.lg),
 
-                      // Date de début proposée
-                      Card(
-                        elevation: 1,
-                        margin: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(WanzoRadius.sm),
-                          side: BorderSide(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.outline.withAlpha(100),
+                    // Date de début proposée
+                    Card(
+                      elevation: 1,
+                      margin: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(WanzoRadius.sm),
+                        side: BorderSide(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.outline.withAlpha(100),
+                        ),
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(WanzoRadius.sm),
+                        onTap: () async {
+                          final DateTime? picked = await showDatePicker(
+                            context: context,
+                            initialDate:
+                                _proposedStartDate ??
+                                DateTime.now().add(const Duration(days: 7)),
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365),
+                            ),
+                          );
+                          if (picked != null && picked != _proposedStartDate) {
+                            setState(() {
+                              _proposedStartDate = picked;
+                            });
+                          }
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(WanzoSpacing.md),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.calendar_today,
+                                color: Theme.of(context).colorScheme.primary,
+                                size: 20,
+                              ),
+                              const SizedBox(width: WanzoSpacing.sm),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Date de début souhaitée',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.labelMedium?.copyWith(
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).colorScheme.primary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: WanzoSpacing.xs),
+                                    Text(
+                                      _proposedStartDate != null
+                                          ? "${_proposedStartDate!.day}/${_proposedStartDate!.month}/${_proposedStartDate!.year}"
+                                          : "Sélectionner une date",
+                                      style:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.bodyMedium,
+                                    ),
+                                    Text(
+                                      'Quand souhaitez-vous commencer le financement ?',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall?.copyWith(
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                Icons.arrow_forward_ios,
+                                size: 16,
+                                color:
+                                    Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                              ),
+                            ],
                           ),
                         ),
-                        child: InkWell(
+                      ),
+                    ),
+                    const SizedBox(height: WanzoSpacing.md),
+
+                    TextFormField(
+                      controller: _amountController,
+                      decoration: InputDecoration(
+                        labelText: 'Montant demandé',
+                        prefixText: '$currencySymbol ',
+                        prefixIcon: Icon(
+                          Icons.attach_money,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withAlpha(120),
+                        ),
+                        helperText:
+                            _selectedProduct != null
+                                ? 'Entre ${_selectedProduct!.minAmount.toStringAsFixed(0)} et ${_selectedProduct!.maxAmount.toStringAsFixed(0)}'
+                                : null,
+                        border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(WanzoRadius.sm),
-                          onTap: () async {
-                            final DateTime? picked = await showDatePicker(
-                              context: context,
-                              initialDate:
-                                  _proposedStartDate ??
-                                  DateTime.now().add(const Duration(days: 7)),
-                              firstDate: DateTime.now(),
-                              lastDate: DateTime.now().add(
-                                const Duration(days: 365),
-                              ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(WanzoRadius.sm),
+                          borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      keyboardType: TextInputType.number,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Veuillez entrer un montant.';
+                        }
+                        final amount = double.tryParse(value);
+                        if (amount == null || amount <= 0) {
+                          return 'Veuillez entrer un montant valide.';
+                        }
+                        // Validation avec les limites du produit si disponible
+                        if (_selectedProduct != null &&
+                            !_selectedProduct!.isAmountValid(amount)) {
+                          return 'Montant hors limites autorisées';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: WanzoSpacing.md),
+
+                    // Durée en mois
+                    TextFormField(
+                      controller: _durationController,
+                      decoration: InputDecoration(
+                        labelText: 'Durée souhaitée (mois)',
+                        prefixIcon: Icon(
+                          Icons.schedule,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withAlpha(120),
+                        ),
+                        helperText:
+                            _selectedProduct != null
+                                ? 'Entre ${_selectedProduct!.minDurationMonths} et ${_selectedProduct!.maxDurationMonths} mois'
+                                : 'Entre 1 et 60 mois',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(WanzoRadius.sm),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(WanzoRadius.sm),
+                          borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      keyboardType: TextInputType.number,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Veuillez entrer une durée.';
+                        }
+                        final duration = int.tryParse(value);
+                        if (duration == null || duration <= 0) {
+                          return 'Veuillez entrer une durée valide.';
+                        }
+                        // Validation avec les limites du produit si disponible
+                        if (_selectedProduct != null &&
+                            !_selectedProduct!.isDurationValid(duration)) {
+                          return 'Durée hors limites autorisées';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: WanzoSpacing.md),
+
+                    TextFormField(
+                      controller: _reasonController,
+                      decoration: InputDecoration(
+                        labelText: 'Objet/Motif de la demande',
+                        helperText:
+                            'Décrivez précisément l\'utilisation des fonds',
+                        prefixIcon: Icon(
+                          Icons.description_outlined,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withAlpha(120),
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(WanzoRadius.sm),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(WanzoRadius.sm),
+                          borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      maxLines: 3,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Veuillez entrer le motif.';
+                        }
+                        if (value.length < 10) {
+                          return 'Veuillez fournir plus de détails (minimum 10 caractères).';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: WanzoSpacing.md),
+
+                    // Sélection de l'institution financière
+                    DropdownButtonFormField<FinancialInstitution>(
+                      value: _selectedInstitution,
+                      decoration: InputDecoration(
+                        labelText: 'Institution Financière',
+                        prefixIcon: Icon(
+                          Icons.account_balance,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withAlpha(120),
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(WanzoRadius.sm),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(WanzoRadius.sm),
+                          borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      items:
+                          FinancialInstitution.values.map((
+                            FinancialInstitution institution,
+                          ) {
+                            return DropdownMenuItem<FinancialInstitution>(
+                              value: institution,
+                              child: Text(institution.displayName),
                             );
-                            if (picked != null &&
-                                picked != _proposedStartDate) {
+                          }).toList(),
+                      onChanged: _onInstitutionChanged,
+                    ),
+                    const SizedBox(height: WanzoSpacing.md),
+
+                    // Sélection du produit financier (dynamique)
+                    if (_isLoadingProducts)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(WanzoSpacing.md),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else if (_availableProducts.isNotEmpty)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          DropdownButtonFormField<FinancialProductInfo>(
+                            value: _selectedProduct,
+                            decoration: const InputDecoration(
+                              labelText: 'Produit Financier',
+                            ),
+                            items:
+                                _availableProducts.map((product) {
+                                  return DropdownMenuItem<FinancialProductInfo>(
+                                    value: product,
+                                    child: Text(product.productName),
+                                  );
+                                }).toList(),
+                            onChanged: (FinancialProductInfo? newProduct) {
                               setState(() {
-                                _proposedStartDate = picked;
+                                _selectedProduct = newProduct;
                               });
-                            }
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.all(WanzoSpacing.md),
-                            child: Row(
+                            },
+                            validator: (value) {
+                              if (value == null) {
+                                return 'Veuillez sélectionner un produit.';
+                              }
+                              return null;
+                            },
+                          ),
+                          if (_selectedProduct != null) ...[
+                            const SizedBox(height: WanzoSpacing.sm),
+                            Card(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest
+                                  .withAlpha((255 * 0.5).round()),
+                              child: Padding(
+                                padding: const EdgeInsets.all(WanzoSpacing.sm),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _selectedProduct!.description,
+                                      style:
+                                          Theme.of(context).textTheme.bodySmall,
+                                    ),
+                                    const SizedBox(height: WanzoSpacing.xs),
+                                    Text(
+                                      'Taux indicatif: ${_selectedProduct!.baseInterestRate}% par an',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).colorScheme.primary,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    if (_selectedProduct!
+                                        .requiredDocuments
+                                        .isNotEmpty) ...[
+                                      const SizedBox(height: WanzoSpacing.xs),
+                                      Text(
+                                        'Documents requis: ${_selectedProduct!.requiredDocuments.join(', ')}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      )
+                    else
+                      Card(
+                        color: Colors.orange.shade50,
+                        child: const Padding(
+                          padding: EdgeInsets.all(WanzoSpacing.md),
+                          child: Row(
+                            children: [
+                              Icon(Icons.info_outline, color: Colors.orange),
+                              SizedBox(width: WanzoSpacing.sm),
+                              Expanded(
+                                child: Text(
+                                  'Aucun produit disponible pour cette institution. Vous pouvez tout de même soumettre votre demande.',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: WanzoSpacing.md),
+
+                    // Type de financement (pour compatibilité avec l'ancien système)
+                    DropdownButtonFormField<FinancingType>(
+                      value: _selectedFinancingType,
+                      decoration: InputDecoration(
+                        labelText: 'Catégorie de financement',
+                        helperText:
+                            'Classification générale (pour référence interne)',
+                        prefixIcon: Icon(
+                          Icons.category_outlined,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withAlpha(120),
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(WanzoRadius.sm),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(WanzoRadius.sm),
+                          borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      items:
+                          FinancingType.values.map((FinancingType type) {
+                            return DropdownMenuItem<FinancingType>(
+                              value: type,
+                              child: Text(type.displayName),
+                            );
+                          }).toList(),
+                      onChanged: (FinancingType? newValue) {
+                        setState(() {
+                          _selectedFinancingType = newValue!;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: WanzoSpacing.md),
+                    // Section pièce jointe avec style amélioré
+                    Card(
+                      elevation: 1,
+                      margin: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(WanzoRadius.sm),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(WanzoSpacing.md),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
                               children: [
                                 Icon(
-                                  Icons.calendar_today,
+                                  Icons.attach_file,
                                   color: Theme.of(context).colorScheme.primary,
                                   size: 20,
                                 ),
                                 const SizedBox(width: WanzoSpacing.sm),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Date de début souhaitée',
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.labelMedium?.copyWith(
-                                          color:
-                                              Theme.of(
-                                                context,
-                                              ).colorScheme.primary,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                      const SizedBox(height: WanzoSpacing.xs),
-                                      Text(
-                                        _proposedStartDate != null
-                                            ? "${_proposedStartDate!.day}/${_proposedStartDate!.month}/${_proposedStartDate!.year}"
-                                            : "Sélectionner une date",
-                                        style:
-                                            Theme.of(
-                                              context,
-                                            ).textTheme.bodyMedium,
-                                      ),
-                                      Text(
-                                        'Quand souhaitez-vous commencer le financement ?',
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall?.copyWith(
-                                          color:
-                                              Theme.of(
-                                                context,
-                                              ).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ],
+                                Text(
+                                  'Pièce jointe (Optionnel)',
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleSmall?.copyWith(
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                                Icon(
-                                  Icons.arrow_forward_ios,
-                                  size: 16,
+                              ],
+                            ),
+                            const SizedBox(height: WanzoSpacing.sm),
+                            if (_attachmentPath == null)
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.add),
+                                label: const Text('Ajouter un fichier'),
+                                onPressed: _pickAttachment,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor:
+                                      Theme.of(context).colorScheme.primary,
+                                  side: BorderSide(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary.withAlpha(100),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      WanzoRadius.sm,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            else
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(WanzoSpacing.sm),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.primary.withAlpha(20),
+                                  borderRadius: BorderRadius.circular(
+                                    WanzoRadius.sm,
+                                  ),
+                                  border: Border.all(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary.withAlpha(100),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.insert_drive_file,
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: WanzoSpacing.sm),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            _attachmentPath!.split('/').last,
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.bodyMedium?.copyWith(
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                          Text(
+                                            'Fichier sélectionné',
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.bodySmall?.copyWith(
+                                              color:
+                                                  Theme.of(
+                                                    context,
+                                                  ).colorScheme.primary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.close, size: 18),
+                                      onPressed: () {
+                                        setState(() {
+                                          _attachmentPath = null;
+                                        });
+                                      },
+                                      tooltip: 'Supprimer la pièce jointe',
+                                      color:
+                                          Theme.of(context).colorScheme.error,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            if (_attachmentPath != null ||
+                                _attachmentPath == null) ...[
+                              const SizedBox(height: WanzoSpacing.sm),
+                              Text(
+                                "Formats acceptés: facture, devis, lettre d'intention, projet, etc.",
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.bodySmall?.copyWith(
                                   color:
                                       Theme.of(
                                         context,
                                       ).colorScheme.onSurfaceVariant,
                                 ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: WanzoSpacing.md),
-
-                      TextFormField(
-                        controller: _amountController,
-                        decoration: InputDecoration(
-                          labelText: 'Montant demandé',
-                          prefixText: '$currencySymbol ',
-                          prefixIcon: Icon(
-                            Icons.attach_money,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primary.withAlpha(120),
-                          ),
-                          helperText:
-                              _selectedProduct != null
-                                  ? 'Entre ${_selectedProduct!.minAmount.toStringAsFixed(0)} et ${_selectedProduct!.maxAmount.toStringAsFixed(0)}'
-                                  : null,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(WanzoRadius.sm),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(WanzoRadius.sm),
-                            borderSide: BorderSide(
-                              color: Theme.of(context).colorScheme.primary,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                        keyboardType: TextInputType.number,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Veuillez entrer un montant.';
-                          }
-                          final amount = double.tryParse(value);
-                          if (amount == null || amount <= 0) {
-                            return 'Veuillez entrer un montant valide.';
-                          }
-                          // Validation avec les limites du produit si disponible
-                          if (_selectedProduct != null &&
-                              !_selectedProduct!.isAmountValid(amount)) {
-                            return 'Montant hors limites autorisées';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: WanzoSpacing.md),
-
-                      // Durée en mois
-                      TextFormField(
-                        controller: _durationController,
-                        decoration: InputDecoration(
-                          labelText: 'Durée souhaitée (mois)',
-                          prefixIcon: Icon(
-                            Icons.schedule,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primary.withAlpha(120),
-                          ),
-                          helperText:
-                              _selectedProduct != null
-                                  ? 'Entre ${_selectedProduct!.minDurationMonths} et ${_selectedProduct!.maxDurationMonths} mois'
-                                  : 'Entre 1 et 60 mois',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(WanzoRadius.sm),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(WanzoRadius.sm),
-                            borderSide: BorderSide(
-                              color: Theme.of(context).colorScheme.primary,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                        keyboardType: TextInputType.number,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Veuillez entrer une durée.';
-                          }
-                          final duration = int.tryParse(value);
-                          if (duration == null || duration <= 0) {
-                            return 'Veuillez entrer une durée valide.';
-                          }
-                          // Validation avec les limites du produit si disponible
-                          if (_selectedProduct != null &&
-                              !_selectedProduct!.isDurationValid(duration)) {
-                            return 'Durée hors limites autorisées';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: WanzoSpacing.md),
-
-                      TextFormField(
-                        controller: _reasonController,
-                        decoration: InputDecoration(
-                          labelText: 'Objet/Motif de la demande',
-                          helperText:
-                              'Décrivez précisément l\'utilisation des fonds',
-                          prefixIcon: Icon(
-                            Icons.description_outlined,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primary.withAlpha(120),
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(WanzoRadius.sm),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(WanzoRadius.sm),
-                            borderSide: BorderSide(
-                              color: Theme.of(context).colorScheme.primary,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                        maxLines: 3,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Veuillez entrer le motif.';
-                          }
-                          if (value.length < 10) {
-                            return 'Veuillez fournir plus de détails (minimum 10 caractères).';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: WanzoSpacing.md),
-
-                      // Sélection de l'institution financière
-                      DropdownButtonFormField<FinancialInstitution>(
-                        value: _selectedInstitution,
-                        decoration: InputDecoration(
-                          labelText: 'Institution Financière',
-                          prefixIcon: Icon(
-                            Icons.account_balance,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primary.withAlpha(120),
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(WanzoRadius.sm),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(WanzoRadius.sm),
-                            borderSide: BorderSide(
-                              color: Theme.of(context).colorScheme.primary,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                        items:
-                            FinancialInstitution.values.map((
-                              FinancialInstitution institution,
-                            ) {
-                              return DropdownMenuItem<FinancialInstitution>(
-                                value: institution,
-                                child: Text(institution.displayName),
-                              );
-                            }).toList(),
-                        onChanged: _onInstitutionChanged,
-                      ),
-                      const SizedBox(height: WanzoSpacing.md),
-
-                      // Sélection du produit financier (dynamique)
-                      if (_isLoadingProducts)
-                        const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(WanzoSpacing.md),
-                            child: CircularProgressIndicator(),
-                          ),
-                        )
-                      else if (_availableProducts.isNotEmpty)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            DropdownButtonFormField<FinancialProductInfo>(
-                              value: _selectedProduct,
-                              decoration: const InputDecoration(
-                                labelText: 'Produit Financier',
-                              ),
-                              items:
-                                  _availableProducts.map((product) {
-                                    return DropdownMenuItem<
-                                      FinancialProductInfo
-                                    >(
-                                      value: product,
-                                      child: Text(product.productName),
-                                    );
-                                  }).toList(),
-                              onChanged: (FinancialProductInfo? newProduct) {
-                                setState(() {
-                                  _selectedProduct = newProduct;
-                                });
-                              },
-                              validator: (value) {
-                                if (value == null) {
-                                  return 'Veuillez sélectionner un produit.';
-                                }
-                                return null;
-                              },
-                            ),
-                            if (_selectedProduct != null) ...[
-                              const SizedBox(height: WanzoSpacing.sm),
-                              Card(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .surfaceContainerHighest
-                                    .withAlpha((255 * 0.5).round()),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(
-                                    WanzoSpacing.sm,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _selectedProduct!.description,
-                                        style:
-                                            Theme.of(
-                                              context,
-                                            ).textTheme.bodySmall,
-                                      ),
-                                      const SizedBox(height: WanzoSpacing.xs),
-                                      Text(
-                                        'Taux indicatif: ${_selectedProduct!.baseInterestRate}% par an',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color:
-                                              Theme.of(
-                                                context,
-                                              ).colorScheme.primary,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      if (_selectedProduct!
-                                          .requiredDocuments
-                                          .isNotEmpty) ...[
-                                        const SizedBox(height: WanzoSpacing.xs),
-                                        Text(
-                                          'Documents requis: ${_selectedProduct!.requiredDocuments.join(', ')}',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
                               ),
                             ],
                           ],
-                        )
-                      else
-                        Card(
-                          color: Colors.orange.shade50,
-                          child: const Padding(
-                            padding: EdgeInsets.all(WanzoSpacing.md),
-                            child: Row(
-                              children: [
-                                Icon(Icons.info_outline, color: Colors.orange),
-                                SizedBox(width: WanzoSpacing.sm),
-                                Expanded(
-                                  child: Text(
-                                    'Aucun produit disponible pour cette institution. Vous pouvez tout de même soumettre votre demande.',
-                                    style: TextStyle(fontSize: 12),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                         ),
-                      const SizedBox(height: WanzoSpacing.md),
-
-                      // Type de financement (pour compatibilité avec l'ancien système)
-                      DropdownButtonFormField<FinancingType>(
-                        value: _selectedFinancingType,
-                        decoration: InputDecoration(
-                          labelText: 'Catégorie de financement',
-                          helperText:
-                              'Classification générale (pour référence interne)',
-                          prefixIcon: Icon(
-                            Icons.category_outlined,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primary.withAlpha(120),
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(WanzoRadius.sm),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(WanzoRadius.sm),
-                            borderSide: BorderSide(
-                              color: Theme.of(context).colorScheme.primary,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                        items:
-                            FinancingType.values.map((FinancingType type) {
-                              return DropdownMenuItem<FinancingType>(
-                                value: type,
-                                child: Text(type.displayName),
-                              );
-                            }).toList(),
-                        onChanged: (FinancingType? newValue) {
-                          setState(() {
-                            _selectedFinancingType = newValue!;
-                          });
-                        },
                       ),
-                      const SizedBox(height: WanzoSpacing.md),
-                      // Section pièce jointe avec style amélioré
-                      Card(
-                        elevation: 1,
-                        margin: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(WanzoRadius.sm),
+                    ),
+                    const SizedBox(height: WanzoSpacing.xl),
+
+                    // Bouton de soumission avec style Wanzo
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: () => _submitRequest(currentCurrency),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              Theme.of(context).colorScheme.primary,
+                          foregroundColor: Colors.white,
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(WanzoRadius.sm),
+                          ),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(WanzoSpacing.md),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.attach_file,
-                                    color:
-                                        Theme.of(context).colorScheme.primary,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: WanzoSpacing.sm),
-                                  Text(
-                                    'Pièce jointe (Optionnel)',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleSmall?.copyWith(
-                                      color:
-                                          Theme.of(context).colorScheme.primary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: WanzoSpacing.sm),
-                              if (_attachmentPath == null)
-                                OutlinedButton.icon(
-                                  icon: const Icon(Icons.add),
-                                  label: const Text('Ajouter un fichier'),
-                                  onPressed: _pickAttachment,
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor:
-                                        Theme.of(context).colorScheme.primary,
-                                    side: BorderSide(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.primary.withAlpha(100),
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(
-                                        WanzoRadius.sm,
-                                      ),
-                                    ),
-                                  ),
-                                )
-                              else
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(
-                                    WanzoSpacing.sm,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.primary.withAlpha(20),
-                                    borderRadius: BorderRadius.circular(
-                                      WanzoRadius.sm,
-                                    ),
-                                    border: Border.all(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.primary.withAlpha(100),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.insert_drive_file,
-                                        color:
-                                            Theme.of(
-                                              context,
-                                            ).colorScheme.primary,
-                                        size: 20,
-                                      ),
-                                      const SizedBox(width: WanzoSpacing.sm),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              _attachmentPath!.split('/').last,
-                                              style: Theme.of(
-                                                context,
-                                              ).textTheme.bodyMedium?.copyWith(
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                            Text(
-                                              'Fichier sélectionné',
-                                              style: Theme.of(
-                                                context,
-                                              ).textTheme.bodySmall?.copyWith(
-                                                color:
-                                                    Theme.of(
-                                                      context,
-                                                    ).colorScheme.primary,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.close, size: 18),
-                                        onPressed: () {
-                                          setState(() {
-                                            _attachmentPath = null;
-                                          });
-                                        },
-                                        tooltip: 'Supprimer la pièce jointe',
-                                        color:
-                                            Theme.of(context).colorScheme.error,
-                                      ),
-                                    ],
-                                  ),
+                        child: BlocBuilder<FinancingBloc, FinancingState>(
+                          builder: (context, financingBlocState) {
+                            if (financingBlocState is FinancingLoading) {
+                              return const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
                                 ),
-                              if (_attachmentPath != null ||
-                                  _attachmentPath == null) ...[
-                                const SizedBox(height: WanzoSpacing.sm),
+                              );
+                            }
+                            return Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.send, size: 20),
+                                const SizedBox(width: WanzoSpacing.sm),
                                 Text(
-                                  "Formats acceptés: facture, devis, lettre d'intention, projet, etc.",
+                                  'Soumettre la Demande',
                                   style: Theme.of(
                                     context,
-                                  ).textTheme.bodySmall?.copyWith(
-                                    color:
-                                        Theme.of(
-                                          context,
-                                        ).colorScheme.onSurfaceVariant,
+                                  ).textTheme.titleMedium?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ],
-                            ],
-                          ),
+                            );
+                          },
                         ),
                       ),
-                      const SizedBox(height: WanzoSpacing.xl),
-
-                      // Bouton de soumission avec style Wanzo
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: ElevatedButton(
-                          onPressed: () => _submitRequest(currentCurrency),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                Theme.of(context).colorScheme.primary,
-                            foregroundColor: Colors.white,
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(
-                                WanzoRadius.sm,
-                              ),
-                            ),
-                          ),
-                          child: BlocBuilder<FinancingBloc, FinancingState>(
-                            builder: (context, financingBlocState) {
-                              if (financingBlocState is FinancingLoading) {
-                                return const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                );
-                              }
-                              return Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.send, size: 20),
-                                  const SizedBox(width: WanzoSpacing.sm),
-                                  Text(
-                                    'Soumettre la Demande',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleMedium?.copyWith(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
+        );
+
+        // Mode modal : Scaffold simple avec bouton fermer
+        if (widget.onSaved != null) {
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text('Nouvelle Demande de Financement'),
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+            body: bodyContent,
+          );
+        }
+
+        // Mode page : WanzoScaffold avec navigation
+        return WanzoScaffold(
+          title: 'Nouvelle Demande de Financement',
+          currentIndex: 0,
+          body: bodyContent,
         );
       },
     );

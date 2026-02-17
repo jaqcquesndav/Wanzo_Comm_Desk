@@ -406,7 +406,9 @@ class _InventoryScreenState extends State<InventoryScreen>
             ? state.products
                 .where((p) => p.stockQuantity <= p.alertThreshold)
                 .toList()
-            : state.products;
+            : state.products.toList();
+    // Tri chronologique : plus récents en premier
+    products.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
     if (products.isEmpty) {
       return Padding(

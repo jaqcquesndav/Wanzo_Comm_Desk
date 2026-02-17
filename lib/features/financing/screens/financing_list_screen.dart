@@ -88,7 +88,10 @@ class _FinancingListScreenState extends State<FinancingListScreen> {
             if (state.requests.isEmpty) {
               return _buildEmptyState(context);
             }
-            return _buildFinancingList(context, state.requests);
+            // Tri chronologique : plus récentes en premier
+            final sortedRequests = List<FinancingRequest>.from(state.requests)
+              ..sort((a, b) => b.requestDate.compareTo(a.requestDate));
+            return _buildFinancingList(context, sortedRequests);
           }
 
           return const Center(child: Text('Chargement...'));

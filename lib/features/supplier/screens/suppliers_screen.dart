@@ -115,9 +115,12 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
               if (state is SupplierLoading) {
                 return const Center(child: CircularProgressIndicator());
               } else if (state is SuppliersLoaded) {
+                // Tri chronologique : plus récents en premier
+                final sortedSuppliers = List<Supplier>.from(state.suppliers)
+                  ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
                 return _buildSuppliersList(
                   context,
-                  state.suppliers,
+                  sortedSuppliers,
                 ); // Pass context
               } else if (state is SupplierSearchResults) {
                 return _buildSuppliersList(

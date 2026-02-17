@@ -193,7 +193,10 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
       if (state.expenses.isEmpty) {
         return _buildEmptyState(context);
       }
-      return _buildExpensesList(context, state.expenses, state.totalExpenses);
+      // Tri chronologique : plus récentes en premier
+      final sortedExpenses = List<Expense>.from(state.expenses)
+        ..sort((a, b) => b.date.compareTo(a.date));
+      return _buildExpensesList(context, sortedExpenses, state.totalExpenses);
     }
 
     return const Center(child: Text('Chargement...'));

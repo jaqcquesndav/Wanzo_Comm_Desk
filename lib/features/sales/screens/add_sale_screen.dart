@@ -123,7 +123,10 @@ extension QuoteItemCategoryExtension on QuoteItemCategory {
 
 /// Écran d'ajout d'une nouvelle vente
 class AddSaleScreen extends StatefulWidget {
-  const AddSaleScreen({super.key});
+  /// Callback appelé après sauvegarde réussie (mode modal).
+  final VoidCallback? onSaved;
+
+  const AddSaleScreen({super.key, this.onSaved});
 
   @override
   State<AddSaleScreen> createState() => _AddSaleScreenState();
@@ -233,6 +236,15 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     super.dispose();
   }
 
+  /// Ferme l'écran de vente après succès
+  void _closeAfterSuccess() {
+    if (widget.onSaved != null) {
+      widget.onSaved!();
+    } else {
+      Navigator.of(context).pop(true);
+    }
+  }
+
   /// Recherche les produits selon le terme saisi
   void _searchProducts(String query, List<Product> allProducts) {
     if (query.isEmpty) {
@@ -300,7 +312,16 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         }
       },
       child: Scaffold(
-        appBar: AppBar(title: const Text('Nouvelle vente')),
+        appBar: AppBar(
+          title: const Text('Nouvelle vente'),
+          leading:
+              widget.onSaved != null
+                  ? IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  )
+                  : null,
+        ),
         body: MultiBlocListener(
           listeners: [
             BlocListener<SalesBloc, SalesState>(
@@ -322,7 +343,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                         ),
                       ),
                     );
-                    if (mounted) Navigator.of(context).pop(true);
+                    if (mounted) _closeAfterSuccess();
                   }
                 } else if (state is SalesError) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -1043,7 +1064,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             ),
           ),
         );
-        Navigator.of(context).pop(true); // MODIFIED: Pop with true
+        _closeAfterSuccess();
       }
       return;
     }
@@ -1108,7 +1129,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             ),
           ),
         );
-        Navigator.of(context).pop(true); // MODIFIED: Pop with true
+        _closeAfterSuccess();
       }
     }
   }
@@ -1259,7 +1280,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                     } catch (e) {
                       debugPrint('Erreur lors de l\'ouverture du document: $e');
                     }
-                    if (mounted) Navigator.of(context).pop(true);
+                    if (mounted) _closeAfterSuccess();
                   },
                 ),
                 ListTile(
@@ -1268,7 +1289,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                   onTap: () async {
                     Navigator.pop(bc);
                     await invoiceService.printDocument(pdfPath);
-                    if (mounted) Navigator.of(context).pop(true);
+                    if (mounted) _closeAfterSuccess();
                   },
                 ),
                 ListTile(
@@ -1281,7 +1302,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                       settings,
                       customerPhoneNumber: _customerPhoneController.text,
                     );
-                    if (mounted) Navigator.of(context).pop(true);
+                    if (mounted) _closeAfterSuccess();
                   },
                 ),
                 ListTile(
@@ -1289,7 +1310,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                   title: const Text('Fermer et continuer'),
                   onTap: () {
                     Navigator.pop(bc);
-                    if (mounted) Navigator.of(context).pop(true);
+                    if (mounted) _closeAfterSuccess();
                   },
                 ),
               ],
