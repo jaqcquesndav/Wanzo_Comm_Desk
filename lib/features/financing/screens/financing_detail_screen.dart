@@ -14,11 +14,7 @@ class FinancingDetailScreen extends StatefulWidget {
   final String id;
   final FinancingRequest? financing;
 
-  const FinancingDetailScreen({
-    super.key,
-    required this.id,
-    this.financing,
-  });
+  const FinancingDetailScreen({super.key, required this.id, this.financing});
 
   @override
   State<FinancingDetailScreen> createState() => _FinancingDetailScreenState();
@@ -52,20 +48,22 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
   void _checkForPaymentAlerts() {
     final scheduledPayments = _financing.scheduledPayments ?? [];
     final completedPayments = _financing.completedPayments ?? [];
-    
+
     if (scheduledPayments.isEmpty) return;
 
     // Convertir en PaymentSchedule pour utiliser le service
     final paymentSchedules = <PaymentSchedule>[];
     for (int i = 0; i < scheduledPayments.length; i++) {
       final dueDate = scheduledPayments[i];
-      final isCompleted = completedPayments.any((completed) =>
-        completed.year == dueDate.year &&
-        completed.month == dueDate.month &&
-        completed.day == dueDate.day);
-      
+      final isCompleted = completedPayments.any(
+        (completed) =>
+            completed.year == dueDate.year &&
+            completed.month == dueDate.month &&
+            completed.day == dueDate.day,
+      );
+
       final monthlyAmount = _financing.monthlyPayment ?? 0.0;
-      
+
       final schedule = PaymentSchedule(
         id: 'temp_$i',
         contractId: _financing.id,
@@ -73,12 +71,15 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
         principalAmount: monthlyAmount * 0.9,
         interestAmount: monthlyAmount * 0.1,
         totalAmount: monthlyAmount,
-        status: isCompleted ? PaymentScheduleStatus.paid : PaymentScheduleStatus.pending,
+        status:
+            isCompleted
+                ? PaymentScheduleStatus.paid
+                : PaymentScheduleStatus.pending,
         scheduleNumber: i + 1,
         paidAmount: isCompleted ? monthlyAmount : 0.0,
         remainingAmount: isCompleted ? 0.0 : monthlyAmount,
       );
-      
+
       paymentSchedules.add(schedule);
     }
 
@@ -93,22 +94,24 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
   void _checkForUpcomingPayments() {
     final scheduledPayments = _financing.scheduledPayments ?? [];
     final completedPayments = _financing.completedPayments ?? [];
-    
+
     if (scheduledPayments.isEmpty) return;
 
     // Convertir en PaymentSchedule
     final paymentSchedules = <PaymentSchedule>[];
     for (int i = 0; i < scheduledPayments.length; i++) {
       final dueDate = scheduledPayments[i];
-      final isCompleted = completedPayments.any((completed) =>
-        completed.year == dueDate.year &&
-        completed.month == dueDate.month &&
-        completed.day == dueDate.day);
-      
+      final isCompleted = completedPayments.any(
+        (completed) =>
+            completed.year == dueDate.year &&
+            completed.month == dueDate.month &&
+            completed.day == dueDate.day,
+      );
+
       if (isCompleted) continue;
-      
+
       final monthlyAmount = _financing.monthlyPayment ?? 0.0;
-      
+
       final schedule = PaymentSchedule(
         id: 'temp_$i',
         contractId: _financing.id,
@@ -120,12 +123,15 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
         scheduleNumber: i + 1,
         remainingAmount: monthlyAmount,
       );
-      
+
       paymentSchedules.add(schedule);
     }
 
     // Vérifier les prochaines échéances
-    final upcomingPayments = ContractLifecycleNotificationService.getUpcomingPayments(paymentSchedules);
+    final upcomingPayments =
+        ContractLifecycleNotificationService.getUpcomingPayments(
+          paymentSchedules,
+        );
     if (upcomingPayments.isNotEmpty) {
       // Afficher l'alerte après un délai pour éviter les conflits
       Future.delayed(const Duration(seconds: 1), () {
@@ -139,20 +145,22 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
       });
     }
   }
+
   Future<void> _loadFinancing() async {
     final financingBloc = context.read<FinancingBloc>();
     final requests = await financingBloc.financingRepository.getAllRequests();
     final request = requests.firstWhere(
       (req) => req.id == widget.id,
-      orElse: () => FinancingRequest(
-        id: '',
-        amount: 0,
-        currency: 'CDF',
-        reason: 'Non trouvé',
-        type: FinancingType.cashCredit,
-        institution: FinancialInstitution.bonneMoisson,
-        requestDate: DateTime.now(),
-      ),
+      orElse:
+          () => FinancingRequest(
+            id: '',
+            amount: 0,
+            currency: 'CDF',
+            reason: 'Non trouvé',
+            type: FinancingType.cashCredit,
+            institution: FinancialInstitution.bonneMoisson,
+            requestDate: DateTime.now(),
+          ),
     );
 
     if (mounted) {
@@ -163,51 +171,204 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
     }
   }
 
+  // Constantes pour le layout responsive
+  static const double _desktopBreakpoint = 900.0;
+
   @override
   Widget build(BuildContext context) {
     if (!_isInitialized) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    return WanzoScaffold(
-      title: 'Détails du financement',
-      currentIndex: 1, // Operations tab
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Widget de statut moderne selon le cycle de vie
-            FinancingRequestStatusWidget(
-              request: _financing,
-              showFullDetails: true,
-            ),
-            const SizedBox(height: 8),
-            // Badge de statut du cycle de vie
-            Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktop = constraints.maxWidth >= _desktopBreakpoint;
+
+        return WanzoScaffold(
+          title: 'Détails du financement',
+          currentIndex: 1, // Operations tab
+          appBarActions:
+              isDesktop
+                  ? [
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      tooltip: 'Supprimer',
+                      onPressed: _showDeleteConfirmationDialog,
+                    ),
+                  ]
+                  : null,
+          body:
+              isDesktop
+                  ? _buildDesktopLayout(context)
+                  : _buildMobileLayout(context),
+        );
+      },
+    );
+  }
+
+  /// Layout desktop: 2 colonnes
+  Widget _buildDesktopLayout(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Colonne principale (70%)
+          Expanded(
+            flex: 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ContractLifecycleNotificationService.buildLifecycleStatusBadge(_financing.status),
-                const Spacer(),
-                if (_financing.statusDate != null)
-                  Text(
-                    'Mise à jour: ${DateFormat('dd/MM/yyyy').format(_financing.statusDate!)}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[600],
+                // En-tête avec statut du cycle de vie
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        ContractLifecycleNotificationService.buildLifecycleStatusBadge(
+                          _financing.status,
+                        ),
+                        const Spacer(),
+                        if (_financing.statusDate != null)
+                          Text(
+                            'Mise à jour: ${DateFormat('dd/MM/yyyy').format(_financing.statusDate!)}',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: Colors.grey[600]),
+                          ),
+                      ],
                     ),
                   ),
+                ),
+                const SizedBox(height: 16),
+                _buildDetailsCard(),
+                const SizedBox(height: 16),
+                if (_financing.status == 'approved' ||
+                    _financing.status == 'disbursed' ||
+                    _financing.status == 'repaying')
+                  _buildScheduleCard(),
               ],
             ),
-            const SizedBox(height: 16),
-            _buildStatusCard(),
-            const SizedBox(height: 16),
-            _buildDetailsCard(),
-            const SizedBox(height: 16),
-            if (_financing.status == 'approved' || _financing.status == 'disbursed' || _financing.status == 'repaying')
-              _buildScheduleCard(),
-            const SizedBox(height: 16),
-            _buildActionsCard(),
+          ),
+          const SizedBox(width: 24),
+          // Sidebar (30%)
+          SizedBox(
+            width: 320,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Widget de statut moderne
+                FinancingRequestStatusWidget(
+                  request: _financing,
+                  showFullDetails: true,
+                ),
+                const SizedBox(height: 16),
+                _buildStatusCard(),
+                const SizedBox(height: 16),
+                _buildDesktopActionsCard(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Layout mobile: colonne verticale
+  Widget _buildMobileLayout(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Widget de statut moderne selon le cycle de vie
+          FinancingRequestStatusWidget(
+            request: _financing,
+            showFullDetails: true,
+          ),
+          const SizedBox(height: 8),
+          // Badge de statut du cycle de vie
+          Row(
+            children: [
+              ContractLifecycleNotificationService.buildLifecycleStatusBadge(
+                _financing.status,
+              ),
+              const Spacer(),
+              if (_financing.statusDate != null)
+                Text(
+                  'Mise à jour: ${DateFormat('dd/MM/yyyy').format(_financing.statusDate!)}',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildStatusCard(),
+          const SizedBox(height: 16),
+          _buildDetailsCard(),
+          const SizedBox(height: 16),
+          if (_financing.status == 'approved' ||
+              _financing.status == 'disbursed' ||
+              _financing.status == 'repaying')
+            _buildScheduleCard(),
+          const SizedBox(height: 16),
+          _buildActionsCard(),
+        ],
+      ),
+    );
+  }
+
+  /// Actions card pour desktop (style côté)
+  Widget _buildDesktopActionsCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Actions', style: Theme.of(context).textTheme.titleLarge),
+            const Divider(),
+            // Action: Validate receipt (Confirm funds received)
+            if (_financing.status == 'approved') ...[
+              ElevatedButton.icon(
+                onPressed: _showDisburseFundsDialog,
+                icon: const Icon(Icons.check_circle),
+                label: const Text('Confirmer réception des fonds'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 44),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+
+            // Action: Record repayment
+            if (_financing.status == 'disbursed' ||
+                _financing.status == 'repaying') ...[
+              ElevatedButton.icon(
+                onPressed: () => _showRecordPaymentDialog(null),
+                icon: const Icon(Icons.payment),
+                label: const Text('Enregistrer un remboursement'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 44),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+
+            // Action: Delete request
+            OutlinedButton.icon(
+              onPressed: _showDeleteConfirmationDialog,
+              icon: const Icon(Icons.delete),
+              label: const Text('Supprimer cette demande'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                minimumSize: const Size(double.infinity, 44),
+              ),
+            ),
           ],
         ),
       ),
@@ -260,9 +421,9 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
                   Text(
                     statusTexts[_financing.status] ?? 'Statut inconnu',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: statusColors[_financing.status] ?? Colors.grey,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      color: statusColors[_financing.status] ?? Colors.grey,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   Text(
                     _financing.type.displayName,
@@ -274,8 +435,8 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
                       symbol: _financing.currency,
                     ).format(_financing.amount),
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
@@ -322,25 +483,17 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
                 DateFormat('dd/MM/yyyy').format(_financing.disbursementDate!),
               ),
             if (_financing.interestRate != null)
-              _buildDetailRow(
-                'Taux d\'intérêt',
-                '${_financing.interestRate}%',
-              ),
+              _buildDetailRow('Taux d\'intérêt', '${_financing.interestRate}%'),
             if (_financing.termMonths != null)
-              _buildDetailRow(
-                'Durée',
-                '${_financing.termMonths} mois',
-              ),
+              _buildDetailRow('Durée', '${_financing.termMonths} mois'),
             if (_financing.financialProduct != null)
               _buildDetailRow(
                 'Produit financier',
                 _financing.financialProduct!.displayName,
               ),
-            if (_financing.type == FinancingType.leasing && _financing.leasingCode != null)
-              _buildDetailRow(
-                'Code de leasing',
-                _financing.leasingCode!,
-              ),
+            if (_financing.type == FinancingType.leasing &&
+                _financing.leasingCode != null)
+              _buildDetailRow('Code de leasing', _financing.leasingCode!),
             if (_financing.monthlyPayment != null)
               _buildDetailRow(
                 'Paiement mensuel',
@@ -362,7 +515,7 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
     // Conversion des échéances simples en échéances détaillées
     final scheduledPayments = _financing.scheduledPayments ?? [];
     final completedPayments = _financing.completedPayments ?? [];
-    
+
     if (scheduledPayments.isEmpty) {
       return Card(
         child: Padding(
@@ -386,15 +539,17 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
     final paymentSchedules = <PaymentSchedule>[];
     for (int i = 0; i < scheduledPayments.length; i++) {
       final dueDate = scheduledPayments[i];
-      final isCompleted = completedPayments.any((completed) =>
-        completed.year == dueDate.year &&
-        completed.month == dueDate.month &&
-        completed.day == dueDate.day);
-      
+      final isCompleted = completedPayments.any(
+        (completed) =>
+            completed.year == dueDate.year &&
+            completed.month == dueDate.month &&
+            completed.day == dueDate.day,
+      );
+
       final monthlyAmount = _financing.monthlyPayment ?? 0.0;
       final interestAmount = monthlyAmount * 0.1; // Estimation 10% d'intérêts
       final principalAmount = monthlyAmount - interestAmount;
-      
+
       final schedule = PaymentSchedule(
         id: 'temp_$i',
         contractId: _financing.id,
@@ -402,22 +557,27 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
         principalAmount: principalAmount,
         interestAmount: interestAmount,
         totalAmount: monthlyAmount,
-        status: isCompleted ? PaymentScheduleStatus.paid : PaymentScheduleStatus.pending,
+        status:
+            isCompleted
+                ? PaymentScheduleStatus.paid
+                : PaymentScheduleStatus.pending,
         paymentDate: isCompleted ? dueDate : null,
         paidAmount: isCompleted ? monthlyAmount : 0.0,
         remainingAmount: isCompleted ? 0.0 : monthlyAmount,
         scheduleNumber: i + 1,
       );
-      
+
       paymentSchedules.add(schedule);
     }
 
     return PaymentScheduleWidget(
       schedules: paymentSchedules,
       currency: _financing.currency,
-      onPaymentTap: _financing.status == 'disbursed' || _financing.status == 'repaying'
-          ? (schedule) => _showRecordPaymentDialog(schedule.scheduleNumber - 1)
-          : null,
+      onPaymentTap:
+          _financing.status == 'disbursed' || _financing.status == 'repaying'
+              ? (schedule) =>
+                  _showRecordPaymentDialog(schedule.scheduleNumber - 1)
+              : null,
     );
   }
 
@@ -428,10 +588,7 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Actions',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('Actions', style: Theme.of(context).textTheme.titleLarge),
             const Divider(),
             // Action: Validate receipt (Confirm funds received)
             if (_financing.status == 'approved')
@@ -444,9 +601,10 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
                   foregroundColor: Colors.white,
                 ),
               ),
-            
+
             // Action: Record repayment
-            if (_financing.status == 'disbursed' || _financing.status == 'repaying')
+            if (_financing.status == 'disbursed' ||
+                _financing.status == 'repaying')
               ElevatedButton.icon(
                 onPressed: () => _showRecordPaymentDialog(null),
                 icon: const Icon(Icons.payment),
@@ -456,16 +614,14 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
                   foregroundColor: Colors.white,
                 ),
               ),
-            
+
             // Action: Delete request - available for all statuses
             const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: _showDeleteConfirmationDialog,
               icon: const Icon(Icons.delete),
               label: const Text('Supprimer cette demande'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.red,
-              ),
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
             ),
           ],
         ),
@@ -486,9 +642,7 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
-          Expanded(
-            child: Text(value),
-          ),
+          Expanded(child: Text(value)),
         ],
       ),
     );
@@ -500,12 +654,10 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
     if (_financing.termMonths != null) {
       final now = DateTime.now();
       for (int i = 1; i <= _financing.termMonths!; i++) {
-        scheduledPayments.add(
-          DateTime(now.year, now.month + i, now.day),
-        );
+        scheduledPayments.add(DateTime(now.year, now.month + i, now.day));
       }
     }
-    
+
     return showDialog<void>(
       context: context,
       builder: (BuildContext context) {
@@ -533,7 +685,7 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                
+
                 context.read<FinancingBloc>().add(
                   DisburseFunds(
                     requestId: _financing.id,
@@ -541,14 +693,14 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
                     scheduledPayments: scheduledPayments,
                   ),
                 );
-                
+
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Fonds débloqués avec succès'),
                     backgroundColor: Colors.blue,
                   ),
                 );
-                
+
                 // Reload the financing data
                 _loadFinancing();
               },
@@ -569,16 +721,18 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
     if (_financing.monthlyPayment != null) {
       amountController.text = _financing.monthlyPayment!.toString();
     }
-    
+
     final formKey = GlobalKey<FormState>();
-    
+
     return showDialog<void>(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text(paymentIndex != null 
-              ? 'Paiement pour l\'échéance ${paymentIndex + 1}' 
-              : 'Enregistrer un paiement'),
+          title: Text(
+            paymentIndex != null
+                ? 'Paiement pour l\'échéance ${paymentIndex + 1}'
+                : 'Enregistrer un paiement',
+          ),
           content: Form(
             key: formKey,
             child: Column(
@@ -619,9 +773,9 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
               onPressed: () {
                 if (formKey.currentState!.validate()) {
                   Navigator.of(context).pop();
-                  
+
                   final amount = double.parse(amountController.text);
-                  
+
                   context.read<FinancingBloc>().add(
                     RecordPayment(
                       requestId: _financing.id,
@@ -629,14 +783,14 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
                       amount: amount,
                     ),
                   );
-                  
+
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Paiement enregistré avec succès'),
                       backgroundColor: Colors.green,
                     ),
                   );
-                  
+
                   // Reload the financing data
                   _loadFinancing();
                 }
@@ -668,19 +822,19 @@ class _FinancingDetailScreenState extends State<FinancingDetailScreen> {
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                
+
                 // Supprimer la demande
                 context.read<FinancingBloc>().add(
                   DeleteFinancingRequest(_financing.id),
                 );
-                
+
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Demande de financement supprimée'),
                     backgroundColor: Colors.red,
                   ),
                 );
-                
+
                 // Revenir à l'écran précédent
                 Navigator.of(context).pop();
               },

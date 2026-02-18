@@ -227,6 +227,7 @@ class _FinancingListScreenState extends State<FinancingListScreen> {
                             DataColumn(label: Text('Montant'), numeric: true),
                             DataColumn(label: Text('Date')),
                             DataColumn(label: Text('Statut')),
+                            DataColumn(label: Text('Actions')),
                           ],
                           rows:
                               requests.asMap().entries.map((entry) {
@@ -341,6 +342,60 @@ class _FinancingListScreenState extends State<FinancingListScreen> {
                                                 fontWeight: FontWeight.w600,
                                               ),
                                         ),
+                                      ),
+                                    ),
+                                    // Actions
+                                    DataCell(
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(
+                                              Icons.visibility,
+                                              size: 20,
+                                            ),
+                                            tooltip: 'Voir détails',
+                                            onPressed: () {
+                                              context.pushNamed(
+                                                'financing_detail',
+                                                pathParameters: {
+                                                  'id': request.id,
+                                                },
+                                                extra: request,
+                                              );
+                                            },
+                                            color: theme.colorScheme.primary,
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(
+                                              Icons.edit,
+                                              size: 20,
+                                            ),
+                                            tooltip: 'Modifier',
+                                            onPressed:
+                                                () => _editFinancing(request),
+                                            color: Colors.orange,
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(
+                                              Icons.delete_outline,
+                                              size: 20,
+                                            ),
+                                            tooltip: 'Supprimer',
+                                            onPressed:
+                                                () => _confirmDeleteFinancing(
+                                                  context,
+                                                  request,
+                                                ),
+                                            color: Colors.red,
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],
@@ -497,6 +552,97 @@ class _FinancingListScreenState extends State<FinancingListScreen> {
               ],
             );
           },
+        );
+      },
+    );
+  }
+
+  /// Éditer une demande de financement
+  void _editFinancing(FinancingRequest request) {
+    // TODO: Implémenter l'édition du financement
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fonctionnalité d\'édition à venir'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+
+  /// Confirmer la suppression d'une demande de financement
+  void _confirmDeleteFinancing(BuildContext context, FinancingRequest request) {
+    final dateFormat = DateFormat('dd/MM/yyyy');
+    final currencyFormat = NumberFormat.currency(
+      locale: 'fr_FR',
+      symbol: request.currency,
+    );
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          icon: const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.red,
+            size: 48,
+          ),
+          title: const Text('Supprimer la demande ?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Êtes-vous sûr de vouloir supprimer cette demande de financement ?',
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Type: ${request.type.displayName}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    Text('Institution: ${request.institution.displayName}'),
+                    Text('Montant: ${currencyFormat.format(request.amount)}'),
+                    Text('Date: ${dateFormat.format(request.requestDate)}'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Cette action est irréversible.',
+                style: TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Annuler'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                this.context.read<FinancingBloc>().add(
+                  DeleteFinancingRequest(request.id),
+                );
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Demande de financement supprimée'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              },
+              icon: const Icon(Icons.delete),
+              label: const Text('Supprimer'),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            ),
+          ],
         );
       },
     );

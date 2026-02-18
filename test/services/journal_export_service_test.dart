@@ -1,11 +1,24 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'dart:io';
+import 'package:hive/hive.dart';
 import 'package:wanzo/services/journal_export_service.dart';
 import 'package:wanzo/features/auth/models/user.dart';
 import 'package:wanzo/features/dashboard/models/journal_filter.dart';
 import 'package:wanzo/features/dashboard/models/operation_journal_entry.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() async {
+    // Initialize Hive with a temporary directory for tests
+    final tempDir = Directory.systemTemp.createTempSync('hive_test_');
+    Hive.init(tempDir.path);
+  });
+
+  tearDownAll(() async {
+    await Hive.close();
+  });
+
   group('JournalExportService', () {
     late User testUser;
     late JournalFilter testFilter;
@@ -82,7 +95,7 @@ void main() {
       expect(pdfFile, isNotNull);
       expect(pdfFile, isA<File>());
       expect(await pdfFile.exists(), isTrue);
-      
+
       // Clean up
       if (await pdfFile.exists()) {
         await pdfFile.delete();
@@ -101,7 +114,7 @@ void main() {
       expect(pdfFile, isNotNull);
       expect(pdfFile, isA<File>());
       expect(await pdfFile.exists(), isTrue);
-      
+
       // Clean up
       if (await pdfFile.exists()) {
         await pdfFile.delete();
@@ -156,7 +169,7 @@ void main() {
       // Assert
       expect(pdfFile, isNotNull);
       expect(await pdfFile.exists(), isTrue);
-      
+
       // Clean up
       if (await pdfFile.exists()) {
         await pdfFile.delete();
@@ -177,7 +190,7 @@ void main() {
       // Assert
       expect(pdfFile, isNotNull);
       expect(await pdfFile.exists(), isTrue);
-      
+
       // Clean up
       if (await pdfFile.exists()) {
         await pdfFile.delete();
@@ -206,7 +219,7 @@ void main() {
       // Assert
       expect(pdfFile, isNotNull);
       expect(await pdfFile.exists(), isTrue);
-      
+
       // Clean up
       if (await pdfFile.exists()) {
         await pdfFile.delete();
@@ -261,7 +274,7 @@ void main() {
       // Assert
       expect(pdfFile, isNotNull);
       expect(await pdfFile.exists(), isTrue);
-      
+
       // Clean up
       if (await pdfFile.exists()) {
         await pdfFile.delete();
@@ -305,7 +318,7 @@ void main() {
       // Assert
       expect(pdfFile, isNotNull);
       expect(await pdfFile.exists(), isTrue);
-      
+
       // Clean up
       if (await pdfFile.exists()) {
         await pdfFile.delete();

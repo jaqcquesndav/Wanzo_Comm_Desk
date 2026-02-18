@@ -409,6 +409,7 @@ class _SalesDataTable extends StatelessWidget {
                           label: Text('Encaissement'),
                           numeric: false,
                         ),
+                      const DataColumn(label: Text('Actions')),
                     ],
                     rows:
                         sales.asMap().entries.map((entry) {
@@ -545,6 +546,43 @@ class _SalesDataTable extends StatelessWidget {
                                     currencyFormat,
                                   ),
                                 ),
+                              // Actions
+                              DataCell(
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.visibility,
+                                        size: 20,
+                                      ),
+                                      tooltip: 'Voir détails',
+                                      onPressed: () => onSaleTap(sale),
+                                      color: theme.colorScheme.primary,
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, size: 20),
+                                      tooltip: 'Modifier',
+                                      onPressed: () => _editSale(context, sale),
+                                      color: Colors.orange,
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        size: 20,
+                                      ),
+                                      tooltip: 'Supprimer',
+                                      onPressed:
+                                          () =>
+                                              _confirmDeleteSale(context, sale),
+                                      color: Colors.red,
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ],
                           );
                         }).toList(),
@@ -623,6 +661,82 @@ class _SalesDataTable extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+
+  /// Naviguer vers l'édition d'une vente
+  void _editSale(BuildContext context, Sale sale) {
+    context.push('/sales/edit', extra: sale);
+  }
+
+  /// Confirmer la suppression d'une vente
+  void _confirmDeleteSale(BuildContext context, Sale sale) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          icon: const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.red,
+            size: 48,
+          ),
+          title: const Text('Supprimer la vente ?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Êtes-vous sûr de vouloir supprimer cette vente ?'),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Client: ${sale.customerName}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    Text(
+                      'Montant: ${currencyFormat.format(sale.totalAmountInCdf)}',
+                    ),
+                    Text('Date: ${dateFormat.format(sale.date)}'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Cette action est irréversible. Le stock sera restauré.',
+                style: TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Annuler'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                context.read<SalesBloc>().add(DeleteSale(sale.id));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Vente supprimée'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              },
+              icon: const Icon(Icons.delete),
+              label: const Text('Supprimer'),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            ),
+          ],
+        );
+      },
     );
   }
 }

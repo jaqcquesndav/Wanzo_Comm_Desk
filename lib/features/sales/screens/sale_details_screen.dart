@@ -23,6 +23,9 @@ class SaleDetailsScreen extends StatelessWidget {
 
   const SaleDetailsScreen({super.key, required this.sale});
 
+  // Constantes pour le layout responsive
+  static const double _desktopBreakpoint = 900.0;
+
   @override
   Widget build(BuildContext context) {
     // Access currency settings
@@ -63,94 +66,188 @@ class SaleDetailsScreen extends StatelessWidget {
         break;
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Détails de la vente"),
-        actions: [
-          // Menu d'options
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == "edit") {
-                // Naviguer vers l'écran d'édition
-                context.push(
-                  '/sales/edit',
-                  extra: {
-                    'sale': sale,
-                    'currencySettings':
-                        context.read<CurrencySettingsCubit>().state.settings,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktop = constraints.maxWidth >= _desktopBreakpoint;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text("Détails de la vente"),
+            actions: [
+              // Actions directes sur desktop
+              if (isDesktop) ...[
+                IconButton(
+                  icon: const Icon(Icons.edit),
+                  tooltip: "Modifier",
+                  onPressed: () {
+                    context.push(
+                      '/sales/edit',
+                      extra: {
+                        'sale': sale,
+                        'currencySettings':
+                            context
+                                .read<CurrencySettingsCubit>()
+                                .state
+                                .settings,
+                      },
+                    );
                   },
-                );
-              } else if (value == "delete") {
-                _showDeleteConfirmation(context);
-              } else if (value == "print") {
-                // _printOrShareInvoice(context, print: true);
-                _showDocumentTypeSelectionDialog(context, isPrintAction: true);
-              } else if (value == "share") {
-                // _printOrShareInvoice(context, print: false);
-                _showDocumentTypeSelectionDialog(context, isPrintAction: false);
-              }
-            },
-            itemBuilder:
-                (context) => [
-                  const PopupMenuItem<String>(
-                    value: "edit",
-                    child: Row(
-                      children: [
-                        Icon(Icons.edit),
-                        SizedBox(width: 8),
-                        Text("Modifier"),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.print),
+                  tooltip: "Imprimer",
+                  onPressed:
+                      () => _showDocumentTypeSelectionDialog(
+                        context,
+                        isPrintAction: true,
+                      ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.share),
+                  tooltip: "Partager",
+                  onPressed:
+                      () => _showDocumentTypeSelectionDialog(
+                        context,
+                        isPrintAction: false,
+                      ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  tooltip: "Supprimer",
+                  onPressed: () => _showDeleteConfirmation(context),
+                ),
+              ] else
+                // Menu d'options pour mobile
+                PopupMenuButton<String>(
+                  onSelected: (value) {
+                    if (value == "edit") {
+                      // Naviguer vers l'écran d'édition
+                      context.push(
+                        '/sales/edit',
+                        extra: {
+                          'sale': sale,
+                          'currencySettings':
+                              context
+                                  .read<CurrencySettingsCubit>()
+                                  .state
+                                  .settings,
+                        },
+                      );
+                    } else if (value == "delete") {
+                      _showDeleteConfirmation(context);
+                    } else if (value == "print") {
+                      _showDocumentTypeSelectionDialog(
+                        context,
+                        isPrintAction: true,
+                      );
+                    } else if (value == "share") {
+                      _showDocumentTypeSelectionDialog(
+                        context,
+                        isPrintAction: false,
+                      );
+                    }
+                  },
+                  itemBuilder:
+                      (context) => [
+                        const PopupMenuItem<String>(
+                          value: "edit",
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit),
+                              SizedBox(width: 8),
+                              Text("Modifier"),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem<String>(
+                          value: "print",
+                          child: Row(
+                            children: [
+                              Icon(Icons.print),
+                              SizedBox(width: 8),
+                              Text("Imprimer"),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem<String>(
+                          value: "share",
+                          child: Row(
+                            children: [
+                              Icon(Icons.share),
+                              SizedBox(width: 8),
+                              Text("Partager"),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem<String>(
+                          value: "delete",
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete, color: Colors.red),
+                              SizedBox(width: 8),
+                              Text(
+                                "Supprimer",
+                                style: TextStyle(color: Colors.red),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: "print",
-                    child: Row(
-                      children: [
-                        Icon(Icons.print),
-                        SizedBox(width: 8),
-                        Text("Imprimer"),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: "share",
-                    child: Row(
-                      children: [
-                        Icon(Icons.share),
-                        SizedBox(width: 8),
-                        Text("Partager"),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: "delete",
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete, color: Colors.red),
-                        SizedBox(width: 8),
-                        Text("Supprimer", style: TextStyle(color: Colors.red)),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
+            ],
           ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(WanzoSpacing.base),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // En-tête avec information générale
-            Card(
-              margin: EdgeInsets.zero,
-              child: Padding(
-                padding: const EdgeInsets.all(WanzoSpacing.base),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Status de la vente
-                    Row(
+          body:
+              isDesktop
+                  ? _buildDesktopLayout(
+                    context,
+                    statusColor,
+                    statusText,
+                    statusIcon,
+                    transactionCurrencyCode,
+                    appDefaultCurrency,
+                  )
+                  : _buildMobileLayout(
+                    context,
+                    statusColor,
+                    statusText,
+                    statusIcon,
+                    transactionCurrencyCode,
+                    appDefaultCurrency,
+                  ),
+          // BottomNavigationBar uniquement pour mobile
+          bottomNavigationBar:
+              isDesktop ? null : _buildMobileBottomBar(context),
+        );
+      },
+    );
+  }
+
+  /// Layout desktop: 2 colonnes (articles à gauche, résumé à droite)
+  Widget _buildDesktopLayout(
+    BuildContext context,
+    Color statusColor,
+    String statusText,
+    IconData statusIcon,
+    String transactionCurrencyCode,
+    Currency appDefaultCurrency,
+  ) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(WanzoSpacing.lg),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Colonne principale (articles vendus)
+          Expanded(
+            flex: 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // En-tête avec statut
+                Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: const EdgeInsets.all(WanzoSpacing.md),
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
@@ -170,270 +267,622 @@ class SaleDetailsScreen extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: WanzoSpacing.sm),
-                    // Information sur la date et le client
-                    Row(
-                      children: [
-                        const Icon(Icons.calendar_today, size: 16),
-                        const SizedBox(width: WanzoSpacing.xs),
-                        Text(
-                          DateFormat("dd/MM/yyyy HH:mm").format(sale.date),
-                          style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+                const SizedBox(height: WanzoSpacing.md),
+                // Titre de la section articles
+                Text(
+                  "Articles vendus",
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: WanzoSpacing.sm),
+                // Liste des articles sous forme de DataTable pour desktop
+                Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: const EdgeInsets.all(WanzoSpacing.sm),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: DataTable(
+                        headingRowColor: WidgetStateProperty.all(
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
                         ),
-                      ],
+                        columns: const [
+                          DataColumn(label: Text('Produit')),
+                          DataColumn(label: Text('Quantité'), numeric: true),
+                          DataColumn(
+                            label: Text('Prix unitaire'),
+                            numeric: true,
+                          ),
+                          DataColumn(label: Text('Total'), numeric: true),
+                        ],
+                        rows:
+                            sale.items.map((item) {
+                              return DataRow(
+                                cells: [
+                                  DataCell(Text(item.productName)),
+                                  DataCell(
+                                    Text(item.quantity.toInt().toString()),
+                                  ),
+                                  DataCell(
+                                    Text(
+                                      formatCurrency(
+                                        item.unitPrice,
+                                        item.currencyCode,
+                                      ),
+                                    ),
+                                  ),
+                                  DataCell(
+                                    Text(
+                                      formatCurrency(
+                                        item.totalPrice,
+                                        item.currencyCode,
+                                      ),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }).toList(),
+                      ),
                     ),
-                    const SizedBox(height: WanzoSpacing.xs),
-                    Row(
-                      children: [
-                        const Icon(Icons.person, size: 16),
-                        const SizedBox(width: WanzoSpacing.xs),
-                        Text(
-                          "Client: ${sale.customerName}",
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: WanzoSpacing.sm),
-                    // Information sur le paiement
-                    Row(
-                      children: [
-                        const Icon(Icons.payment, size: 16),
-                        const SizedBox(width: WanzoSpacing.xs),
-                        Text(
-                          "Mode de paiement: ${sale.paymentMethod}",
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ],
-                    ),
-                    const Divider(),
-                    // Résumé des montants
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  ),
+                ),
+                const SizedBox(height: WanzoSpacing.lg),
+                // Boutons d'action pour desktop
+                _buildDesktopActions(context),
+              ],
+            ),
+          ),
+          const SizedBox(width: WanzoSpacing.lg),
+          // Sidebar (informations et résumé)
+          SizedBox(
+            width: 320,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Informations client et date
+                Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: const EdgeInsets.all(WanzoSpacing.md),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          "Total",
+                          "Informations",
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
+                        const Divider(),
+                        _buildDetailRow(
+                          context,
+                          Icons.calendar_today,
+                          "Date",
+                          DateFormat("dd/MM/yyyy HH:mm").format(sale.date),
+                        ),
+                        const SizedBox(height: WanzoSpacing.sm),
+                        _buildDetailRow(
+                          context,
+                          Icons.person,
+                          "Client",
+                          sale.customerName,
+                        ),
+                        const SizedBox(height: WanzoSpacing.sm),
+                        _buildDetailRow(
+                          context,
+                          Icons.payment,
+                          "Paiement",
+                          sale.paymentMethod ?? 'Non spécifié',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: WanzoSpacing.md),
+                // Résumé des montants
+                Card(
+                  margin: EdgeInsets.zero,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                  child: Padding(
+                    padding: const EdgeInsets.all(WanzoSpacing.md),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
+                          "Résumé",
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const Divider(),
+                        _buildAmountRow(
+                          context,
+                          "Total",
                           formatCurrency(
                             sale.totalAmountInTransactionCurrency ?? 0.0,
                             transactionCurrencyCode,
                           ),
-                          style: Theme.of(context).textTheme.titleLarge,
+                          isLarge: true,
                         ),
-                      ],
-                    ),
-                    if (transactionCurrencyCode != appDefaultCurrency.code)
-                      Padding(
-                        padding: const EdgeInsets.only(
-                          top: WanzoSpacing.xxs,
-                          bottom: WanzoSpacing.xs,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Text(
-                              "(${formatCurrency(sale.totalAmountInCdf, appDefaultCurrency.code)})", // Display in app's active currency
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: Colors.grey[600]),
+                        if (transactionCurrencyCode != appDefaultCurrency.code)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              top: WanzoSpacing.xxs,
                             ),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(height: WanzoSpacing.xs),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text("Payé"),
-                        Text(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Text(
+                                  "(${formatCurrency(sale.totalAmountInCdf, appDefaultCurrency.code)})",
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(color: Colors.grey[600]),
+                                ),
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: WanzoSpacing.sm),
+                        _buildAmountRow(
+                          context,
+                          "Payé",
                           formatCurrency(
                             sale.paidAmountInTransactionCurrency ?? 0.0,
                             transactionCurrencyCode,
                           ),
                         ),
-                      ],
-                    ),
-                    if (transactionCurrencyCode != appDefaultCurrency.code)
-                      Padding(
-                        padding: const EdgeInsets.only(top: WanzoSpacing.xxs),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Text(
-                              "(${formatCurrency(sale.paidAmountInCdf, appDefaultCurrency.code)})", // Display in app's active currency
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: Colors.grey[600]),
+                        if (transactionCurrencyCode != appDefaultCurrency.code)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              top: WanzoSpacing.xxs,
                             ),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(height: WanzoSpacing.xs),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "Reste à payer",
-                          style: TextStyle(
-                            color:
-                                ((sale.totalAmountInTransactionCurrency ??
-                                                        0.0) -
-                                                    (sale.paidAmountInTransactionCurrency ??
-                                                        0.0))
-                                                .abs() <
-                                            0.001 ||
-                                        (sale.paidAmountInTransactionCurrency ??
-                                                0.0) >=
-                                            (sale.totalAmountInTransactionCurrency ??
-                                                0.0)
-                                    ? Colors.green
-                                    : Colors.red,
-                            fontWeight: FontWeight.bold,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Text(
+                                  "(${formatCurrency(sale.paidAmountInCdf, appDefaultCurrency.code)})",
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(color: Colors.grey[600]),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        Text(
+                        const SizedBox(height: WanzoSpacing.sm),
+                        const Divider(),
+                        _buildAmountRow(
+                          context,
+                          "Reste à payer",
                           formatCurrency(
                             (sale.totalAmountInTransactionCurrency ?? 0.0) -
                                 (sale.paidAmountInTransactionCurrency ?? 0.0),
                             transactionCurrencyCode,
                           ),
-                          style: TextStyle(
-                            color:
-                                ((sale.totalAmountInTransactionCurrency ??
-                                                        0.0) -
-                                                    (sale.paidAmountInTransactionCurrency ??
-                                                        0.0))
-                                                .abs() <
-                                            0.001 ||
-                                        (sale.paidAmountInTransactionCurrency ??
-                                                0.0) >=
-                                            (sale.totalAmountInTransactionCurrency ??
-                                                0.0)
-                                    ? Colors.green
-                                    : Colors.red,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          valueColor: _getRemainingColor(),
+                          isBold: true,
                         ),
                       ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: WanzoSpacing.base),
-            // Liste des articles vendus
-            Text(
-              "Articles vendus",
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: WanzoSpacing.sm),
-            Card(
-              margin: EdgeInsets.zero,
-              child: ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: sale.items.length,
-                separatorBuilder: (context, index) => const Divider(),
-                itemBuilder: (context, index) {
-                  final item = sale.items[index];
-                  return ListTile(
-                    title: Text(item.productName),
-                    subtitle: Text(
-                      "${item.quantity.toInt()} × ${formatCurrency(item.unitPrice, item.currencyCode)}", // item.currencyCode is transaction currency
-                    ),
-                    trailing: Text(
-                      formatCurrency(
-                        item.totalPrice,
-                        item.currencyCode,
-                      ), // item.currencyCode is transaction currency
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: BottomAppBar(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: WanzoSpacing.base,
-            vertical: WanzoSpacing.sm,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  // onPressed: () => _printOrShareInvoice(context, print: true),
-                  onPressed:
-                      () => _showDocumentTypeSelectionDialog(
-                        context,
-                        isPrintAction: true,
-                      ),
-                  icon: const Icon(Icons.print),
-                  label: const Text("Imprimer"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ),
-              const SizedBox(
-                width: WanzoSpacing.sm,
-              ), // Add some spacing between buttons
-              Expanded(
-                child: ElevatedButton.icon(
-                  // onPressed: () => _printOrShareInvoice(context, print: false),
-                  onPressed:
-                      () => _showDocumentTypeSelectionDialog(
-                        context,
-                        isPrintAction: false,
-                      ),
-                  icon: const Icon(Icons.share),
-                  label: const Text("Partager"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).primaryColor,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ),
-              if (sale.status == SaleStatus.pending ||
-                  sale.status == SaleStatus.partiallyPaid) ...[
-                const SizedBox(
-                  width: WanzoSpacing.sm,
-                ), // Add some spacing between buttons
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      // Marquer la vente comme terminée
-                      // All amounts are already correctly stored in the sale object.
-                      // We just need to update the status.
-                      final Sale updatedSale = sale.copyWith(
-                        status: SaleStatus.completed,
-                        // Ensure paid amount covers the total if marking completed this way
-                        // This might need more sophisticated logic if partial payments can lead to completion
-                        paidAmountInTransactionCurrency:
-                            sale.totalAmountInTransactionCurrency,
-                        paidAmountInCdf: sale.totalAmountInCdf,
-                      );
-                      context.read<SalesBloc>().add(UpdateSale(updatedSale));
-                      GoRouter.of(context).pop();
-                    },
-                    icon: const Icon(Icons.check),
-                    label: const Text("Terminer"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
                     ),
                   ),
                 ),
               ],
-            ],
+            ),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Layout mobile: layout vertical classique
+  Widget _buildMobileLayout(
+    BuildContext context,
+    Color statusColor,
+    String statusText,
+    IconData statusIcon,
+    String transactionCurrencyCode,
+    Currency appDefaultCurrency,
+  ) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(WanzoSpacing.base),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // En-tête avec information générale
+          Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(WanzoSpacing.base),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Status de la vente
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Vente #${sale.id.substring(0, 8)}",
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      Chip(
+                        label: Text(
+                          statusText,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        backgroundColor: statusColor,
+                        avatar: Icon(statusIcon, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: WanzoSpacing.sm),
+                  // Information sur la date et le client
+                  Row(
+                    children: [
+                      const Icon(Icons.calendar_today, size: 16),
+                      const SizedBox(width: WanzoSpacing.xs),
+                      Text(
+                        DateFormat("dd/MM/yyyy HH:mm").format(sale.date),
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: WanzoSpacing.xs),
+                  Row(
+                    children: [
+                      const Icon(Icons.person, size: 16),
+                      const SizedBox(width: WanzoSpacing.xs),
+                      Text(
+                        "Client: ${sale.customerName}",
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: WanzoSpacing.sm),
+                  // Information sur le paiement
+                  Row(
+                    children: [
+                      const Icon(Icons.payment, size: 16),
+                      const SizedBox(width: WanzoSpacing.xs),
+                      Text(
+                        "Mode de paiement: ${sale.paymentMethod ?? 'Non spécifié'}",
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+                  // Résumé des montants
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Total",
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      Text(
+                        formatCurrency(
+                          sale.totalAmountInTransactionCurrency ?? 0.0,
+                          transactionCurrencyCode,
+                        ),
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ],
+                  ),
+                  if (transactionCurrencyCode != appDefaultCurrency.code)
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        top: WanzoSpacing.xxs,
+                        bottom: WanzoSpacing.xs,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text(
+                            "(${formatCurrency(sale.totalAmountInCdf, appDefaultCurrency.code)})",
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: WanzoSpacing.xs),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Payé"),
+                      Text(
+                        formatCurrency(
+                          sale.paidAmountInTransactionCurrency ?? 0.0,
+                          transactionCurrencyCode,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (transactionCurrencyCode != appDefaultCurrency.code)
+                    Padding(
+                      padding: const EdgeInsets.only(top: WanzoSpacing.xxs),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text(
+                            "(${formatCurrency(sale.paidAmountInCdf, appDefaultCurrency.code)})",
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: WanzoSpacing.xs),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Reste à payer",
+                        style: TextStyle(
+                          color: _getRemainingColor(),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        formatCurrency(
+                          (sale.totalAmountInTransactionCurrency ?? 0.0) -
+                              (sale.paidAmountInTransactionCurrency ?? 0.0),
+                          transactionCurrencyCode,
+                        ),
+                        style: TextStyle(
+                          color: _getRemainingColor(),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: WanzoSpacing.base),
+          // Liste des articles vendus
+          Text(
+            "Articles vendus",
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: WanzoSpacing.sm),
+          Card(
+            margin: EdgeInsets.zero,
+            child: ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: sale.items.length,
+              separatorBuilder: (context, index) => const Divider(),
+              itemBuilder: (context, index) {
+                final item = sale.items[index];
+                return ListTile(
+                  title: Text(item.productName),
+                  subtitle: Text(
+                    "${item.quantity.toInt()} × ${formatCurrency(item.unitPrice, item.currencyCode)}",
+                  ),
+                  trailing: Text(
+                    formatCurrency(item.totalPrice, item.currencyCode),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Barre d'actions pour mobile
+  Widget _buildMobileBottomBar(BuildContext context) {
+    return BottomAppBar(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: WanzoSpacing.base,
+          vertical: WanzoSpacing.sm,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed:
+                    () => _showDocumentTypeSelectionDialog(
+                      context,
+                      isPrintAction: true,
+                    ),
+                icon: const Icon(Icons.print),
+                label: const Text("Imprimer"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+            const SizedBox(width: WanzoSpacing.sm),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed:
+                    () => _showDocumentTypeSelectionDialog(
+                      context,
+                      isPrintAction: false,
+                    ),
+                icon: const Icon(Icons.share),
+                label: const Text("Partager"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).primaryColor,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+            if (sale.status == SaleStatus.pending ||
+                sale.status == SaleStatus.partiallyPaid) ...[
+              const SizedBox(width: WanzoSpacing.sm),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _markSaleAsCompleted(context),
+                  icon: const Icon(Icons.check),
+                  label: const Text("Terminer"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
+  }
+
+  /// Actions desktop sous forme de boutons
+  Widget _buildDesktopActions(BuildContext context) {
+    return Wrap(
+      spacing: WanzoSpacing.sm,
+      runSpacing: WanzoSpacing.sm,
+      children: [
+        ElevatedButton.icon(
+          onPressed:
+              () => _showDocumentTypeSelectionDialog(
+                context,
+                isPrintAction: true,
+              ),
+          icon: const Icon(Icons.print),
+          label: const Text("Imprimer"),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(
+              horizontal: WanzoSpacing.md,
+              vertical: WanzoSpacing.sm,
+            ),
+          ),
+        ),
+        ElevatedButton.icon(
+          onPressed:
+              () => _showDocumentTypeSelectionDialog(
+                context,
+                isPrintAction: false,
+              ),
+          icon: const Icon(Icons.share),
+          label: const Text("Partager"),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Theme.of(context).primaryColor,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(
+              horizontal: WanzoSpacing.md,
+              vertical: WanzoSpacing.sm,
+            ),
+          ),
+        ),
+        if (sale.status == SaleStatus.pending ||
+            sale.status == SaleStatus.partiallyPaid)
+          ElevatedButton.icon(
+            onPressed: () => _markSaleAsCompleted(context),
+            icon: const Icon(Icons.check),
+            label: const Text("Marquer comme terminée"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(
+                horizontal: WanzoSpacing.md,
+                vertical: WanzoSpacing.sm,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Helper pour construire une ligne de détail
+  Widget _buildDetailRow(
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: Colors.grey[600]),
+        const SizedBox(width: WanzoSpacing.sm),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+              ),
+              Text(value, style: Theme.of(context).textTheme.bodyMedium),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Helper pour construire une ligne de montant
+  Widget _buildAmountRow(
+    BuildContext context,
+    String label,
+    String value, {
+    bool isLarge = false,
+    bool isBold = false,
+    Color? valueColor,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style:
+              isLarge
+                  ? Theme.of(context).textTheme.titleMedium
+                  : Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+                    color: valueColor,
+                  ),
+        ),
+        Text(
+          value,
+          style:
+              isLarge
+                  ? Theme.of(context).textTheme.titleLarge
+                  : Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+                    color: valueColor,
+                  ),
+        ),
+      ],
+    );
+  }
+
+  /// Couleur pour le montant restant
+  Color _getRemainingColor() {
+    return ((sale.totalAmountInTransactionCurrency ?? 0.0) -
+                        (sale.paidAmountInTransactionCurrency ?? 0.0))
+                    .abs() <
+                0.001 ||
+            (sale.paidAmountInTransactionCurrency ?? 0.0) >=
+                (sale.totalAmountInTransactionCurrency ?? 0.0)
+        ? Colors.green
+        : Colors.red;
+  }
+
+  /// Marquer la vente comme terminée
+  void _markSaleAsCompleted(BuildContext context) {
+    final Sale updatedSale = sale.copyWith(
+      status: SaleStatus.completed,
+      paidAmountInTransactionCurrency: sale.totalAmountInTransactionCurrency,
+      paidAmountInCdf: sale.totalAmountInCdf,
+    );
+    context.read<SalesBloc>().add(UpdateSale(updatedSale));
+    GoRouter.of(context).pop();
   }
 
   /// Affiche une boîte de dialogue de confirmation pour supprimer la vente

@@ -8,6 +8,7 @@ import 'package:wanzo/core/enums/currency_enum.dart'; // Corrected: Currency is 
 import 'package:wanzo/core/models/currency_settings_model.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/widgets/desktop/responsive_form_container.dart';
+import 'package:wanzo/core/widgets/desktop/adaptive_modal.dart';
 import 'package:wanzo/core/widgets/smart_image.dart'; // SmartImage for Cloudinary URLs
 import 'package:wanzo/features/customer/bloc/customer_bloc.dart';
 import 'package:wanzo/features/customer/bloc/customer_event.dart';
@@ -1190,68 +1191,34 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     Sale sale,
     old_settings_model.Settings settings,
   ) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.85,
-      ),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (BuildContext bc) {
-        final invoiceService = InvoiceService();
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
-          child: SingleChildScrollView(
+    final invoiceService = InvoiceService();
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth >= 900;
+
+    // Utiliser AdaptiveModal sur desktop, BottomSheet sur mobile
+    if (isDesktop) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext dialogContext) {
+          return AdaptiveModal(
+            title: 'Vente enregistrée avec succès',
+            subtitle: 'Montant total: ${_formatAmount(sale)}',
+            size: ModalSize.small,
+            headerIcon: Icons.check_circle,
+            headerIconColor: Colors.green,
+            showCloseButton: false,
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                // En-tête avec message de succès
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0, top: 8.0),
-                  child: Column(
-                    children: [
-                      const Icon(
-                        Icons.check_circle,
-                        color: Colors.green,
-                        size: 48.0,
-                      ),
-                      const SizedBox(height: 8.0),
-                      Text(
-                        'Vente enregistrée avec succès',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24.0,
-                          vertical: 8.0,
-                        ),
-                        child: Text(
-                          'Montant total: ${_formatAmount(sale)}',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ),
-                      const Divider(),
-                    ],
-                  ),
-                ),
-                // Options
-                ListTile(
-                  leading: const Icon(
-                    Icons.add_circle_outline,
-                    color: Colors.green,
-                  ),
-                  title: const Text('Enregistrer une autre vente'),
-                  subtitle: const Text('Réinitialiser le formulaire'),
+              children: [
+                _buildDocumentOptionTile(
+                  icon: Icons.add_circle_outline,
+                  iconColor: Colors.green,
+                  title: 'Enregistrer une autre vente',
+                  subtitle: 'Réinitialiser le formulaire',
                   onTap: () {
-                    Navigator.pop(bc);
-                    _resetForm(); // Réinitialise le formulaire pour une nouvelle vente
-
-                    // Montrer un feedback à l'utilisateur
+                    Navigator.pop(dialogContext);
+                    _resetForm();
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text(
@@ -1264,14 +1231,13 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                     );
                   },
                 ),
-                // Nous gardons l'option de prévisualisation mais nous la plaçons en deuxième position
-                ListTile(
-                  leading: const Icon(Icons.visibility, color: Colors.blue),
-                  title: Text('Prévisualiser $documentType'),
+                _buildDocumentOptionTile(
+                  icon: Icons.visibility,
+                  iconColor: Colors.blue,
+                  title: 'Prévisualiser $documentType',
                   onTap: () async {
-                    Navigator.pop(bc);
+                    Navigator.pop(dialogContext);
                     try {
-                      // Utiliser url_launcher pour ouvrir le PDF
                       final file = File(pdfPath);
                       if (await file.exists()) {
                         final uri = Uri.file(pdfPath);
@@ -1283,20 +1249,22 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                     if (mounted) _closeAfterSuccess();
                   },
                 ),
-                ListTile(
-                  leading: const Icon(Icons.print, color: Colors.blue),
-                  title: Text('Imprimer $documentType'),
+                _buildDocumentOptionTile(
+                  icon: Icons.print,
+                  iconColor: Colors.blue,
+                  title: 'Imprimer $documentType',
                   onTap: () async {
-                    Navigator.pop(bc);
+                    Navigator.pop(dialogContext);
                     await invoiceService.printDocument(pdfPath);
                     if (mounted) _closeAfterSuccess();
                   },
                 ),
-                ListTile(
-                  leading: const Icon(Icons.share, color: Colors.orange),
-                  title: Text('Partager $documentType'),
+                _buildDocumentOptionTile(
+                  icon: Icons.share,
+                  iconColor: Colors.orange,
+                  title: 'Partager $documentType',
                   onTap: () async {
-                    Navigator.pop(bc);
+                    Navigator.pop(dialogContext);
                     await invoiceService.shareInvoice(
                       sale,
                       settings,
@@ -1305,19 +1273,205 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                     if (mounted) _closeAfterSuccess();
                   },
                 ),
-                ListTile(
-                  leading: const Icon(Icons.close, color: Colors.grey),
-                  title: const Text('Fermer et continuer'),
+                _buildDocumentOptionTile(
+                  icon: Icons.close,
+                  iconColor: Colors.grey,
+                  title: 'Fermer et continuer',
                   onTap: () {
-                    Navigator.pop(bc);
+                    Navigator.pop(dialogContext);
                     if (mounted) _closeAfterSuccess();
                   },
                 ),
               ],
             ),
+          );
+        },
+      );
+    } else {
+      // Mobile: garder le BottomSheet
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (BuildContext bc) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(
+              vertical: 16.0,
+              horizontal: 8.0,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  // En-tête avec message de succès
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16.0, top: 8.0),
+                    child: Column(
+                      children: [
+                        const Icon(
+                          Icons.check_circle,
+                          color: Colors.green,
+                          size: 48.0,
+                        ),
+                        const SizedBox(height: 8.0),
+                        Text(
+                          'Vente enregistrée avec succès',
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24.0,
+                            vertical: 8.0,
+                          ),
+                          child: Text(
+                            'Montant total: ${_formatAmount(sale)}',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ),
+                        const Divider(),
+                      ],
+                    ),
+                  ),
+                  // Options
+                  ListTile(
+                    leading: const Icon(
+                      Icons.add_circle_outline,
+                      color: Colors.green,
+                    ),
+                    title: const Text('Enregistrer une autre vente'),
+                    subtitle: const Text('Réinitialiser le formulaire'),
+                    onTap: () {
+                      Navigator.pop(bc);
+                      _resetForm();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Formulaire réinitialisé. Vous pouvez enregistrer une nouvelle vente.',
+                          ),
+                          backgroundColor: Colors.green,
+                          duration: Duration(seconds: 2),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.visibility, color: Colors.blue),
+                    title: Text('Prévisualiser $documentType'),
+                    onTap: () async {
+                      Navigator.pop(bc);
+                      try {
+                        final file = File(pdfPath);
+                        if (await file.exists()) {
+                          final uri = Uri.file(pdfPath);
+                          await launchUrl(uri);
+                        }
+                      } catch (e) {
+                        debugPrint(
+                          'Erreur lors de l\'ouverture du document: $e',
+                        );
+                      }
+                      if (mounted) _closeAfterSuccess();
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.print, color: Colors.blue),
+                    title: Text('Imprimer $documentType'),
+                    onTap: () async {
+                      Navigator.pop(bc);
+                      await invoiceService.printDocument(pdfPath);
+                      if (mounted) _closeAfterSuccess();
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.share, color: Colors.orange),
+                    title: Text('Partager $documentType'),
+                    onTap: () async {
+                      Navigator.pop(bc);
+                      await invoiceService.shareInvoice(
+                        sale,
+                        settings,
+                        customerPhoneNumber: _customerPhoneController.text,
+                      );
+                      if (mounted) _closeAfterSuccess();
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.close, color: Colors.grey),
+                    title: const Text('Fermer et continuer'),
+                    onTap: () {
+                      Navigator.pop(bc);
+                      if (mounted) _closeAfterSuccess();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
+  }
+
+  /// Helper pour construire une option de document (desktop)
+  Widget _buildDocumentOptionTile({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    String? subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: iconColor),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (subtitle != null)
+                      Text(
+                        subtitle,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: Colors.grey[400]),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 

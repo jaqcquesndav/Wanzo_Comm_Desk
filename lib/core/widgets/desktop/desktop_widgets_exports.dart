@@ -12,3 +12,4 @@ export 'desktop_data_table.dart';
 export 'desktop_header.dart';
 export 'desktop_sidebar.dart';
 export 'desktop_layout_state.dart';
+export 'detail_page_layout.dart';
