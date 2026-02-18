@@ -25,6 +25,9 @@ class ProductDetailsScreen extends StatefulWidget {
   /// Produit (optionnel, peut être obtenu à partir de l'ID)
   final Product? product;
 
+  /// Constante pour le breakpoint desktop
+  static const double desktopBreakpoint = 900.0;
+
   const ProductDetailsScreen({
     super.key,
     required this.productId,
@@ -107,37 +110,52 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
               icon: const Icon(Icons.edit),
               onPressed: () => _navigateToEditProduct(context, product),
             ),
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              tooltip: 'Supprimer',
+              onPressed: () => _showDeleteProductConfirmation(context, product),
+            ),
           ],
-          body: Column(
-            children: [
-              // TabBar pour les onglets information/historique
-              Material(
-                color: Theme.of(context).primaryColor,
-                child: TabBar(
-                  controller: _tabController,
-                  tabs: const [
-                    Tab(text: 'Informations'),
-                    Tab(text: 'Historique'),
-                  ],
-                ),
-              ),
-              // TabBarView pour le contenu des onglets
-              Expanded(
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    // Onglet "Informations"
-                    SingleChildScrollView(
-                      padding: const EdgeInsets.all(WanzoSpacing.md),
-                      child: _buildProductDetails(context, product),
-                    ),
+          body: LayoutBuilder(
+            builder: (context, constraints) {
+              final isDesktop =
+                  constraints.maxWidth >=
+                  ProductDetailsScreen.desktopBreakpoint;
 
-                    // Onglet "Historique"
-                    _buildTransactionsHistory(context, transactions),
-                  ],
-                ),
-              ),
-            ],
+              return Column(
+                children: [
+                  // TabBar pour les onglets information/historique
+                  Material(
+                    color: Theme.of(context).primaryColor,
+                    child: TabBar(
+                      controller: _tabController,
+                      tabs: const [
+                        Tab(text: 'Informations'),
+                        Tab(text: 'Historique'),
+                      ],
+                    ),
+                  ),
+                  // TabBarView pour le contenu des onglets
+                  Expanded(
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        // Onglet "Informations"
+                        isDesktop
+                            ? _buildDesktopProductDetails(context, product)
+                            : SingleChildScrollView(
+                              padding: const EdgeInsets.all(WanzoSpacing.md),
+                              child: _buildProductDetails(context, product),
+                            ),
+
+                        // Onglet "Historique"
+                        _buildTransactionsHistory(context, transactions),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
           floatingActionButton:
               _tabController.index == 1
@@ -374,6 +392,295 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
         ),
         const SizedBox(height: WanzoSpacing.lg),
       ],
+    );
+  }
+
+  /// Construire les détails du produit pour desktop (2 colonnes)
+  Widget _buildDesktopProductDetails(BuildContext context, Product product) {
+    final settingsState = context.watch<SettingsBloc>().state;
+    Currency currency = Currency.USD;
+
+    if (settingsState is SettingsLoaded) {
+      currency = settingsState.settings.activeCurrency;
+    } else if (settingsState is SettingsUpdated) {
+      currency = settingsState.settings.activeCurrency;
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(WanzoSpacing.lg),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Colonne principale (informations générales + prix)
+          Expanded(
+            flex: 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // En-tête avec statut stock
+                _buildStockStatusCard(context, product),
+                const SizedBox(height: WanzoSpacing.lg),
+
+                // Informations générales
+                _buildSectionCard(
+                  context,
+                  title: 'Informations générales',
+                  icon: Icons.info,
+                  content: Column(
+                    children: [
+                      _buildInfoRow(context, label: 'Nom', value: product.name),
+                      if (product.description.isNotEmpty) ...[
+                        const Divider(),
+                        _buildInfoRow(
+                          context,
+                          label: 'Description',
+                          value: product.description,
+                        ),
+                      ],
+                      if (product.barcode.isNotEmpty) ...[
+                        const Divider(),
+                        _buildInfoRow(
+                          context,
+                          label: 'Code-barres / Référence',
+                          value: product.barcode,
+                        ),
+                      ],
+                      const Divider(),
+                      _buildInfoRow(
+                        context,
+                        label: 'Catégorie',
+                        value: _getCategoryName(product.category),
+                      ),
+                      const Divider(),
+                      _buildInfoRow(
+                        context,
+                        label: 'Unité de mesure',
+                        value: _getUnitName(product.unit),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: WanzoSpacing.lg),
+
+                // Informations de prix
+                _buildSectionCard(
+                  context,
+                  title: 'Prix',
+                  icon: Icons.attach_money,
+                  content: Column(
+                    children: [
+                      _buildInfoRow(
+                        context,
+                        label: 'Prix d\'achat',
+                        value: currency_util.formatCurrency(
+                          product.costPriceInCdf,
+                          currency.code,
+                        ),
+                      ),
+                      const Divider(),
+                      _buildInfoRow(
+                        context,
+                        label: 'Prix de vente',
+                        value: currency_util.formatCurrency(
+                          product.sellingPriceInCdf,
+                          currency.code,
+                        ),
+                      ),
+                      const Divider(),
+                      _buildInfoRow(
+                        context,
+                        label: 'Marge bénéficiaire',
+                        value: currency_util.formatCurrency(
+                          product.profitMarginInCdf,
+                          currency.code,
+                        ),
+                        valueColor:
+                            product.profitMarginInCdf > 0
+                                ? Colors.green
+                                : Colors.red,
+                      ),
+                      const Divider(),
+                      _buildInfoRow(
+                        context,
+                        label: 'Marge (%)',
+                        value:
+                            '${product.profitPercentageInCdf.toStringAsFixed(2)}%',
+                        valueColor:
+                            product.profitPercentageInCdf > 0
+                                ? Colors.green
+                                : Colors.red,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: WanzoSpacing.lg),
+          // Sidebar (stock + dates + actions)
+          SizedBox(
+            width: 350,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Informations de stock
+                _buildSectionCard(
+                  context,
+                  title: 'Stock',
+                  icon: Icons.inventory_2,
+                  content: Column(
+                    children: [
+                      _buildInfoRow(
+                        context,
+                        label: 'Quantité en stock',
+                        value:
+                            '${product.stockQuantity.toStringAsFixed(product.stockQuantity.truncateToDouble() == product.stockQuantity ? 0 : 2)} ${_getUnitName(product.unit)}',
+                        valueColor:
+                            product.isLowStock
+                                ? Colors.orange
+                                : (product.stockQuantity <= 0
+                                    ? Colors.red
+                                    : null),
+                      ),
+                      const Divider(),
+                      _buildInfoRow(
+                        context,
+                        label: 'Seuil d\'alerte',
+                        value:
+                            '${product.alertThreshold.toStringAsFixed(product.alertThreshold.truncateToDouble() == product.alertThreshold ? 0 : 2)} ${_getUnitName(product.unit)}',
+                      ),
+                      if (product.hasExpirationDate) ...[
+                        const Divider(),
+                        _buildInfoRow(
+                          context,
+                          label: 'Date d\'expiration',
+                          value: DateFormat(
+                            'dd/MM/yyyy',
+                          ).format(product.expirationDate!),
+                          valueColor:
+                              product.isExpired
+                                  ? Colors.red
+                                  : product.isExpiringVerySoon
+                                  ? Colors.orange
+                                  : product.isExpiringSoon
+                                  ? Colors.amber.shade700
+                                  : null,
+                          icon:
+                              product.isExpired || product.isExpiringVerySoon
+                                  ? Icon(
+                                    product.isExpired
+                                        ? Icons.error
+                                        : Icons.warning,
+                                    size: 16,
+                                    color:
+                                        product.isExpired
+                                            ? Colors.red
+                                            : Colors.orange,
+                                  )
+                                  : null,
+                        ),
+                      ],
+                      const Divider(),
+                      _buildInfoRow(
+                        context,
+                        label: 'Valeur du stock',
+                        value: currency_util.formatCurrency(
+                          product.stockValueInCdf,
+                          currency.code,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: WanzoSpacing.lg),
+
+                // Dates
+                _buildSectionCard(
+                  context,
+                  title: 'Dates',
+                  icon: Icons.calendar_today,
+                  content: Column(
+                    children: [
+                      _buildInfoRow(
+                        context,
+                        label: 'Date d\'ajout',
+                        value: DateFormat(
+                          'dd/MM/yyyy HH:mm',
+                        ).format(product.createdAt),
+                      ),
+                      const Divider(),
+                      _buildInfoRow(
+                        context,
+                        label: 'Dernière mise à jour',
+                        value: DateFormat(
+                          'dd/MM/yyyy HH:mm',
+                        ).format(product.updatedAt),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: WanzoSpacing.lg),
+
+                // Actions rapides
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(WanzoSpacing.md),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.flash_on,
+                              color: Theme.of(context).primaryColor,
+                            ),
+                            const SizedBox(width: WanzoSpacing.sm),
+                            Text(
+                              'Actions rapides',
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                        const Divider(),
+                        ElevatedButton.icon(
+                          onPressed:
+                              () => _showQuickStockAdjustmentDialog(
+                                context,
+                                product,
+                                true,
+                              ),
+                          icon: const Icon(Icons.add_circle),
+                          label: const Text('Ajouter du stock'),
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 44),
+                          ),
+                        ),
+                        const SizedBox(height: WanzoSpacing.sm),
+                        OutlinedButton.icon(
+                          onPressed:
+                              product.stockQuantity > 0
+                                  ? () => _showQuickStockAdjustmentDialog(
+                                    context,
+                                    product,
+                                    false,
+                                  )
+                                  : null,
+                          icon: const Icon(Icons.remove_circle),
+                          label: const Text('Retirer du stock'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 44),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
