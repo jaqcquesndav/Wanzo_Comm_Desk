@@ -38,7 +38,6 @@ import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/sales/screens/sale_details_screen.dart';
 import 'package:wanzo/features/expenses/screens/expense_detail_screen.dart';
 import '../../features/security/screens/security_settings_screen.dart';
-import '../widgets/desktop/main_shell.dart';
 
 /// Configuration des routes de l\'application
 class AppRouter {
@@ -148,210 +147,198 @@ class AppRouter {
       GoRoute(path: '/login', redirect: (_, __) => '/auth0_info'),
       GoRoute(path: '/signup', redirect: (_, __) => '/auth0_info'),
 
-      // ============================================================
-      // SHELL ROUTE - Layout persistant (sidebar, header, chat Adha)
-      // Le MainShell survit aux changements de route comme VS Code
-      // ============================================================
-      ShellRoute(
-        builder: (context, state, child) => MainShell(child: child),
+      // Routes principales de l'application
+      GoRoute(
+        path: '/dashboard',
+        builder: (context, state) => const DashboardScreen(),
+      ),
+
+      // Routes principales pour Ventes, Dépenses, Financement (Desktop)
+      GoRoute(
+        path: '/sales',
+        name: 'sales_list',
+        builder: (context, state) => const SalesListScreen(),
         routes: [
           GoRoute(
-            path: '/dashboard',
-            builder: (context, state) => const DashboardScreen(),
+            path: 'add',
+            name: 'add_sale',
+            builder: (context, state) => const AddSaleScreen(),
           ),
+        ],
+      ),
+      GoRoute(
+        path: '/expenses',
+        name: 'expenses_list',
+        builder: (context, state) => const ExpensesListScreen(),
+        routes: [
+          GoRoute(
+            path: 'add',
+            name: 'add_expense',
+            builder: (context, state) => const AddExpenseScreen(),
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/financing',
+        name: 'financing_list',
+        builder: (context, state) => const FinancingListScreen(),
+        routes: [
+          GoRoute(
+            path: 'add',
+            name: 'add_financing',
+            builder: (context, state) => const AddFinancingRequestScreen(),
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/financing-detail/:id',
+        name: 'financing_detail',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          final financing = state.extra as FinancingRequest?;
+          return FinancingDetailScreen(id: id, financing: financing);
+        },
+      ),
 
-          // Routes principales pour Ventes, Dépenses, Financement (Desktop)
+      // Route pour opérations (mobile - garde les onglets)
+      GoRoute(
+        path: '/inventory',
+        builder: (context, state) => const InventoryScreen(),
+        routes: [
           GoRoute(
-            path: '/sales',
-            name: 'sales_list',
-            builder: (context, state) => const SalesListScreen(),
-            routes: [
-              GoRoute(
-                path: 'add',
-                name: 'add_sale',
-                builder: (context, state) => const AddSaleScreen(),
-              ),
-            ],
+            path: 'add',
+            builder: (context, state) => const AddProductScreen(),
           ),
           GoRoute(
-            path: '/expenses',
-            name: 'expenses_list',
-            builder: (context, state) => const ExpensesListScreen(),
-            routes: [
-              GoRoute(
-                path: 'add',
-                name: 'add_expense',
-                builder: (context, state) => const AddExpenseScreen(),
-              ),
-            ],
-          ),
-          GoRoute(
-            path: '/financing',
-            name: 'financing_list',
-            builder: (context, state) => const FinancingListScreen(),
-            routes: [
-              GoRoute(
-                path: 'add',
-                name: 'add_financing',
-                builder: (context, state) => const AddFinancingRequestScreen(),
-              ),
-            ],
-          ),
-          GoRoute(
-            path: '/financing-detail/:id',
-            name: 'financing_detail',
+            path: 'edit/:productId',
             builder: (context, state) {
-              final id = state.pathParameters['id']!;
-              final financing = state.extra as FinancingRequest?;
-              return FinancingDetailScreen(id: id, financing: financing);
+              final product = state.extra as Product?;
+              return AddProductScreen(product: product);
             },
           ),
+          GoRoute(
+            path: 'product/:productId',
+            builder: (context, state) {
+              final product = state.extra as Product?;
+              final productId = state.pathParameters['productId'] ?? '';
+              return ProductDetailsScreen(
+                productId: productId,
+                product: product,
+              );
+            },
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/contacts',
+        builder: (context, state) => const ContactsScreen(),
+      ),
+      GoRoute(path: '/adha', builder: (context, state) => const AdhaScreen()),
+      GoRoute(
+        path: '/customers',
+        builder: (context, state) => const SizedBox.shrink(),
+        routes: [
+          GoRoute(
+            path: 'add',
+            builder: (context, state) => const AddCustomerScreen(),
+          ),
+          GoRoute(
+            path: 'edit/:customerId',
+            builder: (context, state) {
+              final customer = state.extra as Customer?;
+              return AddCustomerScreen(customer: customer);
+            },
+          ),
+          GoRoute(
+            path: 'detail/:customerId',
+            builder: (context, state) {
+              final customer = state.extra as Customer?;
+              final customerId = state.pathParameters['customerId'] ?? '';
+              return CustomerDetailsScreen(
+                customerId: customerId,
+                customer: customer,
+              );
+            },
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/suppliers',
+        builder: (context, state) => const SizedBox.shrink(),
+        routes: [
+          GoRoute(
+            path: 'add',
+            builder: (context, state) => const AddSupplierScreen(),
+          ),
+          GoRoute(
+            path: 'edit/:supplierId',
+            builder: (context, state) {
+              final supplier = state.extra as Supplier?;
+              return AddSupplierScreen(supplier: supplier);
+            },
+          ),
+          GoRoute(
+            path: 'detail/:supplierId',
+            builder: (context, state) {
+              final supplier = state.extra as Supplier?;
+              final supplierId = state.pathParameters['supplierId'] ?? '';
+              return SupplierDetailsScreen(
+                supplierId: supplierId,
+                supplier: supplier,
+              );
+            },
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/settings',
+        builder: (context, state) => const SettingsScreen(),
+        routes: [
+          GoRoute(
+            path: 'notifications',
+            builder: (context, state) {
+              final settings = state.extra as dynamic;
+              return NotificationSettingsScreen(settings: settings);
+            },
+          ),
+          GoRoute(
+            path: 'security',
+            builder: (context, state) => const SecuritySettingsScreen(),
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/notifications',
+        builder: (context, state) => const NotificationsScreen(),
+      ),
+      GoRoute(
+        path: '/profile',
+        builder: (context, state) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: '/operations',
+        name: AppRoute.operations.name,
+        builder: (context, state) => const OperationsScreen(),
+        routes: [
+          GoRoute(
+            path: 'sales/add',
+            name: 'add_sale_from_operations',
+            builder: (context, state) => const AddSaleScreen(),
+          ),
+          GoRoute(
+            path: 'expenses/add',
+            name: 'add_expense_from_operations',
+            builder: (context, state) => const AddExpenseScreen(),
+          ),
+          GoRoute(
+            path: 'financing/add',
+            name: 'add_financing_from_operations',
+            builder: (context, state) => const AddFinancingRequestScreen(),
+          ),
+        ],
+      ),
 
-          // Route pour opérations (mobile - garde les onglets)
-          GoRoute(
-            path: '/inventory',
-            builder: (context, state) => const InventoryScreen(),
-            routes: [
-              GoRoute(
-                path: 'add',
-                builder: (context, state) => const AddProductScreen(),
-              ),
-              GoRoute(
-                path: 'edit/:productId',
-                builder: (context, state) {
-                  final product = state.extra as Product?;
-                  return AddProductScreen(product: product);
-                },
-              ),
-              GoRoute(
-                path: 'product/:productId',
-                builder: (context, state) {
-                  final product = state.extra as Product?;
-                  final productId = state.pathParameters['productId'] ?? '';
-                  return ProductDetailsScreen(
-                    productId: productId,
-                    product: product,
-                  );
-                },
-              ),
-            ],
-          ),
-          GoRoute(
-            path: '/contacts',
-            builder: (context, state) => const ContactsScreen(),
-          ),
-          GoRoute(
-            path: '/adha',
-            builder: (context, state) => const AdhaScreen(),
-          ),
-          GoRoute(
-            path: '/customers',
-            builder: (context, state) => const SizedBox.shrink(),
-            routes: [
-              GoRoute(
-                path: 'add',
-                builder: (context, state) => const AddCustomerScreen(),
-              ),
-              GoRoute(
-                path: 'edit/:customerId',
-                builder: (context, state) {
-                  final customer = state.extra as Customer?;
-                  return AddCustomerScreen(customer: customer);
-                },
-              ),
-              GoRoute(
-                path: 'detail/:customerId',
-                builder: (context, state) {
-                  final customer = state.extra as Customer?;
-                  final customerId = state.pathParameters['customerId'] ?? '';
-                  return CustomerDetailsScreen(
-                    customerId: customerId,
-                    customer: customer,
-                  );
-                },
-              ),
-            ],
-          ),
-          GoRoute(
-            path: '/suppliers',
-            builder: (context, state) => const SizedBox.shrink(),
-            routes: [
-              GoRoute(
-                path: 'add',
-                builder: (context, state) => const AddSupplierScreen(),
-              ),
-              GoRoute(
-                path: 'edit/:supplierId',
-                builder: (context, state) {
-                  final supplier = state.extra as Supplier?;
-                  return AddSupplierScreen(supplier: supplier);
-                },
-              ),
-              GoRoute(
-                path: 'detail/:supplierId',
-                builder: (context, state) {
-                  final supplier = state.extra as Supplier?;
-                  final supplierId = state.pathParameters['supplierId'] ?? '';
-                  return SupplierDetailsScreen(
-                    supplierId: supplierId,
-                    supplier: supplier,
-                  );
-                },
-              ),
-            ],
-          ),
-          GoRoute(
-            path: '/settings',
-            builder: (context, state) => const SettingsScreen(),
-            routes: [
-              GoRoute(
-                path: 'notifications',
-                builder: (context, state) {
-                  final settings = state.extra as dynamic;
-                  return NotificationSettingsScreen(settings: settings);
-                },
-              ),
-              GoRoute(
-                path: 'security',
-                builder: (context, state) => const SecuritySettingsScreen(),
-              ),
-            ],
-          ),
-          GoRoute(
-            path: '/notifications',
-            builder: (context, state) => const NotificationsScreen(),
-          ),
-          GoRoute(
-            path: '/profile',
-            builder: (context, state) => const ProfileScreen(),
-          ),
-          GoRoute(
-            path: '/operations',
-            name: AppRoute.operations.name,
-            builder: (context, state) => const OperationsScreen(),
-            routes: [
-              GoRoute(
-                path: 'sales/add',
-                name: 'add_sale_from_operations',
-                builder: (context, state) => const AddSaleScreen(),
-              ),
-              GoRoute(
-                path: 'expenses/add',
-                name: 'add_expense_from_operations',
-                builder: (context, state) => const AddExpenseScreen(),
-              ),
-              GoRoute(
-                path: 'financing/add',
-                name: 'add_financing_from_operations',
-                builder: (context, state) => const AddFinancingRequestScreen(),
-              ),
-            ],
-          ),
-        ], // Fin des routes du ShellRoute
-      ), // Fin du ShellRoute
-      // ============================================================
-      // Routes de détail - hors du shell pour un affichage plein écran
-      // ============================================================
+      // Routes de détail
       GoRoute(
         path: '/sale-detail/:id',
         name: AppRoute.saleDetail.name,

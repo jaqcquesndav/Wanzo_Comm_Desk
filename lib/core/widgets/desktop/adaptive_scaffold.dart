@@ -69,17 +69,19 @@ class AdaptiveScaffold extends StatefulWidget {
 }
 
 class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
+  // Utilise l'instance globale singleton pour conserver l'état entre les navigations
   late final DesktopLayoutState _layoutState;
 
   @override
   void initState() {
     super.initState();
-    _layoutState = DesktopLayoutState();
+    // Utilise l'instance globale partagée au lieu d'en créer une nouvelle
+    _layoutState = GlobalDesktopLayoutState.instance;
   }
 
   @override
   void dispose() {
-    _layoutState.dispose();
+    // NE PAS dispose le state global car il est partagé entre les écrans
     super.dispose();
   }
 

@@ -4,6 +4,14 @@ import '../../../constants/colors.dart';
 import '../../../features/adha/bloc/adha_bloc.dart';
 import '../../../features/adha/bloc/adha_state.dart';
 
+/// Instance globale singleton du layout desktop
+/// Permet de conserver l'état (sidebar, panneau Adha) entre les navigations
+class GlobalDesktopLayoutState {
+  GlobalDesktopLayoutState._();
+
+  static final DesktopLayoutState instance = DesktopLayoutState();
+}
+
 /// État global du layout desktop partagé entre les composants
 class DesktopLayoutState extends ChangeNotifier {
   bool _isSidebarExpanded = true;

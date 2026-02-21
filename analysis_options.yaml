@@ -10,10 +10,6 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
-  errors:
-    # Ignorer les erreurs dans les fichiers générés (*.g.dart, *.freezed.dart)
-    # hive_generator génère du code incompatible avec Dart 3.8
-    unnecessary_null_aware_operator: ignore
   exclude:
     - "**/*.g.dart"
     - "**/*.freezed.dart"
