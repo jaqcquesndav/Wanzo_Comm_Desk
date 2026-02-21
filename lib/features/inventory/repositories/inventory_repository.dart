@@ -414,4 +414,13 @@ class InventoryRepository {
   int getTotalProductCount() {
     return _productsBox.length;
   }
+
+  /// Vider le cache local de l'inventaire (à utiliser lors du changement de business unit)
+  Future<void> clearLocalCache() async {
+    await _productsBox.clear();
+    await _transactionsBox.clear();
+    debugPrint(
+      "Cache local de l'inventaire vidé (produits et transactions de stock)",
+    );
+  }
 }

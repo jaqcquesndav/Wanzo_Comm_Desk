@@ -204,6 +204,16 @@ class MockSalesRepository extends _i1.Mock implements _i3.SalesRepository {
         ),
         returnValue: _i4.Future<Map<String, dynamic>?>.value(),
       ) as _i4.Future<Map<String, dynamic>?>);
+
+  @override
+  _i4.Future<void> clearLocalCache() => (super.noSuchMethod(
+        Invocation.method(
+          #clearLocalCache,
+          [],
+        ),
+        returnValue: _i4.Future<void>.value(),
+        returnValueForMissingStub: _i4.Future<void>.value(),
+      ) as _i4.Future<void>);
 }
 
 /// A class which mocks [Box].

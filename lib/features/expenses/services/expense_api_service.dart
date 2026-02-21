@@ -32,6 +32,7 @@ abstract class ExpenseApiService {
     String? supplierName,
     String? currencyCode,
     double? exchangeRate,
+    String? supplierPhoneNumber,
   });
 
   /// Récupère une dépense par son ID
@@ -53,6 +54,7 @@ abstract class ExpenseApiService {
     String? supplierName,
     String? currencyCode,
     double? exchangeRate,
+    String? supplierPhoneNumber,
   });
 
   /// Supprime une dépense
@@ -180,6 +182,7 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
     String? supplierName,
     String? currencyCode,
     double? exchangeRate,
+    String? supplierPhoneNumber,
   }) async {
     try {
       List<String>? attachmentUrls;
@@ -228,6 +231,8 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
         if (supplierName != null) 'supplierName': supplierName,
         if (currencyCode != null) 'currencyCode': currencyCode,
         if (exchangeRate != null) 'exchangeRate': exchangeRate,
+        if (supplierPhoneNumber != null && supplierPhoneNumber.isNotEmpty)
+          'supplierPhoneNumber': supplierPhoneNumber,
         if (attachmentUrls != null && attachmentUrls.isNotEmpty)
           'attachmentUrls': attachmentUrls,
       };
@@ -328,6 +333,7 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
     String? supplierName,
     String? currencyCode,
     double? exchangeRate,
+    String? supplierPhoneNumber,
   }) async {
     try {
       List<String>? uploadedAttachmentUrls;
@@ -378,6 +384,8 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
         if (supplierName != null) 'supplierName': supplierName,
         if (currencyCode != null) 'currencyCode': currencyCode,
         if (exchangeRate != null) 'exchangeRate': exchangeRate,
+        if (supplierPhoneNumber != null && supplierPhoneNumber.isNotEmpty)
+          'supplierPhoneNumber': supplierPhoneNumber,
         // `attachmentUrls` remplace toutes les URLs existantes (selon UpdateExpenseDto)
         if (uploadedAttachmentUrls != null && uploadedAttachmentUrls.isNotEmpty)
           'attachmentUrls': uploadedAttachmentUrls,

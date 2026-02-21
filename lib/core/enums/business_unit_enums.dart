@@ -36,7 +36,17 @@ extension BusinessUnitTypeExtension on BusinessUnitType {
   }
 
   /// Valeur API (utilisée pour la sérialisation JSON)
-  String get apiValue => code;
+  /// Le backend attend les valeurs en MAJUSCULES: COMPANY, BRANCH, POS
+  String get apiValue {
+    switch (this) {
+      case BusinessUnitType.company:
+        return 'COMPANY';
+      case BusinessUnitType.branch:
+        return 'BRANCH';
+      case BusinessUnitType.pos:
+        return 'POS';
+    }
+  }
 
   /// Niveau dans la hiérarchie (0, 1 ou 2)
   int get hierarchyLevel {

@@ -330,4 +330,10 @@ class SalesRepository {
     // Forcer la persistance immédiate
     await _salesBox.flush();
   }
+
+  /// Vider le cache local des ventes (à utiliser lors du changement de business unit)
+  Future<void> clearLocalCache() async {
+    await _salesBox.clear();
+    Logger.info('Cache local des ventes vidé');
+  }
 }

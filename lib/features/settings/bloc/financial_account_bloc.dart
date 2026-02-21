@@ -5,13 +5,14 @@ import 'financial_account_event.dart';
 import 'financial_account_state.dart';
 
 /// BLoC pour gérer les comptes financiers
-class FinancialAccountBloc extends Bloc<FinancialAccountEvent, FinancialAccountState> {
+class FinancialAccountBloc
+    extends Bloc<FinancialAccountEvent, FinancialAccountState> {
   /// Repository pour accéder aux comptes financiers
   final FinancialAccountRepository _repository;
 
-  FinancialAccountBloc({
-    required FinancialAccountRepository repository,
-  }) : _repository = repository, super(const FinancialAccountInitial()) {
+  FinancialAccountBloc({required FinancialAccountRepository repository})
+    : _repository = repository,
+      super(const FinancialAccountInitial()) {
     on<LoadFinancialAccounts>(_onLoadFinancialAccounts);
     on<AddFinancialAccount>(_onAddFinancialAccount);
     on<UpdateFinancialAccount>(_onUpdateFinancialAccount);
@@ -29,10 +30,9 @@ class FinancialAccountBloc extends Bloc<FinancialAccountEvent, FinancialAccountS
     emit(const FinancialAccountLoading());
     try {
       final accounts = _repository.getAllAccounts();
-      emit(FinancialAccountLoaded(
-        accounts: accounts,
-        filteredAccounts: accounts,
-      ));
+      emit(
+        FinancialAccountLoaded(accounts: accounts, filteredAccounts: accounts),
+      );
     } catch (e) {
       emit(FinancialAccountError('Erreur lors du chargement des comptes: $e'));
     }
@@ -61,17 +61,21 @@ class FinancialAccountBloc extends Bloc<FinancialAccountEvent, FinancialAccountS
       // Ajouter le compte
       await _repository.addAccount(event.account);
       final updatedAccounts = _repository.getAllAccounts();
-      
-      emit(FinancialAccountOperationSuccess(
-        message: 'Compte ajouté avec succès',
-        accounts: updatedAccounts,
-      ));
-      
+
+      emit(
+        FinancialAccountOperationSuccess(
+          message: 'Compte ajouté avec succès',
+          accounts: updatedAccounts,
+        ),
+      );
+
       // Recharger les comptes
-      emit(FinancialAccountLoaded(
-        accounts: updatedAccounts,
-        filteredAccounts: updatedAccounts,
-      ));
+      emit(
+        FinancialAccountLoaded(
+          accounts: updatedAccounts,
+          filteredAccounts: updatedAccounts,
+        ),
+      );
     } catch (e) {
       emit(FinancialAccountError('Erreur lors de l\'ajout du compte: $e'));
     }
@@ -91,7 +95,10 @@ class FinancialAccountBloc extends Bloc<FinancialAccountEvent, FinancialAccountS
       }
 
       // Vérifier les doublons (en excluant le compte actuel)
-      final duplicateError = _checkForDuplicates(event.account, excludeId: event.account.id);
+      final duplicateError = _checkForDuplicates(
+        event.account,
+        excludeId: event.account.id,
+      );
       if (duplicateError != null) {
         emit(FinancialAccountError(duplicateError));
         return;
@@ -100,19 +107,25 @@ class FinancialAccountBloc extends Bloc<FinancialAccountEvent, FinancialAccountS
       // Mettre à jour le compte
       await _repository.updateAccount(event.account);
       final updatedAccounts = _repository.getAllAccounts();
-      
-      emit(FinancialAccountOperationSuccess(
-        message: 'Compte mis à jour avec succès',
-        accounts: updatedAccounts,
-      ));
-      
+
+      emit(
+        FinancialAccountOperationSuccess(
+          message: 'Compte mis à jour avec succès',
+          accounts: updatedAccounts,
+        ),
+      );
+
       // Recharger les comptes
-      emit(FinancialAccountLoaded(
-        accounts: updatedAccounts,
-        filteredAccounts: updatedAccounts,
-      ));
+      emit(
+        FinancialAccountLoaded(
+          accounts: updatedAccounts,
+          filteredAccounts: updatedAccounts,
+        ),
+      );
     } catch (e) {
-      emit(FinancialAccountError('Erreur lors de la mise à jour du compte: $e'));
+      emit(
+        FinancialAccountError('Erreur lors de la mise à jour du compte: $e'),
+      );
     }
   }
 
@@ -124,19 +137,25 @@ class FinancialAccountBloc extends Bloc<FinancialAccountEvent, FinancialAccountS
     try {
       await _repository.deleteAccount(event.accountId);
       final updatedAccounts = _repository.getAllAccounts();
-      
-      emit(FinancialAccountOperationSuccess(
-        message: 'Compte supprimé avec succès',
-        accounts: updatedAccounts,
-      ));
-      
+
+      emit(
+        FinancialAccountOperationSuccess(
+          message: 'Compte supprimé avec succès',
+          accounts: updatedAccounts,
+        ),
+      );
+
       // Recharger les comptes
-      emit(FinancialAccountLoaded(
-        accounts: updatedAccounts,
-        filteredAccounts: updatedAccounts,
-      ));
+      emit(
+        FinancialAccountLoaded(
+          accounts: updatedAccounts,
+          filteredAccounts: updatedAccounts,
+        ),
+      );
     } catch (e) {
-      emit(FinancialAccountError('Erreur lors de la suppression du compte: $e'));
+      emit(
+        FinancialAccountError('Erreur lors de la suppression du compte: $e'),
+      );
     }
   }
 
@@ -148,19 +167,27 @@ class FinancialAccountBloc extends Bloc<FinancialAccountEvent, FinancialAccountS
     try {
       await _repository.setDefaultAccount(event.accountId);
       final updatedAccounts = _repository.getAllAccounts();
-      
-      emit(FinancialAccountOperationSuccess(
-        message: 'Compte par défaut défini avec succès',
-        accounts: updatedAccounts,
-      ));
-      
+
+      emit(
+        FinancialAccountOperationSuccess(
+          message: 'Compte par défaut défini avec succès',
+          accounts: updatedAccounts,
+        ),
+      );
+
       // Recharger les comptes
-      emit(FinancialAccountLoaded(
-        accounts: updatedAccounts,
-        filteredAccounts: updatedAccounts,
-      ));
+      emit(
+        FinancialAccountLoaded(
+          accounts: updatedAccounts,
+          filteredAccounts: updatedAccounts,
+        ),
+      );
     } catch (e) {
-      emit(FinancialAccountError('Erreur lors de la définition du compte par défaut: $e'));
+      emit(
+        FinancialAccountError(
+          'Erreur lors de la définition du compte par défaut: $e',
+        ),
+      );
     }
   }
 
@@ -171,21 +198,24 @@ class FinancialAccountBloc extends Bloc<FinancialAccountEvent, FinancialAccountS
   ) async {
     if (state is FinancialAccountLoaded) {
       final currentState = state as FinancialAccountLoaded;
-      
+
       List<FinancialAccount> filteredAccounts;
       if (event.accountType == null) {
         filteredAccounts = currentState.accounts;
       } else {
-        filteredAccounts = currentState.accounts
-            .where((account) => account.type == event.accountType)
-            .toList();
+        filteredAccounts =
+            currentState.accounts
+                .where((account) => account.type == event.accountType)
+                .toList();
       }
-      
-      emit(FinancialAccountLoaded(
-        accounts: currentState.accounts,
-        filteredAccounts: filteredAccounts,
-        filterType: event.accountType,
-      ));
+
+      emit(
+        FinancialAccountLoaded(
+          accounts: currentState.accounts,
+          filteredAccounts: filteredAccounts,
+          filterType: event.accountType,
+        ),
+      );
     }
   }
 
@@ -203,10 +233,10 @@ class FinancialAccountBloc extends Bloc<FinancialAccountEvent, FinancialAccountS
       if (!account.isValidMobileMoneyAccount) {
         return 'Informations Mobile Money incomplètes';
       }
-      
-      // Validation du numéro de téléphone
+
+      // Validation du numéro de téléphone (minimum 6 chiffres pour certains pays)
       if (account.phoneNumber != null) {
-        final phoneRegex = RegExp(r'^\+?[0-9]{8,15}$');
+        final phoneRegex = RegExp(r'^\+?[0-9]{6,15}$');
         if (!phoneRegex.hasMatch(account.phoneNumber!)) {
           return 'Numéro de téléphone invalide';
         }
@@ -251,12 +281,18 @@ class FinancialAccountBloc extends Bloc<FinancialAccountEvent, FinancialAccountS
     emit(const FinancialAccountLoading());
     try {
       final syncedAccounts = await _repository.fullSync();
-      emit(FinancialAccountLoaded(
-        accounts: syncedAccounts,
-        filteredAccounts: syncedAccounts,
-      ));
+      emit(
+        FinancialAccountLoaded(
+          accounts: syncedAccounts,
+          filteredAccounts: syncedAccounts,
+        ),
+      );
     } catch (e) {
-      emit(FinancialAccountError('Erreur lors de la synchronisation: ${e.toString()}'));
+      emit(
+        FinancialAccountError(
+          'Erreur lors de la synchronisation: ${e.toString()}',
+        ),
+      );
     }
   }
 }

@@ -11,7 +11,7 @@ class TransactionRepository {
   final ExpenseRepository? _expenseRepository; // Dépendance optionnelle
 
   TransactionRepository({ExpenseRepository? expenseRepository})
-      : _expenseRepository = expenseRepository;
+    : _expenseRepository = expenseRepository;
 
   /// Initialisation du repository
   Future<void> init() async {
@@ -24,7 +24,7 @@ class TransactionRepository {
         print('Error registering Transaction adapter: $e');
       }
     }
-    
+
     try {
       _transactionsBox = await Hive.openBox<Transaction>(_transactionsBoxName);
     } catch (e) {
@@ -55,21 +55,23 @@ class TransactionRepository {
   /// Ajouter une nouvelle transaction
   Future<Transaction> addTransaction(Transaction transaction) async {
     final newTransactionId = _uuid.v4();
-    final newTransaction = transaction.copyWith(
-      id: newTransactionId,
-    );
-    
+    final newTransaction = transaction.copyWith(id: newTransactionId);
+
     await _transactionsBox.put(newTransaction.id, newTransaction);
     return newTransaction;
   }
 
   /// Récupérer les transactions entre deux dates
   Future<List<Transaction>> getTransactionsByDateRange(
-      DateTime startDate, DateTime endDate) async {
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
     return _transactionsBox.values
-        .where((t) =>
-            t.date.isAfter(startDate) &&
-            t.date.isBefore(endDate.add(const Duration(days: 1))))
+        .where(
+          (t) =>
+              t.date.isAfter(startDate) &&
+              t.date.isBefore(endDate.add(const Duration(days: 1))),
+        )
         .toList();
   }
 
@@ -91,11 +93,16 @@ class TransactionRepository {
 
   // Get total expenses for a date range
   Future<double> getTotalExpensesForDateRange(
-      DateTime startDate, DateTime endDate) async {
-    try {      // If expense repository is provided, use it directly for more accurate data
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
+    try {
+      // If expense repository is provided, use it directly for more accurate data
       if (_expenseRepository != null) {
-        final expenses =
-            await _expenseRepository.getExpensesByDateRange(startDate, endDate);
+        final expenses = await _expenseRepository.getExpensesByDateRange(
+          startDate,
+          endDate,
+        );
         double total = 0.0;
         for (final expense in expenses) {
           total += expense.amount;
@@ -117,5 +124,11 @@ class TransactionRepository {
       // Return 0 as a safe fallback in case of error
       return 0.0;
     }
+  }
+
+  /// Vider le cache local des transactions (à utiliser lors du changement de business unit)
+  Future<void> clearLocalCache() async {
+    await _transactionsBox.clear();
+    print('Cache local des transactions vidé');
   }
 }

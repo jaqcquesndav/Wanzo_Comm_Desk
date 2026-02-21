@@ -1,5 +1,6 @@
 // filepath: lib/features/users/bloc/users_bloc.dart
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:wanzo/services/cache_management_service.dart';
 import '../services/user_api_service.dart';
 import 'users_event.dart';
 import 'users_state.dart';
@@ -114,6 +115,10 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
         event.businessUnitCode,
       );
 
+      // IMPORTANT: Vider tous les caches locaux pour éviter d'afficher
+      // les données de l'ancien business unit
+      await CacheManagementService.instance.clearAllBusinessUnitData();
+
       // Recharger l'utilisateur pour avoir les nouvelles infos d'unité
       final updatedUser = await _userApiService.getCurrentUser();
 
@@ -147,6 +152,10 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
 
     try {
       final resetData = await _userApiService.resetToCompany();
+
+      // IMPORTANT: Vider tous les caches locaux pour éviter d'afficher
+      // les données de l'ancien business unit
+      await CacheManagementService.instance.clearAllBusinessUnitData();
 
       // Recharger l'utilisateur pour avoir les nouvelles infos d'unité
       final updatedUser = await _userApiService.getCurrentUser();

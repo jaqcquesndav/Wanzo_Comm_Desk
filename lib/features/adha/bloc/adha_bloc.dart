@@ -1914,6 +1914,10 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     _currentlyActiveConversationId = null;
     _accumulatedStreamContent.clear();
     _currentStreamingRequestId = null;
+
+    // Persister le fait qu'il n'y a plus de conversation active
+    await adhaRepository.saveActiveConversationId(null);
+
     emit(const AdhaInitial());
   }
 
@@ -1926,16 +1930,64 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     try {
       debugPrint('[AdhaBloc] Initialisation pour utilisateur: ${event.userId}');
 
-      // Réinitialiser l'état
-      _currentlyActiveConversationId = null;
+      // Vérifier si on est déjà initialisé pour cet utilisateur
+      final alreadyInitialized = adhaRepository.isInitializedForUser(
+        event.userId,
+      );
+
+      if (alreadyInitialized) {
+        debugPrint(
+          '[AdhaBloc] ✅ Déjà initialisé pour cet utilisateur, restauration de l\'état',
+        );
+
+        // Restaurer la conversation active depuis le cache
+        if (_currentlyActiveConversationId == null) {
+          final savedActiveId = adhaRepository.getActiveConversationId();
+          if (savedActiveId != null) {
+            final conversation = await adhaRepository.getConversation(
+              savedActiveId,
+            );
+            if (conversation != null) {
+              _currentlyActiveConversationId = savedActiveId;
+              emit(AdhaConversationActive(conversation: conversation));
+              debugPrint('[AdhaBloc] ✅ Conversation restaurée: $savedActiveId');
+              return;
+            }
+          }
+        } else {
+          // Une conversation est déjà active en mémoire, ne pas la réinitialiser
+          debugPrint('[AdhaBloc] ✅ Conversation déjà active, état conservé');
+          return;
+        }
+
+        emit(const AdhaInitial());
+        return;
+      }
+
+      // Nouveau utilisateur ou première initialisation
       _accumulatedStreamContent.clear();
       _currentStreamingRequestId = null;
 
-      // Initialiser le repository avec l'userId pour isoler les conversations
-      await adhaRepository.init(userId: event.userId);
+      final userChanged = await adhaRepository.init(userId: event.userId);
 
-      emit(const AdhaInitial());
-      debugPrint('[AdhaBloc] ✅ Repository initialisé pour l\'utilisateur');
+      if (userChanged) {
+        _currentlyActiveConversationId = null;
+        emit(const AdhaInitial());
+      } else {
+        // Même utilisateur, restaurer la conversation active si elle existe
+        final savedActiveId = adhaRepository.getActiveConversationId();
+        if (savedActiveId != null) {
+          final conversation = await adhaRepository.getConversation(
+            savedActiveId,
+          );
+          if (conversation != null) {
+            _currentlyActiveConversationId = savedActiveId;
+            emit(AdhaConversationActive(conversation: conversation));
+            return;
+          }
+        }
+        emit(const AdhaInitial());
+      }
     } catch (e) {
       debugPrint('[AdhaBloc] ❌ Erreur lors de l\'initialisation: $e');
       emit(AdhaError('Erreur d\'initialisation: $e'));

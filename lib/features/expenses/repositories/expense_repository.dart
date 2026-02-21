@@ -384,4 +384,10 @@ class ExpenseRepository {
       return false;
     }
   }
+
+  /// Vider le cache local des dépenses (à utiliser lors du changement de business unit)
+  Future<void> clearLocalCache() async {
+    await _expensesBox.clear();
+    debugPrint("Cache local des dépenses vidé");
+  }
 }

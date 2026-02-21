@@ -220,6 +220,16 @@ class WanzoTheme {
           borderRadius: BorderRadius.circular(borderRadiusLg),
         ),
       ),
+      // Supprime l'animation zoom par défaut de Material 3 sur desktop
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        },
+      ),
     );
   }
 
@@ -366,6 +376,16 @@ class WanzoTheme {
           border: Border.all(color: const Color(0xFF374151)),
           borderRadius: BorderRadius.circular(borderRadiusLg),
         ),
+      ),
+      // Supprime l'animation zoom par défaut de Material 3 sur desktop
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        },
       ),
     );
   }

@@ -1309,4 +1309,15 @@ class OperationJournalRepository {
       }
     }
   }
+
+  /// Vider le cache local des entrées de journal (à utiliser lors du changement de business unit)
+  Future<void> clearLocalCache() async {
+    try {
+      final box = await _getBox();
+      await box.clear();
+      debugPrint('Cache local du journal des opérations vidé');
+    } catch (e) {
+      debugPrint('Erreur lors du vidage du cache du journal: $e');
+    }
+  }
 }

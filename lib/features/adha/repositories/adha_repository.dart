@@ -13,7 +13,12 @@ import '../services/adha_api_service.dart';
 /// - La synchronisation entre local et distant
 class AdhaRepository {
   static const _conversationsBoxNamePrefix = 'adha_conversations';
+  static const _stateBoxName = 'adha_state';
+  static const _activeConversationKey = 'activeConversationId';
+
   Box<AdhaConversation>? _conversationsBox;
+  Box<String>?
+  _stateBox; // Box pour stocker l'état (activeConversationId, etc.)
 
   /// ID de l'utilisateur actuellement connecté (pour isoler les conversations)
   String? _currentUserId;
@@ -38,9 +43,12 @@ class AdhaRepository {
   /// [userId] L'ID de l'utilisateur connecté. Si null, utilise une box globale.
   /// En cas d'erreur de lecture Hive (données corrompues ou format changé),
   /// la box est supprimée et recréée vide.
-  Future<void> init({String? userId}) async {
+  /// Retourne true si l'utilisateur a changé (nouvelle initialisation), false sinon.
+  Future<bool> init({String? userId}) async {
+    final bool userChanged = _currentUserId != userId;
+
     // Si on change d'utilisateur, fermer l'ancienne box
-    if (_currentUserId != userId && _conversationsBox != null) {
+    if (userChanged && _conversationsBox != null) {
       try {
         await _conversationsBox!.close();
       } catch (e) {
@@ -104,6 +112,58 @@ class AdhaRepository {
         _conversationsBox = null;
       }
     }
+
+    // Ouvrir la box d'état (partagée entre tous les utilisateurs)
+    try {
+      if (_stateBox == null || !_stateBox!.isOpen) {
+        _stateBox = await Hive.openBox<String>(_stateBoxName);
+        debugPrint('[AdhaRepository] ✅ Box d\'état ouverte');
+      }
+    } catch (e) {
+      debugPrint('[AdhaRepository] ⚠️ Erreur ouverture box état: $e');
+      await Hive.deleteBoxFromDisk(_stateBoxName);
+      _stateBox = await Hive.openBox<String>(_stateBoxName);
+    }
+
+    return userChanged;
+  }
+
+  /// Retourne true si le repository est déjà initialisé pour un utilisateur donné
+  bool isInitializedForUser(String? userId) {
+    return _currentUserId == userId &&
+        _conversationsBox != null &&
+        _conversationsBox!.isOpen;
+  }
+
+  /// Sauvegarde l'ID de la conversation active (persistance entre sessions)
+  Future<void> saveActiveConversationId(String? conversationId) async {
+    if (_stateBox == null || !_stateBox!.isOpen) {
+      debugPrint('[AdhaRepository] ⚠️ State box non initialisée');
+      return;
+    }
+
+    final key = '${_activeConversationKey}_${_currentUserId ?? 'default'}';
+    if (conversationId == null) {
+      await _stateBox!.delete(key);
+      debugPrint('[AdhaRepository] 🗑️ Active conversation ID supprimé');
+    } else {
+      await _stateBox!.put(key, conversationId);
+      debugPrint(
+        '[AdhaRepository] 💾 Active conversation ID sauvegardé: $conversationId',
+      );
+    }
+  }
+
+  /// Récupère l'ID de la conversation active depuis le cache
+  String? getActiveConversationId() {
+    if (_stateBox == null || !_stateBox!.isOpen) {
+      return null;
+    }
+
+    final key = '${_activeConversationKey}_${_currentUserId ?? 'default'}';
+    final id = _stateBox!.get(key);
+    debugPrint('[AdhaRepository] 📖 Active conversation ID lu: $id');
+    return id;
   }
 
   /// Ferme la box et nettoie les ressources (appelé lors de la déconnexion)

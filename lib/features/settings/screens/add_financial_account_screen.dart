@@ -391,7 +391,8 @@ class _AddFinancialAccountScreenState extends State<AddFinancialAccountScreen>
         if (value == null || value.trim().isEmpty) {
           return 'Le numéro de téléphone est requis';
         }
-        final phoneRegex = RegExp(r'^\+?[0-9]{8,15}$');
+        // Minimum 6 chiffres pour supporter les numéros courts de certains pays
+        final phoneRegex = RegExp(r'^\+?[0-9]{6,15}$');
         if (!phoneRegex.hasMatch(value)) {
           return 'Numéro de téléphone invalide';
         }

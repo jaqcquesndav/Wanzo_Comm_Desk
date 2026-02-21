@@ -525,4 +525,11 @@ class FinancingRepository {
       return matchesType && matchesStatus && matchesProduct && matchesDateRange;
     }).toList();
   }
+
+  /// Vider le cache local des demandes de financement (à utiliser lors du changement de business unit)
+  Future<void> clearLocalCache() async {
+    await _requestsBox.clear();
+    _requests.clear(); // Vider aussi le cache mémoire
+    Logger.info('Cache local des demandes de financement vidé');
+  }
 }

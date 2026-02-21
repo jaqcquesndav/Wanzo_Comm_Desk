@@ -58,6 +58,7 @@ import 'package:wanzo/features/expenses/repositories/expense_repository.dart';
 import 'package:wanzo/features/financing/repositories/financing_repository.dart';
 import 'package:wanzo/features/transactions/repositories/transaction_repository.dart';
 
+import 'package:wanzo/services/cache_management_service.dart';
 import 'package:wanzo/core/services/currency_service.dart';
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
 
@@ -234,6 +235,21 @@ Future<void> main() async {
     );
 
     logger.info('Repositories initialized');
+
+    // 9.5. Initialisation du service de gestion des caches
+    CacheManagementService.instance.initialize(
+      salesRepository: repositories['sales'] as SalesRepository,
+      expenseRepository: repositories['expense'] as ExpenseRepository,
+      inventoryRepository: repositories['inventory'] as InventoryRepository,
+      customerRepository: repositories['customer'] as CustomerRepository,
+      supplierRepository: repositories['supplier'] as SupplierRepository,
+      transactionRepository:
+          repositories['transaction'] as TransactionRepository,
+      financingRepository: repositories['financing'] as FinancingRepository,
+      operationJournalRepository:
+          repositories['operationJournal'] as OperationJournalRepository,
+    );
+    logger.info('CacheManagementService initialized');
 
     // 10. Initialisation des services métier en parallèle
     final currencyService = CurrencyService();

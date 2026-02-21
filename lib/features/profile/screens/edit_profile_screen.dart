@@ -404,8 +404,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ),
       validator: (value) {
         if (value != null && value.isNotEmpty) {
-          // Validation simple du format téléphone
-          final phoneRegex = RegExp(r'^\+?[0-9]{9,15}$');
+          // Validation simple du format téléphone (minimum 6 chiffres pour certains pays)
+          final phoneRegex = RegExp(r'^\+?[0-9]{6,15}$');
           if (!phoneRegex.hasMatch(value.replaceAll(' ', ''))) {
             return 'Format de téléphone invalide';
           }

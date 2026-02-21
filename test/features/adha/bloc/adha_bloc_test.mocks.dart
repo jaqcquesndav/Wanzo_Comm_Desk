@@ -65,11 +65,30 @@ class MockAdhaRepository extends _i1.Mock implements _i4.AdhaRepository {
   }
 
   @override
-  _i5.Future<void> init({String? userId}) => (super.noSuchMethod(
+  _i5.Future<bool> init({String? userId}) => (super.noSuchMethod(
         Invocation.method(
           #init,
           [],
           {#userId: userId},
+        ),
+        returnValue: _i5.Future<bool>.value(false),
+      ) as _i5.Future<bool>);
+
+  @override
+  bool isInitializedForUser(String? userId) => (super.noSuchMethod(
+        Invocation.method(
+          #isInitializedForUser,
+          [userId],
+        ),
+        returnValue: false,
+      ) as bool);
+
+  @override
+  _i5.Future<void> saveActiveConversationId(String? conversationId) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #saveActiveConversationId,
+          [conversationId],
         ),
         returnValue: _i5.Future<void>.value(),
         returnValueForMissingStub: _i5.Future<void>.value(),
@@ -665,4 +684,14 @@ class MockOperationJournalRepository extends _i1.Mock
         returnValue:
             _i5.Future<Map<String, dynamic>>.value(<String, dynamic>{}),
       ) as _i5.Future<Map<String, dynamic>>);
+
+  @override
+  _i5.Future<void> clearLocalCache() => (super.noSuchMethod(
+        Invocation.method(
+          #clearLocalCache,
+          [],
+        ),
+        returnValue: _i5.Future<void>.value(),
+        returnValueForMissingStub: _i5.Future<void>.value(),
+      ) as _i5.Future<void>);
 }
