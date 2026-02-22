@@ -31,10 +31,6 @@ import '../enums/currency_enum.dart'; // Import for CurrencyAdapter
 // Notifications models
 import '../../features/notifications/models/notification_model.dart';
 
-// Financing models
-import '../../features/financing/models/financing_request.dart'
-    as financing_model;
-
 // Documents models
 import '../../features/documents/models/document.dart' as document_model;
 
@@ -113,12 +109,6 @@ Future<void> initializeHiveAdapters() async {
   // Notifications
   _registerAdapterIfNotExists(NotificationModelAdapter());
   _registerAdapterIfNotExists(NotificationTypeAdapter());
-
-  // Financing
-  _registerAdapterIfNotExists(financing_model.FinancingRequestAdapter());
-  _registerAdapterIfNotExists(financing_model.FinancingTypeAdapter());
-  _registerAdapterIfNotExists(financing_model.FinancialInstitutionAdapter());
-  _registerAdapterIfNotExists(financing_model.FinancialProductAdapter());
 
   // Documents
   _registerAdapterIfNotExists(document_model.DocumentAdapter());
@@ -208,9 +198,6 @@ Future<void> openHiveBoxes() async {
   await Hive.openBox<NotificationModel>('notificationsBox');
   await Hive.openBox<String>('syncStatusBox');
   await Hive.openBox<Expense>('expenses'); // Added to open the expenses box
-  await Hive.openBox<financing_model.FinancingRequest>(
-    'financingRequestsBox',
-  ); // Activé pour persister les demandes de financement
   await Hive.openBox<OperationJournalEntry>(
     'operation_journal_entries',
   ); // Ajouté pour persister le journal des opérations

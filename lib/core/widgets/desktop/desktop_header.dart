@@ -145,7 +145,40 @@ class DesktopHeader extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: isSidebarExpanded ? 16 : 12),
       child: Row(
         children: [
-          // Bouton toggle sidebar
+          // Logo
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: WanzoColors.primary,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: WanzoColors.primary.withValues(alpha: 0.3),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                'assets/images/logo.jpg',
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return const Icon(
+                    Icons.storefront,
+                    color: Colors.white,
+                    size: 20,
+                  );
+                },
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // Bouton toggle sidebar (après le logo)
           IconButton(
             icon: Icon(
               isSidebarExpanded ? Icons.menu_open : Icons.menu,
@@ -157,39 +190,6 @@ class DesktopHeader extends StatelessWidget {
 
           if (isSidebarExpanded) ...[
             const SizedBox(width: 8),
-
-            // Logo
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: WanzoColors.primary,
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: WanzoColors.primary.withValues(alpha: 0.3),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.asset(
-                  'assets/images/logo.jpg',
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Icon(
-                      Icons.storefront,
-                      color: Colors.white,
-                      size: 20,
-                    );
-                  },
-                ),
-              ),
-            ),
-
-            const SizedBox(width: 12),
 
             // Nom de l'app
             Expanded(

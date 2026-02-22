@@ -34,7 +34,6 @@ import 'package:wanzo/features/supplier/repositories/supplier_repository.dart';
 import 'package:wanzo/features/notifications/repositories/notification_repository.dart';
 import 'package:wanzo/features/dashboard/repositories/operation_journal_repository.dart';
 import 'package:wanzo/features/expenses/repositories/expense_repository.dart';
-import 'package:wanzo/features/financing/repositories/financing_repository.dart';
 import 'package:wanzo/features/transactions/repositories/transaction_repository.dart';
 
 // Import BLoCs
@@ -48,7 +47,6 @@ import 'package:wanzo/features/settings/bloc/financial_account_bloc.dart';
 import 'package:wanzo/features/notifications/bloc/notifications_bloc.dart';
 import 'package:wanzo/features/dashboard/bloc/operation_journal_bloc.dart';
 import 'package:wanzo/features/expenses/bloc/expense_bloc.dart';
-import 'package:wanzo/features/financing/bloc/financing_bloc.dart';
 import 'package:wanzo/features/dashboard/bloc/dashboard_bloc.dart';
 
 import 'package:hive_flutter/hive_flutter.dart'; // Corrected Hive import
@@ -117,8 +115,6 @@ void main() {
       expenseApiService: expenseApiService,
     ); // Passed expenseApiService
     await expenseRepository.init();
-    final financingRepository = FinancingRepository();
-    await financingRepository.init();
     final transactionRepository = TransactionRepository();
     await transactionRepository.init();
     final financialAccountRepository = FinancialAccountRepository();
@@ -155,10 +151,6 @@ void main() {
       expenseRepository: expenseRepository,
       operationJournalBloc: operationJournalBloc,
     );
-    final financingBloc = FinancingBloc(
-      financingRepository: financingRepository,
-      operationJournalBloc: operationJournalBloc,
-    );
 
     final dashboardBloc = DashboardBloc(
       salesRepository: salesRepository,
@@ -185,7 +177,6 @@ void main() {
           'notification': notificationRepository,
           'operationJournal': operationJournalRepository,
           'expense': expenseRepository,
-          'financing': financingRepository,
           'transaction': transactionRepository,
         },
         blocs: {
@@ -200,7 +191,6 @@ void main() {
           'notifications': notificationsBloc,
           'operationJournal': operationJournalBloc,
           'expense': expenseBloc,
-          'financing': financingBloc,
           'dashboard': dashboardBloc,
         },
         services: {

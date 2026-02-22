@@ -157,15 +157,6 @@ class _OperationsDockState extends State<OperationsDock>
             ),
             _buildDockItem(
               context: context,
-              icon: Icons.monetization_on,
-              label: l10n.dashboardQuickActionsNewFinancing,
-              onTap:
-                  () =>
-                      FormNavigationService.instance.openFinancingForm(context),
-              color: Colors.teal,
-            ),
-            _buildDockItem(
-              context: context,
               icon: Icons.receipt_long,
               label: l10n.dashboardQuickActionsNewExpense,
               onTap:

@@ -1423,5 +1423,27 @@
   "subscriptionContactSupport": "Contactez le support si le problème persiste.",
   "@subscriptionContactSupport": {
     "description": "Message pour contacter le support"
-  }
+  },
+  "accessDenied": "Accès refusé",
+  "walletAccessDeniedMessage": "Cette fonctionnalité est réservée aux administrateurs et comptables.",
+  "walletTitle": "Portefeuille",
+  "walletBalance": "Solde disponible",
+  "walletDeposit": "Dépôt",
+  "walletWithdraw": "Retrait",
+  "walletTransactions": "Transactions",
+  "walletCredit": "Crédit",
+  "walletCreditRequests": "Demandes de crédit",
+  "walletMobileMoneyDeposit": "Dépôt Mobile Money",
+  "walletMobileMoneyWithdraw": "Retrait Mobile Money",
+  "walletTotalBalance": "Solde total",
+  "walletFrozenBalance": "Montant gelé",
+  "walletStatus": "Statut",
+  "walletLimits": "Limites",
+  "walletDailyLimit": "Limite journalière",
+  "walletMonthlyLimit": "Limite mensuelle",
+  "walletSingleTransactionLimit": "Limite par transaction",
+  "walletMinimumBalance": "Solde minimum",
+  "walletKycVerification": "Vérification KYC",
+  "walletKycVerified": "Vérifié",
+  "walletKycNotVerified": "Non vérifié"
 }

@@ -2382,4 +2382,71 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get subscriptionContactSupport =>
       'Contactez le support si le problème persiste.';
+
+  @override
+  String get accessDenied => 'Accès refusé';
+
+  @override
+  String get walletAccessDeniedMessage =>
+      'Cette fonctionnalité est réservée aux administrateurs et comptables.';
+
+  @override
+  String get walletTitle => 'Portefeuille';
+
+  @override
+  String get walletBalance => 'Solde disponible';
+
+  @override
+  String get walletDeposit => 'Dépôt';
+
+  @override
+  String get walletWithdraw => 'Retrait';
+
+  @override
+  String get walletTransactions => 'Transactions';
+
+  @override
+  String get walletCredit => 'Crédit';
+
+  @override
+  String get walletCreditRequests => 'Demandes de crédit';
+
+  @override
+  String get walletMobileMoneyDeposit => 'Dépôt Mobile Money';
+
+  @override
+  String get walletMobileMoneyWithdraw => 'Retrait Mobile Money';
+
+  @override
+  String get walletTotalBalance => 'Solde total';
+
+  @override
+  String get walletFrozenBalance => 'Montant gelé';
+
+  @override
+  String get walletStatus => 'Statut';
+
+  @override
+  String get walletLimits => 'Limites';
+
+  @override
+  String get walletDailyLimit => 'Limite journalière';
+
+  @override
+  String get walletMonthlyLimit => 'Limite mensuelle';
+
+  @override
+  String get walletSingleTransactionLimit => 'Limite par transaction';
+
+  @override
+  String get walletMinimumBalance => 'Solde minimum';
+
+  @override
+  String get walletKycVerification => 'Vérification KYC';
+
+  @override
+  String get walletKycVerified => 'Vérifié';
+
+  @override
+  String get walletKycNotVerified => 'Non vérifié';
 }

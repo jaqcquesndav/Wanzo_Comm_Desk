@@ -47,10 +47,9 @@ class _MainShellState extends State<MainShell> {
     if (location.startsWith('/sales')) return 1;
     if (location.startsWith('/expenses')) return 2;
     if (location.startsWith('/inventory')) return 3;
-    if (location.startsWith('/financing')) return 4;
-    if (location.startsWith('/contacts')) return 5;
-    if (location.startsWith('/adha')) return 6;
-    if (location.startsWith('/settings')) return 7;
+    if (location.startsWith('/contacts')) return 4;
+    if (location.startsWith('/adha')) return 5;
+    if (location.startsWith('/settings')) return 6;
 
     return 0; // Default to dashboard
   }
@@ -63,7 +62,6 @@ class _MainShellState extends State<MainShell> {
     if (location.startsWith('/sales')) return 'Revenus';
     if (location.startsWith('/expenses')) return 'Charges';
     if (location.startsWith('/inventory')) return 'Stock';
-    if (location.startsWith('/financing')) return 'Financement';
     if (location.startsWith('/contacts')) return 'Contacts';
     if (location.startsWith('/adha')) return 'Adha IA';
     if (location.startsWith('/settings')) return 'Paramètres';
@@ -101,17 +99,11 @@ class _MainShellState extends State<MainShell> {
       route: '/inventory',
     ),
     SidebarNavItem(
-      icon: Icons.account_balance_outlined,
-      activeIcon: Icons.account_balance,
-      label: 'Financement',
-      route: '/financing',
-      isDividerBefore: true,
-    ),
-    SidebarNavItem(
       icon: Icons.groups_outlined,
       activeIcon: Icons.groups,
       label: 'Contacts',
       route: '/contacts',
+      isDividerBefore: true,
     ),
     SidebarNavItem(
       icon: Icons.chat_bubble_outline,
@@ -170,8 +162,7 @@ class _MainShellState extends State<MainShell> {
     if (location.startsWith('/dashboard')) return 0;
     if (location.startsWith('/operations') ||
         location.startsWith('/sales') ||
-        location.startsWith('/expenses') ||
-        location.startsWith('/financing')) {
+        location.startsWith('/expenses')) {
       return 1;
     }
     if (location.startsWith('/inventory')) return 2;

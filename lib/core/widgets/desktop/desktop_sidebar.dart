@@ -101,9 +101,10 @@ class _DesktopSidebarState extends State<DesktopSidebar>
     final isDark = theme.brightness == Brightness.dark;
 
     // Couleurs adaptatives pour light/dark mode
+    // En dark mode, utiliser la même couleur que le scaffoldBackgroundColor (bleu foncé 0xFF111827)
     final backgroundColor =
-        isDark ? WanzoColors.backgroundSecondaryDark : WanzoColors.primary;
-    final textColor = isDark ? WanzoColors.textPrimaryDark : Colors.white;
+        isDark ? const Color(0xFF111827) : WanzoColors.primary;
+    final textColor = Colors.white;
     final activeItemBg =
         isDark
             ? WanzoColors.primary.withValues(alpha: 0.3)

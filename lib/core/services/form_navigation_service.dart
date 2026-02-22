@@ -7,7 +7,6 @@ import '../../../features/customer/widgets/customer_form_modal.dart';
 import '../../../features/supplier/widgets/supplier_form_modal.dart';
 // Import des écrans de formulaire originaux (utilisés en modal)
 import '../../../features/expenses/screens/add_expense_screen.dart';
-import '../../../features/financing/screens/add_financing_request_screen.dart';
 import '../../../features/inventory/screens/add_product_screen.dart';
 import '../../../features/sales/screens/add_sale_screen.dart';
 import '../../../features/customer/models/customer.dart';
@@ -200,28 +199,6 @@ class FormNavigationService {
         if (result == true) onSuccess?.call();
         return result;
       }
-    }
-  }
-
-  // ===== FINANCING =====
-
-  /// Ouvre le formulaire de nouvelle demande de financement
-  /// Formulaire COMPLET avec score de crédit, produits financiers, pièce jointe
-  Future<bool?> openFinancingForm(
-    BuildContext context, {
-    VoidCallback? onSuccess,
-  }) async {
-    if (shouldUseModal(context)) {
-      final result = await _showFormDialog(
-        context,
-        builder: (onSaved) => AddFinancingRequestScreen(onSaved: onSaved),
-      );
-      if (result == true) onSuccess?.call();
-      return result;
-    } else {
-      final result = await context.push<bool>('/financing/add');
-      if (result == true) onSuccess?.call();
-      return result;
     }
   }
 }

@@ -6,7 +6,6 @@ import 'package:wanzo/features/inventory/repositories/inventory_repository.dart'
 import 'package:wanzo/features/customer/repositories/customer_repository.dart';
 import 'package:wanzo/features/supplier/repositories/supplier_repository.dart';
 import 'package:wanzo/features/transactions/repositories/transaction_repository.dart';
-import 'package:wanzo/features/financing/repositories/financing_repository.dart';
 import 'package:wanzo/features/dashboard/repositories/operation_journal_repository.dart';
 
 /// Service centralisé pour gérer les caches locaux de l'application.
@@ -22,7 +21,6 @@ class CacheManagementService {
   CustomerRepository? _customerRepository;
   SupplierRepository? _supplierRepository;
   TransactionRepository? _transactionRepository;
-  FinancingRepository? _financingRepository;
   OperationJournalRepository? _operationJournalRepository;
 
   bool _isInitialized = false;
@@ -43,7 +41,6 @@ class CacheManagementService {
     required CustomerRepository customerRepository,
     required SupplierRepository supplierRepository,
     required TransactionRepository transactionRepository,
-    required FinancingRepository financingRepository,
     required OperationJournalRepository operationJournalRepository,
   }) {
     _salesRepository = salesRepository;
@@ -52,7 +49,6 @@ class CacheManagementService {
     _customerRepository = customerRepository;
     _supplierRepository = supplierRepository;
     _transactionRepository = transactionRepository;
-    _financingRepository = financingRepository;
     _operationJournalRepository = operationJournalRepository;
     _isInitialized = true;
 
@@ -69,7 +65,6 @@ class CacheManagementService {
     if (_customerRepository != null) count++;
     if (_supplierRepository != null) count++;
     if (_transactionRepository != null) count++;
-    if (_financingRepository != null) count++;
     if (_operationJournalRepository != null) count++;
     return count;
   }
@@ -148,15 +143,6 @@ class CacheManagementService {
         );
       }
 
-      // Financements
-      if (_financingRepository != null) {
-        clearOperations.add(
-          _financingRepository!.clearLocalCache().catchError((e) {
-            debugPrint('Erreur lors du clear FinancingRepository: $e');
-          }),
-        );
-      }
-
       // Journal des opérations
       if (_operationJournalRepository != null) {
         clearOperations.add(
@@ -215,12 +201,6 @@ class CacheManagementService {
     }
   }
 
-  Future<void> clearFinancingCache() async {
-    if (_financingRepository != null) {
-      await _financingRepository!.clearLocalCache();
-    }
-  }
-
   Future<void> clearOperationJournalCache() async {
     if (_operationJournalRepository != null) {
       await _operationJournalRepository!.clearLocalCache();
@@ -236,7 +216,6 @@ class CacheManagementService {
     _customerRepository = null;
     _supplierRepository = null;
     _transactionRepository = null;
-    _financingRepository = null;
     _operationJournalRepository = null;
     _isInitialized = false;
   }

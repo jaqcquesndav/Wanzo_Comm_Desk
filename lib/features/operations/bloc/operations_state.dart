@@ -14,17 +14,11 @@ class OperationsLoading extends OperationsState {}
 class OperationsLoaded extends OperationsState {
   final List<Sale> sales;
   final List<Expense> expenses;
-  final List<FinancingRequest> financingRequests;
-  // You might want to add a combined list or handle that in the UI.
 
-  const OperationsLoaded({
-    required this.sales, 
-    required this.expenses,
-    this.financingRequests = const [],
-  });
+  const OperationsLoaded({required this.sales, required this.expenses});
 
   @override
-  List<Object?> get props => [sales, expenses, financingRequests];
+  List<Object?> get props => [sales, expenses];
 }
 
 class OperationsError extends OperationsState {

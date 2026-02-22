@@ -4431,6 +4431,138 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Contact support if the problem persists.'**
   String get subscriptionContactSupport;
+
+  /// No description provided for @accessDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Access denied'**
+  String get accessDenied;
+
+  /// No description provided for @walletAccessDeniedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'This feature is reserved for administrators and accountants.'**
+  String get walletAccessDeniedMessage;
+
+  /// No description provided for @walletTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Wallet'**
+  String get walletTitle;
+
+  /// No description provided for @walletBalance.
+  ///
+  /// In en, this message translates to:
+  /// **'Available balance'**
+  String get walletBalance;
+
+  /// No description provided for @walletDeposit.
+  ///
+  /// In en, this message translates to:
+  /// **'Deposit'**
+  String get walletDeposit;
+
+  /// No description provided for @walletWithdraw.
+  ///
+  /// In en, this message translates to:
+  /// **'Withdraw'**
+  String get walletWithdraw;
+
+  /// No description provided for @walletTransactions.
+  ///
+  /// In en, this message translates to:
+  /// **'Transactions'**
+  String get walletTransactions;
+
+  /// No description provided for @walletCredit.
+  ///
+  /// In en, this message translates to:
+  /// **'Credit'**
+  String get walletCredit;
+
+  /// No description provided for @walletCreditRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'Credit requests'**
+  String get walletCreditRequests;
+
+  /// No description provided for @walletMobileMoneyDeposit.
+  ///
+  /// In en, this message translates to:
+  /// **'Mobile Money Deposit'**
+  String get walletMobileMoneyDeposit;
+
+  /// No description provided for @walletMobileMoneyWithdraw.
+  ///
+  /// In en, this message translates to:
+  /// **'Mobile Money Withdraw'**
+  String get walletMobileMoneyWithdraw;
+
+  /// No description provided for @walletTotalBalance.
+  ///
+  /// In en, this message translates to:
+  /// **'Total balance'**
+  String get walletTotalBalance;
+
+  /// No description provided for @walletFrozenBalance.
+  ///
+  /// In en, this message translates to:
+  /// **'Frozen amount'**
+  String get walletFrozenBalance;
+
+  /// No description provided for @walletStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Status'**
+  String get walletStatus;
+
+  /// No description provided for @walletLimits.
+  ///
+  /// In en, this message translates to:
+  /// **'Limits'**
+  String get walletLimits;
+
+  /// No description provided for @walletDailyLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily limit'**
+  String get walletDailyLimit;
+
+  /// No description provided for @walletMonthlyLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Monthly limit'**
+  String get walletMonthlyLimit;
+
+  /// No description provided for @walletSingleTransactionLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Per transaction limit'**
+  String get walletSingleTransactionLimit;
+
+  /// No description provided for @walletMinimumBalance.
+  ///
+  /// In en, this message translates to:
+  /// **'Minimum balance'**
+  String get walletMinimumBalance;
+
+  /// No description provided for @walletKycVerification.
+  ///
+  /// In en, this message translates to:
+  /// **'KYC Verification'**
+  String get walletKycVerification;
+
+  /// No description provided for @walletKycVerified.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified'**
+  String get walletKycVerified;
+
+  /// No description provided for @walletKycNotVerified.
+  ///
+  /// In en, this message translates to:
+  /// **'Not verified'**
+  String get walletKycNotVerified;
 }
 
 class _AppLocalizationsDelegate

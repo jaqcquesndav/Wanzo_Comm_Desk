@@ -28,10 +28,6 @@ import '../../features/notifications/screens/notification_settings_screen.dart';
 import '../../features/contacts/screens/contacts_screen.dart';
 import '../../features/expenses/screens/add_expense_screen.dart';
 import '../../features/expenses/screens/expenses_list_screen.dart';
-import '../../features/financing/screens/add_financing_request_screen.dart';
-import '../../features/financing/screens/financing_detail_screen.dart';
-import '../../features/financing/screens/financing_list_screen.dart';
-import '../../features/financing/models/financing_request.dart';
 import '../../features/profile/screens/profile_screen.dart';
 import '../../features/operations/screens/operations_screen.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
@@ -178,27 +174,6 @@ class AppRouter {
           ),
         ],
       ),
-      GoRoute(
-        path: '/financing',
-        name: 'financing_list',
-        builder: (context, state) => const FinancingListScreen(),
-        routes: [
-          GoRoute(
-            path: 'add',
-            name: 'add_financing',
-            builder: (context, state) => const AddFinancingRequestScreen(),
-          ),
-        ],
-      ),
-      GoRoute(
-        path: '/financing-detail/:id',
-        name: 'financing_detail',
-        builder: (context, state) {
-          final id = state.pathParameters['id']!;
-          final financing = state.extra as FinancingRequest?;
-          return FinancingDetailScreen(id: id, financing: financing);
-        },
-      ),
 
       // Route pour opérations (mobile - garde les onglets)
       GoRoute(
@@ -329,11 +304,6 @@ class AppRouter {
             path: 'expenses/add',
             name: 'add_expense_from_operations',
             builder: (context, state) => const AddExpenseScreen(),
-          ),
-          GoRoute(
-            path: 'financing/add',
-            name: 'add_financing_from_operations',
-            builder: (context, state) => const AddFinancingRequestScreen(),
           ),
         ],
       ),

@@ -1,18 +1,55 @@
 import 'package:equatable/equatable.dart';
 import 'package:hive/hive.dart';
 import 'package:json_annotation/json_annotation.dart';
-import '../../financing/models/financing_request.dart';
 
 part 'financial_account.g.dart';
+
+/// Institutions financières disponibles
+@HiveType(typeId: 46)
+@JsonEnum()
+enum FinancialInstitution {
+  @HiveField(0)
+  bonneMoisson, // Bonne Moisson
+  @HiveField(1)
+  tid, // TID
+  @HiveField(2)
+  smico, // SMICO
+  @HiveField(3)
+  tmb, // Trust Merchant Bank
+  @HiveField(4)
+  equitybcdc, // Equity BCDC
+  @HiveField(5)
+  wanzoPass, // Wanzo Pass
+}
+
+/// Extension pour afficher les noms lisibles des institutions financières
+extension FinancialInstitutionExtension on FinancialInstitution {
+  String get displayName {
+    switch (this) {
+      case FinancialInstitution.bonneMoisson:
+        return 'Bonne Moisson';
+      case FinancialInstitution.tid:
+        return 'TID';
+      case FinancialInstitution.smico:
+        return 'SMICO';
+      case FinancialInstitution.tmb:
+        return 'Trust Merchant Bank';
+      case FinancialInstitution.equitybcdc:
+        return 'Equity BCDC';
+      case FinancialInstitution.wanzoPass:
+        return 'Wanzo Pass';
+    }
+  }
+}
 
 /// Type de compte financier
 @HiveType(typeId: 43)
 @JsonEnum()
 enum FinancialAccountType {
   @HiveField(0)
-  bankAccount,    // Compte bancaire
+  bankAccount, // Compte bancaire
   @HiveField(1)
-  mobileMoney,    // Mobile Money
+  mobileMoney, // Mobile Money
 }
 
 /// Fournisseurs de Mobile Money disponibles
@@ -20,11 +57,11 @@ enum FinancialAccountType {
 @JsonEnum()
 enum MobileMoneyProvider {
   @HiveField(0)
-  airtelMoney,    // Airtel Money
+  airtelMoney, // Airtel Money
   @HiveField(1)
-  orangeMoney,    // Orange Money
+  orangeMoney, // Orange Money
   @HiveField(2)
-  mpesa,          // M-PESA
+  mpesa, // M-PESA
 }
 
 /// Modèle pour les comptes financiers (bancaires et Mobile Money)
@@ -158,21 +195,21 @@ class FinancialAccount extends Equatable {
   /// Validation pour les comptes bancaires
   bool get isValidBankAccount {
     if (type != FinancialAccountType.bankAccount) return false;
-    return bankInstitution != null && 
-           bankAccountNumber != null && 
-           bankAccountNumber!.isNotEmpty &&
-           swiftCode != null && 
-           swiftCode!.isNotEmpty;
+    return bankInstitution != null &&
+        bankAccountNumber != null &&
+        bankAccountNumber!.isNotEmpty &&
+        swiftCode != null &&
+        swiftCode!.isNotEmpty;
   }
 
   /// Validation pour les comptes Mobile Money
   bool get isValidMobileMoneyAccount {
     if (type != FinancialAccountType.mobileMoney) return false;
     return mobileMoneyProvider != null &&
-           phoneNumber != null && 
-           phoneNumber!.isNotEmpty &&
-           accountHolderName != null && 
-           accountHolderName!.isNotEmpty;
+        phoneNumber != null &&
+        phoneNumber!.isNotEmpty &&
+        accountHolderName != null &&
+        accountHolderName!.isNotEmpty;
   }
 
   /// Nom d'affichage du fournisseur Mobile Money
@@ -199,7 +236,8 @@ class FinancialAccount extends Equatable {
     }
   }
 
-  factory FinancialAccount.fromJson(Map<String, dynamic> json) => _$FinancialAccountFromJson(json);
+  factory FinancialAccount.fromJson(Map<String, dynamic> json) =>
+      _$FinancialAccountFromJson(json);
   Map<String, dynamic> toJson() => _$FinancialAccountToJson(this);
 
   FinancialAccount copyWith({
@@ -236,18 +274,18 @@ class FinancialAccount extends Equatable {
 
   @override
   List<Object?> get props => [
-        id,
-        type,
-        accountName,
-        isDefault,
-        createdAt,
-        updatedAt,
-        bankInstitution,
-        bankAccountNumber,
-        swiftCode,
-        mobileMoneyProvider,
-        phoneNumber,
-        accountHolderName,
-        encryptedPin,
-      ];
+    id,
+    type,
+    accountName,
+    isDefault,
+    createdAt,
+    updatedAt,
+    bankInstitution,
+    bankAccountNumber,
+    swiftCode,
+    mobileMoneyProvider,
+    phoneNumber,
+    accountHolderName,
+    encryptedPin,
+  ];
 }

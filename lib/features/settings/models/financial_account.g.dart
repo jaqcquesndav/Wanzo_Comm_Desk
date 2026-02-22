@@ -76,6 +76,65 @@ class FinancialAccountAdapter extends TypeAdapter<FinancialAccount> {
           typeId == other.typeId;
 }
 
+class FinancialInstitutionAdapter extends TypeAdapter<FinancialInstitution> {
+  @override
+  final int typeId = 46;
+
+  @override
+  FinancialInstitution read(BinaryReader reader) {
+    switch (reader.readByte()) {
+      case 0:
+        return FinancialInstitution.bonneMoisson;
+      case 1:
+        return FinancialInstitution.tid;
+      case 2:
+        return FinancialInstitution.smico;
+      case 3:
+        return FinancialInstitution.tmb;
+      case 4:
+        return FinancialInstitution.equitybcdc;
+      case 5:
+        return FinancialInstitution.wanzoPass;
+      default:
+        return FinancialInstitution.bonneMoisson;
+    }
+  }
+
+  @override
+  void write(BinaryWriter writer, FinancialInstitution obj) {
+    switch (obj) {
+      case FinancialInstitution.bonneMoisson:
+        writer.writeByte(0);
+        break;
+      case FinancialInstitution.tid:
+        writer.writeByte(1);
+        break;
+      case FinancialInstitution.smico:
+        writer.writeByte(2);
+        break;
+      case FinancialInstitution.tmb:
+        writer.writeByte(3);
+        break;
+      case FinancialInstitution.equitybcdc:
+        writer.writeByte(4);
+        break;
+      case FinancialInstitution.wanzoPass:
+        writer.writeByte(5);
+        break;
+    }
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FinancialInstitutionAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
 class FinancialAccountTypeAdapter extends TypeAdapter<FinancialAccountType> {
   @override
   final int typeId = 43;

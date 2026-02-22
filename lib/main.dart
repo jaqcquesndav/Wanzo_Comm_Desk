@@ -55,7 +55,6 @@ import 'package:wanzo/features/settings/repositories/financial_account_repositor
 import 'package:wanzo/features/notifications/repositories/notification_repository.dart';
 import 'package:wanzo/features/dashboard/repositories/operation_journal_repository.dart';
 import 'package:wanzo/features/expenses/repositories/expense_repository.dart';
-import 'package:wanzo/features/financing/repositories/financing_repository.dart';
 import 'package:wanzo/features/transactions/repositories/transaction_repository.dart';
 
 import 'package:wanzo/services/cache_management_service.dart';
@@ -76,7 +75,6 @@ import 'package:wanzo/features/settings/bloc/financial_account_bloc.dart';
 import 'package:wanzo/features/notifications/bloc/notifications_bloc.dart';
 import 'package:wanzo/features/dashboard/bloc/operation_journal_bloc.dart';
 import 'package:wanzo/features/expenses/bloc/expense_bloc.dart';
-import 'package:wanzo/features/financing/bloc/financing_bloc.dart';
 import 'package:wanzo/features/dashboard/bloc/dashboard_bloc.dart';
 
 import 'package:wanzo/features/business_unit/bloc/business_unit_bloc.dart';
@@ -245,7 +243,6 @@ Future<void> main() async {
       supplierRepository: repositories['supplier'] as SupplierRepository,
       transactionRepository:
           repositories['transaction'] as TransactionRepository,
-      financingRepository: repositories['financing'] as FinancingRepository,
       operationJournalRepository:
           repositories['operationJournal'] as OperationJournalRepository,
     );
@@ -409,7 +406,6 @@ Future<Map<String, dynamic>> _initializeRepositoriesOptimized({
     );
     final notificationRepository = NotificationRepository();
     final operationJournalRepository = OperationJournalRepository();
-    final financingRepository = FinancingRepository();
     final transactionRepository = TransactionRepository();
     final adhaRepository = AdhaRepository(apiService: adhaApiService);
     final expenseRepository = ExpenseRepository(
@@ -435,7 +431,6 @@ Future<Map<String, dynamic>> _initializeRepositoriesOptimized({
       supplierRepository.init(),
       notificationRepository.init(),
       operationJournalRepository.init(),
-      financingRepository.init(),
       transactionRepository.init(),
       adhaRepository.init(),
       expenseRepository.init(),
@@ -452,7 +447,6 @@ Future<Map<String, dynamic>> _initializeRepositoriesOptimized({
     repositories['supplier'] = supplierRepository;
     repositories['notification'] = notificationRepository;
     repositories['operationJournal'] = operationJournalRepository;
-    repositories['financing'] = financingRepository;
     repositories['transaction'] = transactionRepository;
     repositories['adha'] = adhaRepository;
     repositories['expense'] = expenseRepository;
@@ -562,12 +556,6 @@ Map<String, dynamic> _initializeBlocsSync(
   );
   blocs['businessUnit'] = businessUnitBloc;
 
-  final financingBloc = FinancingBloc(
-    financingRepository: repositories['financing'] as FinancingRepository,
-    operationJournalBloc: operationJournalBloc,
-  );
-  blocs['financing'] = financingBloc;
-
   final dashboardBloc = DashboardBloc(
     salesRepository: repositories['sales'] as SalesRepository,
     customerRepository: repositories['customer'] as CustomerRepository,
@@ -625,9 +613,6 @@ class WanzoApp extends StatelessWidget {
           value: blocs['operationJournal'] as OperationJournalBloc,
         ),
         BlocProvider<ExpenseBloc>.value(value: blocs['expense'] as ExpenseBloc),
-        BlocProvider<FinancingBloc>.value(
-          value: blocs['financing'] as FinancingBloc,
-        ),
         BlocProvider<DashboardBloc>.value(
           value: blocs['dashboard'] as DashboardBloc,
         ),
@@ -674,9 +659,6 @@ class WanzoApp extends StatelessWidget {
           ),
           RepositoryProvider<ExpenseRepository>.value(
             value: repositories['expense'] as ExpenseRepository,
-          ),
-          RepositoryProvider<FinancingRepository>.value(
-            value: repositories['financing'] as FinancingRepository,
           ),
           RepositoryProvider<NotificationRepository>.value(
             value: repositories['notification'] as NotificationRepository,

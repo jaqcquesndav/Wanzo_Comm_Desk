@@ -11,8 +11,6 @@ import 'package:wanzo/features/expenses/models/expense.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/expenses/repositories/expense_repository.dart';
 import 'package:wanzo/features/sales/repositories/sales_repository.dart';
-import 'package:wanzo/features/financing/models/financing_request.dart';
-import 'package:wanzo/features/financing/repositories/financing_repository.dart';
 
 import '../bloc/operations_bloc.dart';
 
@@ -42,7 +40,6 @@ class OperationsScreen extends StatelessWidget {
           (context) => OperationsBloc(
             salesRepository: context.read<SalesRepository>(),
             expenseRepository: context.read<ExpenseRepository>(),
-            financingRepository: context.read<FinancingRepository>(),
           )..add(const LoadOperations()), // Initial load
       child: const _OperationsView(),
     );
@@ -63,7 +60,7 @@ class _OperationsViewState extends State<_OperationsView>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _tabListener = () {
       if (mounted) {
         setState(() {}); // To rebuild FAB if its properties change with tab
@@ -111,7 +108,6 @@ class _OperationsViewState extends State<_OperationsView>
                   Tab(text: 'Tout'),
                   Tab(text: 'Ventes'),
                   Tab(text: 'Dépenses'),
-                  Tab(text: 'Financements'),
                 ],
                 labelColor: Theme.of(context).primaryColor,
                 unselectedLabelColor: Colors.grey,
@@ -127,8 +123,6 @@ class _OperationsViewState extends State<_OperationsView>
                 await context.pushNamed('add_sale_from_operations');
               } else if (_tabController.index == 2) {
                 await context.pushNamed('add_expense_from_operations');
-              } else if (_tabController.index == 3) {
-                await context.pushNamed('add_financing_from_operations');
               }
 
               // Toujours recharger après retour de la navigation
@@ -139,9 +133,7 @@ class _OperationsViewState extends State<_OperationsView>
             tooltip:
                 _tabController.index <= 1
                     ? 'Ajouter une vente'
-                    : (_tabController.index == 2
-                        ? 'Ajouter une dépense'
-                        : 'Ajouter un financement'),
+                    : 'Ajouter une dépense',
             child: const Icon(Icons.add),
           ),
         );
@@ -186,15 +178,6 @@ class _OperationsViewState extends State<_OperationsView>
               e.category.displayName,
             ],
           ),
-          ...state.financingRequests.map(
-            (f) => [
-              'Financement',
-              dateFormat.format(f.requestDate),
-              f.reason,
-              '${f.amount.toStringAsFixed(2)} ${f.currency}',
-              f.status,
-            ],
-          ),
         ];
         break;
       case 1: // Ventes
@@ -230,23 +213,6 @@ class _OperationsViewState extends State<_OperationsView>
                 )
                 .toList();
         break;
-      case 3: // Financements
-        title = 'Liste des financements';
-        fileName = 'financements';
-        headers = ['Date demande', 'Objet', 'Type', 'Montant', 'Statut'];
-        rows =
-            state.financingRequests
-                .map(
-                  (f) => [
-                    dateFormat.format(f.requestDate),
-                    f.reason,
-                    f.type.displayName,
-                    '${f.amount.toStringAsFixed(2)} ${f.currency}',
-                    f.status,
-                  ],
-                )
-                .toList();
-        break;
       default:
         title = 'Opérations';
         fileName = 'operations';
@@ -274,15 +240,9 @@ class _OperationsViewState extends State<_OperationsView>
       return TabBarView(
         controller: _tabController,
         children: [
-          _buildAllOperationsView(
-            context,
-            state.sales,
-            state.expenses,
-            state.financingRequests,
-          ),
+          _buildAllOperationsView(context, state.sales, state.expenses),
           _buildSalesView(context, state.sales),
           _buildExpensesView(context, state.expenses),
-          _buildFinancingView(context, state.financingRequests),
         ],
       );
     }
@@ -325,9 +285,8 @@ class _OperationsViewState extends State<_OperationsView>
     BuildContext context,
     List<Sale> sales,
     List<Expense> expenses,
-    List<FinancingRequest> financingRequests,
   ) {
-    List<dynamic> allOperations = [...sales, ...expenses, ...financingRequests];
+    List<dynamic> allOperations = [...sales, ...expenses];
     allOperations.sort((a, b) {
       DateTime dateA;
       DateTime dateB;
@@ -336,8 +295,6 @@ class _OperationsViewState extends State<_OperationsView>
         dateA = a.date;
       } else if (a is Expense) {
         dateA = a.date;
-      } else if (a is FinancingRequest) {
-        dateA = a.requestDate;
       } else {
         dateA = DateTime.now();
       }
@@ -346,8 +303,6 @@ class _OperationsViewState extends State<_OperationsView>
         dateB = b.date;
       } else if (b is Expense) {
         dateB = b.date;
-      } else if (b is FinancingRequest) {
-        dateB = b.requestDate;
       } else {
         dateB = DateTime.now();
       }
@@ -362,7 +317,6 @@ class _OperationsViewState extends State<_OperationsView>
     return _AllOperationsDataTable(
       sales: sales,
       expenses: expenses,
-      financingRequests: financingRequests,
       onSaleTap: (sale) {
         context.pushNamed(
           AppRoute.saleDetail.name,
@@ -378,13 +332,6 @@ class _OperationsViewState extends State<_OperationsView>
             pathParameters: {'id': idForNavigation},
           );
         }
-      },
-      onFinancingTap: (financing) {
-        context.pushNamed(
-          'financing_detail',
-          pathParameters: {'id': financing.id},
-          extra: financing,
-        );
       },
     );
   }
@@ -419,25 +366,6 @@ class _OperationsViewState extends State<_OperationsView>
             pathParameters: {'id': idForNavigation},
           );
         }
-      },
-    );
-  }
-
-  Widget _buildFinancingView(
-    BuildContext context,
-    List<FinancingRequest> financingRequests,
-  ) {
-    if (financingRequests.isEmpty) {
-      return const Center(child: Text('Aucun financement à afficher.'));
-    }
-    return _FinancingDataTable(
-      financingRequests: financingRequests,
-      onFinancingTap: (financing) {
-        context.pushNamed(
-          'financing_detail',
-          pathParameters: {'id': financing.id},
-          extra: financing,
-        );
       },
     );
   }
@@ -563,22 +491,18 @@ class _OperationsViewState extends State<_OperationsView>
 // DataTable Widgets pour affichage tabulaire
 // =============================================
 
-/// Widget DataTable pour l'onglet "Tout" combinant ventes, dépenses et financements
+/// Widget DataTable pour l'onglet "Tout" combinant ventes et dépenses
 class _AllOperationsDataTable extends StatelessWidget {
   final List<Sale> sales;
   final List<Expense> expenses;
-  final List<FinancingRequest> financingRequests;
   final Function(Sale) onSaleTap;
   final Function(Expense) onExpenseTap;
-  final Function(FinancingRequest) onFinancingTap;
 
   const _AllOperationsDataTable({
     required this.sales,
     required this.expenses,
-    required this.financingRequests,
     required this.onSaleTap,
     required this.onExpenseTap,
-    required this.onFinancingTap,
   });
 
   @override
@@ -609,19 +533,6 @@ class _AllOperationsDataTable extends StatelessWidget {
           onTap: () => onExpenseTap(e),
           status: e.category.displayName,
           statusColor: Colors.orange,
-        ),
-      ),
-      ...financingRequests.map(
-        (f) => _OperationItem(
-          type: 'Financement',
-          description: '${f.type.displayName} - ${f.institution.displayName}',
-          amount: f.amount,
-          date: f.requestDate,
-          icon: Icons.account_balance,
-          color: Colors.blue,
-          onTap: () => onFinancingTap(f),
-          status: _getFinancingStatusText(f.status),
-          statusColor: _getFinancingStatusColor(f.status),
         ),
       ),
     ];
@@ -729,43 +640,6 @@ class _AllOperationsDataTable extends StatelessWidget {
         return Colors.blue;
       case SaleStatus.cancelled:
         return Colors.red;
-    }
-  }
-
-  String _getFinancingStatusText(String status) {
-    switch (status) {
-      case 'approved':
-        return 'Approuvé';
-      case 'pending':
-        return 'En attente';
-      case 'disbursed':
-        return 'Décaissé';
-      case 'repaying':
-        return 'Remboursement';
-      case 'fully_repaid':
-        return 'Remboursé';
-      case 'rejected':
-        return 'Rejeté';
-      default:
-        return 'Inconnu';
-    }
-  }
-
-  Color _getFinancingStatusColor(String status) {
-    switch (status) {
-      case 'approved':
-        return Colors.green;
-      case 'pending':
-        return Colors.orange;
-      case 'disbursed':
-      case 'repaying':
-        return Colors.blue;
-      case 'fully_repaid':
-        return Colors.purple;
-      case 'rejected':
-        return Colors.red;
-      default:
-        return Colors.grey;
     }
   }
 }
@@ -1084,149 +958,6 @@ class _ExpensesDataTable extends StatelessWidget {
         return Icons.celebration;
       case ExpenseCategory.other:
         return Icons.more_horiz;
-    }
-  }
-}
-
-/// Widget DataTable pour l'onglet Financements
-class _FinancingDataTable extends StatelessWidget {
-  final List<FinancingRequest> financingRequests;
-  final Function(FinancingRequest) onFinancingTap;
-
-  const _FinancingDataTable({
-    required this.financingRequests,
-    required this.onFinancingTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 600;
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: constraints.maxWidth),
-            child: DataTable(
-              showCheckboxColumn: false,
-              columnSpacing: isCompact ? 12 : 20,
-              headingRowColor: WidgetStateProperty.all(
-                Theme.of(context).colorScheme.surfaceContainerHighest,
-              ),
-              columns: [
-                const DataColumn(label: Text('Type')),
-                const DataColumn(label: Text('Institution')),
-                const DataColumn(label: Text('Date')),
-                const DataColumn(label: Text('Statut')),
-                const DataColumn(label: Text('Montant'), numeric: true),
-              ],
-              rows:
-                  financingRequests.map((financing) {
-                    return DataRow(
-                      onSelectChanged: (_) => onFinancingTap(financing),
-                      cells: [
-                        DataCell(
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.account_balance,
-                                size: 18,
-                                color: Colors.blue,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(financing.type.displayName),
-                            ],
-                          ),
-                        ),
-                        DataCell(
-                          Text(
-                            financing.institution.displayName,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        DataCell(
-                          Text(
-                            DateFormat(
-                              'dd/MM/yy',
-                            ).format(financing.requestDate),
-                          ),
-                        ),
-                        DataCell(
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _getStatusColor(
-                                financing.status,
-                              ).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              _getStatusText(financing.status),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: _getStatusColor(financing.status),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ),
-                        DataCell(
-                          Text(
-                            NumberFormat.currency(
-                              locale: 'fr_FR',
-                              symbol: financing.currency,
-                            ).format(financing.amount),
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    );
-                  }).toList(),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  String _getStatusText(String status) {
-    switch (status) {
-      case 'approved':
-        return 'Approuvé';
-      case 'pending':
-        return 'En attente';
-      case 'disbursed':
-        return 'Décaissé';
-      case 'repaying':
-        return 'Remboursement';
-      case 'fully_repaid':
-        return 'Remboursé';
-      case 'rejected':
-        return 'Rejeté';
-      default:
-        return 'Inconnu';
-    }
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'approved':
-        return Colors.green;
-      case 'pending':
-        return Colors.orange;
-      case 'disbursed':
-      case 'repaying':
-        return Colors.blue;
-      case 'fully_repaid':
-        return Colors.purple;
-      case 'rejected':
-        return Colors.red;
-      default:
-        return Colors.grey;
     }
   }
 }

@@ -6,7 +6,6 @@ import '../../../core/widgets/desktop/responsive_form_container.dart';
 import '../bloc/financial_account_bloc.dart';
 import '../bloc/financial_account_event.dart';
 import '../models/financial_account.dart';
-import '../../financing/models/financing_request.dart';
 
 /// Écran d'ajout/modification de compte financier
 class AddFinancialAccountScreen extends StatefulWidget {
