@@ -1445,5 +1445,16 @@
   "walletMinimumBalance": "Solde minimum",
   "walletKycVerification": "Vérification KYC",
   "walletKycVerified": "Vérifié",
-  "walletKycNotVerified": "Non vérifié"
+  "walletKycNotVerified": "Non vérifié",
+
+  "printerSettingsTitle": "Imprimante",
+  "printerSettingsSubtitle": "Configurer l'imprimante thermique de tickets",
+  "printerBluetooth": "Bluetooth",
+  "printerUsb": "USB",
+  "printerNetwork": "Réseau",
+  "autoPrintReceipt": "Impression auto après vente cash",
+  "autoPrintReceiptSubtitle": "Imprime automatiquement un ticket thermique après chaque vente en espèces",
+  "testPrinter": "Test d'impression",
+  "printerNotFound": "Aucune imprimante thermique trouvée",
+  "printThermalReceipt": "Ticket thermique"
 }

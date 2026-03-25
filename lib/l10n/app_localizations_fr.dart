@@ -2449,4 +2449,36 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get walletKycNotVerified => 'Non vérifié';
+
+  @override
+  String get printerSettingsTitle => 'Imprimante';
+
+  @override
+  String get printerSettingsSubtitle =>
+      'Configurer l\'imprimante thermique de tickets';
+
+  @override
+  String get printerBluetooth => 'Bluetooth';
+
+  @override
+  String get printerUsb => 'USB';
+
+  @override
+  String get printerNetwork => 'Réseau';
+
+  @override
+  String get autoPrintReceipt => 'Impression auto après vente cash';
+
+  @override
+  String get autoPrintReceiptSubtitle =>
+      'Imprime automatiquement un ticket thermique après chaque vente en espèces';
+
+  @override
+  String get testPrinter => 'Test d\'impression';
+
+  @override
+  String get printerNotFound => 'Aucune imprimante thermique trouvée';
+
+  @override
+  String get printThermalReceipt => 'Ticket thermique';
 }

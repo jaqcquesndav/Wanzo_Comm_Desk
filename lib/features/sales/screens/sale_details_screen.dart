@@ -16,6 +16,7 @@ import 'package:wanzo/features/settings/models/settings.dart'
     as old_settings_model;
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
 import 'package:wanzo/features/invoice/services/invoice_service.dart';
+import 'package:wanzo/services/receipt_printer_service.dart';
 
 /// Écran de détails d'une vente
 class SaleDetailsScreen extends StatelessWidget {
@@ -916,6 +917,13 @@ class SaleDetailsScreen extends StatelessWidget {
     );
   }
 
+  /// Détecte si la vente est un paiement en espèces
+  bool get _hasCashTransaction {
+    if (ReceiptPrinterService.isCashPayment(sale.paymentMethod)) return true;
+    // Vérifier aussi le statut et d'éventuels paiements multiples
+    return false;
+  }
+
   /// Shows a dialog to select document type (Invoice or Receipt)
   void _showDocumentTypeSelectionDialog(
     BuildContext context, {
@@ -954,6 +962,16 @@ class SaleDetailsScreen extends StatelessWidget {
                 },
                 child: const Text("Ticket de caisse"),
               ),
+              // Option d'impression thermique pour les ventes cash
+              if (isPrintAction && _hasCashTransaction)
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    _printThermalReceipt(context);
+                  },
+                  icon: const Icon(Icons.receipt, size: 18),
+                  label: const Text("Ticket thermique"),
+                ),
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext),
                 child: const Text("Annuler"),
@@ -1075,6 +1093,71 @@ class SaleDetailsScreen extends StatelessWidget {
           ),
         );
       }
+    }
+  }
+
+  /// Imprime un ticket thermique ESC/POS pour la vente en cours
+  void _printThermalReceipt(BuildContext context) async {
+    // Récupérer Settings depuis le Bloc
+    final settingsBloc = context.read<old_settings_bloc.SettingsBloc>();
+    final settingsState = settingsBloc.state;
+    old_settings_model.Settings? legacySettings;
+
+    if (settingsState is old_settings_state.SettingsLoaded) {
+      legacySettings = settingsState.settings;
+    } else if (settingsState is old_settings_state.SettingsUpdated) {
+      legacySettings = settingsState.settings;
+    }
+
+    if (legacySettings == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Paramètres non chargés.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    final printerService = ReceiptPrinterService();
+    final savedPrinter = await printerService.getSavedPrinter();
+
+    if (savedPrinter == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Aucune imprimante thermique configurée. '
+              'Allez dans Paramètres → Imprimante.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Impression du ticket en cours...')),
+      );
+    }
+
+    final success = await printerService.printCashReceipt(sale, legacySettings);
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'Ticket imprimé avec succès !'
+                : 'Échec de l\'impression. Vérifiez l\'imprimante.',
+          ),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
     }
   }
 }

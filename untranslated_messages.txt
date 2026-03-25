@@ -92,6 +92,16 @@
     "walletMinimumBalance",
     "walletKycVerification",
     "walletKycVerified",
-    "walletKycNotVerified"
+    "walletKycNotVerified",
+    "printerSettingsTitle",
+    "printerSettingsSubtitle",
+    "printerBluetooth",
+    "printerUsb",
+    "printerNetwork",
+    "autoPrintReceipt",
+    "autoPrintReceiptSubtitle",
+    "testPrinter",
+    "printerNotFound",
+    "printThermalReceipt"
   ]
 }

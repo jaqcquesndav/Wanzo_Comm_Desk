@@ -4563,6 +4563,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not verified'**
   String get walletKycNotVerified;
+
+  /// No description provided for @printerSettingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Printer Settings'**
+  String get printerSettingsTitle;
+
+  /// No description provided for @printerSettingsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Configure thermal receipt printer'**
+  String get printerSettingsSubtitle;
+
+  /// No description provided for @printerBluetooth.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth'**
+  String get printerBluetooth;
+
+  /// No description provided for @printerUsb.
+  ///
+  /// In en, this message translates to:
+  /// **'USB'**
+  String get printerUsb;
+
+  /// No description provided for @printerNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Network'**
+  String get printerNetwork;
+
+  /// No description provided for @autoPrintReceipt.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-print receipt after cash sale'**
+  String get autoPrintReceipt;
+
+  /// No description provided for @autoPrintReceiptSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatically prints a thermal receipt when a cash sale is completed'**
+  String get autoPrintReceiptSubtitle;
+
+  /// No description provided for @testPrinter.
+  ///
+  /// In en, this message translates to:
+  /// **'Test Print'**
+  String get testPrinter;
+
+  /// No description provided for @printerNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No thermal printer found'**
+  String get printerNotFound;
+
+  /// No description provided for @printThermalReceipt.
+  ///
+  /// In en, this message translates to:
+  /// **'Thermal Receipt'**
+  String get printThermalReceipt;
 }
 
 class _AppLocalizationsDelegate

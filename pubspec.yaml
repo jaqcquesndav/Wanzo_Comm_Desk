@@ -90,6 +90,7 @@ dependencies:
   # PDF generation and printing
   pdf: ^3.10.7
   printing: ^5.12.0
+  print_bluetooth_thermal: ^1.1.9
   share_plus: ^11.0.0
   fl_chart: ^1.0.0
   

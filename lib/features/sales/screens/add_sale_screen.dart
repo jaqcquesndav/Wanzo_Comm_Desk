@@ -19,6 +19,7 @@ import 'package:wanzo/features/inventory/bloc/inventory_event.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_state.dart';
 import 'package:wanzo/features/inventory/models/product.dart';
 import 'package:wanzo/features/invoice/services/invoice_service.dart';
+import 'package:wanzo/services/receipt_printer_service.dart';
 import 'package:wanzo/features/settings/bloc/settings_bloc.dart'
     as old_settings_bloc;
 import 'package:wanzo/features/settings/bloc/settings_event.dart'
@@ -1115,6 +1116,10 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
     if (pdfPath.isNotEmpty) {
       // Simplified from: pdfPath != null && pdfPath.isNotEmpty
+
+      // Auto-print thermique si activé et paiement cash
+      _tryAutoPrintThermal(saleForPdf, currentLegacySettings);
+
       _showDocumentOptions(
         pdfPath,
         documentType,
@@ -1132,6 +1137,36 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         );
         _closeAfterSuccess();
       }
+    }
+  }
+
+  /// Tente l'impression thermique automatique si activée et paiement cash
+  Future<void> _tryAutoPrintThermal(
+    Sale sale,
+    old_settings_model.Settings settings,
+  ) async {
+    try {
+      final printerService = ReceiptPrinterService();
+      final autoPrint = await printerService.getAutoPrintOnCashSale();
+      if (autoPrint &&
+          ReceiptPrinterService.isCashPayment(sale.paymentMethod)) {
+        final success = await printerService.printCashReceipt(sale, settings);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                success
+                    ? 'Ticket thermique imprimé automatiquement'
+                    : 'Échec impression thermique automatique',
+              ),
+              backgroundColor: success ? Colors.green : Colors.orange,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('[AddSaleScreen] Auto-print error: $e');
     }
   }
 
@@ -1259,6 +1294,36 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                     if (mounted) _closeAfterSuccess();
                   },
                 ),
+                // Option ticket thermique pour ventes cash
+                if (ReceiptPrinterService.isCashPayment(sale.paymentMethod))
+                  _buildDocumentOptionTile(
+                    icon: Icons.receipt,
+                    iconColor: Colors.teal,
+                    title: 'Ticket thermique',
+                    subtitle: 'Imprimante ESC/POS',
+                    onTap: () async {
+                      Navigator.pop(dialogContext);
+                      final printerService = ReceiptPrinterService();
+                      final success = await printerService.printCashReceipt(
+                        sale,
+                        settings,
+                      );
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              success
+                                  ? 'Ticket thermique imprimé'
+                                  : 'Échec impression thermique',
+                            ),
+                            backgroundColor:
+                                success ? Colors.green : Colors.red,
+                          ),
+                        );
+                        _closeAfterSuccess();
+                      }
+                    },
+                  ),
                 _buildDocumentOptionTile(
                   icon: Icons.share,
                   iconColor: Colors.orange,
@@ -1390,6 +1455,35 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                       if (mounted) _closeAfterSuccess();
                     },
                   ),
+                  // Option ticket thermique pour ventes cash (mobile)
+                  if (ReceiptPrinterService.isCashPayment(sale.paymentMethod))
+                    ListTile(
+                      leading: const Icon(Icons.receipt, color: Colors.teal),
+                      title: const Text('Ticket thermique'),
+                      subtitle: const Text('Imprimante ESC/POS'),
+                      onTap: () async {
+                        Navigator.pop(bc);
+                        final printerService = ReceiptPrinterService();
+                        final success = await printerService.printCashReceipt(
+                          sale,
+                          settings,
+                        );
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                success
+                                    ? 'Ticket thermique imprimé'
+                                    : 'Échec impression thermique',
+                              ),
+                              backgroundColor:
+                                  success ? Colors.green : Colors.red,
+                            ),
+                          );
+                          _closeAfterSuccess();
+                        }
+                      },
+                    ),
                   ListTile(
                     leading: const Icon(Icons.share, color: Colors.orange),
                     title: Text('Partager $documentType'),

@@ -14,6 +14,7 @@ import 'inventory_settings_screen.dart';
 import 'backup_settings_screen.dart';
 import 'notification_settings_screen.dart';
 import 'financial_account_settings_screen.dart';
+import 'printer_settings_screen.dart';
 import '../../security/screens/security_settings_screen.dart';
 
 /// Écran principal des paramètres
@@ -159,6 +160,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: l10n.invoiceSettings,
         subtitle: l10n.invoiceSettingsSubtitle,
         onTap: () => _navigateToInvoiceSettings(settings),
+      ),
+      _SettingsItem(
+        icon: Icons.print,
+        title: l10n.printerSettingsTitle,
+        subtitle: l10n.printerSettingsSubtitle,
+        onTap: () => _navigateToPrinterSettings(),
       ),
       _SettingsItem(
         icon: Icons.account_balance_wallet,
@@ -381,6 +388,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       MaterialPageRoute(
         builder: (context) => InvoiceSettingsScreen(settings: settings),
       ),
+    );
+  }
+
+  void _navigateToPrinterSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const PrinterSettingsScreen()),
     );
   }
 

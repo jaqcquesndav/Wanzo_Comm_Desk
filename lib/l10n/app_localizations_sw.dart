@@ -2426,4 +2426,35 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get walletKycNotVerified => 'Not verified';
+
+  @override
+  String get printerSettingsTitle => 'Printer Settings';
+
+  @override
+  String get printerSettingsSubtitle => 'Configure thermal receipt printer';
+
+  @override
+  String get printerBluetooth => 'Bluetooth';
+
+  @override
+  String get printerUsb => 'USB';
+
+  @override
+  String get printerNetwork => 'Network';
+
+  @override
+  String get autoPrintReceipt => 'Auto-print receipt after cash sale';
+
+  @override
+  String get autoPrintReceiptSubtitle =>
+      'Automatically prints a thermal receipt when a cash sale is completed';
+
+  @override
+  String get testPrinter => 'Test Print';
+
+  @override
+  String get printerNotFound => 'No thermal printer found';
+
+  @override
+  String get printThermalReceipt => 'Thermal Receipt';
 }

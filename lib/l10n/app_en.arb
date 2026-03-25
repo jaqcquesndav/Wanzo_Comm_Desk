@@ -1432,5 +1432,16 @@
   "walletMinimumBalance": "Minimum balance",
   "walletKycVerification": "KYC Verification",
   "walletKycVerified": "Verified",
-  "walletKycNotVerified": "Not verified"
+  "walletKycNotVerified": "Not verified",
+
+  "printerSettingsTitle": "Printer Settings",
+  "printerSettingsSubtitle": "Configure thermal receipt printer",
+  "printerBluetooth": "Bluetooth",
+  "printerUsb": "USB",
+  "printerNetwork": "Network",
+  "autoPrintReceipt": "Auto-print receipt after cash sale",
+  "autoPrintReceiptSubtitle": "Automatically prints a thermal receipt when a cash sale is completed",
+  "testPrinter": "Test Print",
+  "printerNotFound": "No thermal printer found",
+  "printThermalReceipt": "Thermal Receipt"
 }
