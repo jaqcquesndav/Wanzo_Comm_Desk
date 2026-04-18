@@ -199,7 +199,15 @@ class OperationJournalBloc
       // 4. Group processed operations by day
       final grouped = _groupOperationsByDay(processedOperations);
 
-      // 5. Emit the loaded state with processed data
+      // 5. Compute daily opening/closing balances
+      final dailyBalances = _computeDailyBalances(
+        grouped,
+        openingCashBalances,
+        openingSalesBalances,
+        openingStockValues,
+      );
+
+      // 6. Emit the loaded state with processed data
       emit(
         OperationJournalLoaded(
           operations: processedOperations,
@@ -213,6 +221,7 @@ class OperationJournalBloc
           openingCashBalances: openingCashBalances,
           openingSalesBalances: openingSalesBalances,
           openingStockValues: openingStockValues,
+          dailyBalances: dailyBalances,
         ),
       );
     } catch (e) {
@@ -281,6 +290,14 @@ class OperationJournalBloc
       // 7. Grouper par jour
       final grouped = _groupOperationsByDay(processedOperations);
 
+      // 8. Calculer les soldes d'ouverture/fermeture par jour
+      final dailyBalances = _computeDailyBalances(
+        grouped,
+        openingCashBalances,
+        openingSalesBalances,
+        openingStockValues,
+      );
+
       emit(
         OperationJournalLoaded(
           operations:
@@ -296,6 +313,7 @@ class OperationJournalBloc
           openingCashBalances: openingCashBalances,
           openingSalesBalances: openingSalesBalances,
           openingStockValues: openingStockValues,
+          dailyBalances: dailyBalances,
           activeFilter: event.filter,
         ),
       );
@@ -502,6 +520,68 @@ class OperationJournalBloc
     return groupBy(operations, (OperationJournalEntry op) {
       return DateTime(op.date.year, op.date.month, op.date.day);
     });
+  }
+
+  /// Calcule les soldes d'ouverture et de fermeture pour chaque journée.
+  /// Les opérations doivent être triées par date croissante.
+  /// Le solde d'ouverture du jour 1 = soldes d'ouverture de la période.
+  /// Le solde d'ouverture du jour N = solde de fermeture du jour N-1.
+  Map<DateTime, DailyBalanceSummary> _computeDailyBalances(
+    Map<DateTime, List<OperationJournalEntry>> groupedOperations,
+    Map<String, double> openingCashBalances,
+    Map<String, double> openingSalesBalances,
+    Map<String, double> openingStockValues,
+  ) {
+    final dailyBalances = <DateTime, DailyBalanceSummary>{};
+
+    // Trier les jours chronologiquement
+    final sortedDays = groupedOperations.keys.toList()..sort();
+
+    // Soldes courants qui évoluent de jour en jour
+    Map<String, double> runningCash = Map<String, double>.from(
+      openingCashBalances,
+    );
+    Map<String, double> runningSales = Map<String, double>.from(
+      openingSalesBalances,
+    );
+    Map<String, double> runningStock = Map<String, double>.from(
+      openingStockValues,
+    );
+
+    for (final day in sortedDays) {
+      // Solde d'ouverture de ce jour = solde de fermeture du jour précédent
+      final dayOpeningCash = Map<String, double>.from(runningCash);
+      final dayOpeningSales = Map<String, double>.from(runningSales);
+      final dayOpeningStock = Map<String, double>.from(runningStock);
+
+      // Appliquer les opérations du jour pour calculer le solde de fermeture
+      final dayOps = groupedOperations[day] ?? [];
+      for (final op in dayOps) {
+        final currencyCode = op.currencyCode ?? 'CDF';
+
+        if (op.type.impactsCash) {
+          runningCash[currencyCode] =
+              (runningCash[currencyCode] ?? 0.0) + op.amount;
+        } else if (op.type.isSalesOperation) {
+          runningSales[currencyCode] =
+              (runningSales[currencyCode] ?? 0.0) + op.amount;
+        } else if (op.type.impactsStock) {
+          runningStock[currencyCode] =
+              (runningStock[currencyCode] ?? 0.0) + op.amount;
+        }
+      }
+
+      dailyBalances[day] = DailyBalanceSummary(
+        openingCash: dayOpeningCash,
+        closingCash: Map<String, double>.from(runningCash),
+        openingSales: dayOpeningSales,
+        closingSales: Map<String, double>.from(runningSales),
+        openingStock: dayOpeningStock,
+        closingStock: Map<String, double>.from(runningStock),
+      );
+    }
+
+    return dailyBalances;
   }
 
   /// Trie la liste d'opérations selon les critères spécifiés

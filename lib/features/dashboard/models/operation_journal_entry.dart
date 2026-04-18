@@ -168,6 +168,63 @@ extension OperationTypeExtension on OperationType {
         return Icons.receipt_long_outlined;
     }
   }
+
+  /// Catégorie de flux de trésorerie selon la classification comptable
+  CashFlowCategory get cashFlowCategory {
+    switch (this) {
+      case OperationType.saleCash:
+      case OperationType.cashIn:
+      case OperationType.cashOut:
+      case OperationType.customerPayment:
+      case OperationType.supplierPayment:
+        return CashFlowCategory.exploitation;
+      case OperationType.stockIn:
+      case OperationType.stockOut:
+        return CashFlowCategory.investissement;
+      case OperationType.financingRequest:
+      case OperationType.financingApproved:
+      case OperationType.financingRepayment:
+        return CashFlowCategory.financement;
+      case OperationType.saleCredit:
+      case OperationType.saleInstallment:
+      case OperationType.other:
+        return CashFlowCategory.nonApplicable;
+    }
+  }
+}
+
+/// Catégories de flux de trésorerie (exploitation, investissement, financement)
+@HiveType(typeId: 204)
+enum CashFlowCategory {
+  @HiveField(0)
+  exploitation,
+  @HiveField(1)
+  investissement,
+  @HiveField(2)
+  financement,
+  @HiveField(3)
+  nonApplicable;
+
+  String get displayName {
+    switch (this) {
+      case CashFlowCategory.exploitation:
+        return 'Exploitation';
+      case CashFlowCategory.investissement:
+        return 'Investissement';
+      case CashFlowCategory.financement:
+        return 'Financement';
+      case CashFlowCategory.nonApplicable:
+        return 'Non Applicable';
+    }
+  }
+
+  String toJson() => name;
+  static CashFlowCategory fromJson(String json) {
+    return CashFlowCategory.values.firstWhere(
+      (e) => e.name == json,
+      orElse: () => CashFlowCategory.nonApplicable,
+    );
+  }
 }
 
 @immutable

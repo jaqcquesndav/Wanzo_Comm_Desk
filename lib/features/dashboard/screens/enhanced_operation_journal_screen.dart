@@ -353,6 +353,8 @@ class _EnhancedOperationJournalScreenState
         if (state is OperationJournalLoaded) {
           return JournalOperationsList(
             operations: state.filteredOperations,
+            groupedOperations: state.groupedOperations,
+            dailyBalances: state.dailyBalances,
             onOperationTap:
                 (operation) => _showOperationDetails(context, operation),
           );

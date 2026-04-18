@@ -158,6 +158,9 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   final FocusNode _productSearchFocusNode = FocusNode();
   List<Product> _searchResults = [];
   bool _showSearchResults = false;
+  int _searchResultsTotal = 0;
+  int _searchDisplayCount = 8;
+  static const int _searchPageSize = 8;
 
   // Currency related state
   Currency _defaultCurrency = Currency.CDF; // App default
@@ -253,6 +256,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       setState(() {
         _searchResults = [];
         _showSearchResults = false;
+        _searchResultsTotal = 0;
       });
       return;
     }
@@ -278,13 +282,71 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
               return (nameMatch || barcodeMatch || categoryMatch || skuMatch) &&
                   product.stockQuantity > 0;
             })
-            .take(8)
             .toList();
 
     setState(() {
-      _searchResults = results;
+      _searchResultsTotal = results.length;
+      _searchDisplayCount = _searchPageSize;
+      _searchResults = results.take(_searchDisplayCount).toList();
       _showSearchResults = results.isNotEmpty;
     });
+  }
+
+  /// Charge plus de résultats de recherche
+  void _loadMoreSearchResults(List<Product> allProducts) {
+    final normalizedQuery = _productSearchController.text.toLowerCase().trim();
+    if (normalizedQuery.isEmpty) return;
+
+    final results = allProducts
+        .where((product) {
+          final nameMatch = product.name.toLowerCase().contains(normalizedQuery);
+          final barcodeMatch = product.barcode.toLowerCase().contains(normalizedQuery);
+          final categoryMatch = product.category.displayName.toLowerCase().contains(normalizedQuery);
+          final skuMatch = product.sku?.toLowerCase().contains(normalizedQuery) ?? false;
+          return (nameMatch || barcodeMatch || categoryMatch || skuMatch) && product.stockQuantity > 0;
+        })
+        .toList();
+
+    setState(() {
+      _searchDisplayCount = (_searchDisplayCount + _searchPageSize).clamp(0, results.length);
+      _searchResults = results.take(_searchDisplayCount).toList();
+    });
+  }
+
+  /// Retourne le taux de TVA applicable (produit > settings > 0)
+  double _getApplicableTaxRate([Product? product]) {
+    if (product != null && product.taxRate != null && product.taxRate! > 0) {
+      return product.taxRate!;
+    }
+    final oldState = context.read<old_settings_bloc.SettingsBloc>().state;
+    old_settings_model.Settings? settings;
+    if (oldState is old_settings_state.SettingsLoaded) {
+      settings = oldState.settings;
+    } else if (oldState is old_settings_state.SettingsUpdated) {
+      settings = oldState.settings;
+    }
+    if (settings != null && settings.showTaxes && settings.defaultTaxRate > 0) {
+      return settings.defaultTaxRate;
+    }
+    return 0.0;
+  }
+
+  /// Calcule les infos TVA incluse à partir du total TTC des items
+  Map<String, double> _calculateTVAInfo() {
+    double totalTTC = 0;
+    double totalTVA = 0;
+    double weightedRate = 0;
+
+    for (final item in _items) {
+      final rate = item.taxRate ?? 0;
+      if (rate > 0) {
+        final tva = item.totalPrice * rate / (100 + rate);
+        totalTVA += tva;
+        totalTTC += item.totalPrice;
+        weightedRate = rate; // Use last non-zero rate for display
+      }
+    }
+    return {'amount': totalTVA, 'rate': weightedRate, 'base': totalTTC - totalTVA};
   }
 
   Future<void> _searchCustomerByPhone(String phoneNumber) async {
@@ -557,6 +619,44 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                             ],
                           ),
                           const SizedBox(height: WanzoSpacing.xs),
+
+                          // Affichage TVA incluse
+                          Builder(
+                            builder: (context) {
+                              final tvaInfo = _calculateTVAInfo();
+                              if (tvaInfo['amount']! > 0) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'dont TVA (${tvaInfo['rate']!.toStringAsFixed(0)}%)',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontStyle: FontStyle.italic,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                      Text(
+                                        formatCurrency(
+                                          tvaInfo['amount']!,
+                                          _selectedTransactionCurrency?.code ??
+                                              _defaultCurrency.code,
+                                        ),
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontStyle: FontStyle.italic,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            },
+                          ),
 
                           // Champ de réduction en pourcentage
                           Row(
@@ -1803,16 +1903,43 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                   border: Border.all(color: Colors.grey.shade200),
                 ),
                 constraints: const BoxConstraints(maxHeight: 320),
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  padding: EdgeInsets.zero,
-                  itemCount: _searchResults.length,
-                  separatorBuilder:
-                      (_, __) =>
-                          Divider(height: 1, color: Colors.grey.shade200),
-                  itemBuilder:
-                      (context, index) =>
-                          _buildSearchResultTile(_searchResults[index]),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        padding: EdgeInsets.zero,
+                        itemCount: _searchResults.length,
+                        separatorBuilder:
+                            (_, __) =>
+                                Divider(height: 1, color: Colors.grey.shade200),
+                        itemBuilder:
+                            (context, index) =>
+                                _buildSearchResultTile(_searchResults[index]),
+                      ),
+                    ),
+                    if (_searchResultsTotal > _searchResults.length)
+                      InkWell(
+                        onTap: () => _loadMoreSearchResults(allProducts),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                          ),
+                          child: Text(
+                            'Afficher plus (${_searchResultsTotal - _searchResults.length} restants)',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
 
@@ -2026,6 +2153,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       unitPriceInCdf: product.sellingPriceInCdf,
       totalPriceInCdf: product.sellingPriceInCdf,
       itemType: SaleItemType.product,
+      taxRate: _getApplicableTaxRate(product),
     );
 
     _addItem(saleItem);
@@ -2314,6 +2442,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                     unitPriceInCdf: product.sellingPriceInCdf,
                     totalPriceInCdf: product.sellingPriceInCdf,
                     itemType: SaleItemType.product,
+                    taxRate: _getApplicableTaxRate(product),
                   );
 
                   _addItem(saleItem);
@@ -2782,6 +2911,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                                   totalPriceInCdf: totalPriceInCdf,
                                   itemType: currentCategory.saleItemType,
                                   notes: itemNotes,
+                                  taxRate: _getApplicableTaxRate(),
                                 ),
                               );
                               Navigator.pop(bottomSheetContext);
@@ -3048,6 +3178,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
           unitPriceInCdf: existingItem.unitPriceInCdf,
           totalPriceInCdf: updatedTotalPriceInCdf,
           itemType: existingItem.itemType,
+          taxRate: existingItem.taxRate,
         );
 
         // Remplacer l'ancien item par le nouveau
@@ -3324,6 +3455,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                                 totalPriceInCdf: newTotalPriceInCdf,
                                 itemType: item.itemType,
                                 notes: newNotes,
+                                taxRate: item.taxRate,
                               );
 
                               setState(() {

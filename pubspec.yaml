@@ -157,7 +157,7 @@ msix_config:
   publisher_display_name: Wanzo
   identity_name: com.wanzo.commerce
   msix_version: 1.0.0.0
-  logo_path: assets/icons/app_icon.png
+  logo_path: assets/icons/app_icon_square.png
   capabilities: internetClient, microphone
   languages: fr-FR, en-US, sw-TZ
   file_extension: .wanzo

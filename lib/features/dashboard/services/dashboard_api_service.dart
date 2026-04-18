@@ -1,6 +1,8 @@
+import 'package:hive/hive.dart';
 import '../../../core/models/api_response.dart';
 import '../../../core/services/logging_service.dart';
 import '../models/dashboard_data.dart';
+import '../models/operation_journal_entry.dart';
 import '../../sales/repositories/sales_repository.dart';
 import '../../customer/repositories/customer_repository.dart';
 import '../../transactions/repositories/transaction_repository.dart';
@@ -72,6 +74,9 @@ class DashboardApiService {
       double expenses =
           expensesCdf + (expensesUsd * 2800); // Total approximatif en CDF
 
+      // Calculer les flux de trésorerie
+      final cashFlowData = await _computeCashFlowData();
+
       // Assembler les données du Dashboard
       final dashboardData = DashboardData(
         salesTodayCdf: salesTodayCdf,
@@ -81,6 +86,15 @@ class DashboardApiService {
         expenses: expenses,
         expensesCdf: expensesCdf,
         expensesUsd: expensesUsd,
+        cashBalanceCdf: cashFlowData['cashBalanceCdf'] ?? 0.0,
+        cashBalanceUsd: cashFlowData['cashBalanceUsd'] ?? 0.0,
+        exploitationFlowsCdf: cashFlowData['exploitationFlowsCdf'] ?? 0.0,
+        investmentFlowsCdf: cashFlowData['investmentFlowsCdf'] ?? 0.0,
+        financingFlowsCdf: cashFlowData['financingFlowsCdf'] ?? 0.0,
+        cashInTodayCdf: cashFlowData['cashInTodayCdf'] ?? 0.0,
+        cashOutTodayCdf: cashFlowData['cashOutTodayCdf'] ?? 0.0,
+        cashInTodayUsd: cashFlowData['cashInTodayUsd'] ?? 0.0,
+        cashOutTodayUsd: cashFlowData['cashOutTodayUsd'] ?? 0.0,
       );
 
       return ApiResponse<DashboardData>(
@@ -279,5 +293,112 @@ class DashboardApiService {
       );
       return 0.0; // Valeur sûre en cas d'erreur
     }
+  }
+
+  /// Calcule les données de flux de trésorerie à partir du journal d'opérations Hive
+  Future<Map<String, double>> _computeCashFlowData() async {
+    final result = <String, double>{
+      'cashBalanceCdf': 0.0,
+      'cashBalanceUsd': 0.0,
+      'exploitationFlowsCdf': 0.0,
+      'investmentFlowsCdf': 0.0,
+      'financingFlowsCdf': 0.0,
+      'cashInTodayCdf': 0.0,
+      'cashOutTodayCdf': 0.0,
+      'cashInTodayUsd': 0.0,
+      'cashOutTodayUsd': 0.0,
+    };
+
+    try {
+      if (!Hive.isBoxOpen('offline_operation_journal')) {
+        return result;
+      }
+
+      final box = Hive.box<OperationJournalEntry>('offline_operation_journal');
+      if (box.isEmpty) return result;
+
+      final now = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day);
+
+      double cashBalanceCdf = 0.0;
+      double cashBalanceUsd = 0.0;
+
+      for (final entry in box.values) {
+        final isCdf = (entry.currencyCode ?? 'CDF') == 'CDF';
+        final amount = entry.amount;
+
+        // Solde de caisse global (toutes les opérations impactant la trésorerie)
+        if (entry.type.impactsCash) {
+          if (isCdf) {
+            cashBalanceCdf += amount;
+          } else {
+            cashBalanceUsd += amount;
+          }
+        }
+
+        // Flux du jour uniquement
+        if (entry.date.isAfter(todayStart) ||
+            entry.date.isAtSameMomentAs(todayStart)) {
+          // Encaissements / décaissements du jour
+          if (entry.type.impactsCash) {
+            if (amount > 0) {
+              if (isCdf) {
+                result['cashInTodayCdf'] = result['cashInTodayCdf']! + amount;
+              } else {
+                result['cashInTodayUsd'] = result['cashInTodayUsd']! + amount;
+              }
+            } else {
+              if (isCdf) {
+                result['cashOutTodayCdf'] =
+                    result['cashOutTodayCdf']! + amount.abs();
+              } else {
+                result['cashOutTodayUsd'] =
+                    result['cashOutTodayUsd']! + amount.abs();
+              }
+            }
+          }
+
+          // Flux par catégorie (en CDF)
+          final amountCdf =
+              isCdf ? amount : amount * 2800;
+          switch (entry.type.cashFlowCategory) {
+            case CashFlowCategory.exploitation:
+              result['exploitationFlowsCdf'] =
+                  result['exploitationFlowsCdf']! + amountCdf;
+              break;
+            case CashFlowCategory.investissement:
+              result['investmentFlowsCdf'] =
+                  result['investmentFlowsCdf']! + amountCdf;
+              break;
+            case CashFlowCategory.financement:
+              result['financingFlowsCdf'] =
+                  result['financingFlowsCdf']! + amountCdf;
+              break;
+            case CashFlowCategory.nonApplicable:
+              break;
+          }
+        }
+      }
+
+      // Utiliser les soldes calculés depuis cashBalances si l'entry les a
+      final lastEntry = box.values.last;
+      if (lastEntry.cashBalancesByCurrency != null &&
+          lastEntry.cashBalancesByCurrency!.isNotEmpty) {
+        cashBalanceCdf =
+            lastEntry.cashBalancesByCurrency!['CDF'] ?? cashBalanceCdf;
+        cashBalanceUsd =
+            lastEntry.cashBalancesByCurrency!['USD'] ?? cashBalanceUsd;
+      }
+
+      result['cashBalanceCdf'] = cashBalanceCdf;
+      result['cashBalanceUsd'] = cashBalanceUsd;
+    } catch (e) {
+      LoggingService.instance.error(
+        'Erreur calcul flux de trésorerie',
+        error: e,
+      );
+    }
+
+    return result;
   }
 }

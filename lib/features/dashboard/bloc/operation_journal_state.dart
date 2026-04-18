@@ -1,5 +1,25 @@
 part of 'operation_journal_bloc.dart';
 
+/// Résumé des soldes d'ouverture et de fermeture pour une journée donnée.
+/// Chaque map est indexée par code devise (ex: 'CDF', 'USD').
+class DailyBalanceSummary {
+  final Map<String, double> openingCash;
+  final Map<String, double> closingCash;
+  final Map<String, double> openingSales;
+  final Map<String, double> closingSales;
+  final Map<String, double> openingStock;
+  final Map<String, double> closingStock;
+
+  const DailyBalanceSummary({
+    required this.openingCash,
+    required this.closingCash,
+    required this.openingSales,
+    required this.closingSales,
+    required this.openingStock,
+    required this.closingStock,
+  });
+}
+
 @immutable
 abstract class OperationJournalState {
   const OperationJournalState();
@@ -32,6 +52,10 @@ class OperationJournalLoaded extends OperationJournalState {
   final Map<String, double> openingSalesBalances; // Cumul ventes d'ouverture
   final Map<String, double> openingStockValues; // Valeur stock d'ouverture
 
+  /// Soldes d'ouverture et de fermeture par jour
+  /// La clé est la date tronquée au jour (DateTime(y, m, d))
+  final Map<DateTime, DailyBalanceSummary> dailyBalances;
+
   final JournalFilter? activeFilter;
 
   const OperationJournalLoaded({
@@ -46,6 +70,7 @@ class OperationJournalLoaded extends OperationJournalState {
     required this.openingCashBalances,
     required this.openingSalesBalances,
     required this.openingStockValues,
+    this.dailyBalances = const {},
     this.activeFilter,
   });
 
@@ -60,6 +85,7 @@ class OperationJournalLoaded extends OperationJournalState {
     Map<String, double>? openingCashBalances,
     Map<String, double>? openingSalesBalances,
     Map<String, double>? openingStockValues,
+    Map<DateTime, DailyBalanceSummary>? dailyBalances,
     JournalFilter? activeFilter,
   }) {
     return OperationJournalLoaded(
@@ -74,6 +100,7 @@ class OperationJournalLoaded extends OperationJournalState {
       openingCashBalances: openingCashBalances ?? this.openingCashBalances,
       openingSalesBalances: openingSalesBalances ?? this.openingSalesBalances,
       openingStockValues: openingStockValues ?? this.openingStockValues,
+      dailyBalances: dailyBalances ?? this.dailyBalances,
       activeFilter: activeFilter ?? this.activeFilter,
     );
   }

@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:wanzo/utils/theme.dart';
 import '../models/operation_journal_entry.dart';
+import '../bloc/operation_journal_bloc.dart';
 import '../widgets/product_operation_image.dart';
 
 /// Widget pour afficher la liste filtrée des opérations du journal en format tableau
+/// groupées par jour avec soldes d'ouverture et de fermeture.
 class JournalOperationsList extends StatelessWidget {
   final List<OperationJournalEntry> operations;
+  final Map<DateTime, List<OperationJournalEntry>>? groupedOperations;
+  final Map<DateTime, DailyBalanceSummary>? dailyBalances;
   final bool isLoading;
   final String? errorMessage;
   final VoidCallback? onRetry;
@@ -15,6 +19,8 @@ class JournalOperationsList extends StatelessWidget {
   const JournalOperationsList({
     super.key,
     required this.operations,
+    this.groupedOperations,
+    this.dailyBalances,
     this.isLoading = false,
     this.errorMessage,
     this.onRetry,
@@ -106,10 +112,152 @@ class JournalOperationsList extends StatelessWidget {
       );
     }
 
-    // Affichage en tableau
+    // Affichage en tableau groupé par jour
+    if (groupedOperations != null &&
+        dailyBalances != null &&
+        groupedOperations!.isNotEmpty) {
+      return _GroupedOperationsDataTable(
+        groupedOperations: groupedOperations!,
+        dailyBalances: dailyBalances!,
+        onOperationTap: onOperationTap,
+      );
+    }
+
+    // Fallback: tableau plat sans en-têtes de jour
     return _OperationsDataTable(
       operations: operations,
       onOperationTap: onOperationTap,
+    );
+  }
+}
+
+/// Widget tableau groupé par jour avec en-têtes/pieds d'ouverture/fermeture
+class _GroupedOperationsDataTable extends StatelessWidget {
+  final Map<DateTime, List<OperationJournalEntry>> groupedOperations;
+  final Map<DateTime, DailyBalanceSummary> dailyBalances;
+  final Function(OperationJournalEntry)? onOperationTap;
+
+  const _GroupedOperationsDataTable({
+    required this.groupedOperations,
+    required this.dailyBalances,
+    this.onOperationTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dayFormat = DateFormat('EEEE d MMMM yyyy', 'fr_FR');
+    final currencyFormat = NumberFormat.currency(locale: 'fr_FR', symbol: '');
+    final sortedDays = groupedOperations.keys.toList()..sort();
+
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final day in sortedDays) ...[
+            // En-tête de journée avec soldes d'ouverture
+            _buildDayHeader(context, day, dayFormat, currencyFormat, theme),
+            // Tableau des opérations du jour
+            _OperationsDataTable(
+              operations: groupedOperations[day] ?? [],
+              onOperationTap: onOperationTap,
+            ),
+            // Pied de journée avec soldes de fermeture
+            _buildDayFooter(context, day, currencyFormat, theme),
+            const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDayHeader(
+    BuildContext context,
+    DateTime day,
+    DateFormat dayFormat,
+    NumberFormat currencyFormat,
+    ThemeData theme,
+  ) {
+    final balance = dailyBalances[day];
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.08),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+        border: Border(
+          bottom: BorderSide(
+            color: theme.colorScheme.primary.withValues(alpha: 0.2),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.calendar_today,
+            size: 16,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            dayFormat.format(day),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const Spacer(),
+          if (balance != null)
+            ...balance.openingCash.entries.map(
+              (e) => Padding(
+                padding: const EdgeInsets.only(left: 16),
+                child: Text(
+                  'Ouv. ${e.key}: ${currencyFormat.format(e.value)} ${e.key}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDayFooter(
+    BuildContext context,
+    DateTime day,
+    NumberFormat currencyFormat,
+    ThemeData theme,
+  ) {
+    final balance = dailyBalances[day];
+    if (balance == null) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
+        border: Border(top: BorderSide(color: theme.dividerColor, width: 1)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          ...balance.closingCash.entries.map(
+            (e) => Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: Text(
+                'Ferm. ${e.key}: ${currencyFormat.format(e.value)} ${e.key}',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
