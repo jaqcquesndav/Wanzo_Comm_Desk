@@ -61,8 +61,10 @@ class ProductOperationImage extends StatelessWidget {
               },
             );
 
-            if (product.imagePath != null && product.imagePath!.isNotEmpty ||
-                product.imageUrl != null && product.imageUrl!.isNotEmpty) {
+            if (SmartImage.hasImage(
+              imageUrl: product.imageUrl,
+              imagePath: product.imagePath,
+            )) {
               return _buildProductImage(product.imageUrl, product.imagePath);
             }
           }
@@ -101,8 +103,10 @@ class ProductOperationImage extends StatelessWidget {
                 },
               );
 
-              if (product.imagePath != null && product.imagePath!.isNotEmpty ||
-                  product.imageUrl != null && product.imageUrl!.isNotEmpty) {
+              if (SmartImage.hasImage(
+                imageUrl: product.imageUrl,
+                imagePath: product.imagePath,
+              )) {
                 return _buildProductImage(product.imageUrl, product.imagePath);
               }
             }

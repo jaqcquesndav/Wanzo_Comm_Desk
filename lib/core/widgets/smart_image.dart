@@ -187,6 +187,12 @@ class SmartImage extends StatelessWidget {
       child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
     );
   }
+
+  /// Vérifie si une image est disponible (URL ou chemin local)
+  static bool hasImage({String? imageUrl, String? imagePath}) {
+    return (imageUrl != null && imageUrl.isNotEmpty) ||
+        (imagePath != null && imagePath.isNotEmpty);
+  }
 }
 
 /// Extension pour faciliter l'utilisation avec Product

@@ -88,6 +88,16 @@ class Supplier extends Equatable {
   @HiveField(18)
   final List<String>? productIds;
 
+  /// Statut de synchronisation (pending, synced, pending_update)
+  @HiveField(19)
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String syncStatus;
+
+  /// ID local pour réconciliation après sync
+  @HiveField(20)
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? localId;
+
   const Supplier({
     required this.id,
     required this.name,
@@ -102,13 +112,14 @@ class Supplier extends Equatable {
     this.category = SupplierCategory.regular,
     this.deliveryTimeInDays = 0,
     this.paymentTerms = '',
-    // Business Unit fields
     this.companyId,
     this.businessUnitId,
     this.businessUnitCode,
     this.businessUnitType,
     this.updatedAt,
     this.productIds,
+    this.syncStatus = 'synced',
+    this.localId,
   });
 
   factory Supplier.fromJson(Map<String, dynamic> json) =>
@@ -143,6 +154,8 @@ class Supplier extends Equatable {
     BusinessUnitType? businessUnitType,
     DateTime? updatedAt,
     List<String>? productIds,
+    String? syncStatus,
+    String? localId,
   }) {
     return Supplier(
       id: id ?? this.id,
@@ -164,6 +177,8 @@ class Supplier extends Equatable {
       businessUnitType: businessUnitType ?? this.businessUnitType,
       updatedAt: updatedAt ?? this.updatedAt,
       productIds: productIds ?? this.productIds,
+      syncStatus: syncStatus ?? this.syncStatus,
+      localId: localId ?? this.localId,
     );
   }
 
@@ -188,6 +203,8 @@ class Supplier extends Equatable {
     businessUnitType,
     updatedAt,
     productIds,
+    syncStatus,
+    localId,
   ];
 }
 

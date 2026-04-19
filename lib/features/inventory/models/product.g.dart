@@ -47,13 +47,14 @@ class ProductAdapter extends TypeAdapter<Product> {
       businessUnitType: fields[25] as BusinessUnitType?,
       syncStatus: fields[26] as String,
       localId: fields[27] as String?,
+      subCategory: fields[30] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Product obj) {
     writer
-      ..writeByte(30)
+      ..writeByte(31)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -113,7 +114,9 @@ class ProductAdapter extends TypeAdapter<Product> {
       ..writeByte(26)
       ..write(obj.syncStatus)
       ..writeByte(27)
-      ..write(obj.localId);
+      ..write(obj.localId)
+      ..writeByte(30)
+      ..write(obj.subCategory);
   }
 
   @override
@@ -344,6 +347,7 @@ Product _$ProductFromJson(Map<String, dynamic> json) => Product(
           json['businessUnitType'] as String?),
       syncStatus: json['syncStatus'] as String? ?? 'pending',
       localId: json['localId'] as String?,
+      subCategory: json['subCategory'] as String?,
     );
 
 Map<String, dynamic> _$ProductToJson(Product instance) => <String, dynamic>{
@@ -383,6 +387,7 @@ Map<String, dynamic> _$ProductToJson(Product instance) => <String, dynamic>{
         'businessUnitType': value,
       'syncStatus': instance.syncStatus,
       if (instance.localId case final value?) 'localId': value,
+      if (instance.subCategory case final value?) 'subCategory': value,
     };
 
 const _$ProductCategoryEnumMap = {

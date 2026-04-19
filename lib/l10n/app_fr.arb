@@ -1456,5 +1456,10 @@
   "autoPrintReceiptSubtitle": "Imprime automatiquement un ticket thermique après chaque vente en espèces",
   "testPrinter": "Test d'impression",
   "printerNotFound": "Aucune imprimante thermique trouvée",
-  "printThermalReceipt": "Ticket thermique"
+  "printThermalReceipt": "Ticket thermique",
+  "outstandingBalance": "Solde impayé",
+  "receivablesToCollect": "À encaisser",
+  "payablesToPay": "À décaisser",
+  "unpaidSalesCount": "{count, plural, =0{Aucune vente impayée} =1{1 vente impayée} other{{count} ventes impayées}}",
+  "unpaidExpensesCount": "{count, plural, =0{Aucune dépense impayée} =1{1 dépense impayée} other{{count} dépenses impayées}}"
 }

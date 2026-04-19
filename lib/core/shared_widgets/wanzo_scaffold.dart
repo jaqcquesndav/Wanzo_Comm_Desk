@@ -74,7 +74,7 @@ class WanzoScaffold extends StatelessWidget {
     ];
 
     // Items de navigation pour desktop (avec plus d'options)
-    // Organisation: Dashboard, Ventes, Dépenses, Stock, Financement, Contacts, Adha, Paramètres
+    // Organisation: Dashboard, Ventes, Dépenses, Stock, Contacts, Adha, Paramètres
     final List<SidebarNavItem> desktopNavItems = [
       const SidebarNavItem(
         icon: Icons.dashboard_outlined,
@@ -102,17 +102,11 @@ class WanzoScaffold extends StatelessWidget {
         route: '/inventory',
       ),
       const SidebarNavItem(
-        icon: Icons.account_balance_outlined,
-        activeIcon: Icons.account_balance,
-        label: 'Financement',
-        route: '/financing', // Route directe vers la page de financement
-        isDividerBefore: true,
-      ),
-      const SidebarNavItem(
         icon: Icons.groups_outlined,
         activeIcon: Icons.groups,
         label: 'Contacts',
         route: '/contacts',
+        isDividerBefore: true,
       ),
       const SidebarNavItem(
         icon: Icons.chat_bubble_outline, // Icône de chat pour Adha

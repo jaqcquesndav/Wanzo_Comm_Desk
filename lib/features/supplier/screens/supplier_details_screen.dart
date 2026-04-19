@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/services/currency_service.dart';
 import 'package:intl/intl.dart';
+import '../../expenses/models/expense.dart';
+import '../../expenses/repositories/expense_repository.dart';
 import '../bloc/supplier_bloc.dart';
 import '../bloc/supplier_event.dart';
 import '../bloc/supplier_state.dart';
@@ -222,6 +224,65 @@ class SupplierDetailsScreen extends StatelessWidget {
                       ],
                     ),
                   ),
+                ),
+                // ── Dettes fournisseur (solde impayé) ──
+                FutureBuilder<List<Expense>>(
+                  future: context
+                      .read<ExpenseRepository>()
+                      .getExpensesBySupplier(supplier.id),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) return const SizedBox.shrink();
+                    final unpaid = snapshot.data!.where((e) {
+                      final st = e.paymentStatus;
+                      return st == ExpensePaymentStatus.unpaid ||
+                          st == ExpensePaymentStatus.partial ||
+                          st == ExpensePaymentStatus.credit;
+                    });
+                    final totalDue = unpaid.fold<double>(
+                      0,
+                      (sum, e) => sum + (e.amount - (e.paidAmount ?? 0)),
+                    );
+                    if (totalDue <= 0) return const SizedBox.shrink();
+                    return Column(
+                      children: [
+                        const SizedBox(height: 16),
+                        Card(
+                          elevation: 2,
+                          color: Colors.red.shade50,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  localizations.outstandingBalance,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const Divider(),
+                                const SizedBox(height: 8),
+                                _buildInfoRow(
+                                  Icons.warning_amber_rounded,
+                                  localizations.payablesToPay,
+                                  currencyService.formatAmount(totalDue),
+                                ),
+                                const SizedBox(height: 8),
+                                _buildInfoRow(
+                                  Icons.receipt_long,
+                                  '',
+                                  localizations.unpaidExpensesCount(
+                                    unpaid.length,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 if (supplier.notes.isNotEmpty) ...[
                   const SizedBox(height: 16),

@@ -21,6 +21,8 @@ import 'package:wanzo/core/enums/currency_enum.dart'; // Added
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart'; // Changed
 import 'package:wanzo/core/services/currency_service.dart'; // Added
 import 'package:wanzo/l10n/app_localizations.dart'; // Updated import
+import 'package:wanzo/features/auth/bloc/auth_bloc.dart';
+import '../config/product_category_config.dart';
 
 /// Écran d'ajout de produit
 class AddProductScreen extends StatefulWidget {
@@ -49,6 +51,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   late ProductCategory _selectedCategory;
   late ProductUnit _selectedUnit;
+  String? _selectedSubCategory;
 
   File? _selectedImageFile; // To store the selected image file
   String?
@@ -126,6 +129,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
     _selectedCategory = widget.product?.category ?? ProductCategory.other;
     _selectedUnit = widget.product?.unit ?? ProductUnit.piece;
+    _selectedSubCategory = widget.product?.subCategory;
 
     // Initialize expiration date fields
     _expirationDate = widget.product?.expirationDate;
@@ -545,85 +549,135 @@ class _AddProductScreenState extends State<AddProductScreen> {
                       const SizedBox(height: WanzoSpacing.md),
 
                       // Catégorie
-                      Autocomplete<ProductCategory>(
-                        initialValue: TextEditingValue(
-                          text: _getCategoryName(_selectedCategory, l10n),
-                        ),
-                        optionsBuilder: (TextEditingValue textEditingValue) {
-                          if (textEditingValue.text.isEmpty) {
-                            return ProductCategory.values;
+                      Builder(
+                        builder: (context) {
+                          // Filtrer les catégories selon le secteur de l'entreprise
+                          String? sectorId;
+                          final authState = context.read<AuthBloc>().state;
+                          if (authState is AuthAuthenticated) {
+                            sectorId = authState.user.businessSectorId;
                           }
-                          return ProductCategory.values.where((category) {
-                            final displayName =
-                                _getCategoryName(category, l10n).toLowerCase();
-                            final searchText =
-                                textEditingValue.text.toLowerCase();
-                            return displayName.contains(searchText);
-                          });
-                        },
-                        displayStringForOption:
-                            (ProductCategory category) =>
-                                _getCategoryName(category, l10n),
-                        onSelected: (ProductCategory selection) {
-                          setState(() {
-                            _selectedCategory = selection;
-                          });
-                        },
-                        fieldViewBuilder: (
-                          BuildContext context,
-                          TextEditingController textEditingController,
-                          FocusNode focusNode,
-                          VoidCallback onFieldSubmitted,
-                        ) {
-                          return TextFormField(
-                            controller: textEditingController,
-                            focusNode: focusNode,
-                            onFieldSubmitted: (String value) {
-                              onFieldSubmitted();
+                          final availableCategories =
+                              ProductCategoryConfig.categoriesForSector(
+                                sectorId,
+                              );
+
+                          return Autocomplete<ProductCategory>(
+                            initialValue: TextEditingValue(
+                              text: _getCategoryName(_selectedCategory, l10n),
+                            ),
+                            optionsBuilder: (
+                              TextEditingValue textEditingValue,
+                            ) {
+                              if (textEditingValue.text.isEmpty) {
+                                return availableCategories;
+                              }
+                              return availableCategories.where((category) {
+                                final displayName =
+                                    _getCategoryName(
+                                      category,
+                                      l10n,
+                                    ).toLowerCase();
+                                final searchText =
+                                    textEditingValue.text.toLowerCase();
+                                return displayName.contains(searchText);
+                              });
                             },
-                            decoration: InputDecoration(
-                              labelText: l10n.productCategoryLabel,
-                              border: const OutlineInputBorder(),
-                              prefixIcon: const Icon(Icons.category),
-                            ),
+                            displayStringForOption:
+                                (ProductCategory category) =>
+                                    _getCategoryName(category, l10n),
+                            onSelected: (ProductCategory selection) {
+                              setState(() {
+                                _selectedCategory = selection;
+                                _selectedSubCategory =
+                                    null; // Reset sub on category change
+                              });
+                            },
+                            fieldViewBuilder: (
+                              BuildContext context,
+                              TextEditingController textEditingController,
+                              FocusNode focusNode,
+                              VoidCallback onFieldSubmitted,
+                            ) {
+                              return TextFormField(
+                                controller: textEditingController,
+                                focusNode: focusNode,
+                                onFieldSubmitted: (String value) {
+                                  onFieldSubmitted();
+                                },
+                                decoration: InputDecoration(
+                                  labelText: l10n.productCategoryLabel,
+                                  border: const OutlineInputBorder(),
+                                  prefixIcon: const Icon(Icons.category),
+                                ),
+                              );
+                            },
+                            optionsViewBuilder: (
+                              BuildContext context,
+                              AutocompleteOnSelected<ProductCategory>
+                              onSelected,
+                              Iterable<ProductCategory> options,
+                            ) {
+                              return Align(
+                                alignment: Alignment.topLeft,
+                                child: Material(
+                                  elevation: 4.0,
+                                  child: Container(
+                                    width: 300,
+                                    constraints: const BoxConstraints(
+                                      maxHeight: 200,
+                                    ),
+                                    child: ListView.builder(
+                                      padding: const EdgeInsets.all(8.0),
+                                      itemCount: options.length,
+                                      itemBuilder: (
+                                        BuildContext context,
+                                        int index,
+                                      ) {
+                                        final option = options.elementAt(index);
+                                        return ListTile(
+                                          leading: Icon(option.icon),
+                                          title: Text(
+                                            _getCategoryName(option, l10n),
+                                          ),
+                                          onTap: () {
+                                            onSelected(option);
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
                           );
                         },
-                        optionsViewBuilder: (
-                          BuildContext context,
-                          AutocompleteOnSelected<ProductCategory> onSelected,
-                          Iterable<ProductCategory> options,
-                        ) {
-                          return Align(
-                            alignment: Alignment.topLeft,
-                            child: Material(
-                              elevation: 4.0,
-                              child: Container(
-                                width: 300,
-                                constraints: const BoxConstraints(
-                                  maxHeight: 200,
-                                ),
-                                child: ListView.builder(
-                                  padding: const EdgeInsets.all(8.0),
-                                  itemCount: options.length,
-                                  itemBuilder: (
-                                    BuildContext context,
-                                    int index,
-                                  ) {
-                                    final option = options.elementAt(index);
-                                    return ListTile(
-                                      leading: Icon(option.icon),
-                                      title: Text(
-                                        _getCategoryName(option, l10n),
-                                      ),
-                                      onTap: () {
-                                        onSelected(option);
-                                      },
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                          );
+                      ),
+                      const SizedBox(height: WanzoSpacing.md),
+
+                      // Sous-catégorie
+                      DropdownButtonFormField<String>(
+                        value: _selectedSubCategory,
+                        decoration: const InputDecoration(
+                          labelText: 'Sous-catégorie',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.subdirectory_arrow_right),
+                        ),
+                        items:
+                            ProductCategoryConfig.subcategoriesFor(
+                                  _selectedCategory,
+                                )
+                                .map(
+                                  (sub) => DropdownMenuItem(
+                                    value: sub,
+                                    child: Text(sub),
+                                  ),
+                                )
+                                .toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedSubCategory = value;
+                          });
                         },
                       ),
                       const SizedBox(height: WanzoSpacing.lg),
@@ -1071,6 +1125,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       costPriceInInputCurrency: costPriceInput,
       sellingPriceInInputCurrency: sellingPriceInput,
       expirationDate: _hasExpirationDate ? _expirationDate : null,
+      subCategory: _selectedSubCategory,
     );
 
     if (_isEditing) {

@@ -102,6 +102,11 @@
     "autoPrintReceiptSubtitle",
     "testPrinter",
     "printerNotFound",
-    "printThermalReceipt"
+    "printThermalReceipt",
+    "outstandingBalance",
+    "receivablesToCollect",
+    "payablesToPay",
+    "unpaidSalesCount",
+    "unpaidExpensesCount"
   ]
 }

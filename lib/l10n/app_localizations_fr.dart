@@ -2481,4 +2481,37 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get printThermalReceipt => 'Ticket thermique';
+
+  @override
+  String get outstandingBalance => 'Solde impayé';
+
+  @override
+  String get receivablesToCollect => 'À encaisser';
+
+  @override
+  String get payablesToPay => 'À décaisser';
+
+  @override
+  String unpaidSalesCount(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ventes impayées',
+      one: '1 vente impayée',
+      zero: 'Aucune vente impayée',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String unpaidExpensesCount(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count dépenses impayées',
+      one: '1 dépense impayée',
+      zero: 'Aucune dépense impayée',
+    );
+    return '$_temp0';
+  }
 }

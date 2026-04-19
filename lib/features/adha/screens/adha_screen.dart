@@ -15,7 +15,7 @@ import '../widgets/adha_subscription_error_widget.dart'; // Widget d'erreur abon
 import 'chat_message_widget.dart';
 import 'streaming_message_widget.dart'; // Import du widget de streaming
 import '../models/adha_context_info.dart'; // Added for AdhaContextInfo
-import 'audio_chat_widget.dart'; // Import audio chat widget
+import 'voice_recognition_widget.dart'; // Import voice recognition widget
 import 'conversations_bottom_sheet.dart'; // Import du bottom sheet des conversations
 import '../../auth/bloc/auth_bloc.dart'; // Pour AuthBloc et AuthAuthenticated
 
@@ -417,6 +417,10 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
                 ),
               // Indicateur de streaming désactivé car déjà géré dans la liste
               // (voir AdhaStreaming case dans le builder ci-dessus)
+              // Voice recognition widget (STT) — visible quand micro activé
+              if (adhaState is AdhaConversationActive &&
+                  adhaState.isVoiceActive)
+                const VoiceRecognitionWidget(),
               _buildInputRow(context, adhaState),
             ],
           ),
@@ -977,7 +981,7 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
       );
     }
 
-    // 3. Input vide → Bouton AUDIO (microphone) avec animation
+    // 3. Input vide → Bouton AUDIO (microphone) — lance la reconnaissance vocale
     return TweenAnimationBuilder<double>(
       duration: const Duration(milliseconds: 150),
       tween: Tween(begin: 0.8, end: 1.0),
@@ -992,31 +996,7 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
                       if (isVoiceActive) {
                         adhaBloc.add(const StopVoiceRecognition());
                       } else {
-                        // Ouvrir le mode audio conversationnel full-duplex
-                        showModalBottomSheet(
-                          context: context,
-                          isScrollControlled: true,
-                          backgroundColor: Colors.transparent,
-                          builder: (modalContext) {
-                            return BlocProvider.value(
-                              value: adhaBloc,
-                              child: Container(
-                                constraints: BoxConstraints(
-                                  maxHeight:
-                                      MediaQuery.of(context).size.height * 0.6,
-                                  minHeight: 300,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.surface,
-                                  borderRadius: const BorderRadius.vertical(
-                                    top: Radius.circular(20),
-                                  ),
-                                ),
-                                child: const AudioChatWidget(),
-                              ),
-                            );
-                          },
-                        );
+                        adhaBloc.add(const StartVoiceRecognition());
                       }
                     }
                     : null,

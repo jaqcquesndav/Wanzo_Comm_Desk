@@ -101,11 +101,54 @@ class SyncService {
   static const Duration _syncDebounce = Duration(seconds: 5);
   static const Duration _minTimeBetweenSyncs = Duration(seconds: 30);
 
+  // Constantes pour le full sync journalier automatique
+  static const String _lastFullSyncKey = 'last_full_sync_date';
+  static const Duration _fullSyncInterval = Duration(hours: 24);
+
   final StreamController<SyncStatus> _syncStatusController =
       StreamController<SyncStatus>.broadcast();
 
   /// Stream qui émet l'état de la synchronisation
   Stream<SyncStatus> get syncStatus => _syncStatusController.stream;
+
+  /// Vérifie si un full sync est nécessaire (dernier full sync > 24h)
+  /// Retourne true si le full sync doit être déclenché
+  bool _shouldForceFullSync() {
+    if (!_syncStatusBox.containsKey(_lastFullSyncKey)) {
+      debugPrint('📅 Premier full sync requis (pas de date précédente)');
+      return true;
+    }
+
+    try {
+      final lastFullSyncStr = _syncStatusBox.get(_lastFullSyncKey)!;
+      final lastFullSync = DateTime.parse(lastFullSyncStr);
+      final timeSinceLastFullSync = DateTime.now().difference(lastFullSync);
+
+      if (timeSinceLastFullSync >= _fullSyncInterval) {
+        debugPrint(
+          '📅 Full sync requis: dernier full sync il y a ${timeSinceLastFullSync.inHours}h',
+        );
+        return true;
+      }
+
+      debugPrint(
+        '📅 Sync incrémental: dernier full sync il y a ${timeSinceLastFullSync.inHours}h',
+      );
+      return false;
+    } catch (e) {
+      debugPrint('⚠️ Erreur parsing date full sync, forçant full sync: $e');
+      return true;
+    }
+  }
+
+  /// Met à jour la date du dernier full sync
+  Future<void> _updateLastFullSyncDate() async {
+    await _syncStatusBox.put(
+      _lastFullSyncKey,
+      DateTime.now().toIso8601String(),
+    );
+    debugPrint('✅ Date du dernier full sync mise à jour');
+  }
 
   /// Initialise le service de synchronisation
   Future<void> init() async {
@@ -162,6 +205,7 @@ class SyncService {
   }
 
   /// Synchronise les données avec l'API
+  /// Le full sync automatique est déclenché si le dernier date de plus de 24h
   Future<bool> syncData({
     SyncEntityType entityType = SyncEntityType.all,
   }) async {
@@ -173,45 +217,59 @@ class SyncService {
     debugPrint('Démarrage de la synchronisation des données...');
 
     try {
+      // Déterminer si un full sync est nécessaire (>24h depuis le dernier)
+      // Cette vérification est faite UNE SEULE FOIS au début pour éviter les boucles
+      final bool forceFullSync = _shouldForceFullSync();
+
+      if (forceFullSync) {
+        debugPrint(
+          '🔄 Mode FULL SYNC activé (sync complète de toutes les données)',
+        );
+      } else {
+        debugPrint(
+          '🔄 Mode INCREMENTAL activé (sync des nouvelles données uniquement)',
+        );
+      }
+
       // Si on synchronise toutes les entités ou des entités spécifiques
       if (entityType == SyncEntityType.all ||
           entityType == SyncEntityType.products) {
-        await _syncProducts();
+        await _syncProducts(forceFullSync: forceFullSync);
       }
 
       if (entityType == SyncEntityType.all ||
           entityType == SyncEntityType.customers) {
-        await _syncCustomers();
+        await _syncCustomers(forceFullSync: forceFullSync);
       }
 
       if (entityType == SyncEntityType.all ||
           entityType == SyncEntityType.sales) {
-        await _syncSales();
+        await _syncSales(forceFullSync: forceFullSync);
       }
 
       // Synchronisation des entités additionnelles si les services sont disponibles
       if ((entityType == SyncEntityType.all ||
               entityType == SyncEntityType.expenses) &&
           _expenseApiService != null) {
-        await _syncExpenses();
+        await _syncExpenses(forceFullSync: forceFullSync);
       }
 
       if ((entityType == SyncEntityType.all ||
               entityType == SyncEntityType.suppliers) &&
           _supplierApiService != null) {
-        await _syncSuppliers();
+        await _syncSuppliers(forceFullSync: forceFullSync);
       }
 
       if ((entityType == SyncEntityType.all ||
               entityType == SyncEntityType.financialTransactions) &&
           _financialTransactionApiService != null) {
-        await _syncFinancialTransactions();
+        await _syncFinancialTransactions(forceFullSync: forceFullSync);
       }
 
       if ((entityType == SyncEntityType.all ||
               entityType == SyncEntityType.financialAccounts) &&
           _financialAccountApiService != null) {
-        await _syncFinancialAccounts();
+        await _syncFinancialAccounts(forceFullSync: forceFullSync);
       }
 
       // AJOUTÉ: Synchronisation du journal des opérations
@@ -219,6 +277,11 @@ class SyncService {
               entityType == SyncEntityType.operationJournal) &&
           _operationJournalRepository != null) {
         await _syncOperationJournal();
+      }
+
+      // Mettre à jour la date du dernier full sync si on a fait un full sync
+      if (forceFullSync && entityType == SyncEntityType.all) {
+        await _updateLastFullSyncDate();
       }
 
       // Récupérer toutes les opérations en attente (génériques)
@@ -236,11 +299,11 @@ class SyncService {
           return false;
         }
 
+        final id = operation['id'] as String;
         try {
           final endpoint = operation['endpoint'] as String;
           final method = operation['method'] as String;
           final body = operation['body'] as Map<String, dynamic>?;
-          final id = operation['id'] as String;
 
           // Exécuter l'opération sur l'API
           await _executeApiOperation(method, endpoint, body);
@@ -250,8 +313,28 @@ class SyncService {
 
           debugPrint('Opération $id synchronisée avec succès');
         } catch (e) {
-          debugPrint('Erreur lors de la synchronisation d\'une opération: $e');
-          // Continuer avec la prochaine opération, celle-ci sera retentée plus tard
+          final msg = e.toString();
+          // Ressource supprimée côté serveur → retirer de la file
+          if (msg.contains("n'existe pas") ||
+              msg.contains('404') ||
+              msg.contains('Not Found')) {
+            debugPrint('⚠️ Op $id: ressource supprimée, retrait de la file');
+            await _databaseService.markOperationAsSynchronized(id);
+          }
+          // Conflit → version serveur prioritaire
+          else if (msg.contains('409') || msg.contains('Conflict')) {
+            debugPrint('⚠️ Op $id: conflit, retrait de la file');
+            await _databaseService.markOperationAsSynchronized(id);
+          }
+          // Session expirée → arrêter la sync
+          else if (msg.contains('Session expirée') || msg.contains('401')) {
+            debugPrint('🔒 Session expirée, arrêt sync');
+            break;
+          }
+          // Erreur transitoire → garder pour retry
+          else {
+            debugPrint('⏳ Op $id: échec transitoire (retry): $e');
+          }
         }
       }
 
@@ -276,11 +359,51 @@ class SyncService {
     }
   }
 
+  /// Vérifie s'il y a des ventes en attente qui affectent le stock d'un produit donné
+  bool _hasPendingSalesForProduct(String productId) {
+    try {
+      if (!Hive.isBoxOpen('sales')) return false;
+      final saleBox = Hive.box<Sale>('sales');
+      return saleBox.values.any(
+        (sale) =>
+            (sale.syncStatus == 'pending' ||
+                sale.syncStatus == 'pending_update') &&
+            sale.items.any((item) => item.productId == productId),
+      );
+    } catch (_) {
+      // Si la box n'est pas disponible, être conservateur et garder le stock local
+      return true;
+    }
+  }
+
+  /// Supprime les entrées Hive locales absentes du backend (full sync uniquement).
+  /// Protège les entrées en attente de synchronisation.
+  Future<int> _removeStaleEntries<T>({
+    required Box<T> box,
+    required Set<String> backendIds,
+    bool Function(T)? isPending,
+  }) async {
+    int staleCount = 0;
+    for (final key in box.keys.cast<String>().toList()) {
+      if (!backendIds.contains(key)) {
+        if (isPending != null) {
+          final local = box.get(key);
+          if (local != null && isPending(local)) continue;
+        }
+        await box.delete(key);
+        staleCount++;
+      }
+    }
+    return staleCount;
+  }
+
   /// Synchronise les produits
+  /// ÉTAPE 1: Upload des pending vers le backend
+  /// ÉTAPE 2: Download des données du backend
   Future<void> _syncProducts({bool forceFullSync = false}) async {
     debugPrint('Synchronisation des produits...');
     try {
-      // IMPORTANT: Utiliser le même nom de box que InventoryRepository ('products')
+      // Vérifier si la box est ouverte
       if (!Hive.isBoxOpen('products')) {
         debugPrint('⚠️ productsBox non ouverte, tentative d\'ouverture...');
         await Hive.openBox<Product>('products');
@@ -290,104 +413,134 @@ class SyncService {
         '✅ productsBox ouverte avec ${productBox.length} produits existants',
       );
 
-      // ═══════════════════════════════════════════════════════════════════
-      // ÉTAPE 1: UPLOAD - Envoyer les produits locaux en attente au backend
-      // ═══════════════════════════════════════════════════════════════════
+      // ========== ÉTAPE 1: UPLOAD des produits pending ==========
       final pendingProducts =
-          productBox.values.where((p) => p.syncStatus == 'pending').toList();
+          productBox.values
+              .where(
+                (p) =>
+                    p.syncStatus == 'pending' ||
+                    p.syncStatus == 'pending_update',
+              )
+              .toList();
 
       if (pendingProducts.isNotEmpty) {
         debugPrint(
-          '📤 ${pendingProducts.length} produits en attente de synchronisation vers le backend',
+          '📤 ${pendingProducts.length} produits en attente d\'upload',
         );
 
-        for (var pendingProduct in pendingProducts) {
+        for (var product in pendingProducts) {
           try {
-            final apiResponse = await _productApiService
-                .createProduct(pendingProduct)
-                .timeout(const Duration(seconds: 10));
-
-            if (apiResponse.success && apiResponse.data != null) {
-              final serverProduct = apiResponse.data!;
-              // Mettre à jour avec l'ID serveur et marquer comme synchronisé
-              final syncedProduct = serverProduct.copyWith(
-                stockQuantity:
-                    pendingProduct.stockQuantity, // Préserver stock local
-                syncStatus: 'synced',
-              );
-
-              // Si l'ID a changé, supprimer l'ancien et ajouter le nouveau
-              if (pendingProduct.id != serverProduct.id) {
-                await productBox.delete(pendingProduct.id);
+            if (product.syncStatus == 'pending') {
+              // Nouveau produit à créer
+              final response = await _productApiService.createProduct(product);
+              if (response.success && response.data != null) {
+                final syncedProduct = response.data!.copyWith(
+                  syncStatus: 'synced',
+                );
+                // Remplacer avec l'ID serveur
+                await productBox.delete(product.id);
+                await productBox.put(syncedProduct.id, syncedProduct);
+                debugPrint(
+                  '✅ Produit uploadé: ${product.name} (ID: ${syncedProduct.id})',
+                );
               }
-              await productBox.put(serverProduct.id, syncedProduct);
-
-              debugPrint(
-                '✅ Produit uploadé: ${pendingProduct.name} → ID serveur: ${serverProduct.id}',
+            } else if (product.syncStatus == 'pending_update') {
+              // Produit existant à mettre à jour
+              final response = await _productApiService.updateProduct(
+                product.id,
+                product,
               );
-            } else {
-              debugPrint(
-                '⚠️ Échec upload produit ${pendingProduct.name}: ${apiResponse.message}',
-              );
+              if (response.success && response.data != null) {
+                final syncedProduct = response.data!.copyWith(
+                  syncStatus: 'synced',
+                );
+                await productBox.put(product.id, syncedProduct);
+                debugPrint('✅ Produit mis à jour: ${product.name}');
+              }
             }
           } catch (e) {
-            debugPrint('❌ Erreur upload produit ${pendingProduct.name}: $e');
-            // Continuer avec le produit suivant
+            debugPrint('⚠️ Échec upload produit ${product.name}: $e');
+            // Continue avec le suivant
           }
         }
       }
 
-      // ═══════════════════════════════════════════════════════════════════
-      // ÉTAPE 2: DOWNLOAD - Récupérer les produits du backend
-      // ═══════════════════════════════════════════════════════════════════
-      debugPrint('🔄 Appel API getProducts (sync complet)...');
-      final apiResponse = await _productApiService.getProducts();
+      // ========== ÉTAPE 2: DOWNLOAD depuis le backend ==========
+      final String lastSyncKey = 'product_last_sync';
+      Map<String, String> queryParams = {};
+
+      if (!forceFullSync && _syncStatusBox.containsKey(lastSyncKey)) {
+        final lastSyncDate = _syncStatusBox.get(lastSyncKey)!;
+        queryParams['updated_after'] = lastSyncDate;
+        debugPrint('📅 Sync incrémental depuis: $lastSyncDate');
+      } else {
+        debugPrint('📅 Sync complet (pas de date précédente)');
+      }
+
+      debugPrint('🔄 Appel API getProducts...');
+      final apiResponse = await _productApiService.getProducts(
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      );
 
       if (apiResponse.success && apiResponse.data != null) {
         debugPrint('✅ ${apiResponse.data!.length} produits reçus de l\'API');
-
-        // Créer un ensemble d'IDs des produits reçus de l'API
-        final apiProductIds = apiResponse.data!.map((p) => p.id).toSet();
-
         for (var apiProduct in apiResponse.data!) {
-          // Vérifier si le produit existe localement
           final localProduct = productBox.get(apiProduct.id);
-
           if (localProduct != null) {
-            // Le produit existe localement - préserver le stock local si différent
-            // car le stock local peut avoir été modifié par des ventes/achats
-            final mergedProduct = apiProduct.copyWith(
-              stockQuantity:
-                  localProduct.stockQuantity, // Préserver le stock local
-              syncStatus: 'synced',
-            );
-            await productBox.put(apiProduct.id, mergedProduct);
-            debugPrint(
-              '🔄 Produit ${apiProduct.name}: stock local préservé (${localProduct.stockQuantity})',
-            );
+            // Vérifier si des changements locaux non synchronisés affectent le stock
+            final hasPendingStockChanges =
+                localProduct.syncStatus == 'pending' ||
+                localProduct.syncStatus == 'pending_update' ||
+                _hasPendingSalesForProduct(apiProduct.id);
+
+            if (hasPendingStockChanges) {
+              // Des ventes/changements locaux non synchronisés existent
+              // Garder le stock local (déjà déduit par les ventes offline)
+              final mergedProduct = apiProduct.copyWith(
+                stockQuantity: localProduct.stockQuantity,
+                syncStatus:
+                    (localProduct.syncStatus == 'pending' ||
+                            localProduct.syncStatus == 'pending_update')
+                        ? localProduct.syncStatus
+                        : 'synced',
+              );
+              await productBox.put(apiProduct.id, mergedProduct);
+              debugPrint(
+                '🔀 Produit ${apiProduct.id}: stock local conservé (${localProduct.stockQuantity}) - changements pending',
+              );
+            } else {
+              // Aucun changement local en attente - utiliser le stock du backend (autoritatif)
+              await productBox.put(
+                apiProduct.id,
+                apiProduct.copyWith(syncStatus: 'synced'),
+              );
+              debugPrint(
+                '🔀 Produit ${apiProduct.id}: stock backend utilisé (${apiProduct.stockQuantity})',
+              );
+            }
           } else {
-            // Nouveau produit de l'API - utiliser le stock de l'API
-            final syncedProduct = apiProduct.copyWith(syncStatus: 'synced');
-            await productBox.put(apiProduct.id, syncedProduct);
-            debugPrint(
-              '➕ Nouveau produit de l\'API: ${apiProduct.name} (stock: ${apiProduct.stockQuantity})',
+            // Nouveau produit depuis l'API
+            await productBox.put(
+              apiProduct.id,
+              apiProduct.copyWith(syncStatus: 'synced'),
             );
           }
         }
-
-        // Gérer les produits locaux en attente qui n'existent pas encore sur le serveur
-        for (var pendingProduct in pendingProducts) {
-          if (!apiProductIds.contains(pendingProduct.id)) {
-            // Le produit n'existe pas sur le serveur - le conserver en local
-            debugPrint(
-              '📦 Produit local conservé (pending): ${pendingProduct.name}',
-            );
-          }
+        // ====== ÉTAPE 3: NETTOYAGE données obsolètes (full sync) ======
+        if (forceFullSync) {
+          final stale = await _removeStaleEntries(
+            box: productBox,
+            backendIds: apiResponse.data!.map((p) => p.id).toSet(),
+            isPending:
+                (p) =>
+                    p.syncStatus == 'pending' ||
+                    p.syncStatus == 'pending_update',
+          );
+          if (stale > 0) debugPrint('🗑️ $stale produits obsolètes supprimés');
         }
 
-        debugPrint(
-          '✅ Produits synchronisés avec succès (${productBox.length} total en local)',
-        );
+        await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
+        debugPrint('✅ Produits synchronisés avec succès (stock intelligent)');
       } else {
         debugPrint('❌ Failed to sync products: ${apiResponse.message}');
       }
@@ -402,22 +555,112 @@ class SyncService {
   }
 
   /// Synchronise les clients
+  /// ÉTAPE 1: Upload des pending vers le backend
+  /// ÉTAPE 2: Download des données du backend
   Future<void> _syncCustomers({bool forceFullSync = false}) async {
     debugPrint('Synchronisation des clients...');
     try {
-      // IMPORTANT: Utiliser le même nom de box que CustomerRepository ('customers')
       final customerBox = Hive.box<Customer>('customers');
-      // Note: L'API backend ne supporte pas le paramètre updated_after
-      // Nous faisons donc une synchronisation complète à chaque fois
-      debugPrint('🔄 Appel API getCustomers (sync complet)...');
-      final apiResponse = await _customerApiService.getCustomers();
-      if (apiResponse.success && apiResponse.data != null) {
-        for (var customer in apiResponse.data!) {
-          await customerBox.put(customer.id, customer);
-        }
+
+      // ========== ÉTAPE 1: UPLOAD des clients pending ==========
+      final pendingCustomers =
+          customerBox.values
+              .where(
+                (c) =>
+                    c.syncStatus == 'pending' ||
+                    c.syncStatus == 'pending_update',
+              )
+              .toList();
+
+      if (pendingCustomers.isNotEmpty) {
         debugPrint(
-          '✅ ${apiResponse.data!.length} clients synchronisés avec succès',
+          '📤 ${pendingCustomers.length} clients en attente d\'upload',
         );
+
+        for (var customer in pendingCustomers) {
+          try {
+            if (customer.syncStatus == 'pending') {
+              // Nouveau client à créer
+              final response = await _customerApiService.createCustomer(
+                customer,
+              );
+              if (response.success && response.data != null) {
+                final syncedCustomer = response.data!.copyWith(
+                  syncStatus: 'synced',
+                );
+                // Remplacer avec l'ID serveur
+                await customerBox.delete(customer.id);
+                await customerBox.put(syncedCustomer.id, syncedCustomer);
+                debugPrint(
+                  '✅ Client uploadé: ${customer.name} (ID: ${syncedCustomer.id})',
+                );
+              }
+            } else if (customer.syncStatus == 'pending_update') {
+              // Client existant à mettre à jour
+              final response = await _customerApiService.updateCustomer(
+                customer.id,
+                customer,
+              );
+              if (response.success && response.data != null) {
+                final syncedCustomer = response.data!.copyWith(
+                  syncStatus: 'synced',
+                );
+                await customerBox.put(customer.id, syncedCustomer);
+                debugPrint('✅ Client mis à jour: ${customer.name}');
+              }
+            }
+          } catch (e) {
+            debugPrint('⚠️ Échec upload client ${customer.name}: $e');
+            // Continue avec le suivant
+          }
+        }
+      }
+
+      // ========== ÉTAPE 2: DOWNLOAD depuis le backend ==========
+      final String lastSyncKey = 'customer_last_sync';
+      Map<String, String> queryParams = {};
+
+      if (!forceFullSync && _syncStatusBox.containsKey(lastSyncKey)) {
+        final lastSyncDate = _syncStatusBox.get(lastSyncKey)!;
+        queryParams['updated_after'] = lastSyncDate;
+      }
+
+      final apiResponse = await _customerApiService.getCustomers(
+        queryParams: queryParams.isNotEmpty ? queryParams : null,
+      );
+      if (apiResponse.success && apiResponse.data != null) {
+        debugPrint('✅ ${apiResponse.data!.length} clients reçus de l\'API');
+        for (var apiCustomer in apiResponse.data!) {
+          // Préserver les clients locaux en attente de sync
+          final localCustomer = customerBox.get(apiCustomer.id);
+          if (localCustomer != null && localCustomer.syncStatus == 'pending') {
+            // Ne pas écraser un client local en attente de synchronisation
+            debugPrint(
+              '⏳ Client ${apiCustomer.id} ignoré (sync pending local)',
+            );
+            continue;
+          }
+          // Fusionner avec syncStatus synced
+          await customerBox.put(
+            apiCustomer.id,
+            apiCustomer.copyWith(syncStatus: 'synced'),
+          );
+        }
+        // ====== NETTOYAGE données obsolètes (full sync) ======
+        if (forceFullSync) {
+          final stale = await _removeStaleEntries(
+            box: customerBox,
+            backendIds: apiResponse.data!.map((c) => c.id).toSet(),
+            isPending:
+                (c) =>
+                    c.syncStatus == 'pending' ||
+                    c.syncStatus == 'pending_update',
+          );
+          if (stale > 0) debugPrint('🗑️ $stale clients obsolètes supprimés');
+        }
+
+        await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
+        debugPrint('✅ Clients synchronisés avec succès');
       } else {
         debugPrint('Failed to sync customers: ${apiResponse.message}');
       }
@@ -431,86 +674,100 @@ class SyncService {
   }
 
   /// Synchronise les ventes
+  /// ÉTAPE 1: Upload des pending vers le backend
+  /// ÉTAPE 2: Download des données du backend
   Future<void> _syncSales({bool forceFullSync = false}) async {
     debugPrint('Synchronisation des ventes...');
     try {
-      // IMPORTANT: Utiliser le même nom de box que SalesRepository ('sales')
-      // Vérifier si la box est ouverte, sinon l'ouvrir
-      if (!Hive.isBoxOpen('sales')) {
-        debugPrint('⚠️ Box "sales" non ouverte, tentative d\'ouverture...');
-        await Hive.openBox<Sale>('sales');
-      }
       final saleBox = Hive.box<Sale>('sales');
-      debugPrint('📦 Box "sales" contient ${saleBox.length} ventes AVANT sync');
 
-      // ═══════════════════════════════════════════════════════════════════
-      // ÉTAPE 1: UPLOAD - Envoyer les ventes locales en attente au backend
-      // ═══════════════════════════════════════════════════════════════════
+      // ========== ÉTAPE 1: UPLOAD des ventes pending ==========
       final pendingSales =
-          saleBox.values.where((s) => s.syncStatus == 'pending').toList();
+          saleBox.values
+              .where(
+                (s) =>
+                    s.syncStatus == 'pending' ||
+                    s.syncStatus == 'pending_update',
+              )
+              .toList();
 
       if (pendingSales.isNotEmpty) {
-        debugPrint(
-          '📤 ${pendingSales.length} ventes en attente de synchronisation vers le backend',
-        );
+        debugPrint('📤 ${pendingSales.length} ventes en attente d\'upload');
 
-        for (var pendingSale in pendingSales) {
+        for (var sale in pendingSales) {
           try {
-            final apiResponse = await _saleApiService
-                .createSale(pendingSale)
-                .timeout(const Duration(seconds: 10));
-
-            if (apiResponse.success && apiResponse.data != null) {
-              final serverSale = apiResponse.data!;
-              // Mettre à jour avec l'ID serveur et marquer comme synchronisé
-              final syncedSale = serverSale.copyWith(syncStatus: 'synced');
-
-              // Si l'ID a changé, supprimer l'ancien et ajouter le nouveau
-              if (pendingSale.id != serverSale.id) {
-                await saleBox.delete(pendingSale.id);
+            if (sale.syncStatus == 'pending') {
+              // Nouvelle vente à créer
+              final response = await _saleApiService.createSale(sale);
+              if (response.success && response.data != null) {
+                final syncedSale = response.data!.copyWith(
+                  syncStatus: 'synced',
+                );
+                // Remplacer avec l'ID serveur
+                await saleBox.delete(sale.id);
+                await saleBox.put(syncedSale.id, syncedSale);
+                debugPrint(
+                  '✅ Vente uploadée: ${sale.customerName} (ID: ${syncedSale.id})',
+                );
               }
-              await saleBox.put(serverSale.id, syncedSale);
-
-              debugPrint(
-                '✅ Vente uploadée: ${pendingSale.id} → ID serveur: ${serverSale.id}',
-              );
-            } else {
-              debugPrint(
-                '⚠️ Échec upload vente ${pendingSale.id}: ${apiResponse.message}',
-              );
+            } else if (sale.syncStatus == 'pending_update') {
+              // Vente existante à mettre à jour
+              final response = await _saleApiService.updateSale(sale.id, sale);
+              if (response.success && response.data != null) {
+                final syncedSale = response.data!.copyWith(
+                  syncStatus: 'synced',
+                );
+                await saleBox.put(sale.id, syncedSale);
+                debugPrint('✅ Vente mise à jour: ${sale.customerName}');
+              }
             }
           } catch (e) {
-            debugPrint('❌ Erreur upload vente ${pendingSale.id}: $e');
-            // Continuer avec la vente suivante
+            debugPrint('⚠️ Échec upload vente ${sale.id}: $e');
+            // Continue avec la suivante
           }
         }
       }
 
-      // ═══════════════════════════════════════════════════════════════════
-      // ÉTAPE 2: DOWNLOAD - Récupérer les ventes du backend
-      // ═══════════════════════════════════════════════════════════════════
-      debugPrint('🔄 Appel API getSales (sync complet)...');
-      final apiResponse = await _saleApiService.getSales();
+      // ========== ÉTAPE 2: DOWNLOAD depuis le backend ==========
+      final String lastSyncKey = 'sale_last_sync';
+      Map<String, String> queryParams = {};
+
+      if (!forceFullSync && _syncStatusBox.containsKey(lastSyncKey)) {
+        final lastSyncDate = _syncStatusBox.get(lastSyncKey)!;
+        queryParams['updated_after'] = lastSyncDate;
+      }
+
+      final apiResponse = await _saleApiService.getSales(
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      );
       if (apiResponse.success && apiResponse.data != null) {
-        debugPrint('📥 Reçu ${apiResponse.data!.length} ventes de l\'API');
-        for (var sale in apiResponse.data!) {
-          await saleBox.put(sale.id, sale);
+        debugPrint('✅ ${apiResponse.data!.length} ventes reçues de l\'API');
+        for (var apiSale in apiResponse.data!) {
+          // Préserver les ventes locales en attente de sync
+          final localSale = saleBox.get(apiSale.id);
+          if (localSale != null && localSale.syncStatus == 'pending') {
+            // Ne pas écraser une vente locale en attente de synchronisation
+            debugPrint('⏳ Vente ${apiSale.id} ignorée (sync pending local)');
+            continue;
+          }
+          // Fusionner avec syncStatus synced
+          await saleBox.put(apiSale.id, apiSale.copyWith(syncStatus: 'synced'));
         }
-        debugPrint(
-          '📦 Box "sales" contient maintenant ${saleBox.length} ventes APRÈS sync',
-        );
-
-        // Log quelques IDs et dates pour débug
-        final sampleSales = saleBox.values.take(3).toList();
-        for (var s in sampleSales) {
-          debugPrint(
-            '📋 Vente stockée: id=${s.id}, date=${s.date}, montant=${s.totalAmountInCdf}',
+        // ====== NETTOYAGE données obsolètes (full sync) ======
+        if (forceFullSync) {
+          final stale = await _removeStaleEntries(
+            box: saleBox,
+            backendIds: apiResponse.data!.map((s) => s.id).toSet(),
+            isPending:
+                (s) =>
+                    s.syncStatus == 'pending' ||
+                    s.syncStatus == 'pending_update',
           );
+          if (stale > 0) debugPrint('🗑️ $stale ventes obsolètes supprimées');
         }
 
-        debugPrint(
-          '✅ ${apiResponse.data!.length} ventes synchronisées avec succès',
-        );
+        await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
+        debugPrint('✅ Ventes synchronisées avec succès');
       } else {
         debugPrint('Failed to sync sales: ${apiResponse.message}');
       }
@@ -524,104 +781,122 @@ class SyncService {
   }
 
   /// Synchronise les dépenses
+  /// ÉTAPE 1: Upload des pending vers le backend
+  /// ÉTAPE 2: Download des données du backend
   Future<void> _syncExpenses({bool forceFullSync = false}) async {
-    if (_expenseApiService == null) {
-      debugPrint('⚠️ ExpenseApiService non disponible - skip sync dépenses');
-      return;
-    }
+    if (_expenseApiService == null) return;
 
     debugPrint('Synchronisation des dépenses...');
     try {
-      // IMPORTANT: Utiliser le même nom de box que ExpenseRepository ('expenses')
-      if (!Hive.isBoxOpen('expenses')) {
-        debugPrint('⚠️ Box "expenses" non ouverte, tentative d\'ouverture...');
-        await Hive.openBox<Expense>('expenses');
-      }
-      final expenseBox = Hive.box<Expense>('expenses');
-      debugPrint(
-        '📦 Box "expenses" contient ${expenseBox.length} dépenses AVANT sync',
-      );
+      final expenseBox = await Hive.openBox<Expense>('expenses');
 
-      // ═══════════════════════════════════════════════════════════════════
-      // ÉTAPE 1: UPLOAD - Envoyer les dépenses locales en attente au backend
-      // ═══════════════════════════════════════════════════════════════════
+      // ========== ÉTAPE 1: UPLOAD des dépenses pending ==========
       final pendingExpenses =
-          expenseBox.values.where((e) => e.syncStatus == 'pending').toList();
+          expenseBox.values
+              .where(
+                (e) =>
+                    e.syncStatus == 'pending' ||
+                    e.syncStatus == 'pending_update',
+              )
+              .toList();
 
       if (pendingExpenses.isNotEmpty) {
         debugPrint(
-          '📤 ${pendingExpenses.length} dépenses en attente de synchronisation vers le backend',
+          '📤 ${pendingExpenses.length} dépenses en attente d\'upload',
         );
 
-        for (var pendingExpense in pendingExpenses) {
+        for (var expense in pendingExpenses) {
           try {
-            // Convertir les chemins locaux en fichiers pour l'upload Cloudinary
-            List<File>? attachmentFiles;
-            if (pendingExpense.localAttachmentPaths != null &&
-                pendingExpense.localAttachmentPaths!.isNotEmpty) {
-              attachmentFiles = [];
-              for (final path in pendingExpense.localAttachmentPaths!) {
-                final file = File(path);
-                if (await file.exists()) {
-                  attachmentFiles.add(file);
+            if (expense.syncStatus == 'pending') {
+              // Convertir les chemins locaux en fichiers pour l'upload
+              List<File>? attachmentFiles;
+              if (expense.localAttachmentPaths != null &&
+                  expense.localAttachmentPaths!.isNotEmpty) {
+                attachmentFiles = [];
+                for (final path in expense.localAttachmentPaths!) {
+                  final file = File(path);
+                  if (await file.exists()) {
+                    attachmentFiles.add(file);
+                  } else {
+                    debugPrint(
+                      '[SyncService] ⚠️ Attachment file not found: $path',
+                    );
+                  }
                 }
+                if (attachmentFiles.isEmpty) attachmentFiles = null;
+                debugPrint(
+                  '[SyncService] 📎 ${attachmentFiles?.length ?? 0} attachments à uploader pour expense ${expense.id}',
+                );
               }
-              if (attachmentFiles.isEmpty) attachmentFiles = null;
-            }
 
-            // Passer les fichiers au service qui fera l'upload vers Cloudinary
-            final apiResponse = await _expenseApiService
-                .createExpense(
-                  pendingExpense.date,
-                  pendingExpense.amount,
-                  pendingExpense.motif,
-                  pendingExpense.category.name,
-                  pendingExpense.paymentMethod,
-                  pendingExpense.supplierId,
-                  attachments:
-                      attachmentFiles, // Les fichiers seront uploadés vers Cloudinary
-                  paidAmount: pendingExpense.paidAmount,
-                  paymentStatus: pendingExpense.paymentStatus?.name,
-                  supplierName: pendingExpense.supplierName,
-                  currencyCode: pendingExpense.currencyCode,
-                  exchangeRate: pendingExpense.exchangeRate,
-                )
-                .timeout(
-                  const Duration(seconds: 30),
-                ); // Timeout plus long pour upload
-
-            if (apiResponse.success && apiResponse.data != null) {
-              final serverExpense = apiResponse.data!;
-              // Mettre à jour avec l'ID serveur et marquer comme synchronisé
-              final syncedExpense = serverExpense.copyWith(
-                syncStatus: 'synced',
+              // Nouvelle dépense à créer avec les attachments
+              final response = await _expenseApiService.createExpense(
+                expense.date,
+                expense.amount,
+                expense.motif,
+                expense.category.name,
+                expense.paymentMethod,
+                expense.supplierId,
+                attachments: attachmentFiles, // Upload des fichiers locaux
+                paidAmount: expense.paidAmount,
+                paymentStatus: expense.paymentStatus?.name,
+                supplierName: expense.supplierName,
+                currencyCode: expense.currencyCode,
+                exchangeRate: expense.exchangeRate,
               );
-
-              // Supprimer l'ancien enregistrement local et ajouter le nouveau
-              final oldKey = pendingExpense.localId ?? pendingExpense.id;
-              if (oldKey != serverExpense.id) {
-                await expenseBox.delete(oldKey);
+              if (response.success && response.data != null) {
+                final syncedExpense = response.data!.copyWith(
+                  syncStatus: 'synced',
+                );
+                // Remplacer avec l'ID serveur
+                await expenseBox.delete(expense.id);
+                await expenseBox.put(syncedExpense.id, syncedExpense);
+                debugPrint(
+                  '✅ Dépense uploadée: ${expense.motif} (ID: ${syncedExpense.id})',
+                );
               }
-              await expenseBox.put(serverExpense.id, syncedExpense);
+            } else if (expense.syncStatus == 'pending_update') {
+              // Convertir les chemins locaux en fichiers pour l'upload
+              List<File>? attachmentFiles;
+              if (expense.localAttachmentPaths != null &&
+                  expense.localAttachmentPaths!.isNotEmpty) {
+                attachmentFiles = [];
+                for (final path in expense.localAttachmentPaths!) {
+                  final file = File(path);
+                  if (await file.exists()) {
+                    attachmentFiles.add(file);
+                  }
+                }
+                if (attachmentFiles.isEmpty) attachmentFiles = null;
+              }
 
-              debugPrint(
-                '✅ Dépense uploadée: ${pendingExpense.motif} → ID serveur: ${serverExpense.id}',
+              // Dépense existante à mettre à jour avec les nouveaux attachments
+              final response = await _expenseApiService.updateExpense(
+                expense.id,
+                expense.date,
+                expense.amount,
+                expense.motif,
+                expense.category.name,
+                expense.paymentMethod,
+                expense.supplierId,
+                newAttachments: attachmentFiles, // Upload des fichiers locaux
               );
-            } else {
-              debugPrint(
-                '⚠️ Échec upload dépense ${pendingExpense.motif}: ${apiResponse.message}',
-              );
+              if (response.success && response.data != null) {
+                final syncedExpense = response.data!.copyWith(
+                  syncStatus: 'synced',
+                );
+                await expenseBox.put(expense.id, syncedExpense);
+                debugPrint('✅ Dépense mise à jour: ${expense.motif}');
+              }
             }
           } catch (e) {
-            debugPrint('❌ Erreur upload dépense ${pendingExpense.motif}: $e');
-            // Continuer avec la dépense suivante
+            debugPrint('⚠️ Échec upload dépense ${expense.id}: $e');
+            // Continue avec la suivante
           }
         }
       }
 
-      // ═══════════════════════════════════════════════════════════════════
-      // ÉTAPE 2: DOWNLOAD - Récupérer les dépenses du backend
-      // ═══════════════════════════════════════════════════════════════════
+      // ========== ÉTAPE 2: DOWNLOAD depuis le backend ==========
       final String lastSyncKey = 'expense_last_sync';
       Map<String, String> queryParams = {};
 
@@ -630,7 +905,6 @@ class SyncService {
         queryParams['dateFrom'] = lastSyncDate;
       }
 
-      debugPrint('🔄 Appel API getExpenses...');
       final apiResponse = await _expenseApiService.getExpenses(
         dateFrom:
             queryParams.containsKey('dateFrom')
@@ -639,17 +913,39 @@ class SyncService {
       );
 
       if (apiResponse.success && apiResponse.data != null) {
-        debugPrint('📥 Reçu ${apiResponse.data!.length} dépenses de l\'API');
-        for (var expense in apiResponse.data!) {
-          await expenseBox.put(expense.id, expense);
+        debugPrint('✅ ${apiResponse.data!.length} dépenses reçues de l\'API');
+        for (var apiExpense in apiResponse.data!) {
+          // Préserver les dépenses locales en attente de sync
+          final localExpense = expenseBox.get(apiExpense.id);
+          if (localExpense != null &&
+              (localExpense.syncStatus == 'pending' ||
+                  localExpense.syncStatus == 'pending_update')) {
+            debugPrint(
+              '⏳ Dépense ${apiExpense.id} ignorée (sync pending local)',
+            );
+            continue;
+          }
+          // Fusionner avec syncStatus synced
+          await expenseBox.put(
+            apiExpense.id,
+            apiExpense.copyWith(syncStatus: 'synced'),
+          );
         }
+        // ====== NETTOYAGE données obsolètes (full sync) ======
+        if (forceFullSync) {
+          final stale = await _removeStaleEntries(
+            box: expenseBox,
+            backendIds: apiResponse.data!.map((e) => e.id).toSet(),
+            isPending:
+                (e) =>
+                    e.syncStatus == 'pending' ||
+                    e.syncStatus == 'pending_update',
+          );
+          if (stale > 0) debugPrint('🗑️ $stale dépenses obsolètes supprimées');
+        }
+
         await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
-        debugPrint(
-          '📦 Box "expenses" contient maintenant ${expenseBox.length} dépenses APRÈS sync',
-        );
-        debugPrint(
-          '✅ ${apiResponse.data!.length} dépenses synchronisées avec succès',
-        );
+        debugPrint('✅ Dépenses synchronisées avec succès');
       } else {
         debugPrint('Failed to sync expenses: ${apiResponse.message}');
       }
@@ -663,24 +959,121 @@ class SyncService {
   }
 
   /// Synchronise les fournisseurs
+  /// ÉTAPE 1: Upload des pending vers le backend
+  /// ÉTAPE 2: Download des données du backend
   Future<void> _syncSuppliers({bool forceFullSync = false}) async {
     if (_supplierApiService == null) return;
 
     debugPrint('Synchronisation des fournisseurs...');
     try {
       final supplierBox = await Hive.openBox<Supplier>('suppliersBox');
-      // Note: L'API backend ne supporte pas le paramètre updated_after
-      // Nous faisons donc une synchronisation complète à chaque fois
-      debugPrint('🔄 Appel API getSuppliers (sync complet)...');
-      final apiResponse = await _supplierApiService.getSuppliers();
+
+      // ========== ÉTAPE 1: UPLOAD des fournisseurs pending ==========
+      final pendingSuppliers =
+          supplierBox.values
+              .where(
+                (s) =>
+                    s.syncStatus == 'pending' ||
+                    s.syncStatus == 'pending_update',
+              )
+              .toList();
+
+      if (pendingSuppliers.isNotEmpty) {
+        debugPrint(
+          '📤 ${pendingSuppliers.length} fournisseurs en attente d\'upload',
+        );
+
+        for (var supplier in pendingSuppliers) {
+          try {
+            if (supplier.syncStatus == 'pending') {
+              // Nouveau fournisseur à créer
+              final response = await _supplierApiService.createSupplier(
+                supplier,
+              );
+              if (response.success && response.data != null) {
+                final syncedSupplier = response.data!.copyWith(
+                  syncStatus: 'synced',
+                );
+                // Remplacer avec l'ID serveur
+                await supplierBox.delete(supplier.id);
+                await supplierBox.put(syncedSupplier.id, syncedSupplier);
+                debugPrint(
+                  '✅ Fournisseur uploadé: ${supplier.name} (ID: ${syncedSupplier.id})',
+                );
+              }
+            } else if (supplier.syncStatus == 'pending_update') {
+              // Fournisseur existant à mettre à jour
+              final response = await _supplierApiService.updateSupplier(
+                supplier.id,
+                supplier,
+              );
+              if (response.success && response.data != null) {
+                final syncedSupplier = response.data!.copyWith(
+                  syncStatus: 'synced',
+                );
+                await supplierBox.put(supplier.id, syncedSupplier);
+                debugPrint('✅ Fournisseur mis à jour: ${supplier.name}');
+              }
+            }
+          } catch (e) {
+            debugPrint('⚠️ Échec upload fournisseur ${supplier.name}: $e');
+            // Continue avec le suivant
+          }
+        }
+      }
+
+      // ========== ÉTAPE 2: DOWNLOAD depuis le backend ==========
+      final String lastSyncKey = 'supplier_last_sync';
+      Map<String, String> queryParams = {};
+
+      if (!forceFullSync && _syncStatusBox.containsKey(lastSyncKey)) {
+        final lastSyncDate = _syncStatusBox.get(lastSyncKey)!;
+        queryParams['updated_after'] = lastSyncDate;
+      }
+
+      String? searchQuery;
+      if (queryParams.containsKey('updated_after')) {
+        searchQuery = "updated_after:${queryParams['updated_after']!}";
+      }
+      final apiResponse = await _supplierApiService.getSuppliers(
+        searchQuery: searchQuery,
+      );
 
       if (apiResponse.success && apiResponse.data != null) {
-        for (var supplier in apiResponse.data!) {
-          await supplierBox.put(supplier.id, supplier);
-        }
         debugPrint(
-          '✅ ${apiResponse.data!.length} fournisseurs synchronisés avec succès',
+          '✅ ${apiResponse.data!.length} fournisseurs reçus de l\'API',
         );
+        for (var apiSupplier in apiResponse.data!) {
+          // Préserver les fournisseurs locaux en attente de sync
+          final localSupplier = supplierBox.get(apiSupplier.id);
+          if (localSupplier != null && localSupplier.syncStatus == 'pending') {
+            debugPrint(
+              '⏳ Fournisseur ${apiSupplier.id} ignoré (sync pending local)',
+            );
+            continue;
+          }
+          // Fusionner avec syncStatus synced
+          await supplierBox.put(
+            apiSupplier.id,
+            apiSupplier.copyWith(syncStatus: 'synced'),
+          );
+        }
+        // ====== NETTOYAGE données obsolètes (full sync) ======
+        if (forceFullSync) {
+          final stale = await _removeStaleEntries(
+            box: supplierBox,
+            backendIds: apiResponse.data!.map((s) => s.id).toSet(),
+            isPending:
+                (s) =>
+                    s.syncStatus == 'pending' ||
+                    s.syncStatus == 'pending_update',
+          );
+          if (stale > 0)
+            debugPrint('🗑️ $stale fournisseurs obsolètes supprimés');
+        }
+
+        await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
+        debugPrint('✅ Fournisseurs synchronisés avec succès');
       } else {
         debugPrint('Failed to sync suppliers: ${apiResponse.message}');
       }
@@ -722,6 +1115,17 @@ class SyncService {
         for (var transaction in apiResponse.data!) {
           await transactionBox.put(transaction.id, transaction);
         }
+
+        // ====== NETTOYAGE données obsolètes (full sync) ======
+        if (forceFullSync) {
+          final stale = await _removeStaleEntries(
+            box: transactionBox,
+            backendIds: apiResponse.data!.map((t) => t.id).toSet(),
+          );
+          if (stale > 0)
+            debugPrint('🗑️ $stale transactions obsolètes supprimées');
+        }
+
         await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
         debugPrint(
           '${apiResponse.data!.length} transactions financières synchronisées avec succès',
@@ -763,6 +1167,17 @@ class SyncService {
         for (var account in apiResponse.data!) {
           await accountBox.put(account.id, account);
         }
+
+        // ====== NETTOYAGE données obsolètes (full sync) ======
+        if (forceFullSync) {
+          final stale = await _removeStaleEntries(
+            box: accountBox,
+            backendIds: apiResponse.data!.map((a) => a.id).toSet(),
+          );
+          if (stale > 0)
+            debugPrint('🗑️ $stale comptes financiers obsolètes supprimés');
+        }
+
         await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
         debugPrint(
           '${apiResponse.data!.length} comptes financiers synchronisés avec succès',
@@ -794,7 +1209,7 @@ class SyncService {
     );
     try {
       // Récupérer le journal du backend (pas de POST, uniquement GET)
-      final success = await repo.syncLocalOperationsToBackend();
+      final success = await repo.pullJournalFromBackend();
 
       if (success) {
         debugPrint('✅ Journal des opérations mis à jour depuis le backend');
@@ -840,14 +1255,89 @@ class SyncService {
     }
   }
 
-  /// Force une synchronisation immédiate
+  /// Force une synchronisation immédiate (incrémentale ou full selon le timing)
   Future<bool> forceSyncNow() async {
     if (_isSyncing) return false;
 
     return await syncData();
   }
 
-  /// Synchronise toutes les données
+  /// Force une synchronisation complète de toutes les données
+  /// Utiliser cette méthode depuis l'UI pour permettre à l'utilisateur
+  /// de forcer un re-sync complet manuellement
+  Future<bool> forceFullSyncNow() async {
+    if (_isSyncing) {
+      debugPrint('⚠️ Sync déjà en cours, impossible de forcer full sync');
+      return false;
+    }
+
+    debugPrint('🔄 Full sync forcé par l\'utilisateur');
+    _isSyncing = true;
+    _lastSyncAttempt = DateTime.now();
+    _syncStatusController.add(SyncStatus.syncing);
+
+    try {
+      // Appeler directement les méthodes internes sans passer par syncAll
+      // pour éviter les conflits de flags _isSyncing
+      await _syncProducts(forceFullSync: true);
+      await _syncCustomers(forceFullSync: true);
+      await _syncSales(forceFullSync: true);
+
+      if (_expenseApiService != null) {
+        await _syncExpenses(forceFullSync: true);
+      }
+      if (_supplierApiService != null) {
+        await _syncSuppliers(forceFullSync: true);
+      }
+      if (_financialTransactionApiService != null) {
+        await _syncFinancialTransactions(forceFullSync: true);
+      }
+      if (_financialAccountApiService != null) {
+        await _syncFinancialAccounts(forceFullSync: true);
+      }
+      if (_operationJournalRepository != null) {
+        await _syncOperationJournal();
+      }
+
+      await _updateLastFullSyncDate();
+
+      _isSyncing = false;
+      _syncStatusController.add(SyncStatus.completed);
+      debugPrint('✅ Full sync forcé terminé avec succès');
+
+      if (onSyncCompleted != null) {
+        onSyncCompleted!();
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('❌ Erreur lors du full sync forcé: $e');
+      _isSyncing = false;
+      _syncStatusController.add(SyncStatus.failed);
+      return false;
+    }
+  }
+
+  /// Retourne la date du dernier full sync ou null si jamais fait
+  DateTime? getLastFullSyncDate() {
+    if (!_syncStatusBox.containsKey(_lastFullSyncKey)) {
+      return null;
+    }
+    try {
+      return DateTime.parse(_syncStatusBox.get(_lastFullSyncKey)!);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Vérifie si un full sync est requis (>24h depuis le dernier)
+  bool isFullSyncRequired() {
+    return _shouldForceFullSync();
+  }
+
+  /// Synchronise toutes les données (méthode bas niveau)
+  /// Préférer syncData() pour le sync automatique ou forceFullSyncNow() pour le sync manuel
+  /// Cette méthode gère son propre flag _isSyncing
   Future<void> syncAll({bool forceFullSync = false}) async {
     if (_isSyncing) {
       return;

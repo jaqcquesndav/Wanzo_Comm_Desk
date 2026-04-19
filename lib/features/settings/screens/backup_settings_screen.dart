@@ -7,6 +7,9 @@ import '../bloc/settings_bloc.dart';
 import '../bloc/settings_event.dart';
 import '../bloc/settings_state.dart';
 import '../models/settings.dart';
+import 'package:wanzo/services/import/csv_import_service.dart';
+import 'package:wanzo/features/inventory/bloc/inventory_bloc.dart';
+import 'package:wanzo/features/inventory/bloc/inventory_event.dart';
 
 /// Écran des paramètres de sauvegarde et rapports
 class BackupSettingsScreen extends StatefulWidget {
@@ -408,6 +411,14 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                   onTap: _exportData,
                   color: Colors.green,
                 ),
+                _buildActionCard(
+                  context,
+                  icon: Icons.file_upload_outlined,
+                  title: 'Importer CSV',
+                  subtitle: 'Importer des produits',
+                  onTap: () => _handleCsvImport(context),
+                  color: Colors.purple,
+                ),
               ],
             ),
           ],
@@ -501,5 +512,86 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Fonctionnalité à implémenter')),
     );
+  }
+
+  /// Gère l'import CSV de produits
+  Future<void> _handleCsvImport(BuildContext context) async {
+    final result = await CsvImportService.pickAndParseCSV(context);
+    if (result == null || !mounted) return;
+
+    if (result.products.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.errors.isNotEmpty
+                ? result.errors.first
+                : 'Aucun produit trouvé dans le fichier',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Confirmer l\'import'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${result.successCount} produits prêts à importer sur ${result.totalRows} lignes.',
+                ),
+                if (result.errors.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '${result.errors.length} erreur(s):',
+                    style: const TextStyle(
+                      color: Colors.orange,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  ...result.errors
+                      .take(5)
+                      .map(
+                        (e) => Text(e, style: const TextStyle(fontSize: 12)),
+                      ),
+                  if (result.errors.length > 5)
+                    Text(
+                      '... et ${result.errors.length - 5} autres',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Importer'),
+              ),
+            ],
+          ),
+    );
+
+    if (confirm == true && mounted) {
+      for (final product in result.products) {
+        context.read<InventoryBloc>().add(AddProduct(product));
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${result.products.length} produits importés avec succès',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 }

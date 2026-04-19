@@ -350,9 +350,39 @@ class ReceiptPrinterService {
       );
     }
 
-    // ════ TOTAL ════
+    // ════ TVA (si activée) ════
     final totalAmount =
         sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
+    if (settings.showTaxes && settings.defaultTaxRate > 0) {
+      double totalTVA = 0.0;
+      double rate = settings.defaultTaxRate;
+      for (final item in sale.items) {
+        final itemRate = item.taxRate ?? rate;
+        if (itemRate > 0) {
+          final unitPrice =
+              item.currencyCode == currencyCode
+                  ? item.unitPrice
+                  : item.unitPriceInCdf;
+          final itemTotal = item.quantity * unitPrice;
+          totalTVA += itemTotal * itemRate / (100 + itemRate);
+          rate = itemRate;
+        }
+      }
+      if (totalTVA > 0) {
+        final ht = totalAmount - totalTVA;
+        bytes.addAll(_escLine(_rowText('Total HT', _fmt(ht, currencyCode))));
+        bytes.addAll(
+          _escLine(
+            _rowText(
+              'TVA (${rate.toStringAsFixed(0)}%)',
+              _fmt(totalTVA, currencyCode),
+            ),
+          ),
+        );
+      }
+    }
+
+    // ════ TOTAL ════
     bytes.addAll(_escBold(true));
     bytes.addAll(_escLine(_rowText('TOTAL', _fmt(totalAmount, currencyCode))));
     bytes.addAll(_escBold(false));

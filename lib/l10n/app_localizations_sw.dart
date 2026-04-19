@@ -2457,4 +2457,37 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get printThermalReceipt => 'Thermal Receipt';
+
+  @override
+  String get outstandingBalance => 'Outstanding balance';
+
+  @override
+  String get receivablesToCollect => 'Receivables to collect';
+
+  @override
+  String get payablesToPay => 'Payables to pay';
+
+  @override
+  String unpaidSalesCount(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count unpaid sales',
+      one: '1 unpaid sale',
+      zero: 'No unpaid sales',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String unpaidExpensesCount(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count unpaid expenses',
+      one: '1 unpaid expense',
+      zero: 'No unpaid expenses',
+    );
+    return '$_temp0';
+  }
 }

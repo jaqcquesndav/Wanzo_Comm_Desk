@@ -4623,6 +4623,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Thermal Receipt'**
   String get printThermalReceipt;
+
+  /// No description provided for @outstandingBalance.
+  ///
+  /// In en, this message translates to:
+  /// **'Outstanding balance'**
+  String get outstandingBalance;
+
+  /// No description provided for @receivablesToCollect.
+  ///
+  /// In en, this message translates to:
+  /// **'Receivables to collect'**
+  String get receivablesToCollect;
+
+  /// No description provided for @payablesToPay.
+  ///
+  /// In en, this message translates to:
+  /// **'Payables to pay'**
+  String get payablesToPay;
+
+  /// No description provided for @unpaidSalesCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No unpaid sales} =1{1 unpaid sale} other{{count} unpaid sales}}'**
+  String unpaidSalesCount(num count);
+
+  /// No description provided for @unpaidExpensesCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No unpaid expenses} =1{1 unpaid expense} other{{count} unpaid expenses}}'**
+  String unpaidExpensesCount(num count);
 }
 
 class _AppLocalizationsDelegate

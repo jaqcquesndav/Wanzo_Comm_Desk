@@ -576,9 +576,9 @@ class MockOperationJournalRepository extends _i1.Mock
       ) as _i5.Future<void>);
 
   @override
-  _i5.Future<bool> syncLocalOperationsToBackend() => (super.noSuchMethod(
+  _i5.Future<bool> pullJournalFromBackend() => (super.noSuchMethod(
         Invocation.method(
-          #syncLocalOperationsToBackend,
+          #pullJournalFromBackend,
           [],
         ),
         returnValue: _i5.Future<bool>.value(false),

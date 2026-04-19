@@ -1443,5 +1443,10 @@
   "autoPrintReceiptSubtitle": "Automatically prints a thermal receipt when a cash sale is completed",
   "testPrinter": "Test Print",
   "printerNotFound": "No thermal printer found",
-  "printThermalReceipt": "Thermal Receipt"
+  "printThermalReceipt": "Thermal Receipt",
+  "outstandingBalance": "Outstanding balance",
+  "receivablesToCollect": "Receivables to collect",
+  "payablesToPay": "Payables to pay",
+  "unpaidSalesCount": "{count, plural, =0{No unpaid sales} =1{1 unpaid sale} other{{count} unpaid sales}}",
+  "unpaidExpensesCount": "{count, plural, =0{No unpaid expenses} =1{1 unpaid expense} other{{count} unpaid expenses}}"
 }

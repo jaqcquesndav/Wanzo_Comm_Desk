@@ -77,24 +77,35 @@ class Customer extends Equatable {
   @HiveField(15)
   final DateTime? updatedAt;
 
+  /// Statut de synchronisation (pending, synced, pending_update)
+  @HiveField(16)
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String syncStatus;
+
+  /// ID local pour réconciliation après sync
+  @HiveField(17)
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? localId;
+
   const Customer({
     required this.id,
     required this.name,
     required this.phoneNumber,
-    this.email, // No longer required, allow null
-    this.address, // No longer required, allow null
+    this.email,
+    this.address,
     required this.createdAt,
-    this.notes, // Allow null
+    this.notes,
     this.totalPurchases = 0.0,
     this.lastPurchaseDate,
     this.category = CustomerCategory.regular,
     this.profilePicture,
-    // Business Unit fields
     this.companyId,
     this.businessUnitId,
     this.businessUnitCode,
     this.businessUnitType,
     this.updatedAt,
+    this.syncStatus = 'synced',
+    this.localId,
   });
 
   /// Crée une copie du client avec des valeurs modifiées
@@ -115,6 +126,8 @@ class Customer extends Equatable {
     String? businessUnitCode,
     BusinessUnitType? businessUnitType,
     DateTime? updatedAt,
+    String? syncStatus,
+    String? localId,
   }) {
     return Customer(
       id: id ?? this.id,
@@ -133,6 +146,8 @@ class Customer extends Equatable {
       businessUnitCode: businessUnitCode ?? this.businessUnitCode,
       businessUnitType: businessUnitType ?? this.businessUnitType,
       updatedAt: updatedAt ?? this.updatedAt,
+      syncStatus: syncStatus ?? this.syncStatus,
+      localId: localId ?? this.localId,
     );
   }
 
@@ -168,6 +183,8 @@ class Customer extends Equatable {
     businessUnitCode,
     businessUnitType,
     updatedAt,
+    syncStatus,
+    localId,
   ];
 }
 

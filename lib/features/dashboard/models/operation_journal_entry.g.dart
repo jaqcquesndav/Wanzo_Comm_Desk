@@ -217,3 +217,52 @@ class OperationTypeAdapter extends TypeAdapter<OperationType> {
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }
+
+class CashFlowCategoryAdapter extends TypeAdapter<CashFlowCategory> {
+  @override
+  final int typeId = 204;
+
+  @override
+  CashFlowCategory read(BinaryReader reader) {
+    switch (reader.readByte()) {
+      case 0:
+        return CashFlowCategory.exploitation;
+      case 1:
+        return CashFlowCategory.investissement;
+      case 2:
+        return CashFlowCategory.financement;
+      case 3:
+        return CashFlowCategory.nonApplicable;
+      default:
+        return CashFlowCategory.exploitation;
+    }
+  }
+
+  @override
+  void write(BinaryWriter writer, CashFlowCategory obj) {
+    switch (obj) {
+      case CashFlowCategory.exploitation:
+        writer.writeByte(0);
+        break;
+      case CashFlowCategory.investissement:
+        writer.writeByte(1);
+        break;
+      case CashFlowCategory.financement:
+        writer.writeByte(2);
+        break;
+      case CashFlowCategory.nonApplicable:
+        writer.writeByte(3);
+        break;
+    }
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CashFlowCategoryAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}

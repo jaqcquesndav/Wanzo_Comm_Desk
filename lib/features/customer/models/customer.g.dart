@@ -33,13 +33,15 @@ class CustomerAdapter extends TypeAdapter<Customer> {
       businessUnitCode: fields[13] as String?,
       businessUnitType: fields[14] as BusinessUnitType?,
       updatedAt: fields[15] as DateTime?,
+      syncStatus: fields[16] as String,
+      localId: fields[17] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Customer obj) {
     writer
-      ..writeByte(16)
+      ..writeByte(18)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -71,7 +73,11 @@ class CustomerAdapter extends TypeAdapter<Customer> {
       ..writeByte(14)
       ..write(obj.businessUnitType)
       ..writeByte(15)
-      ..write(obj.updatedAt);
+      ..write(obj.updatedAt)
+      ..writeByte(16)
+      ..write(obj.syncStatus)
+      ..writeByte(17)
+      ..write(obj.localId);
   }
 
   @override

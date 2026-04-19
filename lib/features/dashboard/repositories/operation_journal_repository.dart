@@ -700,12 +700,9 @@ class OperationJournalRepository {
     );
   }
 
-  /// Synchronise les opérations locales avec le backend
-  /// NOTE: Cette méthode ne fait PAS de POST direct vers le journal.
-  /// Le journal backend est généré automatiquement par le serveur
-  /// lorsque les entités (ventes, dépenses, etc.) sont synchronisées via leurs APIs respectives.
-  /// Cette méthode sert uniquement à récupérer les données du serveur pour mettre à jour le cache local.
-  Future<bool> syncLocalOperationsToBackend() async {
+  /// Récupère le journal des opérations depuis le backend pour mettre à jour le cache local.
+  /// Le journal est GÉNÉRÉ côté serveur à partir des entités synchronisées (ventes, dépenses, etc.).
+  Future<bool> pullJournalFromBackend() async {
     // Vérifier la connectivité en temps réel
     final isOnline = _connectivityService.isConnected;
     if (!isOnline) {

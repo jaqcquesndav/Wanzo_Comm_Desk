@@ -307,6 +307,27 @@ class ExpenseRepository {
         .toList();
   }
 
+  /// Récupérer les dépenses liées à un fournisseur
+  Future<List<Expense>> getExpensesBySupplier(String supplierId) async {
+    return _expensesBox.values
+        .where((expense) => expense.supplierId == supplierId)
+        .toList();
+  }
+
+  /// Calculer le total des dettes fournisseurs (dépenses non entièrement payées)
+  Future<double> getTotalPayables() async {
+    final unpaid = _expensesBox.values.where((expense) {
+      final status = expense.paymentStatus;
+      return status == ExpensePaymentStatus.unpaid ||
+          status == ExpensePaymentStatus.partial ||
+          status == ExpensePaymentStatus.credit;
+    });
+    return unpaid.fold<double>(0, (total, expense) {
+      final paid = expense.paidAmount ?? 0.0;
+      return total + (expense.amount - paid);
+    });
+  }
+
   // Category Management Methods
   Future<List<Map<String, dynamic>>> getExpenseCategories() async {
     try {

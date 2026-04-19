@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/services/currency_service.dart';
 import 'package:intl/intl.dart'; // Keep for _formatDate
+import '../../sales/models/sale.dart';
+import '../../sales/repositories/sales_repository.dart';
 import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
 import '../bloc/customer_state.dart';
@@ -200,6 +202,63 @@ class CustomerDetailsScreen extends StatelessWidget {
                       ],
                     ),
                   ),
+                ),
+                // ── Créances client (solde impayé) ──
+                FutureBuilder<List<Sale>>(
+                  future: context.read<SalesRepository>().getSalesByCustomer(
+                    customer.id,
+                  ),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) return const SizedBox.shrink();
+                    final unpaid = snapshot.data!.where(
+                      (s) =>
+                          s.status == SaleStatus.pending ||
+                          s.status == SaleStatus.partiallyPaid,
+                    );
+                    final totalDue = unpaid.fold<double>(
+                      0,
+                      (sum, s) =>
+                          sum + (s.totalAmountInCdf - s.paidAmountInCdf),
+                    );
+                    if (totalDue <= 0) return const SizedBox.shrink();
+                    return Column(
+                      children: [
+                        const SizedBox(height: 16),
+                        Card(
+                          elevation: 2,
+                          color: Colors.orange.shade50,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  localizations.outstandingBalance,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const Divider(),
+                                const SizedBox(height: 8),
+                                _buildInfoRow(
+                                  Icons.warning_amber_rounded,
+                                  localizations.receivablesToCollect,
+                                  currencyService.formatAmount(totalDue),
+                                ),
+                                const SizedBox(height: 8),
+                                _buildInfoRow(
+                                  Icons.receipt_long,
+                                  '',
+                                  localizations.unpaidSalesCount(unpaid.length),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 if (customer.notes?.isNotEmpty ?? false) ...[
                   const SizedBox(height: 16),

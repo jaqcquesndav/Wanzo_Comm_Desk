@@ -36,13 +36,15 @@ class SupplierAdapter extends TypeAdapter<Supplier> {
       businessUnitType: fields[16] as BusinessUnitType?,
       updatedAt: fields[17] as DateTime?,
       productIds: (fields[18] as List?)?.cast<String>(),
+      syncStatus: fields[19] as String,
+      localId: fields[20] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Supplier obj) {
     writer
-      ..writeByte(19)
+      ..writeByte(21)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -80,7 +82,11 @@ class SupplierAdapter extends TypeAdapter<Supplier> {
       ..writeByte(17)
       ..write(obj.updatedAt)
       ..writeByte(18)
-      ..write(obj.productIds);
+      ..write(obj.productIds)
+      ..writeByte(19)
+      ..write(obj.syncStatus)
+      ..writeByte(20)
+      ..write(obj.localId);
   }
 
   @override
