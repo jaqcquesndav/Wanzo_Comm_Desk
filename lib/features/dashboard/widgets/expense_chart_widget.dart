@@ -1029,6 +1029,93 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     Map<DateTime, double> dailyExpenses,
   ) {
     final theme = Theme.of(context);
+    final treasurySnapshot = _calculateTreasurySnapshot();
+
+    if (_selectedViewMode == ChartViewMode.cashFlow) {
+      final periodCashIn = dailySales.values.fold(
+        0.0,
+        (sum, value) => sum + value,
+      );
+      final periodCashOut = dailyExpenses.values.fold(
+        0.0,
+        (sum, value) => sum + value,
+      );
+
+      return Container(
+        padding: const EdgeInsets.all(WanzoTheme.spacingMd),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.3,
+          ),
+          borderRadius: const BorderRadius.only(
+            bottomLeft: Radius.circular(WanzoTheme.borderRadiusMd),
+            bottomRight: Radius.circular(WanzoTheme.borderRadiusMd),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Position de Trésorerie (Aujourd\'hui)',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: WanzoTheme.spacingSm),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(WanzoTheme.spacingSm),
+              decoration: BoxDecoration(
+                color:
+                    (treasurySnapshot['total'] ?? 0) >= 0
+                        ? WanzoTheme.success.withValues(alpha: 0.08)
+                        : WanzoTheme.danger.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(WanzoTheme.borderRadiusSm),
+              ),
+              child: _buildDetailRow(
+                context,
+                'Solde total',
+                _formatAmount(treasurySnapshot['total'] ?? 0),
+              ),
+            ),
+            const SizedBox(height: WanzoTheme.spacingSm),
+            _buildDetailRow(
+              context,
+              'Caisse',
+              _formatAmount(treasurySnapshot['cash'] ?? 0),
+            ),
+            _buildDetailRow(
+              context,
+              'Banque',
+              _formatAmount(treasurySnapshot['bank'] ?? 0),
+            ),
+            _buildDetailRow(
+              context,
+              'Mobile Money',
+              _formatAmount(treasurySnapshot['mobileMoney'] ?? 0),
+            ),
+            _buildDetailRow(
+              context,
+              'Autres canaux',
+              _formatAmount(treasurySnapshot['other'] ?? 0),
+            ),
+            const SizedBox(height: WanzoTheme.spacingSm),
+            const Divider(),
+            const SizedBox(height: WanzoTheme.spacingSm),
+            _buildDetailRow(
+              context,
+              'Encaissements (période)',
+              _formatAmount(periodCashIn),
+            ),
+            _buildDetailRow(
+              context,
+              'Décaissements (période)',
+              _formatAmount(periodCashOut),
+            ),
+          ],
+        ),
+      );
+    }
 
     // Calculer le CUMUL TOTAL depuis le début de l'année (pas seulement la période affichée)
     final now = DateTime.now();
@@ -1267,6 +1354,71 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
         ],
       ),
     );
+  }
+
+  Map<String, double> _calculateTreasurySnapshot() {
+    final now = DateTime.now();
+    final balances = <String, double>{
+      'cash': 0.0,
+      'bank': 0.0,
+      'mobileMoney': 0.0,
+      'other': 0.0,
+    };
+
+    for (final sale in widget.sales) {
+      if (sale.date.isAfter(now)) continue;
+      final paid = sale.paidAmountInCdf;
+      if (paid <= 0) continue;
+      final channel = _resolveTreasuryChannel(sale.paymentMethod);
+      balances[channel] = (balances[channel] ?? 0.0) + paid;
+    }
+
+    for (final expense in widget.expenses) {
+      if (expense.date.isAfter(now)) continue;
+      if (expense.paymentStatus != ExpensePaymentStatus.paid &&
+          expense.paymentStatus != ExpensePaymentStatus.partial) {
+        continue;
+      }
+
+      final paid = expense.paidAmount ?? expense.amount;
+      if (paid <= 0) continue;
+      final channel = _resolveTreasuryChannel(expense.paymentMethod);
+      balances[channel] = (balances[channel] ?? 0.0) - paid;
+    }
+
+    balances['total'] = balances.values.fold(0.0, (sum, value) => sum + value);
+    return balances;
+  }
+
+  String _resolveTreasuryChannel(String? paymentMethod) {
+    final normalized = (paymentMethod ?? '').toLowerCase();
+
+    if (normalized.contains('cash') ||
+        normalized.contains('esp') ||
+        normalized.contains('caisse')) {
+      return 'cash';
+    }
+
+    if (normalized.contains('bank') ||
+        normalized.contains('banque') ||
+        normalized.contains('virement') ||
+        normalized.contains('transfer') ||
+        normalized.contains('carte')) {
+      return 'bank';
+    }
+
+    if (normalized.contains('mobile') ||
+        normalized.contains('money') ||
+        normalized.contains('mpesa') ||
+        normalized.contains('m-pesa') ||
+        normalized.contains('airtel') ||
+        normalized.contains('orange') ||
+        normalized.contains('vodacom') ||
+        normalized.contains('moov')) {
+      return 'mobileMoney';
+    }
+
+    return 'other';
   }
 
   Widget _buildDetailRow(BuildContext context, String label, String value) {

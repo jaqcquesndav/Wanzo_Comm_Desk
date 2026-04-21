@@ -26,7 +26,10 @@ class Invoice extends Equatable {
   final InvoiceStatus status;
   final List<InvoiceItem> items;
   final double subtotal;
-  final double taxAmount; // Could be a sum of item taxes or a flat rate on subtotal
+  @JsonKey(includeIfNull: false)
+  final double? amountHT; // Montant hors taxes (HT) - explicite pour clarté. Cohérence: totalAmount = amountHT + taxAmount
+  final double
+  taxAmount; // Could be a sum of item taxes or a flat rate on subtotal
   final double totalAmount;
   final String? notes;
   final String? currencyCode; // e.g., "USD", "CDF"
@@ -43,6 +46,7 @@ class Invoice extends Equatable {
     required this.status,
     required this.items,
     required this.subtotal,
+    this.amountHT,
     required this.taxAmount,
     required this.totalAmount,
     this.notes,
@@ -51,25 +55,27 @@ class Invoice extends Equatable {
     this.updatedAt,
   });
 
-  factory Invoice.fromJson(Map<String, dynamic> json) => _$InvoiceFromJson(json);
+  factory Invoice.fromJson(Map<String, dynamic> json) =>
+      _$InvoiceFromJson(json);
   Map<String, dynamic> toJson() => _$InvoiceToJson(this);
 
   @override
   List<Object?> get props => [
-        id,
-        invoiceNumber,
-        customerId,
-        customerName,
-        date,
-        dueDate,
-        status,
-        items,
-        subtotal,
-        taxAmount,
-        totalAmount,
-        notes,
-        currencyCode,
-        createdAt,
-        updatedAt,
-      ];
+    id,
+    invoiceNumber,
+    customerId,
+    customerName,
+    date,
+    dueDate,
+    status,
+    items,
+    subtotal,
+    amountHT,
+    taxAmount,
+    totalAmount,
+    notes,
+    currencyCode,
+    createdAt,
+    updatedAt,
+  ];
 }

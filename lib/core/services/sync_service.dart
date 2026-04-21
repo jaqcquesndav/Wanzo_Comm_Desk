@@ -1068,8 +1068,9 @@ class SyncService {
                     s.syncStatus == 'pending' ||
                     s.syncStatus == 'pending_update',
           );
-          if (stale > 0)
+          if (stale > 0) {
             debugPrint('🗑️ $stale fournisseurs obsolètes supprimés');
+          }
         }
 
         await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
@@ -1122,8 +1123,9 @@ class SyncService {
             box: transactionBox,
             backendIds: apiResponse.data!.map((t) => t.id).toSet(),
           );
-          if (stale > 0)
+          if (stale > 0) {
             debugPrint('🗑️ $stale transactions obsolètes supprimées');
+          }
         }
 
         await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
@@ -1174,8 +1176,9 @@ class SyncService {
             box: accountBox,
             backendIds: apiResponse.data!.map((a) => a.id).toSet(),
           );
-          if (stale > 0)
+          if (stale > 0) {
             debugPrint('🗑️ $stale comptes financiers obsolètes supprimés');
+          }
         }
 
         await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());

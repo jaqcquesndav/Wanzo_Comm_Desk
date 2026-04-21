@@ -169,6 +169,8 @@ Sale _$SaleFromJson(Map<String, dynamic> json) => Sale(
           .map((e) => SaleItem.fromJson(e as Map<String, dynamic>))
           .toList(),
       totalAmountInCdf: (json['totalAmountInCdf'] as num).toDouble(),
+      amountHT: (json['amountHT'] as num?)?.toDouble(),
+      taxAmount: (json['taxAmount'] as num?)?.toDouble(),
       paidAmountInCdf: (json['paidAmountInCdf'] as num?)?.toDouble() ?? 0.0,
       totalAmountInUsd: (json['totalAmountInUsd'] as num?)?.toDouble(),
       paidAmountInUsd: (json['paidAmountInUsd'] as num?)?.toDouble(),
@@ -212,6 +214,8 @@ Map<String, dynamic> _$SaleToJson(Sale instance) => <String, dynamic>{
       'customerName': instance.customerName,
       'items': instance.items.map((e) => e.toJson()).toList(),
       'totalAmountInCdf': instance.totalAmountInCdf,
+      if (instance.amountHT case final value?) 'amountHT': value,
+      if (instance.taxAmount case final value?) 'taxAmount': value,
       'paidAmountInCdf': instance.paidAmountInCdf,
       if (instance.totalAmountInUsd case final value?)
         'totalAmountInUsd': value,

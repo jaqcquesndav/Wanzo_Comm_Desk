@@ -149,8 +149,13 @@ class Settings extends Equatable {
   @HiveField(34)
   final Map<String, String>? socialMediaLinks;
 
-  /// Mode maintenance (conformément à l'API documentation)
+  /// L'entreprise est-elle assujettie à la TVA ?
+  /// Contrôle si la TVA doit être appliquée/calculée dans les ventes et écritures comptables.
   @HiveField(35)
+  final bool isTaxSubject;
+
+  /// Mode maintenance (conformément à l'API documentation)
+  @HiveField(36)
   final bool maintenanceMode;
 
   const Settings({
@@ -189,6 +194,7 @@ class Settings extends Equatable {
     this.businessUnitName,
     this.isRetailStore = false, // DEPRECATED - conservé pour migration
     this.socialMediaLinks,
+    this.isTaxSubject = true,
     this.maintenanceMode = false,
   });
 
@@ -231,6 +237,7 @@ class Settings extends Equatable {
     String? businessUnitName,
     bool? isRetailStore,
     Map<String, String>? socialMediaLinks,
+    bool? isTaxSubject,
     bool? maintenanceMode,
   }) {
     return Settings(
@@ -272,8 +279,11 @@ class Settings extends Equatable {
       businessUnitCode: businessUnitCode ?? this.businessUnitCode,
       businessUnitType: businessUnitType ?? this.businessUnitType,
       businessUnitName: businessUnitName ?? this.businessUnitName,
-      isRetailStore: isRetailStore ?? this.isRetailStore,
+      isRetailStore:
+          isRetailStore ??
+          ((businessUnitType ?? this.businessUnitType) == BusinessUnitType.pos),
       socialMediaLinks: socialMediaLinks ?? this.socialMediaLinks,
+      isTaxSubject: isTaxSubject ?? this.isTaxSubject,
       maintenanceMode: maintenanceMode ?? this.maintenanceMode,
     );
   }
@@ -312,8 +322,8 @@ class Settings extends Equatable {
     businessUnitCode,
     businessUnitType,
     businessUnitName,
-    isRetailStore,
     socialMediaLinks,
+    isTaxSubject,
     maintenanceMode,
   ];
 }

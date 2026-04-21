@@ -10,6 +10,8 @@ import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // Support SQLite pour Windows/Linux
 import 'package:get_it/get_it.dart'; // Service locator pour accès global aux services
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import 'package:wanzo/core/navigation/app_router.dart';
 import 'package:wanzo/core/services/api_client.dart';
@@ -39,6 +41,7 @@ import 'package:wanzo/features/auth/services/auth0_service.dart';
 import 'package:wanzo/features/auth/services/auth_backend_service.dart';
 import 'package:wanzo/features/auth/services/offline_auth_service.dart';
 import 'package:wanzo/features/auth/services/desktop_auth_service.dart';
+import 'package:wanzo/features/auth/models/user.dart';
 import 'package:wanzo/features/notifications/services/notification_service.dart';
 import 'package:wanzo/features/security/services/local_security_service.dart';
 import 'package:wanzo/features/offline/services/enhanced_offline_service.dart';
@@ -167,7 +170,7 @@ Future<void> main() async {
     logger.info(
       'Starting Wanzo application',
       context: {
-        'version': '1.0.0', // TODO: Récupérer depuis pubspec.yaml
+        'version': '1.0.0', // Version applicative journalisée au démarrage
         'environment': dotenv.env['ENVIRONMENT'] ?? 'production',
       },
     );
@@ -354,7 +357,9 @@ Future<void> main() async {
 
 /// Initialise Hive (adapters et boxes)
 Future<void> _initializeHive() async {
-  await Hive.initFlutter();
+  final appSupportDir = await getApplicationSupportDirectory();
+  final hivePath = p.join(appSupportDir.path, 'wanzo_comm_desk_hive');
+  await Hive.initFlutter(hivePath);
   await initializeHiveAdapters();
   await openHiveBoxes();
 }
@@ -584,6 +589,66 @@ class WanzoApp extends StatelessWidget {
     required this.services,
   });
 
+  User? _userFromAuthState(AuthState state) {
+    if (state is AuthAuthenticated) return state.user;
+    if (state is AuthSyncPending) return state.user;
+    if (state is AuthBusinessUnitRequired) return state.user;
+    if (state is AuthJoinBusinessUnitFailure) return state.user;
+    return null;
+  }
+
+  bool _hasSessionContextChanged(User previous, User current) {
+    return previous.id != current.id ||
+        previous.companyId != current.companyId ||
+        previous.businessUnitId != current.businessUnitId ||
+        previous.businessUnitCode != current.businessUnitCode ||
+        previous.businessUnitType != current.businessUnitType;
+  }
+
+  Future<void> _clearBusinessCaches() async {
+    try {
+      await CacheManagementService.instance.clearAllBusinessUnitData();
+    } catch (e) {
+      debugPrint('WanzoApp: erreur de nettoyage des caches metier: $e');
+    }
+  }
+
+  void _syncSettingsFromAuth(BuildContext context, User user) {
+    final settingsBloc = context.read<SettingsBloc>();
+    final settingsState = settingsBloc.state;
+    if (settingsState is! SettingsLoaded) {
+      return;
+    }
+
+    final currentSettings = settingsState.settings;
+    final nextCompanyName = user.companyName ?? currentSettings.companyName;
+    final nextCompanyLogo = user.businessLogoUrl ?? currentSettings.companyLogo;
+    final nextRccmNumber = user.rccmNumber ?? currentSettings.rccmNumber;
+
+    final shouldSync =
+        currentSettings.companyName != nextCompanyName ||
+        currentSettings.companyLogo != nextCompanyLogo ||
+        currentSettings.rccmNumber != nextRccmNumber ||
+        currentSettings.businessUnitId != user.businessUnitId ||
+        currentSettings.businessUnitCode != user.businessUnitCode ||
+        currentSettings.businessUnitType != user.businessUnitType;
+
+    if (!shouldSync) {
+      return;
+    }
+
+    settingsBloc.add(
+      UpdateCompanyInfo(
+        companyName: nextCompanyName,
+        companyLogo: nextCompanyLogo,
+        rccmNumber: nextRccmNumber,
+        businessUnitId: user.businessUnitId,
+        businessUnitCode: user.businessUnitCode,
+        businessUnitType: user.businessUnitType,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Créer l'AppRouter avec le AuthBloc
@@ -682,55 +747,84 @@ class WanzoApp extends StatelessWidget {
             value: repositories['businessUnit'] as BusinessUnitRepository,
           ),
         ],
-        child: BlocBuilder<SettingsBloc, SettingsState>(
-          builder: (context, settingsState) {
-            // Détermine le thème à utiliser
-            ThemeMode themeMode = ThemeMode.system;
-            Locale? locale;
+        child: MultiBlocListener(
+          listeners: [
+            BlocListener<AuthBloc, AuthState>(
+              listenWhen: (previous, current) {
+                final previousUser = _userFromAuthState(previous);
+                final currentUser = _userFromAuthState(current);
 
-            if (settingsState is SettingsLoaded) {
-              switch (settingsState.settings.themeMode) {
-                case AppThemeMode.light:
-                  themeMode = ThemeMode.light;
-                  break;
-                case AppThemeMode.dark:
-                  themeMode = ThemeMode.dark;
-                  break;
-                case AppThemeMode.system:
-                  themeMode = ThemeMode.system;
-                  break;
+                if (current is AuthUnauthenticated && previousUser != null) {
+                  return true;
+                }
+
+                return previousUser != null &&
+                    currentUser != null &&
+                    _hasSessionContextChanged(previousUser, currentUser);
+              },
+              listener: (context, state) async {
+                await _clearBusinessCaches();
+              },
+            ),
+            BlocListener<AuthBloc, AuthState>(
+              listenWhen: (previous, current) => current is AuthAuthenticated,
+              listener: (context, state) {
+                if (state is AuthAuthenticated) {
+                  _syncSettingsFromAuth(context, state.user);
+                }
+              },
+            ),
+          ],
+          child: BlocBuilder<SettingsBloc, SettingsState>(
+            builder: (context, settingsState) {
+              // Détermine le thème à utiliser
+              ThemeMode themeMode = ThemeMode.system;
+              Locale? locale;
+
+              if (settingsState is SettingsLoaded) {
+                switch (settingsState.settings.themeMode) {
+                  case AppThemeMode.light:
+                    themeMode = ThemeMode.light;
+                    break;
+                  case AppThemeMode.dark:
+                    themeMode = ThemeMode.dark;
+                    break;
+                  case AppThemeMode.system:
+                    themeMode = ThemeMode.system;
+                    break;
+                }
+
+                // Détermine la langue à utiliser
+                locale = Locale(
+                  settingsState.settings.language,
+                  settingsState.settings.language == 'fr' ? 'FR' : 'US',
+                );
               }
 
-              // Détermine la langue à utiliser
-              locale = Locale(
-                settingsState.settings.language,
-                settingsState.settings.language == 'fr' ? 'FR' : 'US',
+              return SecurityWrapper(
+                child: MaterialApp.router(
+                  title: 'Wanzo - Gestion de Stock',
+                  debugShowCheckedModeBanner: false,
+                  routerConfig: appRouter.router,
+                  theme: WanzoTheme.lightTheme, // Use your custom light theme
+                  darkTheme: WanzoTheme.darkTheme, // Use your custom dark theme
+                  themeMode: themeMode, // Use settings-based theme mode
+                  locale: locale, // Use settings-based locale
+                  localizationsDelegates: const [
+                    AppLocalizations.delegate,
+                    GlobalMaterialLocalizations.delegate,
+                    GlobalWidgetsLocalizations.delegate,
+                    GlobalCupertinoLocalizations.delegate,
+                  ],
+                  supportedLocales: const [
+                    Locale('fr', 'FR'),
+                    Locale('en', 'US'),
+                    Locale('sw', 'TZ'), // Add Swahili support
+                  ],
+                ),
               );
-            }
-
-            return SecurityWrapper(
-              child: MaterialApp.router(
-                title: 'Wanzo - Gestion de Stock',
-                debugShowCheckedModeBanner: false,
-                routerConfig: appRouter.router,
-                theme: WanzoTheme.lightTheme, // Use your custom light theme
-                darkTheme: WanzoTheme.darkTheme, // Use your custom dark theme
-                themeMode: themeMode, // Use settings-based theme mode
-                locale: locale, // Use settings-based locale
-                localizationsDelegates: const [
-                  AppLocalizations.delegate,
-                  GlobalMaterialLocalizations.delegate,
-                  GlobalWidgetsLocalizations.delegate,
-                  GlobalCupertinoLocalizations.delegate,
-                ],
-                supportedLocales: const [
-                  Locale('fr', 'FR'),
-                  Locale('en', 'US'),
-                  Locale('sw', 'TZ'), // Add Swahili support
-                ],
-              ),
-            );
-          },
+            },
+          ),
         ),
       ),
     );

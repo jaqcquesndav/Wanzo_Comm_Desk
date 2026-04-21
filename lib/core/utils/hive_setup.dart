@@ -182,9 +182,7 @@ Future<void> openHiveBoxes() async {
   await Hive.openBox<User>('userBox');
   await Hive.openBox<auth_bs.BusinessSector>('authBusinessSectorsBox');
   // IMPORTANT: Utiliser 'customers' pour correspondre à CustomerRepository
-  await Hive.openBox<customer_model.Customer>(
-    'customers',
-  ); // Use customer_model.Customer
+  await _openCustomersBoxSafely();
   // IMPORTANT: Utiliser 'products' pour correspondre à InventoryRepository
   await Hive.openBox<inventory_product.Product>('products');
   await Hive.openBox<stock_tx_model.StockTransaction>(
@@ -196,7 +194,7 @@ Future<void> openHiveBoxes() async {
   await Hive.openBox<Settings>('settingsBox');
   await Hive.openBox<FinancialAccount>('financial_accounts');
   await Hive.openBox<NotificationModel>('notificationsBox');
-  await Hive.openBox<String>('syncStatusBox');
+  await _openSyncStatusBoxSafely();
   await Hive.openBox<Expense>('expenses'); // Added to open the expenses box
   await Hive.openBox<OperationJournalEntry>(
     'operation_journal_entries',
@@ -205,4 +203,40 @@ Future<void> openHiveBoxes() async {
   // e.g. await Hive.openBox<global_product.Product>('globalProductsBox'); if needed
   // await Hive.openBox<document_model.Document>('documentsBox'); // Example if needed
   // await Hive.openBox<adha_adapters.AdhaConversation>('adhaConversationsBox'); // Example if needed
+}
+
+Future<void> _openSyncStatusBoxSafely() async {
+  try {
+    await Hive.openBox<String>('syncStatusBox');
+  } catch (e) {
+    // Recovery path for legacy/corrupted values (e.g., null persisted in a String box).
+    debugPrint(
+      '⚠️ syncStatusBox incompatible/corrupted, recreation en cours: $e',
+    );
+
+    if (Hive.isBoxOpen('syncStatusBox')) {
+      await Hive.box('syncStatusBox').close();
+    }
+
+    await Hive.deleteBoxFromDisk('syncStatusBox');
+    await Hive.openBox<String>('syncStatusBox');
+  }
+}
+
+Future<void> _openCustomersBoxSafely() async {
+  try {
+    await Hive.openBox<customer_model.Customer>('customers');
+  } catch (e) {
+    // Recovery path for legacy/corrupted customer payloads.
+    debugPrint(
+      '⚠️ customers box incompatible/corrupted, recreation en cours: $e',
+    );
+
+    if (Hive.isBoxOpen('customers')) {
+      await Hive.box('customers').close();
+    }
+
+    await Hive.deleteBoxFromDisk('customers');
+    await Hive.openBox<customer_model.Customer>('customers');
+  }
 }

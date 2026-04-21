@@ -423,6 +423,26 @@ class SaleDetailsScreen extends StatelessWidget {
                               ],
                             ),
                           ),
+                        if (_hasTaxBreakdown) ...[
+                          const SizedBox(height: WanzoSpacing.sm),
+                          _buildAmountRow(
+                            context,
+                            "Montant HT",
+                            formatCurrency(
+                              _toTransactionCurrency(sale.amountHT ?? 0.0),
+                              transactionCurrencyCode,
+                            ),
+                          ),
+                          const SizedBox(height: WanzoSpacing.xs),
+                          _buildAmountRow(
+                            context,
+                            "TVA",
+                            formatCurrency(
+                              _toTransactionCurrency(sale.taxAmount ?? 0.0),
+                              transactionCurrencyCode,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: WanzoSpacing.sm),
                         _buildAmountRow(
                           context,
@@ -586,6 +606,34 @@ class SaleDetailsScreen extends StatelessWidget {
                         ],
                       ),
                     ),
+                  if (_hasTaxBreakdown) ...[
+                    const SizedBox(height: WanzoSpacing.xs),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Montant HT"),
+                        Text(
+                          formatCurrency(
+                            _toTransactionCurrency(sale.amountHT ?? 0.0),
+                            transactionCurrencyCode,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: WanzoSpacing.xs),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("TVA"),
+                        Text(
+                          formatCurrency(
+                            _toTransactionCurrency(sale.taxAmount ?? 0.0),
+                            transactionCurrencyCode,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: WanzoSpacing.xs),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -873,6 +921,18 @@ class SaleDetailsScreen extends StatelessWidget {
                 (sale.totalAmountInTransactionCurrency ?? 0.0)
         ? Colors.green
         : Colors.red;
+  }
+
+  bool get _hasTaxBreakdown =>
+      (sale.amountHT ?? 0) > 0 || (sale.taxAmount ?? 0) > 0;
+
+  double _toTransactionCurrency(double amountInCdf) {
+    final code = sale.transactionCurrencyCode ?? 'CDF';
+    final rate = sale.transactionExchangeRate;
+    if (code == 'CDF' || rate == null || rate <= 0) {
+      return amountInCdf;
+    }
+    return amountInCdf / rate;
   }
 
   /// Marquer la vente comme terminée

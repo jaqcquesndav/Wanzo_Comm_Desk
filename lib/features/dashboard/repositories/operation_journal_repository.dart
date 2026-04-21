@@ -1164,7 +1164,7 @@ class OperationJournalRepository {
       // En mode en ligne, essayer de récupérer les données de l'API
       // GET /operations/timeline - Timeline des opérations récentes
       final response = await _apiService.get(
-        'operations/timeline',
+        'journal/operations/timeline',
         queryParams: {'limit': limit},
       );
 
@@ -1241,7 +1241,10 @@ class OperationJournalRepository {
 
       // En mode en ligne, essayer de récupérer les données de l'API
       // GET /operations/summary - Résumé des opérations par période
-      final response = await _apiService.get('operations/summary');
+      final response = await _apiService.get(
+        'journal/operations/summary',
+        queryParams: {'period': 'month'},
+      );
 
       if (response['data'] != null &&
           response['data'] is Map<String, dynamic>) {

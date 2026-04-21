@@ -51,14 +51,15 @@ class SettingsAdapter extends TypeAdapter<Settings> {
       businessUnitName: fields[31] as String?,
       isRetailStore: fields[32] as bool,
       socialMediaLinks: (fields[34] as Map?)?.cast<String, String>(),
-      maintenanceMode: fields[35] as bool,
+      isTaxSubject: fields[35] as bool,
+      maintenanceMode: fields[36] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, Settings obj) {
     writer
-      ..writeByte(35)
+      ..writeByte(36)
       ..writeByte(0)
       ..write(obj.companyName)
       ..writeByte(1)
@@ -128,6 +129,8 @@ class SettingsAdapter extends TypeAdapter<Settings> {
       ..writeByte(34)
       ..write(obj.socialMediaLinks)
       ..writeByte(35)
+      ..write(obj.isTaxSubject)
+      ..writeByte(36)
       ..write(obj.maintenanceMode);
   }
 
@@ -242,6 +245,7 @@ Settings _$SettingsFromJson(Map<String, dynamic> json) => Settings(
           (json['socialMediaLinks'] as Map<String, dynamic>?)?.map(
         (k, e) => MapEntry(k, e as String),
       ),
+      isTaxSubject: json['isTaxSubject'] as bool? ?? true,
       maintenanceMode: json['maintenanceMode'] as bool? ?? false,
     );
 
@@ -283,6 +287,7 @@ Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
       'isRetailStore': instance.isRetailStore,
       if (instance.socialMediaLinks case final value?)
         'socialMediaLinks': value,
+      'isTaxSubject': instance.isTaxSubject,
       'maintenanceMode': instance.maintenanceMode,
     };
 

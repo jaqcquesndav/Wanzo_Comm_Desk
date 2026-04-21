@@ -18,6 +18,7 @@ Invoice _$InvoiceFromJson(Map<String, dynamic> json) => Invoice(
           .map((e) => InvoiceItem.fromJson(e as Map<String, dynamic>))
           .toList(),
       subtotal: (json['subtotal'] as num).toDouble(),
+      amountHT: (json['amountHT'] as num?)?.toDouble(),
       taxAmount: (json['taxAmount'] as num).toDouble(),
       totalAmount: (json['totalAmount'] as num).toDouble(),
       notes: json['notes'] as String?,
@@ -40,6 +41,7 @@ Map<String, dynamic> _$InvoiceToJson(Invoice instance) => <String, dynamic>{
       'status': _$InvoiceStatusEnumMap[instance.status]!,
       'items': instance.items.map((e) => e.toJson()).toList(),
       'subtotal': instance.subtotal,
+      if (instance.amountHT case final value?) 'amountHT': value,
       'taxAmount': instance.taxAmount,
       'totalAmount': instance.totalAmount,
       if (instance.notes case final value?) 'notes': value,

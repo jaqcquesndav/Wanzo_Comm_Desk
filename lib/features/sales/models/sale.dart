@@ -59,6 +59,14 @@ class Sale extends Equatable {
   @HiveField(5)
   final double totalAmountInCdf;
 
+  /// Montant hors taxes (HT) en CDF - Base pour calcul TVA
+  @JsonKey(includeIfNull: false)
+  final double? amountHT;
+
+  /// Montant TVA appliqué en CDF. Cohérence: TotalAmountInCdf = AmountHT + TaxAmount
+  @JsonKey(includeIfNull: false)
+  final double? taxAmount;
+
   /// Montant payé en CDF
   @HiveField(6)
   @JsonKey(name: 'paidAmountInCdf', defaultValue: 0.0)
@@ -189,6 +197,8 @@ class Sale extends Equatable {
     required this.customerName,
     required this.items,
     required this.totalAmountInCdf,
+    this.amountHT,
+    this.taxAmount,
     required this.paidAmountInCdf,
     this.totalAmountInUsd,
     this.paidAmountInUsd,
@@ -237,6 +247,8 @@ class Sale extends Equatable {
     String? customerName,
     List<SaleItem>? items,
     double? totalAmountInCdf,
+    double? amountHT,
+    double? taxAmount,
     double? paidAmountInCdf,
     double? totalAmountInUsd,
     double? paidAmountInUsd,
@@ -273,6 +285,8 @@ class Sale extends Equatable {
       customerName: customerName ?? this.customerName,
       items: items ?? this.items,
       totalAmountInCdf: totalAmountInCdf ?? this.totalAmountInCdf,
+      amountHT: amountHT ?? this.amountHT,
+      taxAmount: taxAmount ?? this.taxAmount,
       paidAmountInCdf: paidAmountInCdf ?? this.paidAmountInCdf,
       totalAmountInUsd: totalAmountInUsd ?? this.totalAmountInUsd,
       paidAmountInUsd: paidAmountInUsd ?? this.paidAmountInUsd,
@@ -317,6 +331,8 @@ class Sale extends Equatable {
     customerName,
     items,
     totalAmountInCdf,
+    amountHT,
+    taxAmount,
     paidAmountInCdf,
     totalAmountInUsd,
     paidAmountInUsd,

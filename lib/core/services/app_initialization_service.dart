@@ -9,7 +9,7 @@ import 'reauth_service.dart';
 class AppInitializationService {
   static AppInitializationService? _instance;
   bool _isInitialized = false;
-  
+
   static AppInitializationService get instance {
     _instance ??= AppInitializationService._internal();
     return _instance!;
@@ -58,11 +58,12 @@ class AppInitializationService {
       logger.info('Application initialization completed successfully');
 
       _isInitialized = true;
-      debugPrint('App initialization completed in ${duration.inMilliseconds}ms');
-
+      debugPrint(
+        'App initialization completed in ${duration.inMilliseconds}ms',
+      );
     } catch (e, stackTrace) {
       debugPrint('Failed to initialize application: $e');
-      
+
       // Même si l'initialisation échoue partiellement, on peut continuer
       // mais on log l'erreur
       if (LoggingService.instance.isInitialized) {
@@ -72,13 +73,13 @@ class AppInitializationService {
           stackTrace: stackTrace,
         );
       }
-      
+
       // En production, on peut vouloir afficher une erreur à l'utilisateur
       // ou envoyer un rapport d'erreur
       if (kReleaseMode) {
-        // TODO: Envoyer le rapport d'erreur au service de monitoring
+        // Envoyer le rapport d'erreur au service de monitoring
       }
-      
+
       rethrow;
     }
   }
@@ -113,10 +114,12 @@ class AppInitializationService {
     if (auth0Service != null) {
       // Configurer le service de ré-authentification
       ReauthService.instance.configure(auth0Service);
-      
+
       // Ajouter des callbacks pour les événements d'authentification
       ReauthService.instance.onAuthenticationRequired(() {
-        LoggingService.instance.warning('Authentication required - redirecting to login');
+        LoggingService.instance.warning(
+          'Authentication required - redirecting to login',
+        );
       });
 
       ReauthService.instance.onAuthenticationSuccess(() {
@@ -142,12 +145,12 @@ class AppInitializationService {
     try {
       // Nettoyer les anciens logs
       await LoggingService.instance.cleanOldLogs(maxDays: 7);
-      
-      // TODO: Ajouter d'autres tâches de nettoyage si nécessaire
+
+      // Ajouter d'autres tâches de nettoyage si nécessaire
       // - Cache des images
       // - Données temporaires
       // - Fichiers d'export anciens
-      
+
       debugPrint('✓ Old data cleanup completed');
     } catch (e) {
       LoggingService.instance.warning('Failed to cleanup old data', error: e);
@@ -157,8 +160,9 @@ class AppInitializationService {
   /// Vérifie la santé de l'application
   Future<void> _performHealthCheck() async {
     try {
-      final healthStatus = await ErrorHandlingService.instance.checkApplicationHealth();
-      
+      final healthStatus =
+          await ErrorHandlingService.instance.checkApplicationHealth();
+
       if (healthStatus.isHealthy) {
         LoggingService.instance.info('Application health check passed');
       } else {
@@ -170,7 +174,7 @@ class AppInitializationService {
           },
         );
       }
-      
+
       debugPrint('✓ Health check completed');
     } catch (e) {
       LoggingService.instance.error('Health check failed', error: e);
@@ -183,9 +187,9 @@ class AppInitializationService {
     // - Envoyer les erreurs à un service de monitoring (Sentry, Firebase Crashlytics)
     // - Afficher des messages d'erreur appropriés à l'utilisateur
     // - Collecter des métriques d'erreurs
-    
+
     if (kReleaseMode) {
-      // TODO: Intégrer avec un service de monitoring
+      // Integrer avec un service de monitoring
       // Example: Sentry.captureException(error);
     }
   }
@@ -196,9 +200,9 @@ class AppInitializationService {
     // - Envoyer les erreurs critiques à un service de monitoring
     // - Sauvegarder l'état de l'application avant le crash
     // - Afficher un écran d'erreur approprié
-    
+
     if (kReleaseMode) {
-      // TODO: Intégrer avec un service de monitoring
+      // Integrer avec un service de monitoring
       // Example: Sentry.captureException(error, stackTrace: stack);
     }
   }
@@ -223,12 +227,12 @@ class AppInitializationService {
       // Nettoyer les services dans l'ordre inverse de l'initialisation
       ErrorHandlingService.instance.dispose();
       ReauthService.instance.dispose();
-      
+
       // Sauvegarder les logs finaux si nécessaire
       await LoggingService.instance.exportLogs();
-      
+
       LoggingService.instance.info('Application shutdown completed');
-      
+
       _isInitialized = false;
     } catch (e) {
       debugPrint('Error during app disposal: $e');

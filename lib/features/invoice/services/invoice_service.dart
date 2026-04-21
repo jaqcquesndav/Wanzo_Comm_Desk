@@ -51,17 +51,16 @@ class InvoiceService {
         .replaceAll('{MONTH}', sale.date.month.toString().padLeft(2, '0'))
         .replaceAll('{SEQ}', sale.id.substring(0, 8));
 
-    final subtotal = sale.items.fold<double>(
-      0,
-      (sum, item) => sum + (item.quantity * item.unitPrice),
-    );
-
-    double taxAmount = 0;
-    if (settings.showTaxes) {
-      taxAmount = subtotal * (settings.defaultTaxRate / 100.0);
-    }
-
-    final total = subtotal + taxAmount;
+    final total = sale.totalAmountInCdf;
+    final taxAmount = settings.showTaxes ? (sale.taxAmount ?? 0.0) : 0.0;
+    final subtotal =
+        settings.showTaxes ? (sale.amountHT ?? (total - taxAmount)) : total;
+    final effectiveTaxRate =
+        subtotal > 0 ? (taxAmount / subtotal) * 100 : settings.defaultTaxRate;
+    final taxRateLabel =
+        effectiveTaxRate.truncateToDouble() == effectiveTaxRate
+            ? effectiveTaxRate.toStringAsFixed(0)
+            : effectiveTaxRate.toStringAsFixed(2);
 
     pdf.addPage(
       pw.Page(
@@ -292,7 +291,7 @@ class InvoiceService {
                           pw.Container(
                             width: 150,
                             child: pw.Text(
-                              'TVA (${settings.defaultTaxRate}%):',
+                              'TVA ($taxRateLabel%):',
                               style: pw.TextStyle(font: boldFont),
                             ),
                           ),
@@ -340,9 +339,10 @@ class InvoiceService {
                 pw.SizedBox(height: 5),
                 pw.Row(
                   mainAxisSize: pw.MainAxisSize.min,
-                  mainAxisAlignment: pw
-                      .MainAxisAlignment
-                      .end, // Align to the right with other totals
+                  mainAxisAlignment:
+                      pw
+                          .MainAxisAlignment
+                          .end, // Align to the right with other totals
                   children: [
                     pw.Container(
                       width: 150,
@@ -503,17 +503,16 @@ class InvoiceService {
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
     final formattedDate = dateFormat.format(sale.date);
 
-    final subtotal = sale.items.fold<double>(
-      0,
-      (sum, item) => sum + (item.quantity * item.unitPrice),
-    );
-
-    double taxAmount = 0;
-    if (settings.showTaxes) {
-      taxAmount = subtotal * (settings.defaultTaxRate / 100.0);
-    }
-
-    final total = subtotal + taxAmount;
+    final total = sale.totalAmountInCdf;
+    final taxAmount = settings.showTaxes ? (sale.taxAmount ?? 0.0) : 0.0;
+    final subtotal =
+        settings.showTaxes ? (sale.amountHT ?? (total - taxAmount)) : total;
+    final effectiveTaxRate =
+        subtotal > 0 ? (taxAmount / subtotal) * 100 : settings.defaultTaxRate;
+    final taxRateLabel =
+        effectiveTaxRate.truncateToDouble() == effectiveTaxRate
+            ? effectiveTaxRate.toStringAsFixed(0)
+            : effectiveTaxRate.toStringAsFixed(2);
     final ticketWidth = PdfPageFormat(
       80 * PdfPageFormat.mm,
       500 * PdfPageFormat.mm, // Increased height for potentially long receipts
@@ -714,7 +713,7 @@ class InvoiceService {
                   mainAxisAlignment: pw.MainAxisAlignment.end,
                   children: [
                     pw.Text(
-                      'TVA (${settings.defaultTaxRate}%): ',
+                      'TVA ($taxRateLabel%): ',
                       style: pw.TextStyle(font: regularFont, fontSize: 8),
                     ),
                     pw.SizedBox(
@@ -857,9 +856,10 @@ class InvoiceService {
           final file = File(filePath);
           return file.readAsBytes();
         },
-        name: isReceipt
-            ? 'Receipt_${DateTime.now().millisecondsSinceEpoch}'
-            : 'Invoice_${DateTime.now().millisecondsSinceEpoch}',
+        name:
+            isReceipt
+                ? 'Receipt_${DateTime.now().millisecondsSinceEpoch}'
+                : 'Invoice_${DateTime.now().millisecondsSinceEpoch}',
       );
     } catch (e) {
       // print('Erreur lors de l'impression du document: $e');
