@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
 
@@ -255,36 +256,66 @@ class ReceiptPrinterService {
     // Reset + sélection WPC1252 pour les accents français
     bytes.addAll(_escReset());
 
-    // ════ EN-TÊTE ENTREPRISE ════
+    // ════ EN-TÊTE ENTREPRISE / UNITÉ ════
+    //
+    // Quand l'utilisateur est rattaché à une BusinessUnit personne morale
+    // (coopérant entreprise d'une coopérative, succursale immatriculée
+    // séparément), la pièce commerciale doit afficher l'identité légale
+    // de CETTE BU — et non celle de l'entreprise parente.
+    //
+    // Sinon (admin niveau entreprise, BU personne physique, ou contexte
+    // non chargé), on retombe sur les Settings au niveau entreprise.
+    final ctx = BusinessContextService();
+    final useBu = ctx.shouldUseBusinessUnitIdentity;
+
+    final headerName = useBu
+        ? (ctx.businessUnitName ?? settings.companyName)
+        : settings.companyName;
+    final headerAddress = useBu
+        ? (ctx.businessUnitAddress ?? settings.companyAddress)
+        : settings.companyAddress;
+    final headerPhone = useBu
+        ? (ctx.businessUnitPhone ?? settings.companyPhone)
+        : settings.companyPhone;
+    final headerTaxId = useBu
+        ? (ctx.businessUnitTaxId ?? settings.taxIdentificationNumber)
+        : settings.taxIdentificationNumber;
+    final headerRccm = useBu
+        ? (ctx.businessUnitRccm ?? settings.rccmNumber)
+        : settings.rccmNumber;
+    final headerIdNat = useBu
+        ? (ctx.businessUnitIdNat ?? settings.idNatNumber)
+        : settings.idNatNumber;
+
     bytes.addAll(_escSeparatorDouble());
     bytes.addAll(_escAlign(1)); // Centre
     bytes.addAll(_escBold(true));
     bytes.addAll(
-      _escLine(_truncate(settings.companyName.toUpperCase(), _colWidth)),
+      _escLine(_truncate(headerName.toUpperCase(), _colWidth)),
     );
     bytes.addAll(_escBold(false));
 
     // Adresse (avec word wrap)
-    if (settings.companyAddress.isNotEmpty) {
-      for (final line in _wrapText(settings.companyAddress, _colWidth)) {
+    if (headerAddress.isNotEmpty) {
+      for (final line in _wrapText(headerAddress, _colWidth)) {
         bytes.addAll(_escLine(line));
       }
     }
 
     // Téléphone
-    if (settings.companyPhone.isNotEmpty) {
-      bytes.addAll(_escLine('Tél: ${settings.companyPhone}'));
+    if (headerPhone.isNotEmpty) {
+      bytes.addAll(_escLine('Tél: $headerPhone'));
     }
 
-    // Identifiants légaux
-    if (settings.taxIdentificationNumber.isNotEmpty) {
-      bytes.addAll(_escLine('NIF: ${settings.taxIdentificationNumber}'));
+    // Identifiants légaux (de la BU si personne morale, sinon de l'entreprise)
+    if (headerTaxId.isNotEmpty) {
+      bytes.addAll(_escLine('NIF: $headerTaxId'));
     }
-    if (settings.rccmNumber.isNotEmpty) {
-      bytes.addAll(_escLine('RCCM: ${settings.rccmNumber}'));
+    if (headerRccm.isNotEmpty) {
+      bytes.addAll(_escLine('RCCM: $headerRccm'));
     }
-    if (settings.idNatNumber.isNotEmpty) {
-      bytes.addAll(_escLine('ID NAT: ${settings.idNatNumber}'));
+    if (headerIdNat.isNotEmpty) {
+      bytes.addAll(_escLine('ID NAT: $headerIdNat'));
     }
 
     bytes.addAll(_escSeparatorDouble());

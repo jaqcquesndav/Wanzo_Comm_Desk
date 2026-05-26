@@ -36,6 +36,13 @@ class BusinessContextService extends ChangeNotifier {
   /// ID de l'utilisateur courant (UUID de la base de données)
   String? get userId => _currentContext?.userId;
 
+  /// Variant de l'entreprise courante ('standard' ou 'cooperative').
+  /// Pilote le vocabulaire métier via [EntityVocabularyService].
+  String get companyVariant => _currentContext?.companyVariant ?? 'standard';
+
+  /// `true` si l'entreprise courante est une coopérative.
+  bool get isCooperative => companyVariant == 'cooperative';
+
   /// ID de l'unité commerciale courante
   String? get businessUnitId => _currentContext?.businessUnitId;
 
@@ -44,6 +51,34 @@ class BusinessContextService extends ChangeNotifier {
 
   /// Type de l'unité courante
   BusinessUnitType? get businessUnitType => _currentContext?.businessUnitType;
+
+  /// Nom de l'unité courante (pour en-tête des pièces).
+  String? get businessUnitName => _currentContext?.businessUnitName;
+
+  /// `true` si la BU est personne morale avec identifiants propres.
+  bool get businessUnitIsLegalEntity =>
+      _currentContext?.businessUnitIsLegalEntity ?? false;
+
+  /// `true` lorsque les pièces commerciales doivent porter l'identité de
+  /// la BU (RCCM/NIF/IDNAT) et non celle de l'entreprise parente — cas
+  /// coopérant entreprise dans une coopérative.
+  bool get shouldUseBusinessUnitIdentity =>
+      _currentContext?.shouldUseBusinessUnitIdentity ?? false;
+
+  /// RCCM propre à la BU (si personne morale).
+  String? get businessUnitRccm => _currentContext?.businessUnitRccm;
+
+  /// NIF propre à la BU (si personne morale).
+  String? get businessUnitTaxId => _currentContext?.businessUnitTaxId;
+
+  /// IDNAT propre à la BU (si personne morale).
+  String? get businessUnitIdNat => _currentContext?.businessUnitIdNat;
+
+  /// Adresse de la BU pour en-tête.
+  String? get businessUnitAddress => _currentContext?.businessUnitAddress;
+
+  /// Téléphone de la BU pour en-tête.
+  String? get businessUnitPhone => _currentContext?.businessUnitPhone;
 
   /// Scope d'accès: "company" ou "unit"
   String? get scope => _currentContext?.scope;
@@ -111,12 +146,20 @@ class BusinessContextService extends ChangeNotifier {
     _currentContext = BusinessContext(
       companyId: user.companyId ?? company?.id,
       companyName: user.companyName ?? company?.name,
+      companyVariant: company?.variant ?? 'standard',
       businessUnitId: user.businessUnitId ?? businessUnit?.id,
       businessUnitCode: businessUnit?.code,
       businessUnitType:
           businessUnit?.type != null
               ? BusinessUnitTypeExtension.fromApiValue(businessUnit!.type!)
               : null,
+      businessUnitName: businessUnit?.name,
+      businessUnitIsLegalEntity: businessUnit?.isLegalEntity ?? false,
+      businessUnitRccm: businessUnit?.registrationNumber,
+      businessUnitTaxId: businessUnit?.taxId,
+      businessUnitIdNat: businessUnit?.idNat,
+      businessUnitAddress: businessUnit?.address,
+      businessUnitPhone: businessUnit?.phone,
       scope:
           businessUnit?.scope ??
           (user.businessUnitId == null ? 'company' : 'unit'),
@@ -206,6 +249,11 @@ class BusinessContext {
   /// Nom de l'entreprise
   final String? companyName;
 
+  /// Variant d'opération de l'entreprise courante : 'standard' (PME) ou
+  /// 'cooperative'. Pilote le vocabulaire métier UI sans changer la logique.
+  /// Default 'standard' pour rétrocompat.
+  final String companyVariant;
+
   /// ID de l'unité commerciale assignée
   final String? businessUnitId;
 
@@ -214,6 +262,30 @@ class BusinessContext {
 
   /// Type d'unité
   final BusinessUnitType? businessUnitType;
+
+  /// Nom de l'unité (pour affichage et en-tête des pièces commerciales).
+  final String? businessUnitName;
+
+  /// `true` si l'unité est une personne morale ayant ses propres identifiants
+  /// légaux. Quand vrai et que le user a `unit` scope, les pièces commerciales
+  /// (factures, reçus) doivent afficher RCCM/NIF/IDNAT de la BU à la place
+  /// de ceux de l'entreprise parente — cas typique du coopérant entreprise.
+  final bool businessUnitIsLegalEntity;
+
+  /// RCCM propre à la BU (renseigné si isLegalEntity=true).
+  final String? businessUnitRccm;
+
+  /// NIF propre à la BU (renseigné si isLegalEntity=true).
+  final String? businessUnitTaxId;
+
+  /// IDNAT propre à la BU (renseigné si isLegalEntity=true).
+  final String? businessUnitIdNat;
+
+  /// Adresse de la BU pour en-tête des pièces.
+  final String? businessUnitAddress;
+
+  /// Téléphone de la BU pour en-tête des pièces.
+  final String? businessUnitPhone;
 
   /// Scope d'accès: "company" ou "unit"
   final String? scope;
@@ -227,9 +299,17 @@ class BusinessContext {
   const BusinessContext({
     this.companyId,
     this.companyName,
+    this.companyVariant = 'standard',
     this.businessUnitId,
     this.businessUnitCode,
     this.businessUnitType,
+    this.businessUnitName,
+    this.businessUnitIsLegalEntity = false,
+    this.businessUnitRccm,
+    this.businessUnitTaxId,
+    this.businessUnitIdNat,
+    this.businessUnitAddress,
+    this.businessUnitPhone,
     this.scope,
     this.userId,
     this.userRole,
@@ -239,6 +319,10 @@ class BusinessContext {
     return BusinessContext(
       companyId: json['companyId'] as String?,
       companyName: json['companyName'] as String?,
+      companyVariant:
+          (json['companyVariant'] as String?) == 'cooperative'
+              ? 'cooperative'
+              : 'standard',
       businessUnitId: json['businessUnitId'] as String?,
       businessUnitCode: json['businessUnitCode'] as String?,
       businessUnitType:
@@ -247,6 +331,14 @@ class BusinessContext {
                 json['businessUnitType'] as String,
               )
               : null,
+      businessUnitName: json['businessUnitName'] as String?,
+      businessUnitIsLegalEntity:
+          json['businessUnitIsLegalEntity'] as bool? ?? false,
+      businessUnitRccm: json['businessUnitRccm'] as String?,
+      businessUnitTaxId: json['businessUnitTaxId'] as String?,
+      businessUnitIdNat: json['businessUnitIdNat'] as String?,
+      businessUnitAddress: json['businessUnitAddress'] as String?,
+      businessUnitPhone: json['businessUnitPhone'] as String?,
       scope: json['scope'] as String?,
       userId: json['userId'] as String?,
       userRole: json['userRole'] as String?,
@@ -256,20 +348,44 @@ class BusinessContext {
   Map<String, dynamic> toJson() => {
     'companyId': companyId,
     'companyName': companyName,
+    'companyVariant': companyVariant,
     'businessUnitId': businessUnitId,
     'businessUnitCode': businessUnitCode,
     'businessUnitType': businessUnitType?.apiValue,
+    'businessUnitName': businessUnitName,
+    'businessUnitIsLegalEntity': businessUnitIsLegalEntity,
+    'businessUnitRccm': businessUnitRccm,
+    'businessUnitTaxId': businessUnitTaxId,
+    'businessUnitIdNat': businessUnitIdNat,
+    'businessUnitAddress': businessUnitAddress,
+    'businessUnitPhone': businessUnitPhone,
     'scope': scope,
     'userId': userId,
     'userRole': userRole,
   };
 
+  /// `true` quand l'utilisateur est rattaché à une BU personne morale (coopérant
+  /// entreprise) — les pièces commerciales doivent porter les identifiants
+  /// de cette BU et non ceux de l'entreprise parente.
+  bool get shouldUseBusinessUnitIdentity =>
+      scope == 'unit' &&
+      businessUnitIsLegalEntity &&
+      businessUnitId != null;
+
   BusinessContext copyWith({
     String? companyId,
     String? companyName,
+    String? companyVariant,
     String? businessUnitId,
     String? businessUnitCode,
     BusinessUnitType? businessUnitType,
+    String? businessUnitName,
+    bool? businessUnitIsLegalEntity,
+    String? businessUnitRccm,
+    String? businessUnitTaxId,
+    String? businessUnitIdNat,
+    String? businessUnitAddress,
+    String? businessUnitPhone,
     String? scope,
     String? userId,
     String? userRole,
@@ -277,9 +393,18 @@ class BusinessContext {
     return BusinessContext(
       companyId: companyId ?? this.companyId,
       companyName: companyName ?? this.companyName,
+      companyVariant: companyVariant ?? this.companyVariant,
       businessUnitId: businessUnitId ?? this.businessUnitId,
       businessUnitCode: businessUnitCode ?? this.businessUnitCode,
       businessUnitType: businessUnitType ?? this.businessUnitType,
+      businessUnitName: businessUnitName ?? this.businessUnitName,
+      businessUnitIsLegalEntity:
+          businessUnitIsLegalEntity ?? this.businessUnitIsLegalEntity,
+      businessUnitRccm: businessUnitRccm ?? this.businessUnitRccm,
+      businessUnitTaxId: businessUnitTaxId ?? this.businessUnitTaxId,
+      businessUnitIdNat: businessUnitIdNat ?? this.businessUnitIdNat,
+      businessUnitAddress: businessUnitAddress ?? this.businessUnitAddress,
+      businessUnitPhone: businessUnitPhone ?? this.businessUnitPhone,
       scope: scope ?? this.scope,
       userId: userId ?? this.userId,
       userRole: userRole ?? this.userRole,

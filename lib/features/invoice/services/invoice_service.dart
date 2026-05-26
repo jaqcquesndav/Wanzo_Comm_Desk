@@ -9,8 +9,58 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../sales/models/sale.dart';
 import '../../settings/models/settings.dart';
+import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/enums/currency_enum.dart';
+
+/// En-tête (identité émettrice) à utiliser sur les pièces commerciales.
+///
+/// Si l'utilisateur courant est rattaché à une BusinessUnit personne morale
+/// (coopérant entreprise dans une coopérative, succursale immatriculée),
+/// les pièces commerciales DOIVENT porter l'identité légale de CETTE BU.
+/// Sinon on retombe sur les Settings de l'entreprise parente.
+class _IssuerIdentity {
+  final String name;
+  final String address;
+  final String phone;
+  final String rccm;
+  final String taxId;
+  final String idNat;
+
+  const _IssuerIdentity({
+    required this.name,
+    required this.address,
+    required this.phone,
+    required this.rccm,
+    required this.taxId,
+    required this.idNat,
+  });
+
+  factory _IssuerIdentity.from(Settings settings) {
+    final ctx = BusinessContextService();
+    final useBu = ctx.shouldUseBusinessUnitIdentity;
+    return _IssuerIdentity(
+      name: useBu
+          ? (ctx.businessUnitName ?? settings.companyName)
+          : settings.companyName,
+      address: useBu
+          ? (ctx.businessUnitAddress ?? settings.companyAddress)
+          : settings.companyAddress,
+      phone: useBu
+          ? (ctx.businessUnitPhone ?? settings.companyPhone)
+          : settings.companyPhone,
+      rccm: useBu
+          ? (ctx.businessUnitRccm ?? settings.rccmNumber)
+          : settings.rccmNumber,
+      taxId: useBu
+          ? (ctx.businessUnitTaxId ?? settings.taxIdentificationNumber)
+          : settings.taxIdentificationNumber,
+      idNat: useBu
+          ? (ctx.businessUnitIdNat ?? settings.idNatNumber)
+          : settings.idNatNumber,
+    );
+  }
+}
 
 /// Service pour générer et imprimer des factures et tickets de caisse
 class InvoiceService {
@@ -20,6 +70,8 @@ class InvoiceService {
 
     final regularFont = pw.Font.helvetica();
     final boldFont = pw.Font.helveticaBold();
+
+    final issuer = _IssuerIdentity.from(settings);
 
     final Currency currency = settings.activeCurrency;
 
@@ -82,43 +134,43 @@ class InvoiceService {
                       children: [
                         if (logoWidget != null) logoWidget,
                         if (logoWidget != null) pw.SizedBox(height: 5),
-                        if (settings.companyName.isNotEmpty)
+                        if (issuer.name.isNotEmpty)
                           pw.Text(
-                            settings.companyName,
+                            issuer.name,
                             style: pw.TextStyle(font: boldFont, fontSize: 12),
                           ),
-                        if (settings.companyAddress.isNotEmpty) ...[
+                        if (issuer.address.isNotEmpty) ...[
                           pw.SizedBox(height: 2),
                           pw.Text(
-                            settings.companyAddress,
+                            issuer.address,
                             style: pw.TextStyle(font: regularFont, fontSize: 9),
                           ),
                         ],
-                        if (settings.companyPhone.isNotEmpty) ...[
+                        if (issuer.phone.isNotEmpty) ...[
                           pw.SizedBox(height: 2),
                           pw.Text(
-                            'Tél: ${settings.companyPhone}',
+                            'Tél: ${issuer.phone}',
                             style: pw.TextStyle(font: regularFont, fontSize: 9),
                           ),
                         ],
-                        if (settings.taxIdentificationNumber.isNotEmpty) ...[
+                        if (issuer.taxId.isNotEmpty) ...[
                           pw.SizedBox(height: 2),
                           pw.Text(
-                            'NIF: ${settings.taxIdentificationNumber}',
+                            'NIF: ${issuer.taxId}',
                             style: pw.TextStyle(font: regularFont, fontSize: 9),
                           ),
                         ],
-                        if (settings.rccmNumber.isNotEmpty) ...[
+                        if (issuer.rccm.isNotEmpty) ...[
                           pw.SizedBox(height: 2),
                           pw.Text(
-                            'RCCM: ${settings.rccmNumber}',
+                            'RCCM: ${issuer.rccm}',
                             style: pw.TextStyle(font: regularFont, fontSize: 9),
                           ),
                         ],
-                        if (settings.idNatNumber.isNotEmpty) ...[
+                        if (issuer.idNat.isNotEmpty) ...[
                           pw.SizedBox(height: 2),
                           pw.Text(
-                            'ID NAT: ${settings.idNatNumber}',
+                            'ID NAT: ${issuer.idNat}',
                             style: pw.TextStyle(font: regularFont, fontSize: 9),
                           ),
                         ],
@@ -479,6 +531,8 @@ class InvoiceService {
     final regularFont = pw.Font.helvetica();
     final boldFont = pw.Font.helveticaBold();
 
+    final issuer = _IssuerIdentity.from(settings);
+
     final Currency currency = settings.activeCurrency;
 
     pw.Widget? logoWidget;
@@ -532,50 +586,50 @@ class InvoiceService {
               ],
 
               pw.Text(
-                settings.companyName,
+                issuer.name,
                 style: pw.TextStyle(font: boldFont, fontSize: 12),
                 textAlign: pw.TextAlign.center,
               ),
 
-              if (settings.companyAddress.isNotEmpty) ...[
+              if (issuer.address.isNotEmpty) ...[
                 pw.SizedBox(height: 2),
                 pw.Text(
-                  settings.companyAddress,
+                  issuer.address,
                   style: pw.TextStyle(font: regularFont, fontSize: 8),
                   textAlign: pw.TextAlign.center,
                 ),
               ],
 
-              if (settings.companyPhone.isNotEmpty) ...[
+              if (issuer.phone.isNotEmpty) ...[
                 pw.SizedBox(height: 2),
                 pw.Text(
-                  'Tél: ${settings.companyPhone}',
+                  'Tél: ${issuer.phone}',
                   style: pw.TextStyle(font: regularFont, fontSize: 8),
                   textAlign: pw.TextAlign.center,
                 ),
               ],
-              if (settings.taxIdentificationNumber.isNotEmpty) ...[
+              if (issuer.taxId.isNotEmpty) ...[
                 pw.SizedBox(height: 2),
                 pw.Text(
-                  'NIF: ${settings.taxIdentificationNumber}',
-                  style: pw.TextStyle(font: regularFont, fontSize: 8),
-                  textAlign: pw.TextAlign.center,
-                ),
-              ],
-
-              if (settings.rccmNumber.isNotEmpty) ...[
-                pw.SizedBox(height: 2),
-                pw.Text(
-                  'RCCM: ${settings.rccmNumber}',
+                  'NIF: ${issuer.taxId}',
                   style: pw.TextStyle(font: regularFont, fontSize: 8),
                   textAlign: pw.TextAlign.center,
                 ),
               ],
 
-              if (settings.idNatNumber.isNotEmpty) ...[
+              if (issuer.rccm.isNotEmpty) ...[
                 pw.SizedBox(height: 2),
                 pw.Text(
-                  'ID NAT: ${settings.idNatNumber}',
+                  'RCCM: ${issuer.rccm}',
+                  style: pw.TextStyle(font: regularFont, fontSize: 8),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ],
+
+              if (issuer.idNat.isNotEmpty) ...[
+                pw.SizedBox(height: 2),
+                pw.Text(
+                  'ID NAT: ${issuer.idNat}',
                   style: pw.TextStyle(font: regularFont, fontSize: 8),
                   textAlign: pw.TextAlign.center,
                 ),

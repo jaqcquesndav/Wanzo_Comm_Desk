@@ -667,6 +667,12 @@ class BackendCompany {
   final String? legalForm; // Forme juridique (SARL, SA...)
   final double? capital; // Capital social
   final String? capitalCurrency; // Devise du capital
+
+  /// Variant d'opération : 'standard' (PME classique) ou 'cooperative'.
+  /// Pilote le vocabulaire métier de l'UI (succursale ↔ coopérant,
+  /// entreprise ↔ coopérative) sans changer la logique applicative.
+  /// Default 'standard' si absent (compat ascendante).
+  final String variant;
   final String? logoUrl; // URL du logo
   final String? address;
   final String? city;
@@ -698,6 +704,7 @@ class BackendCompany {
     this.email,
     this.website,
     this.isActive = true,
+    this.variant = 'standard',
     this.createdAt,
     this.updatedAt,
   });
@@ -722,6 +729,9 @@ class BackendCompany {
       email: json['email'] as String?,
       website: json['website'] as String?,
       isActive: json['isActive'] as bool? ?? true,
+      variant: (json['variant'] as String?) == 'cooperative'
+          ? 'cooperative'
+          : 'standard',
       createdAt:
           json['createdAt'] != null
               ? DateTime.tryParse(json['createdAt'] as String)
@@ -741,8 +751,14 @@ class BackendBusinessUnit {
   final String name;
   final String code;
   final String? type; // "company", "branch", "pos"
+
+  /// `true` si la BU est une personne morale (autre entreprise, coopérant
+  /// entreprise). Conditionne l'usage de RCCM/NIF/IDNAT propres à la BU
+  /// sur les pièces commerciales (factures, reçus, tickets de caisse).
+  final bool isLegalEntity;
   final String? registrationNumber; // RCCM propre à la succursale
   final String? taxId; // NIF propre à la succursale
+  final String? idNat; // Identification Nationale propre à la succursale
   final int? hierarchyLevel;
   final String? hierarchyPath;
   final String? parentId;
@@ -770,8 +786,10 @@ class BackendBusinessUnit {
     required this.name,
     required this.code,
     this.type,
+    this.isLegalEntity = false,
     this.registrationNumber,
     this.taxId,
+    this.idNat,
     this.hierarchyLevel,
     this.hierarchyPath,
     this.parentId,
@@ -797,8 +815,10 @@ class BackendBusinessUnit {
       name: (json['name'] as String?) ?? '',
       code: (json['code'] as String?) ?? '',
       type: json['type'] as String?,
+      isLegalEntity: json['isLegalEntity'] as bool? ?? false,
       registrationNumber: json['registrationNumber'] as String?,
       taxId: json['taxId'] as String?,
+      idNat: json['idNat'] as String?,
       hierarchyLevel: json['hierarchyLevel'] as int?,
       hierarchyPath: json['hierarchyPath'] as String?,
       parentId: json['parentId'] as String?,
