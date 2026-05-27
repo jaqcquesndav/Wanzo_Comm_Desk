@@ -7,9 +7,10 @@ import 'package:flutter_highlight/themes/github.dart';
 import 'package:flutter_highlight/themes/vs2015.dart'; // Thème sombre pour code
 import 'package:flutter/services.dart'; // Added for Clipboard
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 
 /// Types de contenu pour le parsing mixte
-enum _ContentType { code, latexBlock, image }
+enum _ContentType { code, latexBlock, image, table }
 
 /// Match de contenu pour le parsing
 class _ContentMatch {
@@ -214,6 +215,14 @@ class ChatMessageWidget extends StatelessWidget {
     final List<Widget> widgets = [];
 
     // Pattern pour détecter les blocs de code avec langage
+    // Pattern pour détecter les tables markdown (header + separator + au moins
+    // une ligne de données). Capture le bloc entier pour le rendre dans un
+    // scroll horizontal — sans ça, les tables larges débordent du viewport
+    // sur écrans split-pane / fenêtre étroite.
+    final tablePattern = RegExp(
+      r'(^\|.+\|\s*$\n^\|[\s\-:|]+\|\s*$(?:\n^\|.+\|\s*$)+)',
+      multiLine: true,
+    );
     final codePattern = RegExp(r'```(\w+)?\n?([\s\S]*?)```', multiLine: true);
     // Pattern pour détecter le LaTeX en bloc
     final latexBlockPattern = RegExp(r'\$\$([\s\S]*?)\$\$', multiLine: true);
@@ -265,6 +274,20 @@ class ChatMessageWidget extends StatelessWidget {
       }
     }
 
+    for (final match in tablePattern.allMatches(message.content)) {
+      // Éviter les chevauchements avec un bloc de code contenant un pseudo-table.
+      if (!matches.any((m) => m.start <= match.start && m.end >= match.end)) {
+        matches.add(
+          _ContentMatch(
+            start: match.start,
+            end: match.end,
+            type: _ContentType.table,
+            content: match.group(1) ?? '',
+          ),
+        );
+      }
+    }
+
     // Trier par position
     matches.sort((a, b) => a.start.compareTo(b.start));
 
@@ -299,6 +322,10 @@ class ChatMessageWidget extends StatelessWidget {
         case _ContentType.image:
           widgets.add(const SizedBox(height: 12));
           widgets.add(_buildImageBlock(context, match.content, match.alt));
+          widgets.add(const SizedBox(height: 12));
+        case _ContentType.table:
+          widgets.add(const SizedBox(height: 12));
+          widgets.add(_buildTableBlock(context, match.content, textColor, isDark));
           widgets.add(const SizedBox(height: 12));
       }
 
@@ -448,10 +475,18 @@ class ChatMessageWidget extends StatelessWidget {
     );
   }
 
-  /// Construit un bloc LaTeX
+  /// Construit un bloc LaTeX rendu via flutter_math_fork (KaTeX-like).
+  ///
+  /// Si le parsing LaTeX échoue (formule invalide, commande non supportée),
+  /// on retombe sur un affichage texte brut en monospace pour éviter toute
+  /// régression — l'utilisateur voit au moins la source de la formule.
   Widget _buildLatexBlock(BuildContext context, String formula, bool isDark) {
-    // Pour le moment, affichage simple du LaTeX
-    // TODO: Intégrer flutter_math_fork pour un rendu LaTeX complet
+    final cleaned = formula.trim();
+    final mathStyle = TextStyle(
+      fontSize: 16,
+      color: isDark ? Colors.white : Colors.black87,
+    );
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -464,15 +499,56 @@ class ChatMessageWidget extends StatelessWidget {
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: SelectableText(
-          formula.trim(),
-          style: TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 16,
-            color: isDark ? Colors.white : Colors.black87,
-            height: 1.6,
+        child: Math.tex(
+          cleaned,
+          mathStyle: MathStyle.display,
+          textStyle: mathStyle,
+          onErrorFallback: (FlutterMathException e) => SelectableText(
+            cleaned,
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 14,
+              color: isDark ? Colors.orange[200] : Colors.deepOrange[700],
+              height: 1.6,
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Construit un bloc table markdown scrollable horizontalement.
+  ///
+  /// Sans ce wrapper, les tables larges débordent du viewport sur fenêtre
+  /// étroite ou en mode split-pane. On délègue le rendu à MarkdownBody (qui
+  /// supporte nativement les tables) mais on l'enveloppe dans un scroll
+  /// horizontal pour que toutes les colonnes restent accessibles.
+  Widget _buildTableBlock(
+    BuildContext context,
+    String tableMd,
+    Color textColor,
+    bool isDark,
+  ) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.only(bottom: 4),
+      child: MarkdownBody(
+        data: tableMd,
+        selectable: true,
+        onTapLink: (text, href, title) {
+          if (href != null) {
+            launchUrl(Uri.parse(href));
+          }
+        },
+        styleSheet: _buildMarkdownStyleSheet(context, textColor, isDark)
+            .copyWith(
+              // IntrinsicColumnWidth permet aux colonnes de prendre leur
+              // largeur naturelle plutôt que de partager équitablement la
+              // largeur du parent — indispensable pour que le scroll
+              // horizontal ait un sens.
+              tableColumnWidth: const IntrinsicColumnWidth(),
+            ),
+        shrinkWrap: true,
       ),
     );
   }

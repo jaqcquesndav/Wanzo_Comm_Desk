@@ -205,6 +205,11 @@ class AdhaSubscriptionErrorWidget extends StatelessWidget {
     );
   }
 
+  /// URL par défaut vers la page d'abonnement Wanzo Land, utilisée si le
+  /// backend ne fournit pas de `subscription_renewal_url` dans l'erreur.
+  /// Garantit qu'on a TOUJOURS un CTA actionnable pour l'utilisateur.
+  static const String _defaultRenewalUrl = 'https://wanzzo.com/abonnement';
+
   Widget _buildActionButtons(
     BuildContext context,
     ThemeData theme,
@@ -212,19 +217,21 @@ class AdhaSubscriptionErrorWidget extends StatelessWidget {
   ) {
     final List<Widget> buttons = [];
 
-    // Bouton principal: lien vers l'URL de renouvellement
-    if (error.renewalUrl != null && error.renewalUrl!.isNotEmpty) {
-      buttons.add(
-        FilledButton.icon(
-          onPressed: () => _openRenewalUrl(error.renewalUrl!),
-          icon: Icon(_getPrimaryActionIcon(), size: 18),
-          label: Text(_getPrimaryActionLabel(l10n)),
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          ),
+    // Bouton principal: lien vers l'URL de renouvellement.
+    // Toujours rendu — fallback URL si backend n'envoie pas renewalUrl.
+    final urlToOpen = (error.renewalUrl != null && error.renewalUrl!.isNotEmpty)
+        ? error.renewalUrl!
+        : _defaultRenewalUrl;
+    buttons.add(
+      FilledButton.icon(
+        onPressed: () => _openRenewalUrl(urlToOpen),
+        icon: Icon(_getPrimaryActionIcon(), size: 18),
+        label: Text(_getPrimaryActionLabel(l10n)),
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         ),
-      );
-    }
+      ),
+    );
 
     // Bouton secondaire: nouvelle conversation
     if (onNewConversation != null) {
