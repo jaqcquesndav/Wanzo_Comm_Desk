@@ -353,6 +353,110 @@ class AudioStreamingService {
     }
   }
   
+  // ==========================================================================
+  // TTS PLAYBACK (v3.0) — Lecture des chunks audio MP3 base64 du backend
+  // ==========================================================================
+
+  /// Queue FIFO pour la lecture séquentielle des chunks TTS reçus via
+  /// `adha.stream.audio_chunk`. Chaque entrée est une phrase synthétisée
+  /// par OpenAI tts-1 côté Python.
+  final List<_TtsQueueItem> _ttsQueue = [];
+  bool _isProcessingTtsQueue = false;
+  StreamSubscription<PlayerState>? _ttsPlayerStateSubscription;
+  bool _ttsListenerInitialized = false;
+
+  /// Ajoute un chunk audio (MP3 base64) à la queue et démarre la lecture
+  /// si idle. Idempotent ; sûr d'appeler depuis n'importe quel listener.
+  ///
+  /// Garde-fou : un base64 vide est ignoré (cas où le backend envoie
+  /// un audio_chunk avec metadata mais payload vide).
+  Future<void> playBase64Audio(String base64Audio, String format) async {
+    if (base64Audio.isEmpty) {
+      debugPrint('[AudioStreamingService] ⚠️ playBase64Audio: base64 vide, skip');
+      return;
+    }
+
+    // Initialiser le listener de fin de lecture une seule fois.
+    if (!_ttsListenerInitialized) {
+      _ttsListenerInitialized = true;
+      _ttsPlayerStateSubscription = _audioPlayer.playerStateStream.listen(
+        (playerState) {
+          if (playerState.processingState == ProcessingState.completed) {
+            _onTtsChunkPlaybackComplete();
+          }
+        },
+        onError: (error) {
+          debugPrint('[AudioStreamingService] TTS player error: $error');
+          _onTtsChunkPlaybackComplete();
+        },
+      );
+    }
+
+    _ttsQueue.add(_TtsQueueItem(base64Audio: base64Audio, format: format));
+    debugPrint(
+      '[AudioStreamingService] 📥 TTS queue: ${_ttsQueue.length} chunks '
+      '(format=$format, b64Len=${base64Audio.length})',
+    );
+
+    if (!_isProcessingTtsQueue) {
+      _processTtsQueue();
+    }
+  }
+
+  Future<void> _processTtsQueue() async {
+    if (_isProcessingTtsQueue || _ttsQueue.isEmpty) return;
+    _isProcessingTtsQueue = true;
+
+    if (!_isPlayingActive) {
+      _isPlayingActive = true;
+      _isPlayingController.add(true);
+    }
+
+    final item = _ttsQueue.removeAt(0);
+    try {
+      final audioBytes = base64Decode(item.base64Audio);
+      final tempDir = await getTemporaryDirectory();
+      final ext = item.format == 'wav' ? 'wav' : 'mp3';
+      final tempFile = File(
+        '${tempDir.path}/adha_tts_${DateTime.now().millisecondsSinceEpoch}.$ext',
+      );
+      await tempFile.writeAsBytes(audioBytes);
+
+      await _audioPlayer.setFilePath(tempFile.path);
+      await _audioPlayer.play();
+      // Le cleanup est implicite via la rotation des fichiers temp et le
+      // listener completion qui déclenche le chunk suivant.
+    } catch (e) {
+      debugPrint('[AudioStreamingService] Erreur lecture TTS chunk: $e');
+      _onTtsChunkPlaybackComplete();
+    }
+  }
+
+  void _onTtsChunkPlaybackComplete() {
+    _isProcessingTtsQueue = false;
+    if (_ttsQueue.isNotEmpty) {
+      _processTtsQueue();
+    } else {
+      if (_isPlayingActive) {
+        _isPlayingActive = false;
+        _isPlayingController.add(false);
+      }
+      debugPrint('[AudioStreamingService] ✅ TTS queue terminée');
+    }
+  }
+
+  /// Interrompt la lecture TTS et vide la queue (barge-in style Gemini).
+  Future<void> interruptTtsPlayback() async {
+    _ttsQueue.clear();
+    if (_isPlayingActive) {
+      await _audioPlayer.stop();
+      _isPlayingActive = false;
+      _isPlayingController.add(false);
+      _isProcessingTtsQueue = false;
+    }
+    debugPrint('[AudioStreamingService] ⛔ TTS interrompu, queue vidée');
+  }
+
   /// Convertit les données PCM en format WAV et les joue
   Future<void> _playPCMData(Uint8List pcmData) async {
     try {
@@ -505,4 +609,12 @@ class AudioStreamingException implements Exception {
 
 class AudioPermissionException extends AudioStreamingException {
   AudioPermissionException(super.message);
+}
+
+/// Item de queue pour la lecture séquentielle des chunks TTS (v3.0).
+/// Mode `Comm_Desk` ne stocke pas de durée — on attend ProcessingState.completed.
+class _TtsQueueItem {
+  final String base64Audio;
+  final String format;
+  _TtsQueueItem({required this.base64Audio, required this.format});
 }

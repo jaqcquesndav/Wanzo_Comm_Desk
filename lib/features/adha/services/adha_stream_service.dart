@@ -40,12 +40,20 @@ class AdhaStreamService {
   final StreamController<AdhaStreamChunkEvent> _chunkController =
       StreamController<AdhaStreamChunkEvent>.broadcast();
 
+  /// Controller pour les chunks audio TTS reçus en streaming (v3.0)
+  final StreamController<AdhaAudioChunkEvent> _audioChunkController =
+      StreamController<AdhaAudioChunkEvent>.broadcast();
+
   /// Controller pour l'état de connexion
   final StreamController<AdhaStreamConnectionState> _connectionStateController =
       StreamController<AdhaStreamConnectionState>.broadcast();
 
   /// Stream des chunks de réponse reçus en temps réel
   Stream<AdhaStreamChunkEvent> get chunkStream => _chunkController.stream;
+
+  /// Stream des chunks audio TTS pour lecture progressive (v3.0)
+  Stream<AdhaAudioChunkEvent> get audioChunkStream =>
+      _audioChunkController.stream;
 
   /// Stream de l'état de connexion
   Stream<AdhaStreamConnectionState> get connectionState =>
@@ -302,6 +310,12 @@ class AdhaStreamService {
       _handleStreamEvent(data, 'cancelled');
     });
 
+    // Audio chunk TTS (v3.0) — chaque phrase synthétisée arrive ici
+    // sous forme de MP3 base64 prêt à jouer.
+    _socket!.on('adha.stream.audio_chunk', (data) {
+      _handleAudioChunkEvent(data);
+    });
+
     // Heartbeat - signal de connexion active (v2.4.0)
     _socket!.on('adha.stream.heartbeat', (data) {
       _handleHeartbeat(data);
@@ -313,6 +327,44 @@ class AdhaStreamService {
       _recordFailure();
       _chunkController.addError(Exception('Erreur Socket.IO: $data'));
     });
+  }
+
+  /// Gère les chunks audio TTS reçus via Socket.IO (v3.0).
+  ///
+  /// Reçus en mode audio (voice activé via contextInfo). Chaque chunk
+  /// contient une phrase complète synthétisée en MP3 base64 par OpenAI
+  /// tts-1 côté Python. Émis sur [audioChunkStream] où le BLoC/lecteur
+  /// audio peut s'y abonner pour lecture progressive.
+  void _handleAudioChunkEvent(dynamic data) {
+    try {
+      Map<String, dynamic> json;
+      if (data is Map<String, dynamic>) {
+        json = data;
+      } else if (data is Map) {
+        json = Map<String, dynamic>.from(data);
+      } else {
+        debugPrint(
+          '[AdhaStreamService] Audio chunk type non supporté: ${data.runtimeType}',
+        );
+        return;
+      }
+
+      final audioChunk = AdhaAudioChunkEvent.fromJson(json);
+      if (audioChunk.audioBase64.isEmpty) {
+        debugPrint(
+          '[AdhaStreamService] ⚠️ Audio chunk reçu sans payload — skip',
+        );
+        return;
+      }
+      _audioChunkController.add(audioChunk);
+      debugPrint(
+        '[AdhaStreamService] 🔊 Audio chunk reçu: chunkId=${audioChunk.chunkId}, '
+        'format=${audioChunk.format}, voice=${audioChunk.voice}, '
+        'b64Len=${audioChunk.audioBase64.length}',
+      );
+    } catch (e) {
+      debugPrint('[AdhaStreamService] Erreur parsing audio chunk: $e');
+    }
   }
 
   /// Gère les heartbeats reçus (v2.4.0)
@@ -579,6 +631,9 @@ class AdhaStreamService {
     if (!_chunkController.isClosed) {
       _chunkController.close();
     }
+    if (!_audioChunkController.isClosed) {
+      _audioChunkController.close();
+    }
     if (!_connectionStateController.isClosed) {
       _connectionStateController.close();
     }
@@ -592,4 +647,47 @@ class AdhaStreamService {
 
   /// Retourne le token d'authentification
   String? get authToken => _authToken;
+}
+
+/// Représente un chunk audio TTS reçu via Socket.IO (adha.stream.audio_chunk).
+///
+/// Envoyé par le backend pendant le mode audio pour la lecture TTS
+/// progressive (une phrase à la fois). Le payload contient le MP3 base64
+/// produit par OpenAI tts-1, prêt à être joué côté client sans transformation.
+class AdhaAudioChunkEvent {
+  final String requestMessageId;
+  final String conversationId;
+  final String audioBase64;
+  final String format;
+  final String voice;
+  final String textSpoken;
+  final int chunkId;
+
+  const AdhaAudioChunkEvent({
+    required this.requestMessageId,
+    required this.conversationId,
+    required this.audioBase64,
+    required this.format,
+    required this.voice,
+    required this.textSpoken,
+    required this.chunkId,
+  });
+
+  factory AdhaAudioChunkEvent.fromJson(Map<String, dynamic> json) {
+    return AdhaAudioChunkEvent(
+      requestMessageId: json['requestMessageId'] as String? ?? '',
+      conversationId: json['conversationId'] as String? ?? '',
+      // Le backend envoie 'audio_base64' (snake_case) dans le payload Kafka,
+      // mais selon le mapper côté NestJS le champ peut arriver sous
+      // 'content' (le chunk_content du producer). On essaie les deux.
+      audioBase64:
+          (json['audio_base64'] as String?) ??
+          (json['content'] as String?) ??
+          '',
+      format: json['format'] as String? ?? 'mp3',
+      voice: json['voice'] as String? ?? '',
+      textSpoken: json['text_spoken'] as String? ?? json['sentence'] as String? ?? '',
+      chunkId: json['chunkId'] as int? ?? 0,
+    );
+  }
 }

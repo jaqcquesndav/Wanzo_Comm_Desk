@@ -42,6 +42,8 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
   // Subscriptions pour le streaming de réponses
   StreamSubscription<AdhaStreamChunkEvent>? _streamChunkSubscription;
   StreamSubscription<AdhaStreamConnectionState>? _streamConnectionSubscription;
+  // Subscription pour les chunks audio TTS (v3.0)
+  StreamSubscription? _ttsAudioChunkSubscription;
 
   // Buffer pour accumuler le contenu de streaming
   final StringBuffer _accumulatedStreamContent = StringBuffer();
@@ -1144,6 +1146,26 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       // Ce listener est utilisé pour le logging/debugging
       debugPrint('[AdhaBloc] Stream connection state: ${connectionState.name}');
     });
+
+    // Écouter les chunks audio TTS (v3.0) — chaque phrase synthétisée par
+    // le backend est jouée en séquence via la queue FIFO du service audio.
+    // Si l'écoute échoue (audio service indispo), on dégrade silencieusement
+    // — le chat texte continue de fonctionner normalement.
+    _ttsAudioChunkSubscription = _streamService.audioChunkStream.listen(
+      (audioChunk) {
+        _audioStreamingService.playBase64Audio(
+          audioChunk.audioBase64,
+          audioChunk.format,
+        );
+        debugPrint(
+          '[AdhaBloc] 🔊 Audio TTS en lecture: chunkId=${audioChunk.chunkId}, '
+          'voice=${audioChunk.voice}',
+        );
+      },
+      onError: (error) {
+        debugPrint('[AdhaBloc] Erreur audio chunk: $error');
+      },
+    );
   }
 
   /// Ajoute un chunk au buffer de batching et planifie/déclenche un flush.
@@ -2070,6 +2092,7 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     // Nettoyer les subscriptions de streaming
     await _streamChunkSubscription?.cancel();
     await _streamConnectionSubscription?.cancel();
+    await _ttsAudioChunkSubscription?.cancel();
 
     // Annuler le timer de batching de chunks (Phase 2D)
     _chunkBatchTimer?.cancel();
