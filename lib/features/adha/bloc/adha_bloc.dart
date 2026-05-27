@@ -47,6 +47,25 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
   final StringBuffer _accumulatedStreamContent = StringBuffer();
   String? _currentStreamingRequestId;
 
+  // ──────────────────────────────────────────────────────────────────────
+  // Chunk batching pour fluidité du rendu (Phase 2D)
+  // ──────────────────────────────────────────────────────────────────────
+  // Plutôt que d'émettre StreamChunkReceived à chaque mini-chunk reçu du
+  // backend (50-200/s sur GPT-4o), on accumule les chunks pendant une
+  // fenêtre courte et on émet une seule fois par fenêtre. Réduit les
+  // rebuilds du widget de streaming sans changer le contenu final.
+  //
+  // Stratégie hybride : flush au plus tard après _chunkBatchWindowMs OU si
+  // le buffer dépasse _chunkBatchMaxChars. StreamEnd/StreamError flushent
+  // immédiatement pour ne perdre aucun chunk.
+  static const int _chunkBatchWindowMs = 60;
+  static const int _chunkBatchMaxChars = 200;
+  final StringBuffer _chunkBatchBuffer = StringBuffer();
+  int _chunkBatchLatestChunkId = 0;
+  String _chunkBatchConversationId = '';
+  String _chunkBatchRequestMessageId = '';
+  Timer? _chunkBatchTimer;
+
   AdhaBloc({
     required this.adhaRepository,
     required this.authRepository,
@@ -1127,23 +1146,67 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     });
   }
 
+  /// Ajoute un chunk au buffer de batching et planifie/déclenche un flush.
+  ///
+  /// Règle : flush dès que le buffer dépasse [_chunkBatchMaxChars] (rafale
+  /// dense), sinon flush au plus tard après [_chunkBatchWindowMs] (latence
+  /// max perceptible). Émet UN SEUL StreamChunkReceived par fenêtre au lieu
+  /// de potentiellement 50/seconde, ce qui divise les rebuilds par un ordre
+  /// de grandeur sans changer le contenu final.
+  void _bufferChunkForBatch(AdhaStreamChunkEvent chunk) {
+    _chunkBatchBuffer.write(chunk.content);
+    _chunkBatchLatestChunkId = chunk.chunkId;
+    _chunkBatchConversationId = chunk.conversationId;
+    _chunkBatchRequestMessageId = chunk.requestMessageId;
+
+    if (_chunkBatchBuffer.length >= _chunkBatchMaxChars) {
+      _chunkBatchTimer?.cancel();
+      _chunkBatchTimer = null;
+      _flushChunkBatch();
+      return;
+    }
+
+    _chunkBatchTimer ??= Timer(
+      const Duration(milliseconds: _chunkBatchWindowMs),
+      _flushChunkBatch,
+    );
+  }
+
+  /// Émet le buffer accumulé sous forme d'un seul StreamChunkReceived.
+  /// Sans-op si le buffer est vide.
+  void _flushChunkBatch() {
+    _chunkBatchTimer?.cancel();
+    _chunkBatchTimer = null;
+    if (_chunkBatchBuffer.isEmpty) return;
+
+    final combined = _chunkBatchBuffer.toString();
+    _chunkBatchBuffer.clear();
+
+    add(
+      StreamChunkReceived(
+        conversationId: _chunkBatchConversationId,
+        content: combined,
+        chunkId: _chunkBatchLatestChunkId,
+        requestMessageId: _chunkBatchRequestMessageId,
+      ),
+    );
+  }
+
   /// Gère les chunks de streaming reçus
   void _handleStreamChunk(AdhaStreamChunkEvent chunk) {
     switch (chunk.type) {
       case AdhaStreamType.chunk:
-        // Fragment de texte normal
-        // L'accumulation est faite dans _onStreamChunkReceived
-        add(
-          StreamChunkReceived(
-            conversationId: chunk.conversationId,
-            content: chunk.content,
-            chunkId: chunk.chunkId,
-            requestMessageId: chunk.requestMessageId,
-          ),
-        );
+        // Fragment de texte normal — bufferisé pour grouper les rebuilds.
+        // L'accumulation finale (côté state) est faite dans _onStreamChunkReceived
+        // mais on regroupe d'abord les micro-chunks pour éviter une rafale
+        // d'événements/rebuilds qui dégradent la fluidité.
+        _bufferChunkForBatch(chunk);
         break;
 
       case AdhaStreamType.end:
+        // Flush IMMÉDIAT du buffer batching pour ne perdre aucun chunk
+        // resté en attente du prochain tick de fenêtre (60ms).
+        _flushChunkBatch();
         // Fin du streaming - utiliser le contenu accumulé
         // IMPORTANT: Attendre un court instant pour que les chunks en queue soient traités
         // avant de finaliser le streaming. Les événements arrivent de manière asynchrone
@@ -1169,6 +1232,8 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         break;
 
       case AdhaStreamType.error:
+        // Flush buffer pour ne pas perdre un éventuel contenu pré-erreur.
+        _flushChunkBatch();
         // Erreur pendant le streaming
         // Extraire les métadonnées d'abonnement si présentes
         add(
@@ -2005,6 +2070,10 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     // Nettoyer les subscriptions de streaming
     await _streamChunkSubscription?.cancel();
     await _streamConnectionSubscription?.cancel();
+
+    // Annuler le timer de batching de chunks (Phase 2D)
+    _chunkBatchTimer?.cancel();
+    _chunkBatchTimer = null;
 
     // Nettoyer les services
     _audioStreamingService.dispose();

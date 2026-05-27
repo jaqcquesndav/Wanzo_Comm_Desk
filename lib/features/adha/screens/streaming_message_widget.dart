@@ -73,7 +73,28 @@ class _StreamingMessageWidgetState extends State<StreamingMessageWidget> {
 
       // Délai entre les caractères (effet typewriter)
       // Plus rapide si beaucoup de texte en attente, plus lent sinon
-      final delay = remaining > 50 ? 5 : (remaining > 20 ? 15 : 25);
+      var delay = remaining > 50 ? 5 : (remaining > 20 ? 15 : 25);
+
+      // ────────────────────────────────────────────────────────────────
+      // Rythme à la Gemini : micro-pause aux frontières de phrase pour
+      // donner une cadence naturelle de lecture. Ne s'applique qu'en
+      // mode "lent" (peu de texte restant).
+      // ────────────────────────────────────────────────────────────────
+      if (remaining < 50 && endIndex > 0) {
+        final lastChar = widget.partialContent[endIndex - 1];
+        if (lastChar == '\n') {
+          delay += 60;
+        } else if (lastChar == '.' || lastChar == '!' || lastChar == '?') {
+          if (endIndex == widget.partialContent.length ||
+              widget.partialContent[endIndex] == ' ' ||
+              widget.partialContent[endIndex] == '\n') {
+            delay += 40;
+          }
+        } else if (lastChar == ',' || lastChar == ';' || lastChar == ':') {
+          delay += 15;
+        }
+      }
+
       await Future.delayed(Duration(milliseconds: delay));
     }
     _isAnimating = false;
