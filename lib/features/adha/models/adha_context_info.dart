@@ -225,15 +225,26 @@ class AdhaContextInfo {
   @HiveField(1)
   final AdhaInteractionContext interactionContext;
 
+  /// Voix OpenAI TTS pour la réponse audio (`nova`, `alloy`, `echo`, ...).
+  /// Si non-null, le backend synthétise chaque phrase de la réponse en MP3
+  /// base64 et émet des `audio_chunk` sur le même topic Kafka que le texte.
+  /// Default null → mode texte uniquement (comportement historique).
+  @HiveField(2)
+  final String? voice;
+
   AdhaContextInfo({
     required this.baseContext,
     required this.interactionContext,
+    this.voice,
   });
 
   Map<String, dynamic> toJson() {
     return {
       'baseContext': baseContext.toJson(),
       'interactionContext': interactionContext.toJson(),
+      // N'inclut le champ que s'il est défini — un appel sans voice
+      // produit un payload byte-pour-byte identique à l'ancien comportement.
+      if (voice != null && voice!.isNotEmpty) 'voice': voice,
     };
   }
 
@@ -245,6 +256,19 @@ class AdhaContextInfo {
       interactionContext: AdhaInteractionContext.fromJson(
         json['interactionContext'] as Map<String, dynamic>,
       ),
+      voice: json['voice'] as String?,
+    );
+  }
+
+  AdhaContextInfo copyWith({
+    AdhaBaseContext? baseContext,
+    AdhaInteractionContext? interactionContext,
+    String? voice,
+  }) {
+    return AdhaContextInfo(
+      baseContext: baseContext ?? this.baseContext,
+      interactionContext: interactionContext ?? this.interactionContext,
+      voice: voice ?? this.voice,
     );
   }
 }

@@ -44,6 +44,13 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
   /// Seuil de distance du bas pour réactiver l'auto-scroll
   static const double _autoScrollThreshold = 100.0;
 
+  /// État du mode "réponse audio". Quand actif, la réponse texte est aussi
+  /// synthétisée et jouée en streaming via TTS (voix OpenAI 'nova'). Off
+  /// par défaut — l'utilisateur active ponctuellement via l'icône subtile
+  /// du TextField.
+  bool _audioReplyEnabled = false;
+  static const String _audioReplyVoice = 'nova';
+
   @override
   void initState() {
     super.initState();
@@ -488,6 +495,39 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
                                   adhaState.conversation.messages.isNotEmpty)
                               ? "Écrivez votre message..."
                               : "Commencer une nouvelle conversation...",
+                      // Toggle "réponse audio" intégré comme suffix icon :
+                      // discret (18px sans fond), seulement un détail visuel.
+                      // Tap → toggle ; tooltip explicatif au survol.
+                      suffixIcon: Tooltip(
+                        message: _audioReplyEnabled
+                            ? 'Réponse audio activée'
+                            : 'Réponse texte',
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () => setState(
+                            () => _audioReplyEnabled = !_audioReplyEnabled,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Icon(
+                              _audioReplyEnabled
+                                  ? Icons.volume_up_rounded
+                                  : Icons.volume_off_outlined,
+                              size: 18,
+                              color: _audioReplyEnabled
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: 0.35),
+                            ),
+                          ),
+                        ),
+                      ),
+                      suffixIconConstraints: const BoxConstraints(
+                        minWidth: 32,
+                        minHeight: 32,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                         borderSide: BorderSide.none,
@@ -1049,6 +1089,10 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
     final contextInfo = AdhaContextInfo(
       baseContext: placeholderBaseContext,
       interactionContext: interactionContext,
+      // Mode audio activé via le toggle subtil du TextField — déclenche
+      // la synthèse TTS phrase-par-phrase côté backend. Null quand le
+      // toggle est off → comportement texte historique inchangé.
+      voice: _audioReplyEnabled ? _audioReplyVoice : null,
     );
 
     // Récupérer les pièces jointes avant de les effacer
