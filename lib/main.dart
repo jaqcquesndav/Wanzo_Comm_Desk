@@ -9,6 +9,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // Support SQLite pour Windows/Linux
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:get_it/get_it.dart'; // Service locator pour accès global aux services
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -93,6 +94,16 @@ Future<void> main() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
     debugPrint('Main: SQLite FFI initialized for desktop platform');
+
+    // just_audio n'a pas d'implémentation native sur Windows/Linux : sans
+    // ce backend libmpv, tous les `_audioPlayer.play()` échouent
+    // silencieusement et le chat audio ADHA ne produit aucun son
+    // (l'animation tourne quand même via le synthetic playback level).
+    JustAudioMediaKit.ensureInitialized(
+      windows: true,
+      linux: true,
+    );
+    debugPrint('Main: just_audio_media_kit initialized for desktop playback');
   }
 
   try {

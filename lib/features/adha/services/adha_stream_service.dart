@@ -674,19 +674,30 @@ class AdhaAudioChunkEvent {
   });
 
   factory AdhaAudioChunkEvent.fromJson(Map<String, dynamic> json) {
+    // Le backend gestion_commerciale (chat.gateway.ts:328) emet le payload
+    // StreamingChunkPayload avec `content` = base64 audio et `metadata`
+    // contenant audioFormat/voice/sentence. On lit d'abord metadata, puis on
+    // retombe sur les champs plats au cas où un autre émetteur les utilise.
+    final metadata = (json['metadata'] is Map)
+        ? Map<String, dynamic>.from(json['metadata'] as Map)
+        : const <String, dynamic>{};
     return AdhaAudioChunkEvent(
       requestMessageId: json['requestMessageId'] as String? ?? '',
       conversationId: json['conversationId'] as String? ?? '',
-      // Le backend envoie 'audio_base64' (snake_case) dans le payload Kafka,
-      // mais selon le mapper côté NestJS le champ peut arriver sous
-      // 'content' (le chunk_content du producer). On essaie les deux.
       audioBase64:
           (json['audio_base64'] as String?) ??
           (json['content'] as String?) ??
           '',
-      format: json['format'] as String? ?? 'mp3',
-      voice: json['voice'] as String? ?? '',
-      textSpoken: json['text_spoken'] as String? ?? json['sentence'] as String? ?? '',
+      format: (metadata['audioFormat'] as String?) ??
+          (json['format'] as String?) ??
+          'mp3',
+      voice: (metadata['voice'] as String?) ??
+          (json['voice'] as String?) ??
+          '',
+      textSpoken: (metadata['sentence'] as String?) ??
+          (json['text_spoken'] as String?) ??
+          (json['sentence'] as String?) ??
+          '',
       chunkId: json['chunkId'] as int? ?? 0,
     );
   }

@@ -81,6 +81,12 @@ dependencies:
   speech_to_text: ^7.0.0
   record: ^5.2.1
   just_audio: ^0.9.36
+  # just_audio_media_kit : backend libmpv pour just_audio sur Windows/Linux.
+  # Sans ce package, just_audio n'a AUCUNE implémentation desktop — les
+  # appels à setFilePath/play échouent silencieusement et le chat audio
+  # ADHA ne produit aucun son malgré l'animation côté UI.
+  just_audio_media_kit: ^2.0.6
+  media_kit_libs_windows_audio: ^1.0.9
   web_socket_channel: ^2.4.0
   socket_io_client: ^2.0.3+1  # Socket.IO client pour ADHA streaming
   
