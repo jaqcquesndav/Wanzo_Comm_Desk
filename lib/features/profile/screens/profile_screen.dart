@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_cropper/image_cropper.dart'; // Import image_cropper
 import '../../../core/platform/image_picker/image_picker_service_factory.dart';
 import '../../../core/platform/image_picker/image_picker_service_interface.dart';
+import '../../../core/services/entity_vocabulary_service.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../auth/models/user.dart';
@@ -290,6 +291,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildBusinessInfoCard(BuildContext context, User user) {
+    final vocab = EntityVocabularyService.current();
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -298,10 +300,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            _buildSectionHeader(context, Icons.business, 'Entreprise'),
+            _buildSectionHeader(context, Icons.business, vocab.entityCapitalized),
             const SizedBox(height: 12),
             if (user.companyName != null && user.companyName!.isNotEmpty)
-              _buildProfileInfoRow(context, 'Entreprise', user.companyName!),
+              _buildProfileInfoRow(context, vocab.entityCapitalized, user.companyName!),
             if (user.rccmNumber != null && user.rccmNumber!.isNotEmpty)
               _buildProfileInfoRow(context, 'RCCM', user.rccmNumber!),
             if (user.businessUnitType != null)
@@ -476,8 +478,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   String _getBusinessUnitTypeLabel(dynamic type) {
     final typeStr = type.toString().toLowerCase();
-    if (typeStr.contains('company')) return 'Entreprise';
-    if (typeStr.contains('branch')) return 'Succursale';
+    final vocab = EntityVocabularyService.current();
+    if (typeStr.contains('company')) return vocab.entityCapitalized;
+    if (typeStr.contains('branch')) return vocab.branchCapitalized;
     if (typeStr.contains('pos')) return 'Point de vente';
     return typeStr;
   }
