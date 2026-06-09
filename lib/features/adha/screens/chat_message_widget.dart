@@ -172,6 +172,12 @@ class ChatMessageWidget extends StatelessWidget {
       if (_containsImages(message.content)) {
         return _buildMixedContent(context, textColor);
       }
+      // Vérifier si le contenu contient une table markdown — sinon
+      // _buildTextMessage rendrait via MarkdownBody simple qui compresse
+      // les tables larges et tronque les colonnes au-delà du viewport.
+      if (_containsTables(message.content)) {
+        return _buildMixedContent(context, textColor);
+      }
     }
 
     switch (message.type) {
@@ -206,6 +212,16 @@ class ChatMessageWidget extends StatelessWidget {
     return content.contains('![') ||
         content.contains('data:image') ||
         content.contains('<img');
+  }
+
+  /// Détecte une table markdown : ligne header puis séparateur puis ≥1 ligne
+  /// de données. Doit rester aligné avec le `tablePattern` de
+  /// _buildMixedContent.
+  bool _containsTables(String content) {
+    return RegExp(
+      r'^\|.+\|\s*$\n^\|[\s\-:|]+\|\s*$(?:\n^\|.+\|\s*$)+',
+      multiLine: true,
+    ).hasMatch(content);
   }
 
   /// Construit un contenu mixte (texte + code + LaTeX + images)
