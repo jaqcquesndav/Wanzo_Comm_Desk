@@ -5,7 +5,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:async';
-import 'dart:convert'; // base64Encode pour le WAV silencieux du greeting
 import '../../../core/services/api_client.dart';
 import '../repositories/adha_repository.dart';
 import '../../auth/repositories/auth_repository.dart'; // Corrected path
@@ -969,92 +968,20 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       _streamService.subscribeToConversation(currentState.conversation.id);
 
       _isAudioSessionActive = true;
+      _accumulatedStreamContent.clear();
 
+      // Approche Gemini Live : pas de greeting forcé. La session est juste
+      // "prête". L'utilisateur tape sur le micro quand il veut parler.
       emit(
         currentState.copyWith(
           isAudioStreamingActive: true,
           audioConnectionState: AudioConnectionState.connected,
+          isProcessing: false,
         ),
-      );
-
-      // Envoyer un greeting pour déclencher immédiatement la voix Adha
-      // (sinon l'utilisateur ouvre l'écran et ne sait pas quoi faire).
-      final greetingRequestId = _uuid.v4();
-      _currentStreamingRequestId = greetingRequestId;
-      unawaited(
-        _sendAudioSessionGreeting(currentState.conversation.id, greetingRequestId),
       );
     } catch (e) {
       emit(AdhaError("Erreur de démarrage de la session audio: $e"));
     }
-  }
-
-  /// Envoie un greeting (WAV silencieux + voice=nova) au démarrage de session
-  /// pour déclencher une réponse vocale immédiate d'Adha. Sans ça, l'écran
-  /// audio s'ouvre sans aucun feedback sonore tant que l'utilisateur ne
-  /// parle pas.
-  Future<void> _sendAudioSessionGreeting(
-    String conversationId,
-    String requestId,
-  ) async {
-    try {
-      final contextInfo = await _buildContextInfo(
-        AdhaInteractionType.followUp,
-        sourceIdentifier: 'audio_duplex_greeting',
-        conversationId: conversationId,
-        interactionData: {
-          'audio_prompt':
-              '[Session audio démarrée] Salue brièvement l\'utilisateur et demande comment tu peux l\'aider.',
-        },
-      );
-      final businessContextService = BusinessContextService();
-
-      final silentWav = _createSilentWav();
-      final silentBase64 = base64Encode(silentWav);
-
-      await adhaRepository.sendAudioStreamingMessage(
-        audioBase64: silentBase64,
-        filename: 'greeting.wav',
-        conversationId: conversationId,
-        voice: 'nova',
-        language: 'fr',
-        contextInfo: contextInfo,
-        companyId: businessContextService.companyId,
-        userId: businessContextService.userId,
-      );
-      debugPrint('[AdhaBloc] ✅ Greeting audio envoyé (voice=nova)');
-    } catch (e) {
-      debugPrint('[AdhaBloc] ⚠️ Erreur greeting audio: $e');
-    }
-  }
-
-  /// Crée un WAV silencieux de 0.5s — utilisé comme payload du greeting,
-  /// le backend a juste besoin d'un audio valide pour déclencher le pipeline.
-  Uint8List _createSilentWav() {
-    const int sampleRate = 16000;
-    const int durationMs = 500;
-    final int samples = (sampleRate * durationMs ~/ 1000);
-    final pcm = Uint8List(samples * 2); // 16-bit mono = 2 bytes/sample
-    final dataSize = pcm.length;
-    final fileSize = 36 + dataSize;
-    final header = ByteData(44);
-    header.setUint32(0, 0x52494646, Endian.big);
-    header.setUint32(4, fileSize, Endian.little);
-    header.setUint32(8, 0x57415645, Endian.big);
-    header.setUint32(12, 0x666d7420, Endian.big);
-    header.setUint32(16, 16, Endian.little);
-    header.setUint16(20, 1, Endian.little);
-    header.setUint16(22, 1, Endian.little);
-    header.setUint32(24, sampleRate, Endian.little);
-    header.setUint32(28, sampleRate * 2, Endian.little);
-    header.setUint16(32, 2, Endian.little);
-    header.setUint16(34, 16, Endian.little);
-    header.setUint32(36, 0x64617461, Endian.big);
-    header.setUint32(40, dataSize, Endian.little);
-    final result = Uint8List(44 + dataSize);
-    result.setRange(0, 44, header.buffer.asUint8List());
-    result.setRange(44, 44 + dataSize, pcm);
-    return result;
   }
 
   /// Termine une session audio
