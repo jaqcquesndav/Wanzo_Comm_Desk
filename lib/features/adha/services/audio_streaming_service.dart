@@ -29,10 +29,24 @@ class AudioStreamingService {
   static const int channels = 1;
   static const int bitRate = 16;
 
-  // VAD config (similaire à Gemini: silence_duration_ms, start_of_speech_sensitivity)
+  // ────────────────────────────────────────────────────────────────────────
+  // VAD adaptatif en dBFS (style Gemini Live / OpenAI Realtime)
+  // ────────────────────────────────────────────────────────────────────────
+  // Voir audio_streaming_service.dart côté mobile pour le rationnel
+  // complet. En résumé : on calibre le noise floor pendant les 400ms
+  // suivant startRecording, puis on applique une hystérésis dB (entry
+  // marge=8dB, exit marge=4dB) pour qualifier parole/silence. Pas de
+  // seuil fixe — l'ambiance change selon le device et la pièce.
+  static const int vadCalibrationMs = 400;
+  static const double vadSpeechMarginDb = 8.0;
+  static const double vadSilenceMarginDb = 4.0;
+  static const double vadAbsoluteFloorDb = -55.0;
+  static const double vadAbsoluteCeilingDb = -25.0;
+  static const int vadSilenceDurationMs = 1200;
+  static const int vadSpeechMinMs = 150;
+
+  // Backward-compat : ancien seuil exposé pour les UI qui le lisaient.
   static const double vadSilenceThreshold = 0.02;
-  static const int vadSilenceDurationMs = 1500;
-  static const int vadSpeechMinMs = 300;
 
   final AudioRecorder _audioRecorder = AudioRecorder();
   final AudioPlayer _audioPlayer = AudioPlayer();
@@ -46,9 +60,13 @@ class AudioStreamingService {
   final List<_AudioQueueItem> _audioQueue = [];
   bool _isProcessingQueue = false;
 
-  // VAD state
+  // VAD state — calibration + seuils adaptatifs
   Timer? _silenceTimer;
   DateTime? _speechStartTime;
+  DateTime? _recordingStartTime;
+  double _noiseFloorDb = vadAbsoluteFloorDb;
+  bool _vadCalibrated = false;
+  final List<double> _calibrationSamplesDb = [];
   bool vadEnabled = true;
 
   // Playback level simulation (pour ondes réactives pendant TTS)
@@ -130,6 +148,11 @@ class AudioStreamingService {
       _recordedChunks.clear();
       _speechStartTime = null;
       _silenceTimer?.cancel();
+      // Reset VAD state — recalibrer le noise floor sur cette session.
+      _recordingStartTime = DateTime.now();
+      _noiseFloorDb = vadAbsoluteFloorDb;
+      _vadCalibrated = false;
+      _calibrationSamplesDb.clear();
 
       final config = RecordConfig(
         encoder: AudioEncoder.pcm16bits,
@@ -344,26 +367,69 @@ class AudioStreamingService {
   }
 
   // ==========================================================================
-  // VAD — Voice Activity Detection client-side
+  // VAD adaptatif en dBFS (style Gemini Live)
   // ==========================================================================
+  //   1. RMS → dBFS
+  //   2. Calibration du noise floor pendant les premiers vadCalibrationMs
+  //   3. Hystérésis double seuil (speech_marge / silence_marge) en dB
+  //   4. visualLevel relatif aux seuils → l'aurora réagit à la voix réelle
+  //      (pas à l'amplitude absolue).
 
   void _calculateAndSendAudioLevel(Uint8List audioData) {
     double sum = 0;
     for (int i = 0; i < audioData.length; i += 2) {
       if (i + 1 < audioData.length) {
-        final sample = (audioData[i] | (audioData[i + 1] << 8));
+        int sample = audioData[i] | (audioData[i + 1] << 8);
+        if (sample & 0x8000 != 0) sample -= 0x10000;
         sum += sample * sample;
       }
     }
-
     final rms = sum > 0 ? sqrt(sum / (audioData.length / 2)) : 0.0;
-    final normalizedLevel = (rms / 32768.0).clamp(0.0, 1.0);
+    final dbfs = rms > 0 ? 20.0 * (log(rms / 32768.0) / ln10) : -90.0;
 
-    _audioLevelController.add(normalizedLevel);
+    final elapsed = _recordingStartTime == null
+        ? Duration.zero
+        : DateTime.now().difference(_recordingStartTime!);
+    if (!_vadCalibrated) {
+      _calibrationSamplesDb.add(dbfs);
+      if (elapsed.inMilliseconds >= vadCalibrationMs &&
+          _calibrationSamplesDb.length >= 3) {
+        final sorted = List<double>.from(_calibrationSamplesDb)..sort();
+        final median = sorted[sorted.length ~/ 2];
+        _noiseFloorDb = median.clamp(
+          vadAbsoluteFloorDb - 5,
+          vadAbsoluteCeilingDb - vadSpeechMarginDb - 2,
+        );
+        _vadCalibrated = true;
+        debugPrint(
+          '[AudioStreamingService] 🎚️ VAD calibré : noise_floor=${_noiseFloorDb.toStringAsFixed(1)}dB '
+          'speech_threshold=${(_noiseFloorDb + vadSpeechMarginDb).toStringAsFixed(1)}dB '
+          'silence_threshold=${(_noiseFloorDb + vadSilenceMarginDb).toStringAsFixed(1)}dB',
+        );
+      }
+    }
+
+    final speechThresholdDb = (_noiseFloorDb + vadSpeechMarginDb).clamp(
+      vadAbsoluteFloorDb,
+      vadAbsoluteCeilingDb,
+    );
+    final silenceThresholdDb = (_noiseFloorDb + vadSilenceMarginDb).clamp(
+      vadAbsoluteFloorDb - vadSilenceMarginDb,
+      vadAbsoluteCeilingDb,
+    );
+
+    final visualLevel = ((dbfs - silenceThresholdDb) /
+            (speechThresholdDb + 12.0 - silenceThresholdDb))
+        .clamp(0.0, 1.0);
+    _audioLevelController.add(visualLevel);
 
     if (!vadEnabled || !_isRecordingActive) return;
 
-    if (normalizedLevel > vadSilenceThreshold) {
+    final isSpeech = _speechStartTime != null
+        ? dbfs > silenceThresholdDb
+        : dbfs > speechThresholdDb;
+
+    if (isSpeech) {
       _speechStartTime ??= DateTime.now();
       _silenceTimer?.cancel();
       _silenceTimer = null;
