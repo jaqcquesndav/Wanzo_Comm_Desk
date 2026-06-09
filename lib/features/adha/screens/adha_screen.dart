@@ -12,10 +12,10 @@ import '../models/adha_message.dart'; // Added import for AdhaMessage
 import '../models/adha_attachment.dart'; // Added for attachments
 import '../widgets/adha_error_widget.dart'; // Widget d'erreur user-friendly
 import '../widgets/adha_subscription_error_widget.dart'; // Widget d'erreur abonnement
+import 'audio_chat_widget.dart';
 import 'chat_message_widget.dart';
 import 'streaming_message_widget.dart'; // Import du widget de streaming
 import '../models/adha_context_info.dart'; // Added for AdhaContextInfo
-import 'voice_recognition_widget.dart'; // Import voice recognition widget
 import 'conversations_bottom_sheet.dart'; // Import du bottom sheet des conversations
 import '../../auth/bloc/auth_bloc.dart'; // Pour AuthBloc et AuthAuthenticated
 
@@ -425,10 +425,7 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
                 ),
               // Indicateur de streaming désactivé car déjà géré dans la liste
               // (voir AdhaStreaming case dans le builder ci-dessus)
-              // Voice recognition widget (STT) — visible quand micro activé
-              if (adhaState is AdhaConversationActive &&
-                  adhaState.isVoiceActive)
-                const VoiceRecognitionWidget(),
+              // Voice = mode dédié AudioChatWidget (FAB plein écran).
               _buildInputRow(context, adhaState),
             ],
           ),
@@ -441,17 +438,14 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
     bool isConversationActive = adhaState is AdhaConversationActive;
     bool isStreaming = adhaState is AdhaStreaming;
     bool isProcessing = false;
-    bool isVoiceActive = false;
 
     if (isConversationActive) {
       isProcessing = adhaState.isProcessing;
-      isVoiceActive = adhaState.isVoiceActive;
     }
 
     // Pendant le streaming, le bouton se transforme en STOP
     bool canSendMessage =
         !isProcessing &&
-        !isVoiceActive &&
         !isStreaming &&
         (_messageController.text.trim().isNotEmpty ||
             _pendingAttachments.isNotEmpty);
@@ -488,9 +482,7 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
                     controller: _messageController,
                     decoration: InputDecoration(
                       hintText:
-                          isVoiceActive
-                              ? "Parlez maintenant..."
-                              : isStreaming
+                          isStreaming
                               ? "ADHA répond..."
                               : (isConversationActive &&
                                   adhaState.conversation.messages.isNotEmpty)
@@ -516,7 +508,7 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
                     textInputAction: TextInputAction.newline,
                     scrollPhysics:
                         const BouncingScrollPhysics(), // Scroll fluide
-                    enabled: !isProcessing && !isVoiceActive && !isStreaming,
+                    enabled: !isProcessing && !isStreaming,
                     onChanged: (text) {
                       setState(() {});
                     },
@@ -544,7 +536,6 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
                 context,
                 adhaState,
                 isStreaming,
-                isVoiceActive,
                 canSendMessage,
                 canUseAudioMode,
                 placeholderBaseContext,
@@ -910,7 +901,6 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
     BuildContext context,
     AdhaState adhaState,
     bool isStreaming,
-    bool isVoiceActive,
     bool canSendMessage,
     bool canUseAudioMode,
     AdhaBaseContext placeholderBaseContext,
@@ -1002,23 +992,30 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
             onPressed:
                 canUseAudioMode
                     ? () {
+                      // Mode audio dédié plein écran (Gemini Live style).
+                      // L'ancien StartVoiceRecognition ouvrait l'overlay STT
+                      // (VoiceRecognitionWidget, score de confiance) qui ne
+                      // gère pas le duplex audio. On pousse AudioChatWidget
+                      // qui orchestre écoute → upload → réponse vocale.
                       final adhaBloc = context.read<AdhaBloc>();
-                      if (isVoiceActive) {
-                        adhaBloc.add(const StopVoiceRecognition());
-                      } else {
-                        adhaBloc.add(const StartVoiceRecognition());
-                      }
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          fullscreenDialog: true,
+                          builder: (_) => BlocProvider.value(
+                            value: adhaBloc,
+                            child: const AudioChatWidget(),
+                          ),
+                        ),
+                      );
                     }
                     : null,
             backgroundColor:
-                isVoiceActive
-                    ? Colors.red.shade400
-                    : (canUseAudioMode ? primaryColor : Colors.grey),
+                canUseAudioMode ? primaryColor : Colors.grey,
             elevation: 2,
             mini: true,
             heroTag: 'adhaActionFab',
-            child: Icon(
-              isVoiceActive ? Icons.graphic_eq : Icons.mic,
+            child: const Icon(
+              Icons.mic,
               color: Colors.white,
               size: 20,
             ),

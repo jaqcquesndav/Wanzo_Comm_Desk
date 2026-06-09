@@ -9,7 +9,7 @@ import '../models/adha_attachment.dart';
 import '../widgets/adha_error_widget.dart';
 import '../screens/chat_message_widget.dart';
 import '../screens/streaming_message_widget.dart';
-import '../screens/voice_recognition_widget.dart';
+import '../screens/audio_chat_widget.dart';
 import '../models/adha_context_info.dart';
 import '../screens/conversations_bottom_sheet.dart';
 import '../../auth/bloc/auth_bloc.dart';
@@ -207,22 +207,7 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
           // Pièces jointes en attente
           if (_pendingAttachments.isNotEmpty) _buildPendingAttachments(context),
 
-          // Voice recognition widget (STT) — visible quand micro activé
-          BlocBuilder<AdhaBloc, AdhaState>(
-            buildWhen: (prev, curr) {
-              final prevVoice =
-                  prev is AdhaConversationActive && prev.isVoiceActive;
-              final currVoice =
-                  curr is AdhaConversationActive && curr.isVoiceActive;
-              return prevVoice != currVoice;
-            },
-            builder: (context, state) {
-              if (state is AdhaConversationActive && state.isVoiceActive) {
-                return const VoiceRecognitionWidget();
-              }
-              return const SizedBox.shrink();
-            },
-          ),
+          // Voice = mode dédié AudioChatWidget (plein écran depuis le FAB).
 
           // Zone de saisie
           _buildInputArea(context, theme, isDark),
@@ -738,9 +723,20 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
     );
   }
 
-  /// Ouvre le mode audio pour conversation vocale avec ADHA
+  /// Ouvre le mode audio dédié (AudioChatWidget plein écran).
+  /// L'ancien StartVoiceRecognition affichait l'overlay STT confidence,
+  /// pas de duplex audio. On pousse maintenant la route audio v3.0.
   void _openAudioMode() {
-    context.read<AdhaBloc>().add(const StartVoiceRecognition());
+    final bloc = context.read<AdhaBloc>();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => BlocProvider.value(
+          value: bloc,
+          child: const AudioChatWidget(),
+        ),
+      ),
+    );
   }
 
   void _sendMessage() {

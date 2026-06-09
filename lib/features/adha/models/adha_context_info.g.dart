@@ -219,17 +219,20 @@ class AdhaContextInfoAdapter extends TypeAdapter<AdhaContextInfo> {
     return AdhaContextInfo(
       baseContext: fields[0] as AdhaBaseContext,
       interactionContext: fields[1] as AdhaInteractionContext,
+      voice: fields[2] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, AdhaContextInfo obj) {
     writer
-      ..writeByte(2)
+      ..writeByte(3)
       ..writeByte(0)
       ..write(obj.baseContext)
       ..writeByte(1)
-      ..write(obj.interactionContext);
+      ..write(obj.interactionContext)
+      ..writeByte(2)
+      ..write(obj.voice);
   }
 
   @override

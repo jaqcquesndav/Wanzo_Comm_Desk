@@ -165,46 +165,64 @@ class _AudioChatWidgetState extends State<AudioChatWidget>
   }
 
   String _getStatusText(AdhaConversationActive state) {
-    if (state.isProcessing) return "Réflexion en cours...";
-    if (state.isAdhaPlaying) return "ADHA parle";
-    if (state.isRecording) return "Je vous écoute";
-    return "Prêt à écouter";
+    if (state.isProcessing) return 'Adha réfléchit…';
+    if (state.isAdhaPlaying) return 'Adha parle';
+    if (state.isRecording) return 'Je vous écoute';
+    return 'Prêt';
+  }
+
+  String _getHintText(AdhaConversationActive state) {
+    if (state.isProcessing) return 'Vous pouvez reprendre la parole';
+    if (state.isAdhaPlaying) return 'Touchez le micro pour interrompre';
+    if (state.isRecording) {
+      return 'Parlez naturellement, je m\'arrêterai au silence';
+    }
+    return 'Touchez le micro pour commencer';
   }
 
   Widget _buildStatusIndicator(AdhaConversationActive state) {
     final statusText = _getStatusText(state);
+    final hintText = _getHintText(state);
     final isActive =
         state.isRecording || state.isAdhaPlaying || state.isProcessing;
+    final theme = Theme.of(context);
 
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 200),
-      opacity: isActive ? 1.0 : 0.6,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (isActive) ...[
-            _AnimatedStatusDot(
-              color:
-                  state.isRecording
-                      ? WanzoTheme.error
-                      : (state.isAdhaPlaying
-                          ? Colors.blue
-                          : WanzoTheme.primary),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isActive) ...[
+              _AnimatedStatusDot(
+                color: state.isRecording
+                    ? WanzoTheme.error
+                    : (state.isAdhaPlaying
+                        ? Colors.blue
+                        : WanzoTheme.primary),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Text(
+              statusText,
+              style: theme.textTheme.titleLarge?.copyWith(
+                color: theme.colorScheme.onSurface,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.2,
+              ),
             ),
-            const SizedBox(width: 8),
           ],
-          Text(
-            statusText,
-            style: TextStyle(
-              fontSize: 14,
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: 0.7),
-              fontWeight: FontWeight.w500,
-            ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          hintText,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

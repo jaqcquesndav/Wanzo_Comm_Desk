@@ -89,8 +89,6 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     on<LoadConversation>(_onLoadConversation);
     on<NewConversation>(_onNewConversation);
     on<DeleteConversation>(_onDeleteConversation);
-    on<StartVoiceRecognition>(_onStartVoiceRecognition);
-    on<StopVoiceRecognition>(_onStopVoiceRecognition);
     on<EditMessage>(_onEditMessage);
 
     // Nouveaux événements audio
@@ -351,7 +349,6 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       AdhaConversationActive(
         conversation: updatedConversationWithUserMsg,
         isProcessing: true,
-        isVoiceActive: previousState?.isVoiceActive ?? false,
       ),
     );
 
@@ -408,7 +405,6 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         AdhaConversationActive(
           conversation: finalConversation,
           isProcessing: false,
-          isVoiceActive: previousState?.isVoiceActive ?? false,
         ),
       );
     } on AdhaServiceException catch (e) {
@@ -421,7 +417,6 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
           AdhaConversationActive(
             conversation: updatedConversationWithUserMsg,
             isProcessing: false,
-            isVoiceActive: false,
           ),
         );
       }
@@ -436,7 +431,6 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
             conversation:
                 updatedConversationWithUserMsg, // or currentConversation if preferred
             isProcessing: false,
-            isVoiceActive: false,
           ),
         );
       }
@@ -461,10 +455,6 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     }
 
     emit(const AdhaLoading());
-    AdhaConversationActive? previousState =
-        state is AdhaConversationActive
-            ? (state as AdhaConversationActive)
-            : null;
     try {
       final newConversationId = _uuid.v4();
       final userMessage = AdhaMessage(
@@ -525,7 +515,6 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         AdhaConversationActive(
           conversation: newConversation,
           isProcessing: true,
-          isVoiceActive: previousState?.isVoiceActive ?? false,
         ),
       );
 
@@ -567,7 +556,6 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         AdhaConversationActive(
           conversation: updatedConversationWithResponse,
           isProcessing: false,
-          isVoiceActive: previousState?.isVoiceActive ?? false,
         ),
       );
     } on AdhaServiceException catch (e) {
@@ -655,53 +643,6 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     }
   }
 
-  Future<void> _onStartVoiceRecognition(
-    StartVoiceRecognition event,
-    Emitter<AdhaState> emit,
-  ) async {
-    if (state is AdhaConversationActive) {
-      final currentState = state as AdhaConversationActive;
-      if (!currentState.isProcessing) {
-        emit(currentState.copyWith(isVoiceActive: true));
-        // _currentlyActiveConversationId remains what it was, voice is just an input method for current/new convo
-      }
-    } else {
-      // This case implies starting voice recognition when not in an active conversation (e.g. from AdhaInitial)
-      // A new conversation should be implicitly started or prepared.
-      final newConversationId = _uuid.v4();
-      final newConversation = AdhaConversation(
-        id: newConversationId,
-        title: 'Conversation vocale', // Temporary title
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-        messages: [],
-      );
-      // Don't save or set active ID yet, wait for actual speech input.
-      // The AdhaConversationActive state here is to enable voice input UI.
-      // The actual conversation will be formed by SendMessage after voice input.
-      emit(
-        AdhaConversationActive(
-          conversation: newConversation,
-          isVoiceActive: true,
-          isProcessing: false,
-        ),
-      );
-      // _currentlyActiveConversationId should ideally be set when the first message from voice is processed.
-      // For now, if voice is started from AdhaInitial, _currentlyActiveConversationId is still null.
-      // SendMessage will handle creating/activating the conversation.
-    }
-  }
-
-  Future<void> _onStopVoiceRecognition(
-    StopVoiceRecognition event,
-    Emitter<AdhaState> emit,
-  ) async {
-    if (state is AdhaConversationActive) {
-      final currentState = state as AdhaConversationActive;
-      emit(currentState.copyWith(isVoiceActive: false));
-    }
-  }
-
   String _generateConversationTitle(String firstMessage) {
     String title = firstMessage.replaceAll('\n', ' ');
     if (title.length > 30) {
@@ -779,7 +720,6 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       AdhaConversationActive(
         conversation: updatedConversationWithUserMsg,
         isProcessing: true, // Indicate processing as we will send to API
-        isVoiceActive: currentState.isVoiceActive,
       ),
     );
 
@@ -818,7 +758,6 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         AdhaConversationActive(
           conversation: finalConversation,
           isProcessing: false,
-          isVoiceActive: currentState.isVoiceActive,
         ),
       );
     } on AdhaServiceException catch (e) {

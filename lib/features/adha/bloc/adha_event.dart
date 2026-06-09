@@ -63,16 +63,6 @@ class DeleteConversation extends AdhaEvent {
   List<Object?> get props => [conversationId];
 }
 
-/// Activation de la reconnaissance vocale pour interagir avec Adha
-class StartVoiceRecognition extends AdhaEvent {
-  const StartVoiceRecognition();
-}
-
-/// Arrêt de la reconnaissance vocale
-class StopVoiceRecognition extends AdhaEvent {
-  const StopVoiceRecognition();
-}
-
 /// Modification d'un message existant par l'utilisateur
 class EditMessage extends AdhaEvent {
   /// ID du message à modifier

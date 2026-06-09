@@ -38,9 +38,6 @@ class AdhaConversationActive extends AdhaState {
   /// Indique si l'assistant est en train de répondre
   final bool isProcessing;
 
-  /// Indique si la reconnaissance vocale est active (mode texte)
-  final bool isVoiceActive;
-
   /// Indique si une session audio streaming est active
   final bool isAudioStreamingActive;
 
@@ -59,7 +56,6 @@ class AdhaConversationActive extends AdhaState {
   const AdhaConversationActive({
     required this.conversation,
     this.isProcessing = false,
-    this.isVoiceActive = false,
     this.isAudioStreamingActive = false,
     this.audioConnectionState = AudioConnectionState.disconnected,
     this.isRecording = false,
@@ -71,7 +67,6 @@ class AdhaConversationActive extends AdhaState {
   AdhaConversationActive copyWith({
     AdhaConversation? conversation,
     bool? isProcessing,
-    bool? isVoiceActive,
     bool? isAudioStreamingActive,
     AudioConnectionState? audioConnectionState,
     bool? isRecording,
@@ -81,7 +76,6 @@ class AdhaConversationActive extends AdhaState {
     return AdhaConversationActive(
       conversation: conversation ?? this.conversation,
       isProcessing: isProcessing ?? this.isProcessing,
-      isVoiceActive: isVoiceActive ?? this.isVoiceActive,
       isAudioStreamingActive:
           isAudioStreamingActive ?? this.isAudioStreamingActive,
       audioConnectionState: audioConnectionState ?? this.audioConnectionState,
@@ -95,7 +89,6 @@ class AdhaConversationActive extends AdhaState {
   List<Object?> get props => [
     conversation,
     isProcessing,
-    isVoiceActive,
     isAudioStreamingActive,
     audioConnectionState,
     isRecording,
