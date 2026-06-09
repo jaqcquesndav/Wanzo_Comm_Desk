@@ -5,8 +5,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:async';
+import 'dart:convert'; // base64Encode pour le WAV silencieux du greeting
 import '../../../core/services/api_client.dart';
-import '../../../core/config/env_config.dart';
 import '../repositories/adha_repository.dart';
 import '../../auth/repositories/auth_repository.dart'; // Corrected path
 import '../../dashboard/repositories/operation_journal_repository.dart'; // Corrected path
@@ -48,6 +48,10 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
   // Buffer pour accumuler le contenu de streaming
   final StringBuffer _accumulatedStreamContent = StringBuffer();
   String? _currentStreamingRequestId;
+
+  // Flag de session audio active (mirroir du mobile). Permet aux callbacks
+  // VAD/silence d'éviter de relancer l'écoute après EndAudioSession.
+  bool _isAudioSessionActive = false;
 
   // ──────────────────────────────────────────────────────────────────────
   // Chunk batching pour fluidité du rendu (Phase 2D)
@@ -945,42 +949,112 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     final currentState = state as AdhaConversationActive;
 
     try {
-      // Configuration du service audio avec URL dynamique depuis EnvConfig
-      final apiUrl = EnvConfig.getDeviceCompatibleUrl(EnvConfig.apiGatewayUrl);
-      // Convertir http(s) en ws(s) pour WebSocket
-      final wsUrl = apiUrl
-          .replaceFirst('http://', 'ws://')
-          .replaceFirst('https://', 'wss://');
-
-      _audioStreamingService.configure(
-        wsUrl: '$wsUrl/commerce/audio',
-        headers: {'Authorization': 'Bearer ${await _getAuthToken()}'},
-      );
-
-      // Construire le contexte
-      final contextInfo =
-          event.contextInfo ??
-          await _buildContextInfo(
-            AdhaInteractionType.genericCardAnalysis,
-            sourceIdentifier: 'audio_session_start',
-            conversationId: currentState.conversation.id,
-          );
-
-      // Démarrer la session
+      // Initialiser la session audio locale (permission micro + état).
+      // Pas de WebSocket dédié : l'audio sera envoyé via REST
+      // POST /commerce/adha/audio/stream et les chunks TTS de réponse
+      // arrivent via le Socket.IO existant (AdhaStreamService).
       await _audioStreamingService.startAudioSession(
         conversationId: currentState.conversation.id,
-        contextInfo: contextInfo.toJson(),
       );
+
+      // S'assurer que le Socket.IO de streaming est connecté pour
+      // recevoir les chunks audio en retour.
+      final connected = await _streamService.ensureConnected();
+      if (!connected) {
+        final authToken = await _getAuthToken();
+        if (authToken.isNotEmpty) {
+          await _streamService.connect(authToken);
+        }
+      }
+      _streamService.subscribeToConversation(currentState.conversation.id);
+
+      _isAudioSessionActive = true;
 
       emit(
         currentState.copyWith(
           isAudioStreamingActive: true,
-          audioConnectionState: AudioConnectionState.connecting,
+          audioConnectionState: AudioConnectionState.connected,
         ),
+      );
+
+      // Envoyer un greeting pour déclencher immédiatement la voix Adha
+      // (sinon l'utilisateur ouvre l'écran et ne sait pas quoi faire).
+      final greetingRequestId = _uuid.v4();
+      _currentStreamingRequestId = greetingRequestId;
+      unawaited(
+        _sendAudioSessionGreeting(currentState.conversation.id, greetingRequestId),
       );
     } catch (e) {
       emit(AdhaError("Erreur de démarrage de la session audio: $e"));
     }
+  }
+
+  /// Envoie un greeting (WAV silencieux + voice=nova) au démarrage de session
+  /// pour déclencher une réponse vocale immédiate d'Adha. Sans ça, l'écran
+  /// audio s'ouvre sans aucun feedback sonore tant que l'utilisateur ne
+  /// parle pas.
+  Future<void> _sendAudioSessionGreeting(
+    String conversationId,
+    String requestId,
+  ) async {
+    try {
+      final contextInfo = await _buildContextInfo(
+        AdhaInteractionType.followUp,
+        sourceIdentifier: 'audio_duplex_greeting',
+        conversationId: conversationId,
+        interactionData: {
+          'audio_prompt':
+              '[Session audio démarrée] Salue brièvement l\'utilisateur et demande comment tu peux l\'aider.',
+        },
+      );
+      final businessContextService = BusinessContextService();
+
+      final silentWav = _createSilentWav();
+      final silentBase64 = base64Encode(silentWav);
+
+      await adhaRepository.sendAudioStreamingMessage(
+        audioBase64: silentBase64,
+        filename: 'greeting.wav',
+        conversationId: conversationId,
+        voice: 'nova',
+        language: 'fr',
+        contextInfo: contextInfo,
+        companyId: businessContextService.companyId,
+        userId: businessContextService.userId,
+      );
+      debugPrint('[AdhaBloc] ✅ Greeting audio envoyé (voice=nova)');
+    } catch (e) {
+      debugPrint('[AdhaBloc] ⚠️ Erreur greeting audio: $e');
+    }
+  }
+
+  /// Crée un WAV silencieux de 0.5s — utilisé comme payload du greeting,
+  /// le backend a juste besoin d'un audio valide pour déclencher le pipeline.
+  Uint8List _createSilentWav() {
+    const int sampleRate = 16000;
+    const int durationMs = 500;
+    final int samples = (sampleRate * durationMs ~/ 1000);
+    final pcm = Uint8List(samples * 2); // 16-bit mono = 2 bytes/sample
+    final dataSize = pcm.length;
+    final fileSize = 36 + dataSize;
+    final header = ByteData(44);
+    header.setUint32(0, 0x52494646, Endian.big);
+    header.setUint32(4, fileSize, Endian.little);
+    header.setUint32(8, 0x57415645, Endian.big);
+    header.setUint32(12, 0x666d7420, Endian.big);
+    header.setUint32(16, 16, Endian.little);
+    header.setUint16(20, 1, Endian.little);
+    header.setUint16(22, 1, Endian.little);
+    header.setUint32(24, sampleRate, Endian.little);
+    header.setUint32(28, sampleRate * 2, Endian.little);
+    header.setUint16(32, 2, Endian.little);
+    header.setUint16(34, 16, Endian.little);
+    header.setUint32(36, 0x64617461, Endian.big);
+    header.setUint32(40, dataSize, Endian.little);
+    final result = Uint8List(44 + dataSize);
+    result.setRange(0, 44, header.buffer.asUint8List());
+    result.setRange(44, 44 + dataSize, pcm);
+    return result;
   }
 
   /// Termine une session audio
@@ -993,6 +1067,7 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     final currentState = state as AdhaConversationActive;
 
     try {
+      _isAudioSessionActive = false;
       await _audioStreamingService.endSession();
 
       emit(
@@ -1024,9 +1099,113 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     }
 
     try {
-      await _audioStreamingService.togglePushToTalk(event.enabled);
+      if (event.enabled) {
+        // Barge-in : si Adha parle, interrompre la lecture pour écouter.
+        if (currentState.isAdhaPlaying) {
+          debugPrint('[AdhaBloc] ⛔ Barge-in: interruption Adha pour écouter');
+          await _audioStreamingService.interrupt();
+        }
+        await _audioStreamingService.startRecording();
+      } else {
+        // Arrêter l'enregistrement et obtenir l'audio base64
+        final audioBase64 =
+            await _audioStreamingService.stopRecordingAndGetBase64();
 
-      // L'état sera mis à jour via les listeners
+        if (audioBase64 == null) {
+          debugPrint('[AdhaBloc] Audio trop court ou vide, on relance l\'écoute');
+          if (_isAudioSessionActive) {
+            await Future.delayed(const Duration(milliseconds: 300));
+            add(ToggleRecording(true));
+          }
+          return;
+        }
+
+        final conversationId = currentState.conversation.id;
+        final contextInfo = await _buildContextInfo(
+          AdhaInteractionType.followUp,
+          sourceIdentifier: 'audio_duplex',
+          conversationId: conversationId,
+        );
+
+        final requestMessageId = _uuid.v4();
+        _currentStreamingRequestId = requestMessageId;
+
+        final userMessage = AdhaMessage(
+          id: requestMessageId,
+          content: '🎙️ Message vocal',
+          timestamp: DateTime.now(),
+          sender: AdhaMessageSender.user,
+        );
+        final updatedMessages = List<AdhaMessage>.from(
+          currentState.conversation.messages,
+        )..add(userMessage);
+        final updatedConversation = currentState.conversation.copyWith(
+          messages: updatedMessages,
+          updatedAt: DateTime.now(),
+        );
+
+        emit(
+          currentState.copyWith(
+            conversation: updatedConversation,
+            isProcessing: true,
+            isRecording: false,
+          ),
+        );
+
+        _streamService.subscribeToConversation(conversationId);
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        final businessContextService = BusinessContextService();
+        if (!businessContextService.isInitialized ||
+            businessContextService.companyId == null) {
+          await authRepository.getUser(forceRemote: true);
+        }
+        final companyId = businessContextService.companyId;
+        final userId = businessContextService.userId;
+
+        if (companyId == null || companyId.isEmpty) {
+          add(
+            StreamError(
+              conversationId: conversationId,
+              errorMessage: 'Contexte business manquant.',
+              requestMessageId: requestMessageId,
+            ),
+          );
+          return;
+        }
+
+        // Envoyer l'audio via REST POST /adha/audio/stream avec voice=nova
+        // pour activer le TTS côté backend (sinon aucun audio_chunk émis).
+        try {
+          await adhaRepository.sendAudioStreamingMessage(
+            audioBase64: audioBase64,
+            filename: 'recording.wav',
+            conversationId: conversationId,
+            voice: 'nova',
+            language: 'fr',
+            contextInfo: contextInfo,
+            companyId: companyId,
+            userId: userId,
+          );
+          debugPrint('[AdhaBloc] ✅ Audio envoyé (voice=nova) via REST');
+        } on AdhaServiceException catch (e) {
+          add(
+            StreamError(
+              conversationId: conversationId,
+              errorMessage: e.message,
+              requestMessageId: requestMessageId,
+            ),
+          );
+        } catch (e) {
+          add(
+            StreamError(
+              conversationId: conversationId,
+              errorMessage: e.toString(),
+              requestMessageId: requestMessageId,
+            ),
+          );
+        }
+      }
     } catch (e) {
       emit(AdhaError("Erreur de contrôle de l'enregistrement: $e"));
     }

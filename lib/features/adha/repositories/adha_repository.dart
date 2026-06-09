@@ -447,6 +447,62 @@ class AdhaRepository {
     }
   }
 
+  /// Envoie un message audio en mode streaming (v2.6.0)
+  ///
+  /// Utilise l'endpoint POST /api/v1/commerce/adha/audio/stream
+  /// L'audio base64 est transcrit et traité via le même pipeline Kafka que le texte.
+  /// La réponse arrive via Socket.IO (text chunks + audio chunks TTS).
+  Future<({String conversationId, String requestMessageId})>
+  sendAudioStreamingMessage({
+    String? conversationId,
+    required String audioBase64,
+    String filename = 'recording.wav',
+    String? voice,
+    String? language,
+    AdhaContextInfo? contextInfo,
+    String? companyId,
+    String? userId,
+  }) async {
+    if (apiService == null) {
+      throw AdhaServiceException(
+        code: 'API_NOT_CONFIGURED',
+        message: 'Le service ADHA n\'est pas configuré.',
+      );
+    }
+
+    try {
+      final response = await apiService!.sendAudioStreamingMessage(
+        audioBase64: audioBase64,
+        filename: filename,
+        conversationId: conversationId,
+        voice: voice,
+        language: language,
+        contextInfo: contextInfo,
+        companyId: companyId,
+        userId: userId,
+      );
+
+      final data = response['data'] as Map<String, dynamic>?;
+      if (data != null) {
+        return (
+          conversationId:
+              data['conversationId'] as String? ?? conversationId ?? '',
+          requestMessageId: data['requestMessageId'] as String? ?? '',
+        );
+      }
+      return (conversationId: conversationId ?? '', requestMessageId: '');
+    } on AdhaServiceException {
+      rethrow;
+    } catch (e) {
+      debugPrint('[AdhaRepository] Erreur envoi audio streaming: $e');
+      throw AdhaServiceException(
+        code: 'API_ERROR',
+        message: _parseApiError(e),
+        originalError: e,
+      );
+    }
+  }
+
   /// Analyse une erreur API et retourne un message utilisateur approprié
   String _parseApiError(dynamic error) {
     final errorString = error.toString().toLowerCase();

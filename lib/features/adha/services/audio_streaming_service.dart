@@ -5,547 +5,349 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:web_socket_channel/status.dart' as status;
 import 'package:path_provider/path_provider.dart';
 
-/// Service pour gérer le streaming audio bidirectionnel avec Adha
+/// Service audio duplex ADHA — Style Gemini Live / OpenAI Realtime
+///
+/// Architecture v3.0.0 (desktop, mirroir du mobile) :
+/// - Audio queue FIFO pour lecture séquentielle des chunks TTS
+/// - Client-side VAD (Voice Activity Detection) avec silence timer
+/// - Barge-in : interruption de la lecture quand l'utilisateur parle
+/// - Single player listener (pas de leak)
+/// - Auto-cycle : écoute → envoi REST → processing → Adha parle → écoute
+///
+/// IMPORTANT : ce service NE gère PAS la connexion WebSocket. L'audio est
+/// envoyé via REST POST /commerce/adha/audio/stream depuis le bloc, et les
+/// chunks de réponse arrivent via Socket.IO sur le canal /commerce/chat
+/// (cf. AdhaStreamService). Ce service ne fait que record + playback.
+///
+/// Sur Windows/Linux desktop, just_audio nécessite just_audio_media_kit
+/// (cf. main.dart pour l'init). Sans ce backend, les chunks TTS ne sortent
+/// pas du speaker malgré la file remplie.
 class AudioStreamingService {
   static const int sampleRate = 16000;
   static const int channels = 1;
   static const int bitRate = 16;
-  
+
+  // VAD config (similaire à Gemini: silence_duration_ms, start_of_speech_sensitivity)
+  static const double vadSilenceThreshold = 0.02;
+  static const int vadSilenceDurationMs = 1500;
+  static const int vadSpeechMinMs = 300;
+
   final AudioRecorder _audioRecorder = AudioRecorder();
   final AudioPlayer _audioPlayer = AudioPlayer();
-  
-  WebSocketChannel? _webSocketChannel;
+
   StreamSubscription<Uint8List>? _audioStreamSubscription;
-  
-  // Buffer pour les données audio en attente de lecture
-  final List<Uint8List> _audioBuffer = [];
-  bool _isBuffering = false;
-  Timer? _bufferTimer;
-  
-  // Stream controller pour créer un flux audio personnalisé
-  StreamController<List<int>>? _audioStreamController;
-  
-  // Streams pour notifier les changements d'état
-  final _connectionStateController = StreamController<AudioConnectionState>.broadcast();
+  StreamSubscription<PlayerState>? _playerStateSubscription;
+
+  final List<Uint8List> _recordedChunks = [];
+
+  // Audio playback queue (FIFO) — style OpenAI response.output_audio.delta
+  final List<_AudioQueueItem> _audioQueue = [];
+  bool _isProcessingQueue = false;
+
+  // VAD state
+  Timer? _silenceTimer;
+  DateTime? _speechStartTime;
+  bool vadEnabled = true;
+
+  // Playback level simulation (pour ondes réactives pendant TTS)
+  Timer? _playbackLevelTimer;
+  double _playbackPhase = 0.0;
+
+  final _connectionStateController =
+      StreamController<AudioConnectionState>.broadcast();
   final _audioLevelController = StreamController<double>.broadcast();
   final _isRecordingController = StreamController<bool>.broadcast();
   final _isPlayingController = StreamController<bool>.broadcast();
-  
-  // Getters pour les streams
-  Stream<AudioConnectionState> get connectionState => _connectionStateController.stream;
+  final _silenceDetectedController = StreamController<void>.broadcast();
+  final _playbackCompleteController = StreamController<void>.broadcast();
+
+  Stream<AudioConnectionState> get connectionState =>
+      _connectionStateController.stream;
   Stream<double> get audioLevel => _audioLevelController.stream;
   Stream<bool> get isRecording => _isRecordingController.stream;
   Stream<bool> get isPlaying => _isPlayingController.stream;
-  
-  // État actuel
+  Stream<void> get silenceDetected => _silenceDetectedController.stream;
+  Stream<void> get playbackComplete => _playbackCompleteController.stream;
+
   AudioConnectionState _currentState = AudioConnectionState.disconnected;
   bool _isRecordingActive = false;
   bool _isPlayingActive = false;
-  String? _conversationId;
-  
-  // Configuration
-  String? _wsUrl;
-  Map<String, String>? _headers;
-  
-  /// Initialise le service avec l'URL WebSocket et les headers d'authentification
-  void configure({
-    required String wsUrl,
-    Map<String, String>? headers,
-  }) {
-    _wsUrl = wsUrl;
-    _headers = headers;
+
+  AudioStreamingService() {
+    _initPlayerListener();
   }
-  
-  /// Démarre une session audio avec Adha
+
+  void _initPlayerListener() {
+    _playerStateSubscription = _audioPlayer.playerStateStream.listen(
+      (playerState) {
+        if (playerState.processingState == ProcessingState.completed) {
+          _onChunkPlaybackComplete();
+        }
+      },
+      onError: (error) {
+        debugPrint('[AudioStreamingService] Player error: $error');
+        _onChunkPlaybackComplete();
+      },
+    );
+  }
+
+  /// Initialise une session audio (vérifie permission micro). N'ouvre AUCUNE
+  /// connexion réseau — l'envoi se fait via REST depuis le bloc et la
+  /// réception via Socket.IO globale.
   Future<void> startAudioSession({
     required String conversationId,
     Map<String, dynamic>? contextInfo,
   }) async {
-    if (_wsUrl == null) {
-      throw Exception('Service non configuré. Appelez configure() d\'abord.');
-    }
-    
     try {
-      _conversationId = conversationId;
       _updateConnectionState(AudioConnectionState.connecting);
-      
-      // Vérifier les permissions audio
+
       if (!await _audioRecorder.hasPermission()) {
         throw AudioPermissionException('Permission microphone refusée');
       }
-      
-      // Initialiser le stream controller pour l'audio
-      await _initializeAudioStream();
-      
-      // Établir la connexion WebSocket avec headers d'authentification
-      final uri = Uri.parse('$_wsUrl/audio-chat/$conversationId');
-      
-      _webSocketChannel = WebSocketChannel.connect(
-        uri,
-        protocols: ['audio-chat'],
-      );
-      
-      // Ajouter les headers d'authentification si disponibles
-      if (_headers != null) {
-        debugPrint('Connexion WebSocket avec authentification pour conversation: $_conversationId');
-        // Note: WebSocketChannel ne supporte pas directement les headers personnalisés
-        // Pour une implémentation complète, utilisez HttpClientRequest ou une autre méthode
-      }
-      
-      // Écouter les messages WebSocket
-      _webSocketChannel!.stream.listen(
-        _handleWebSocketMessage,
-        onError: _handleWebSocketError,
-        onDone: _handleWebSocketDone,
-      );
-      
-      // Envoyer les métadonnées de session
-      final sessionMetadata = {
-        'type': 'session_start',
-        'config': {
-          'sample_rate': sampleRate,
-          'channels': channels,
-          'bit_rate': bitRate,
-          'format': 'pcm16',
-        },
-        'context_info': contextInfo,
-        'timestamp': DateTime.now().toIso8601String(),
-      };
-      
-      _webSocketChannel!.sink.add(jsonEncode(sessionMetadata));
+
       _updateConnectionState(AudioConnectionState.connected);
-      
+      debugPrint(
+        '[AudioStreamingService] ✅ Session audio prête: $conversationId',
+      );
     } catch (e) {
       _updateConnectionState(AudioConnectionState.error);
       rethrow;
     }
   }
-  
-  /// Démarre l'enregistrement et l'envoi audio
+
+  // ==========================================================================
+  // ENREGISTREMENT + VAD
+  // ==========================================================================
+
   Future<void> startRecording() async {
     if (_currentState != AudioConnectionState.connected) {
-      throw Exception('Pas de connexion active');
+      throw Exception('Session audio non initialisée');
     }
-    
+
     try {
-      // Configuration de l'enregistrement
+      _recordedChunks.clear();
+      _speechStartTime = null;
+      _silenceTimer?.cancel();
+
       final config = RecordConfig(
-        encoder: AudioEncoder.wav,
+        encoder: AudioEncoder.pcm16bits,
         sampleRate: sampleRate,
         numChannels: channels,
-        bitRate: bitRate * 1000, // bitRate en bits/sec
+        bitRate: bitRate * 1000,
       );
-      
-      // Démarrer l'enregistrement avec stream
+
       final audioStream = await _audioRecorder.startStream(config);
-      
+
       _isRecordingActive = true;
       _isRecordingController.add(true);
-      
-      // Écouter le stream audio et l'envoyer via WebSocket
+
       _audioStreamSubscription = audioStream.listen(
         (audioData) {
-          _sendAudioData(audioData);
+          _recordedChunks.add(audioData);
           _calculateAndSendAudioLevel(audioData);
         },
         onError: (error) {
-          debugPrint('Erreur stream audio: $error');
+          debugPrint('[AudioStreamingService] Erreur stream audio: $error');
           stopRecording();
         },
       );
-      
     } catch (e) {
       _isRecordingActive = false;
       _isRecordingController.add(false);
       rethrow;
     }
   }
-  
-  /// Arrête l'enregistrement
-  Future<void> stopRecording() async {
-    if (!_isRecordingActive) return;
-    
+
+  Future<String?> stopRecordingAndGetBase64() async {
+    if (!_isRecordingActive) return null;
+
+    _silenceTimer?.cancel();
     await _audioStreamSubscription?.cancel();
     await _audioRecorder.stop();
-    
+
     _isRecordingActive = false;
     _isRecordingController.add(false);
-    
-    // Notifier la fin de l'enregistrement
-    _webSocketChannel?.sink.add(jsonEncode({
-      'type': 'recording_stopped',
-      'conversation_id': _conversationId,
-      'timestamp': DateTime.now().toIso8601String(),
-    }));
-  }
-  
-  /// Active/désactive le mode push-to-talk
-  Future<void> togglePushToTalk(bool enabled) async {
-    if (enabled && !_isRecordingActive) {
-      await startRecording();
-    } else if (!enabled && _isRecordingActive) {
-      await stopRecording();
+    _audioLevelController.add(0.0);
+
+    if (_recordedChunks.isEmpty) {
+      debugPrint('[AudioStreamingService] Aucune donnée audio enregistrée');
+      return null;
     }
-  }
-  
-  /// Interrompt Adha pendant qu'il parle
-  Future<void> interrupt() async {
-    if (_isPlayingActive) {
-      await _audioPlayer.stop();
-      _isPlayingActive = false;
-      _isPlayingController.add(false);
-      
-      // Vider le buffer audio
-      _audioBuffer.clear();
-      _audioStreamController?.close();
-      
-      // Notifier l'interruption au serveur
-      _webSocketChannel?.sink.add(jsonEncode({
-        'type': 'user_interrupt',
-        'conversation_id': _conversationId,
-        'timestamp': DateTime.now().toIso8601String(),
-      }));
+
+    final totalLength = _recordedChunks.fold<int>(
+      0,
+      (sum, chunk) => sum + chunk.length,
+    );
+    final combinedPcm = Uint8List(totalLength);
+    int offset = 0;
+    for (final chunk in _recordedChunks) {
+      combinedPcm.setRange(offset, offset + chunk.length, chunk);
+      offset += chunk.length;
     }
-  }
-  
-  /// Ajuste le volume de lecture
-  Future<void> setVolume(double volume) async {
-    await _audioPlayer.setVolume(volume.clamp(0.0, 1.0));
-  }
-  
-  /// Termine la session audio
-  Future<void> endSession() async {
-    await stopRecording();
-    
-    if (_isPlayingActive) {
-      await _audioPlayer.stop();
-      _isPlayingActive = false;
-      _isPlayingController.add(false);
+    _recordedChunks.clear();
+
+    // Minimum ~0.5s d'audio
+    if (combinedPcm.length < 16000) {
+      debugPrint(
+        '[AudioStreamingService] Trop court (${combinedPcm.length} bytes)',
+      );
+      return null;
     }
-    
-    // Nettoyer les ressources audio
-    await _cleanupAudioResources();
-    
-    // Fermer la connexion WebSocket
-    await _webSocketChannel?.sink.close(status.goingAway);
-    _webSocketChannel = null;
-    
-    _updateConnectionState(AudioConnectionState.disconnected);
-    _conversationId = null;
+
+    final wavData = _createWavFile(combinedPcm);
+    final base64Audio = base64Encode(wavData);
+
+    debugPrint(
+      '[AudioStreamingService] Audio: ${combinedPcm.length}B PCM '
+      '→ ${wavData.length}B WAV → ${base64Audio.length} chars b64',
+    );
+
+    return base64Audio;
   }
-  
-  /// Gère les messages reçus via WebSocket
-  void _handleWebSocketMessage(dynamic message) {
-    try {
-      if (message is String) {
-        // Message JSON
-        final Map<String, dynamic> data = jsonDecode(message);
-        final type = data['type'] as String?;
-        
-        switch (type) {
-          case 'audio_start':
-            _startAudioPlayback();
-            break;
-            
-          case 'audio_end':
-            _stopAudioPlayback();
-            break;
-            
-          case 'session_ready':
-            _updateConnectionState(AudioConnectionState.ready);
-            break;
-            
-          case 'error':
-            final errorMsg = data['message'] as String? ?? 'Erreur inconnue';
-            _updateConnectionState(AudioConnectionState.error);
-            throw AudioStreamingException(errorMsg);
-        }
-      } else if (message is List<int>) {
-        // Données audio binaires reçues d'Adha
-        _handleAudioData(Uint8List.fromList(message));
-      }
-    } catch (e) {
-      debugPrint('Erreur traitement message WebSocket: $e');
-    }
+
+  Future<void> stopRecording() async {
+    if (!_isRecordingActive) return;
+
+    _silenceTimer?.cancel();
+    await _audioStreamSubscription?.cancel();
+    await _audioRecorder.stop();
+
+    _isRecordingActive = false;
+    _isRecordingController.add(false);
+    _audioLevelController.add(0.0);
+    _recordedChunks.clear();
   }
-  
-  /// Envoie les données audio via WebSocket  
-  void _sendAudioData(Uint8List audioData) {
-    if (_webSocketChannel != null && _currentState == AudioConnectionState.connected) {
-      // Envoyer directement les données binaires
-      _webSocketChannel!.sink.add(audioData);
-    }
-  }
-  
-  /// Initialise le stream audio pour la lecture
-  Future<void> _initializeAudioStream() async {
-    try {
-      _audioStreamController = StreamController<List<int>>();
-      
-      // Le player sera initialisé lors de la première lecture
-      debugPrint('Stream audio initialisé');
-      
-    } catch (e) {
-      debugPrint('Erreur initialisation stream audio: $e');
-      throw AudioStreamingException('Impossible d\'initialiser le stream audio');
-    }
-  }
-  
-  /// Démarre la lecture audio
-  void _startAudioPlayback() {
-    _isPlayingActive = true;
-    _isPlayingController.add(true);
-    _isBuffering = true;
-    
-    // Buffer initial avant de commencer la lecture
-    _bufferTimer = Timer(const Duration(milliseconds: 100), () {
-      _isBuffering = false;
-      _processAudioBuffer();
-    });
-  }
-  
-  /// Arrête la lecture audio
-  void _stopAudioPlayback() {
-    _isPlayingActive = false;
-    _isPlayingController.add(false);
-    _bufferTimer?.cancel();
-    _audioBuffer.clear();
-  }
-  
-  /// Gère les données audio reçues
-  void _handleAudioData(Uint8List audioData) {
-    if (_isPlayingActive) {
-      _audioBuffer.add(audioData);
-      
-      if (!_isBuffering) {
-        _processAudioBuffer();
-      }
-    }
-  }
-  
-  /// Processus le buffer audio et joue les données
-  Future<void> _processAudioBuffer() async {
-    if (_audioBuffer.isEmpty || !_isPlayingActive) return;
-    
-    try {
-      // Combiner tous les chunks du buffer
-      final totalLength = _audioBuffer.fold<int>(0, (sum, chunk) => sum + chunk.length);
-      final combinedData = Uint8List(totalLength);
-      
-      int offset = 0;
-      for (final chunk in _audioBuffer) {
-        combinedData.setRange(offset, offset + chunk.length, chunk);
-        offset += chunk.length;
-      }
-      
-      // Vider le buffer
-      _audioBuffer.clear();
-      
-      // Convertir PCM en WAV et jouer
-      await _playPCMData(combinedData);
-      
-    } catch (e) {
-      debugPrint('Erreur traitement buffer audio: $e');
-    }
-  }
-  
+
   // ==========================================================================
-  // TTS PLAYBACK (v3.0) — Lecture des chunks audio MP3 base64 du backend
+  // AUDIO QUEUE — Lecture séquentielle style OpenAI delta chunks
   // ==========================================================================
 
-  /// Queue FIFO pour la lecture séquentielle des chunks TTS reçus via
-  /// `adha.stream.audio_chunk`. Chaque entrée est une phrase synthétisée
-  /// par OpenAI tts-1 côté Python.
-  final List<_TtsQueueItem> _ttsQueue = [];
-  bool _isProcessingTtsQueue = false;
-  StreamSubscription<PlayerState>? _ttsPlayerStateSubscription;
-  bool _ttsListenerInitialized = false;
-
-  /// Ajoute un chunk audio (MP3 base64) à la queue et démarre la lecture
-  /// si idle. Idempotent ; sûr d'appeler depuis n'importe quel listener.
+  /// Ajoute un chunk audio à la queue FIFO et démarre la lecture si idle.
   ///
-  /// Garde-fou : un base64 vide est ignoré (cas où le backend envoie
-  /// un audio_chunk avec metadata mais payload vide).
+  /// Garde-fou défensif : rejette un base64 vide (cas backend qui envoie un
+  /// audio_chunk sans payload, ou une erreur de parsing côté Socket.IO).
   Future<void> playBase64Audio(String base64Audio, String format) async {
     if (base64Audio.isEmpty) {
       debugPrint('[AudioStreamingService] ⚠️ playBase64Audio: base64 vide, skip');
       return;
     }
 
-    // Initialiser le listener de fin de lecture une seule fois.
-    if (!_ttsListenerInitialized) {
-      _ttsListenerInitialized = true;
-      _ttsPlayerStateSubscription = _audioPlayer.playerStateStream.listen(
-        (playerState) {
-          if (playerState.processingState == ProcessingState.completed) {
-            _onTtsChunkPlaybackComplete();
-          }
-        },
-        onError: (error) {
-          debugPrint('[AudioStreamingService] TTS player error: $error');
-          _onTtsChunkPlaybackComplete();
-        },
-      );
-    }
-
-    _ttsQueue.add(_TtsQueueItem(base64Audio: base64Audio, format: format));
+    _audioQueue.add(_AudioQueueItem(base64Audio: base64Audio, format: format));
     debugPrint(
-      '[AudioStreamingService] 📥 TTS queue: ${_ttsQueue.length} chunks '
-      '(format=$format, b64Len=${base64Audio.length})',
+      '[AudioStreamingService] 📥 Queue: ${_audioQueue.length} chunks (format=$format, b64Len=${base64Audio.length})',
     );
 
-    if (!_isProcessingTtsQueue) {
-      _processTtsQueue();
+    if (!_isProcessingQueue) {
+      _processQueue();
     }
   }
 
-  Future<void> _processTtsQueue() async {
-    if (_isProcessingTtsQueue || _ttsQueue.isEmpty) return;
-    _isProcessingTtsQueue = true;
+  Future<void> _processQueue() async {
+    if (_isProcessingQueue || _audioQueue.isEmpty) return;
+    _isProcessingQueue = true;
 
     if (!_isPlayingActive) {
       _isPlayingActive = true;
       _isPlayingController.add(true);
+      _startPlaybackLevel();
     }
 
-    final item = _ttsQueue.removeAt(0);
+    final item = _audioQueue.removeAt(0);
+
     try {
       final audioBytes = base64Decode(item.base64Audio);
       final tempDir = await getTemporaryDirectory();
       final ext = item.format == 'wav' ? 'wav' : 'mp3';
       final tempFile = File(
-        '${tempDir.path}/adha_tts_${DateTime.now().millisecondsSinceEpoch}.$ext',
+        '${tempDir.path}/tts_${DateTime.now().millisecondsSinceEpoch}.$ext',
       );
       await tempFile.writeAsBytes(audioBytes);
 
       await _audioPlayer.setFilePath(tempFile.path);
       await _audioPlayer.play();
-      // Le cleanup est implicite via la rotation des fichiers temp et le
-      // listener completion qui déclenche le chunk suivant.
     } catch (e) {
-      debugPrint('[AudioStreamingService] Erreur lecture TTS chunk: $e');
-      _onTtsChunkPlaybackComplete();
+      debugPrint('[AudioStreamingService] Erreur lecture chunk: $e');
+      _onChunkPlaybackComplete();
     }
   }
 
-  void _onTtsChunkPlaybackComplete() {
-    _isProcessingTtsQueue = false;
-    if (_ttsQueue.isNotEmpty) {
-      _processTtsQueue();
+  void _onChunkPlaybackComplete() {
+    _isProcessingQueue = false;
+    _cleanupOldTempFiles();
+
+    if (_audioQueue.isNotEmpty) {
+      _processQueue();
     } else {
-      if (_isPlayingActive) {
-        _isPlayingActive = false;
-        _isPlayingController.add(false);
-      }
-      debugPrint('[AudioStreamingService] ✅ TTS queue terminée');
-    }
-  }
-
-  /// Interrompt la lecture TTS et vide la queue (barge-in style Gemini).
-  Future<void> interruptTtsPlayback() async {
-    _ttsQueue.clear();
-    if (_isPlayingActive) {
-      await _audioPlayer.stop();
+      _stopPlaybackLevel();
       _isPlayingActive = false;
       _isPlayingController.add(false);
-      _isProcessingTtsQueue = false;
+      _playbackCompleteController.add(null);
+      debugPrint('[AudioStreamingService] ✅ Queue audio terminée');
     }
-    debugPrint('[AudioStreamingService] ⛔ TTS interrompu, queue vidée');
   }
 
-  /// Convertit les données PCM en format WAV et les joue
-  Future<void> _playPCMData(Uint8List pcmData) async {
-    try {
-      // Créer un fichier WAV temporaire
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/temp_audio_${DateTime.now().millisecondsSinceEpoch}.wav');
-      
-      // Générer l'en-tête WAV
-      final wavData = _createWavFile(pcmData);
-      await tempFile.writeAsBytes(wavData);
-      
-      // Jouer le fichier temporaire
-      await _audioPlayer.setFilePath(tempFile.path);
-      await _audioPlayer.play();
-      
-      // Nettoyer le fichier temporaire après lecture
-      _audioPlayer.positionStream.listen((position) {
-        if (position == _audioPlayer.duration) {
-          tempFile.deleteSync();
-        }
-      });
-      
-    } catch (e) {
-      debugPrint('Erreur lecture données PCM: $e');
+  /// Barge-in : interrompt la lecture et vide la queue (style Gemini/OpenAI)
+  Future<void> interrupt() async {
+    _audioQueue.clear();
+
+    if (_isPlayingActive) {
+      await _audioPlayer.stop();
+      _stopPlaybackLevel();
+      _isPlayingActive = false;
+      _isPlayingController.add(false);
+      _isProcessingQueue = false;
     }
+    debugPrint('[AudioStreamingService] ⛔ Barge-in: queue vidée + stop');
   }
-  
-  /// Crée un fichier WAV à partir de données PCM
-  Uint8List _createWavFile(Uint8List pcmData) {
-    final int dataSize = pcmData.length;
-    final int fileSize = 36 + dataSize;
-    
-    final ByteData header = ByteData(44);
-    
-    // RIFF header
-    header.setUint32(0, 0x52494646, Endian.big); // "RIFF"
-    header.setUint32(4, fileSize, Endian.little);
-    header.setUint32(8, 0x57415645, Endian.big); // "WAVE"
-    
-    // Format chunk
-    header.setUint32(12, 0x666d7420, Endian.big); // "fmt "
-    header.setUint32(16, 16, Endian.little); // Chunk size
-    header.setUint16(20, 1, Endian.little); // Audio format (PCM)
-    header.setUint16(22, channels, Endian.little); // Number of channels
-    header.setUint32(24, sampleRate, Endian.little); // Sample rate
-    header.setUint32(28, sampleRate * channels * 2, Endian.little); // Byte rate
-    header.setUint16(32, channels * 2, Endian.little); // Block align
-    header.setUint16(34, 16, Endian.little); // Bits per sample
-    
-    // Data chunk
-    header.setUint32(36, 0x64617461, Endian.big); // "data"
-    header.setUint32(40, dataSize, Endian.little);
-    
-    // Combiner l'en-tête et les données
-    final result = Uint8List(44 + dataSize);
-    result.setRange(0, 44, header.buffer.asUint8List());
-    result.setRange(44, 44 + dataSize, pcmData);
-    
-    return result;
+
+  Future<void> setVolume(double volume) async {
+    await _audioPlayer.setVolume(volume.clamp(0.0, 1.0));
   }
-  
-  /// Nettoie les ressources audio
-  Future<void> _cleanupAudioResources() async {
-    _bufferTimer?.cancel();
-    _audioBuffer.clear();
-    await _audioStreamController?.close();
-    _audioStreamController = null;
-    
-    // Nettoyer les fichiers temporaires
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final tempFiles = tempDir.listSync().where((file) => 
-        file.path.contains('temp_audio_') && file.path.endsWith('.wav'));
-      
-      for (final file in tempFiles) {
-        try {
-          file.deleteSync();
-        } catch (e) {
-          debugPrint('Erreur suppression fichier temporaire: $e');
-        }
-      }
-    } catch (e) {
-      debugPrint('Erreur nettoyage fichiers temporaires: $e');
-    }
+
+  // ==========================================================================
+  // SYNTHETIC PLAYBACK LEVEL (ondes réactives pendant TTS)
+  // ==========================================================================
+
+  void _startPlaybackLevel() {
+    _playbackLevelTimer?.cancel();
+    _playbackPhase = 0.0;
+    final random = Random();
+    _playbackLevelTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      _playbackPhase += 0.05;
+      final base =
+          0.3 +
+          0.15 * sin(_playbackPhase * 2 * pi) +
+          0.1 * sin(_playbackPhase * 5 * pi);
+      final jitter = (random.nextDouble() - 0.5) * 0.15;
+      _audioLevelController.add((base + jitter).clamp(0.1, 0.85));
+    });
   }
-  
-  /// Calcule et envoie le niveau audio pour la visualisation
+
+  void _stopPlaybackLevel() {
+    _playbackLevelTimer?.cancel();
+    _playbackLevelTimer = null;
+    _playbackPhase = 0.0;
+    _audioLevelController.add(0.0);
+  }
+
+  // ==========================================================================
+  // SESSION
+  // ==========================================================================
+
+  Future<void> endSession() async {
+    await stopRecording();
+    await interrupt();
+    await _cleanupAudioResources();
+    _updateConnectionState(AudioConnectionState.disconnected);
+  }
+
+  // ==========================================================================
+  // VAD — Voice Activity Detection client-side
+  // ==========================================================================
+
   void _calculateAndSendAudioLevel(Uint8List audioData) {
-    // Calcul simple du niveau audio (RMS)
     double sum = 0;
     for (int i = 0; i < audioData.length; i += 2) {
       if (i + 1 < audioData.length) {
@@ -553,68 +355,159 @@ class AudioStreamingService {
         sum += sample * sample;
       }
     }
-    
+
     final rms = sum > 0 ? sqrt(sum / (audioData.length / 2)) : 0.0;
     final normalizedLevel = (rms / 32768.0).clamp(0.0, 1.0);
-    
+
     _audioLevelController.add(normalizedLevel);
+
+    if (!vadEnabled || !_isRecordingActive) return;
+
+    if (normalizedLevel > vadSilenceThreshold) {
+      _speechStartTime ??= DateTime.now();
+      _silenceTimer?.cancel();
+      _silenceTimer = null;
+    } else {
+      if (_speechStartTime != null && _silenceTimer == null) {
+        final speechDurationAtSilence =
+            DateTime.now().difference(_speechStartTime!).inMilliseconds;
+        _silenceTimer = Timer(
+          const Duration(milliseconds: vadSilenceDurationMs),
+          () {
+            if (_isRecordingActive &&
+                speechDurationAtSilence > vadSpeechMinMs) {
+              debugPrint(
+                '[AudioStreamingService] 🔇 VAD: silence détecté après '
+                '${speechDurationAtSilence}ms de parole → auto-stop',
+              );
+              _silenceDetectedController.add(null);
+            } else {
+              debugPrint(
+                '[AudioStreamingService] 🔇 VAD: bruit court ignoré '
+                '(${speechDurationAtSilence}ms < ${vadSpeechMinMs}ms)',
+              );
+            }
+            _speechStartTime = null;
+          },
+        );
+      }
+    }
   }
-  
-  void _handleWebSocketError(error) {
-    debugPrint('Erreur WebSocket: $error');
-    _updateConnectionState(AudioConnectionState.error);
+
+  // ==========================================================================
+  // UTILITAIRES
+  // ==========================================================================
+
+  Uint8List _createWavFile(Uint8List pcmData) {
+    final int dataSize = pcmData.length;
+    final int fileSize = 36 + dataSize;
+
+    final ByteData header = ByteData(44);
+
+    header.setUint32(0, 0x52494646, Endian.big); // "RIFF"
+    header.setUint32(4, fileSize, Endian.little);
+    header.setUint32(8, 0x57415645, Endian.big); // "WAVE"
+
+    header.setUint32(12, 0x666d7420, Endian.big); // "fmt "
+    header.setUint32(16, 16, Endian.little);
+    header.setUint16(20, 1, Endian.little); // PCM
+    header.setUint16(22, channels, Endian.little);
+    header.setUint32(24, sampleRate, Endian.little);
+    header.setUint32(28, sampleRate * channels * 2, Endian.little);
+    header.setUint16(32, channels * 2, Endian.little);
+    header.setUint16(34, 16, Endian.little);
+
+    header.setUint32(36, 0x64617461, Endian.big); // "data"
+    header.setUint32(40, dataSize, Endian.little);
+
+    final result = Uint8List(44 + dataSize);
+    result.setRange(0, 44, header.buffer.asUint8List());
+    result.setRange(44, 44 + dataSize, pcmData);
+
+    return result;
   }
-  
-  void _handleWebSocketDone() {
-    debugPrint('Connexion WebSocket fermée');
-    _updateConnectionState(AudioConnectionState.disconnected);
+
+  void _cleanupOldTempFiles() {
+    getTemporaryDirectory().then((tempDir) {
+      try {
+        final now = DateTime.now();
+        final tempFiles = tempDir.listSync().where(
+          (file) =>
+              file.path.contains('tts_') &&
+              (file.path.endsWith('.wav') || file.path.endsWith('.mp3')),
+        );
+        for (final file in tempFiles) {
+          try {
+            final stat = file.statSync();
+            if (now.difference(stat.modified).inSeconds > 30) {
+              file.deleteSync();
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+    });
   }
-  
+
+  Future<void> _cleanupAudioResources() async {
+    _recordedChunks.clear();
+    _audioQueue.clear();
+    _silenceTimer?.cancel();
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final tempFiles = tempDir.listSync().where(
+        (file) =>
+            (file.path.contains('temp_audio_') || file.path.contains('tts_')) &&
+            (file.path.endsWith('.wav') || file.path.endsWith('.mp3')),
+      );
+      for (final file in tempFiles) {
+        try {
+          file.deleteSync();
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
   void _updateConnectionState(AudioConnectionState newState) {
     _currentState = newState;
     _connectionStateController.add(newState);
   }
-  
-  /// Nettoie les ressources
+
   void dispose() {
+    _playbackLevelTimer?.cancel();
+    _silenceTimer?.cancel();
     _audioStreamSubscription?.cancel();
+    _playerStateSubscription?.cancel();
     _audioRecorder.dispose();
     _audioPlayer.dispose();
-    _webSocketChannel?.sink.close();
-    
+
     _connectionStateController.close();
     _audioLevelController.close();
     _isRecordingController.close();
     _isPlayingController.close();
+    _silenceDetectedController.close();
+    _playbackCompleteController.close();
   }
 }
 
-/// États de connexion audio
-enum AudioConnectionState {
-  disconnected,
-  connecting,
-  connected,
-  ready,
-  error,
+class _AudioQueueItem {
+  final String base64Audio;
+  final String format;
+  _AudioQueueItem({required this.base64Audio, required this.format});
 }
+
+/// États de connexion audio
+enum AudioConnectionState { disconnected, connecting, connected, ready, error }
 
 /// Exceptions spécifiques au streaming audio
 class AudioStreamingException implements Exception {
   final String message;
   AudioStreamingException(this.message);
-  
+
   @override
   String toString() => 'AudioStreamingException: $message';
 }
 
 class AudioPermissionException extends AudioStreamingException {
   AudioPermissionException(super.message);
-}
-
-/// Item de queue pour la lecture séquentielle des chunks TTS (v3.0).
-/// Mode `Comm_Desk` ne stocke pas de durée — on attend ProcessingState.completed.
-class _TtsQueueItem {
-  final String base64Audio;
-  final String format;
-  _TtsQueueItem({required this.base64Audio, required this.format});
 }

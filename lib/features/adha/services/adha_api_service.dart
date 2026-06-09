@@ -163,6 +163,48 @@ class AdhaApiService {
     return response as Map<String, dynamic>;
   }
 
+  /// Envoie un message audio à ADHA (mode streaming audio duplex v2.6.0)
+  ///
+  /// Endpoint: POST /api/v1/commerce/adha/audio/stream
+  ///
+  /// L'audio est envoyé en base64, transcrit côté serveur, traité par l'IA,
+  /// et la réponse (texte + audio TTS) arrive via Socket.IO.
+  /// CRITIQUE : passer `voice` (ex: 'nova') pour activer le TTS, sinon le
+  /// backend reste en mode texte-only et n'émet aucun audio_chunk.
+  Future<Map<String, dynamic>> sendAudioStreamingMessage({
+    required String audioBase64,
+    required String filename,
+    String? conversationId,
+    String? voice,
+    String? language,
+    String? chatModel,
+    AdhaContextInfo? contextInfo,
+    String? companyId,
+    String? userId,
+  }) async {
+    final body = {
+      'audio_base64': audioBase64,
+      'filename': filename,
+      if (conversationId != null) 'conversationId': conversationId,
+      if (voice != null) 'voice': voice,
+      if (language != null) 'language': language,
+      if (chatModel != null) 'chat_model': chatModel,
+      'timestamp': DateTime.now().toIso8601String(),
+      if (contextInfo != null) 'contextInfo': contextInfo.toJson(),
+      if (companyId != null) 'companyId': companyId,
+      if (userId != null) 'userId': userId,
+    };
+
+    final response = await _apiClient.post(
+      'adha/audio/stream',
+      body: body,
+      requiresAuth: true,
+      customTimeoutMs: 30000,
+      bypassCircuitBreaker: true,
+    );
+    return response as Map<String, dynamic>;
+  }
+
   /// Récupère la liste des conversations
   ///
   /// Endpoint: GET /api/v1/commerce/adha/conversations
