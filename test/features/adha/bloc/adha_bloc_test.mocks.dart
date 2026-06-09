@@ -294,6 +294,72 @@ class MockAdhaRepository extends _i1.Mock implements _i4.AdhaRepository {
               )
             )),
           ) as _i5.Future<({String conversationId, String requestMessageId})>);
+
+  @override
+  _i5.Future<({String conversationId, String requestMessageId})>
+      sendAudioStreamingMessage({
+    String? conversationId,
+    required String? audioBase64,
+    String? filename = 'recording.wav',
+    String? voice,
+    String? language,
+    _i8.AdhaContextInfo? contextInfo,
+    String? companyId,
+    String? userId,
+  }) =>
+          (super.noSuchMethod(
+            Invocation.method(
+              #sendAudioStreamingMessage,
+              [],
+              {
+                #conversationId: conversationId,
+                #audioBase64: audioBase64,
+                #filename: filename,
+                #voice: voice,
+                #language: language,
+                #contextInfo: contextInfo,
+                #companyId: companyId,
+                #userId: userId,
+              },
+            ),
+            returnValue: _i5.Future<
+                ({String conversationId, String requestMessageId})>.value((
+              conversationId: _i9.dummyValue<String>(
+                this,
+                Invocation.method(
+                  #sendAudioStreamingMessage,
+                  [],
+                  {
+                    #conversationId: conversationId,
+                    #audioBase64: audioBase64,
+                    #filename: filename,
+                    #voice: voice,
+                    #language: language,
+                    #contextInfo: contextInfo,
+                    #companyId: companyId,
+                    #userId: userId,
+                  },
+                ),
+              ),
+              requestMessageId: _i9.dummyValue<String>(
+                this,
+                Invocation.method(
+                  #sendAudioStreamingMessage,
+                  [],
+                  {
+                    #conversationId: conversationId,
+                    #audioBase64: audioBase64,
+                    #filename: filename,
+                    #voice: voice,
+                    #language: language,
+                    #contextInfo: contextInfo,
+                    #companyId: companyId,
+                    #userId: userId,
+                  },
+                ),
+              )
+            )),
+          ) as _i5.Future<({String conversationId, String requestMessageId})>);
 }
 
 /// A class which mocks [AuthRepository].
