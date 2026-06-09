@@ -25,6 +25,9 @@ class _AudioChatWidgetState extends State<AudioChatWidget>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
+  AdhaBloc? _adhaBloc;
+  bool _sessionStarted = false;
+
   @override
   void initState() {
     super.initState();
@@ -46,7 +49,23 @@ class _AudioChatWidgetState extends State<AudioChatWidget>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _adhaBloc = context.read<AdhaBloc>();
+    if (!_sessionStarted) {
+      _sessionStarted = true;
+      // Démarrer immédiatement la session audio. Sans ça, le widget reste
+      // en "Mode audio inactif" et taper sur le mic émet AdhaError(
+      // "Session audio non active") qui s'affiche comme "Session expirée".
+      // Le bloc handler crée une conversation auto si nécessaire.
+      _adhaBloc!.add(const StartAudioSession());
+    }
+  }
+
+  @override
   void dispose() {
+    // Fermer la session audio quand l'écran se ferme (Navigator.pop)
+    _adhaBloc?.add(const EndAudioSession());
     _waveAnimationController.dispose();
     _pulseController.dispose();
     super.dispose();

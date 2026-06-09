@@ -875,13 +875,24 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     StartAudioSession event,
     Emitter<AdhaState> emit,
   ) async {
+    // Approche Gemini : si on ouvre le mode audio depuis l'écran d'accueil
+    // (état AdhaInitial), on crée une conversation à la volée plutôt que
+    // de bloquer l'utilisateur. Le titre est temporaire et sera ajusté au
+    // premier message.
     if (state is! AdhaConversationActive) {
-      emit(
-        const AdhaError(
-          "Impossible de démarrer une session audio sans conversation active",
-        ),
+      debugPrint(
+        '[AdhaBloc] 🎙️ Aucune conversation active — création auto pour audio',
       );
-      return;
+      final newConversationId = _uuid.v4();
+      final newConversation = AdhaConversation(
+        id: newConversationId,
+        title: 'Conversation audio',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        messages: [],
+      );
+      await adhaRepository.saveConversation(newConversation);
+      emit(AdhaConversationActive(conversation: newConversation));
     }
 
     final currentState = state as AdhaConversationActive;
