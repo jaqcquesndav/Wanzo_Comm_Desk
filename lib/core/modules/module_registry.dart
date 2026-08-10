@@ -129,7 +129,7 @@ class ModuleRegistry {
       order: 1,
       inSidebar: true,
       sidebarOrder: 1,
-      available: false,
+      available: true,
     ),
     AppModule(
       id: 'restaurant_tables',
@@ -177,11 +177,37 @@ class ModuleRegistry {
       all.where((m) => m.inSidebar && m.visibleFor(mode, role)).toList()
         ..sort((a, b) => a.sidebarOrder.compareTo(b.sidebarOrder));
 
-  /// Items de la bottom-nav (layout mobile du desktop), max 5, triés.
+  /// Items de la bottom-nav (layout mobile du desktop), max 5.
+  ///
+  /// Comme sur mobile, les modules SPÉCIALISÉS d'un métier (non-`retail`, ex.
+  /// Commandes en restaurant) ne sont jamais évincés par la troncature ; les
+  /// communs remplissent le reste. En `retail` le résultat est identique à
+  /// l'historique (aucun module spécialisé).
   static List<AppModule> bottomNav(ActivityMode mode, String? role) {
-    final items =
-        all.where((m) => m.primary && m.visibleFor(mode, role)).toList()
+    const maxSlots = 5;
+    final visible =
+        all.where((m) => m.primary && m.visibleFor(mode, role)).toList();
+    final specialized =
+        visible.where((m) => !m.modes.contains(ActivityMode.retail)).toList()
           ..sort((a, b) => a.order.compareTo(b.order));
-    return items.length > 5 ? items.sublist(0, 5) : items;
+    final common =
+        visible.where((m) => m.modes.contains(ActivityMode.retail)).toList()
+          ..sort((a, b) => a.order.compareTo(b.order));
+    final kept = <AppModule>[
+      ...specialized.take(maxSlots),
+      ...common.take((maxSlots - specialized.length).clamp(0, maxSlots)),
+    ]..sort((a, b) {
+        final byOrder = a.order.compareTo(b.order);
+        if (byOrder != 0) return byOrder;
+        final aSpec = !a.modes.contains(ActivityMode.retail);
+        final bSpec = !b.modes.contains(ActivityMode.retail);
+        if (aSpec == bSpec) return 0;
+        return aSpec ? -1 : 1;
+      });
+    return kept;
   }
+
+  /// Index d'une route dans la sidebar (pour `currentIndex` du scaffold desktop).
+  static int indexOfSidebarRoute(ActivityMode mode, String? role, String route) =>
+      sidebar(mode, role).indexWhere((m) => m.route == route);
 }

@@ -34,12 +34,21 @@ import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/sales/screens/sale_details_screen.dart';
 import 'package:wanzo/features/expenses/screens/expense_detail_screen.dart';
 import '../../features/security/screens/security_settings_screen.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../features/restaurant/cubit/restaurant_orders_cubit.dart';
+import '../../features/restaurant/repositories/restaurant_order_repository.dart';
+import '../../features/restaurant/screens/restaurant_pos_screen.dart';
 
 /// Configuration des routes de l\'application
 class AppRouter {
   final AuthBloc authBloc;
 
   AppRouter({required this.authBloc});
+
+  /// Cubit des commandes restaurant : instance unique partagée par le POS via
+  /// un ShellRoute. Chargée à la première utilisation (mode restaurant).
+  late final RestaurantOrdersCubit _restaurantOrdersCubit =
+      RestaurantOrdersCubit(RestaurantOrderRepository())..load();
 
   late final GoRouter router = GoRouter(
     debugLogDiagnostics: true,
@@ -117,6 +126,20 @@ class AppRouter {
     },
     routes: [
       GoRoute(path: '/', builder: (context, state) => const SplashScreen()),
+
+      // ── Mode restaurant : POS 3 colonnes, cubit partagé ────────────────
+      ShellRoute(
+        builder: (context, state, child) => BlocProvider.value(
+          value: _restaurantOrdersCubit,
+          child: child,
+        ),
+        routes: [
+          GoRoute(
+            path: '/restaurant/orders',
+            builder: (context, state) => const RestaurantPosScreen(),
+          ),
+        ],
+      ),
       GoRoute(
         path: '/onboarding',
         builder: (context, state) => const OnboardingScreen(),
