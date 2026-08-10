@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'wanzo_app_bar.dart';
 import 'wanzo_bottom_navigation_bar.dart';
 import '../platform/platform_service.dart';
+import '../modules/module_registry.dart';
+import '../services/business_context_service.dart';
 import '../widgets/desktop/adaptive_scaffold.dart';
 
 /// Structure de base pour les écrans principaux de l'application
@@ -39,90 +41,34 @@ class WanzoScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Items de navigation utilisés pour mobile et desktop
+    // Navigation DÉRIVÉE du registre de modules (source unique), filtrée par
+    // mode d'activité + rôle. En mode `retail` (défaut) ces listes reproduisent
+    // exactement la navigation historique (mêmes items, même ordre) → aucun
+    // changement visuel. Ajouter un onglet = éditer ModuleRegistry.
+    final ctx = BusinessContextService();
+    final mode = ctx.activityMode;
+    final role = ctx.currentContext?.userRole;
+
     final List<BottomNavItem> mobileNavItems = [
-      BottomNavItem(
-        icon: Icons.dashboard,
-        activeIcon: Icons.dashboard_outlined,
-        label: 'Tableau de bord',
-        route: '/dashboard',
-      ),
-      BottomNavItem(
-        icon: Icons.swap_horiz,
-        activeIcon: Icons.swap_horiz_outlined,
-        label: 'Opérations',
-        route: '/operations',
-      ),
-      BottomNavItem(
-        icon: Icons.inventory,
-        activeIcon: Icons.inventory_outlined,
-        label: 'Stock',
-        route: '/inventory',
-      ),
-      BottomNavItem(
-        icon: Icons.groups,
-        activeIcon: Icons.groups_outlined,
-        label: 'Contacts',
-        route: '/contacts',
-      ),
-      BottomNavItem(
-        icon: Icons.smart_toy,
-        activeIcon: Icons.smart_toy_outlined,
-        label: 'Adha',
-        route: '/adha',
-      ),
+      for (final m in ModuleRegistry.bottomNav(mode, role))
+        BottomNavItem(
+          icon: m.icon,
+          activeIcon: m.activeIcon,
+          label: m.label,
+          route: m.route,
+        ),
     ];
 
-    // Items de navigation pour desktop (avec plus d'options)
-    // Organisation: Dashboard, Ventes, Dépenses, Stock, Contacts, Adha, Paramètres
     final List<SidebarNavItem> desktopNavItems = [
-      const SidebarNavItem(
-        icon: Icons.dashboard_outlined,
-        activeIcon: Icons.dashboard,
-        label: 'Tableau de bord',
-        route: '/dashboard',
-      ),
-      const SidebarNavItem(
-        icon: Icons.point_of_sale_outlined,
-        activeIcon: Icons.point_of_sale,
-        label:
-            'Revenus', // Terminologie comptable : ventes = revenus / chiffre d'affaires
-        route: '/sales', // Route directe vers la page des revenus
-      ),
-      const SidebarNavItem(
-        icon: Icons.receipt_long_outlined,
-        activeIcon: Icons.receipt_long,
-        label: 'Charges', // Terminologie comptable : dépenses = charges
-        route: '/expenses', // Route directe vers la page des charges
-      ),
-      const SidebarNavItem(
-        icon: Icons.inventory_2_outlined,
-        activeIcon: Icons.inventory_2,
-        label: 'Stock',
-        route: '/inventory',
-      ),
-      const SidebarNavItem(
-        icon: Icons.groups_outlined,
-        activeIcon: Icons.groups,
-        label: 'Contacts',
-        route: '/contacts',
-        isDividerBefore: true,
-      ),
-      const SidebarNavItem(
-        icon: Icons.chat_bubble_outline, // Icône de chat pour Adha
-        activeIcon: Icons.chat_bubble,
-        label: 'Adha IA',
-        route: '/adha',
-        isDividerBefore: true,
-        isAdhaPanel: true, // Marque comme panneau Adha
-      ),
-      const SidebarNavItem(
-        icon: Icons.settings_outlined,
-        activeIcon: Icons.settings,
-        label: 'Paramètres',
-        route: '/settings',
-        isDividerBefore: true,
-      ),
+      for (final m in ModuleRegistry.sidebar(mode, role))
+        SidebarNavItem(
+          icon: m.icon,
+          activeIcon: m.activeIcon,
+          label: m.label,
+          route: m.route,
+          isDividerBefore: m.dividerBefore,
+          isAdhaPanel: m.isAdhaPanel,
+        ),
     ];
 
     // Utiliser LayoutBuilder pour détecter la taille de l'écran
@@ -162,25 +108,8 @@ class WanzoScaffold extends StatelessWidget {
                     items: mobileNavItems,
                     onTap: (index) {
                       if (index == currentIndex) return;
-                      switch (index) {
-                        case 0:
-                          context.go('/dashboard');
-                          break;
-                        case 1:
-                          context.go('/operations');
-                          break;
-                        case 2:
-                          context.go('/inventory');
-                          break;
-                        case 3:
-                          context.go('/contacts');
-                          break;
-                        case 4:
-                          context.go('/adha');
-                          break;
-                        default:
-                          context.go('/dashboard');
-                      }
+                      if (index < 0 || index >= mobileNavItems.length) return;
+                      context.go(mobileNavItems[index].route);
                     },
                   )
                   : null,
