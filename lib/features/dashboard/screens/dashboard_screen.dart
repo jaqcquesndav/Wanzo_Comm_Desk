@@ -743,7 +743,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             title: 'Revenus (USD)', // Terminologie comptable
             value: formatCurrency(kpiData.salesTodayUsd, 'USD'),
             icon: Icons.trending_up,
-            color: Colors.blue,
+            color: Colors.green,
             l10n: l10n,
             subtitle: 'Chiffre d\'affaires',
             isCompact: availableWidth < mobileBreakpoint,
@@ -765,7 +765,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             title: 'Charges (USD)', // Terminologie comptable
             value: formatCurrency(kpiData.expensesUsd, 'USD'),
             icon: Icons.trending_down,
-            color: Colors.red.shade300,
+            color: Colors.red,
             l10n: l10n,
             subtitle: 'Dépenses engagées',
             isCompact: availableWidth < mobileBreakpoint,
@@ -787,7 +787,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             title: 'Valeur Stock',
             value: formatCurrency(kpiData.stockValueAtCost, 'CDF'),
             icon: Icons.inventory_2,
-            color: Colors.orange,
+            color: Colors.blueGrey,
             l10n: l10n,
             subtitle:
                 kpiData.stockValueAtCost > 0
@@ -801,7 +801,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             title: 'À encaisser', // Vue trésorerie
             value: formatCurrency(kpiData.receivables, 'CDF'),
             icon: Icons.schedule_send,
-            color: Colors.purple,
+            color: Theme.of(context).colorScheme.primary,
             l10n: l10n,
             subtitle: 'Créances clients',
             isCompact: availableWidth < mobileBreakpoint,
@@ -985,7 +985,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: 'Revenus (USD)', // Terminologie comptable
         value: formatCurrency(kpiData.salesTodayUsd, 'USD'),
         icon: Icons.trending_up,
-        color: Colors.blue,
+        color: Colors.green,
         l10n: l10n,
       ),
       _buildStatCard(
@@ -993,7 +993,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: 'Valeur Stock',
         value: formatCurrency(kpiData.stockValueAtCost, 'CDF'),
         icon: Icons.inventory_2,
-        color: Colors.orange,
+        color: Colors.blueGrey,
         l10n: l10n,
         subtitle:
             kpiData.stockValueAtCost > 0
