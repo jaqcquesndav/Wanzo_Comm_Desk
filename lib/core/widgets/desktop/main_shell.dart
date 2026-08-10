@@ -6,6 +6,8 @@ import '../../../features/adha/widgets/adha_chat_panel.dart';
 import '../../platform/platform_service.dart';
 import '../../shared_widgets/wanzo_app_bar.dart';
 import '../../shared_widgets/wanzo_bottom_navigation_bar.dart';
+import '../../modules/module_registry.dart';
+import '../../services/business_context_service.dart';
 import 'adaptive_scaffold.dart';
 import 'desktop_header.dart';
 import 'desktop_layout_state.dart';
@@ -73,88 +75,44 @@ class _MainShellState extends State<MainShell> {
   }
 
   /// Items de navigation pour desktop
-  static const List<SidebarNavItem> _desktopNavItems = [
-    SidebarNavItem(
-      icon: Icons.dashboard_outlined,
-      activeIcon: Icons.dashboard,
-      label: 'Tableau de bord',
-      route: '/dashboard',
-    ),
-    SidebarNavItem(
-      icon: Icons.point_of_sale_outlined,
-      activeIcon: Icons.point_of_sale,
-      label: 'Revenus',
-      route: '/sales',
-    ),
-    SidebarNavItem(
-      icon: Icons.receipt_long_outlined,
-      activeIcon: Icons.receipt_long,
-      label: 'Charges',
-      route: '/expenses',
-    ),
-    SidebarNavItem(
-      icon: Icons.inventory_2_outlined,
-      activeIcon: Icons.inventory_2,
-      label: 'Stock',
-      route: '/inventory',
-    ),
-    SidebarNavItem(
-      icon: Icons.groups_outlined,
-      activeIcon: Icons.groups,
-      label: 'Contacts',
-      route: '/contacts',
-      isDividerBefore: true,
-    ),
-    SidebarNavItem(
-      icon: Icons.chat_bubble_outline,
-      activeIcon: Icons.chat_bubble,
-      label: 'Adha IA',
-      route: '/adha',
-      isDividerBefore: true,
-      isAdhaPanel: true,
-    ),
-    SidebarNavItem(
-      icon: Icons.settings_outlined,
-      activeIcon: Icons.settings,
-      label: 'Paramètres',
-      route: '/settings',
-      isDividerBefore: true,
-    ),
-  ];
+  // Navigation DÉRIVÉE du registre de modules (source unique), filtrée par
+  // mode d'activité + rôle. En mode `retail` (défaut) ces getters reproduisent
+  // exactement les listes historiques (mêmes items, même ordre) → aucun
+  // changement visuel. Ajouter un onglet = éditer ModuleRegistry.
+  List<SidebarNavItem> get _desktopNavItems {
+    final ctx = BusinessContextService();
+    return [
+      for (final m in ModuleRegistry.sidebar(
+        ctx.activityMode,
+        ctx.currentContext?.userRole,
+      ))
+        SidebarNavItem(
+          icon: m.icon,
+          activeIcon: m.activeIcon,
+          label: m.label,
+          route: m.route,
+          isDividerBefore: m.dividerBefore,
+          isAdhaPanel: m.isAdhaPanel,
+        ),
+    ];
+  }
 
-  /// Items de navigation pour mobile
-  static final List<BottomNavItem> _mobileNavItems = [
-    BottomNavItem(
-      icon: Icons.dashboard,
-      activeIcon: Icons.dashboard_outlined,
-      label: 'Tableau de bord',
-      route: '/dashboard',
-    ),
-    BottomNavItem(
-      icon: Icons.swap_horiz,
-      activeIcon: Icons.swap_horiz_outlined,
-      label: 'Opérations',
-      route: '/operations',
-    ),
-    BottomNavItem(
-      icon: Icons.inventory,
-      activeIcon: Icons.inventory_outlined,
-      label: 'Stock',
-      route: '/inventory',
-    ),
-    BottomNavItem(
-      icon: Icons.groups,
-      activeIcon: Icons.groups_outlined,
-      label: 'Contacts',
-      route: '/contacts',
-    ),
-    BottomNavItem(
-      icon: Icons.smart_toy,
-      activeIcon: Icons.smart_toy_outlined,
-      label: 'Adha',
-      route: '/adha',
-    ),
-  ];
+  /// Items de navigation pour mobile (dérivés du registre).
+  List<BottomNavItem> get _mobileNavItems {
+    final ctx = BusinessContextService();
+    return [
+      for (final m in ModuleRegistry.bottomNav(
+        ctx.activityMode,
+        ctx.currentContext?.userRole,
+      ))
+        BottomNavItem(
+          icon: m.icon,
+          activeIcon: m.activeIcon,
+          label: m.label,
+          route: m.route,
+        ),
+    ];
+  }
 
   int _getMobileCurrentIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
@@ -518,25 +476,9 @@ class _MainShellState extends State<MainShell> {
                 items: _mobileNavItems,
                 onTap: (index) {
                   if (index == currentIndex) return;
-                  switch (index) {
-                    case 0:
-                      context.go('/dashboard');
-                      break;
-                    case 1:
-                      context.go('/operations');
-                      break;
-                    case 2:
-                      context.go('/inventory');
-                      break;
-                    case 3:
-                      context.go('/contacts');
-                      break;
-                    case 4:
-                      context.go('/adha');
-                      break;
-                    default:
-                      context.go('/dashboard');
-                  }
+                  final items = _mobileNavItems;
+                  if (index < 0 || index >= items.length) return;
+                  context.go(items[index].route);
                 },
               )
               : null,

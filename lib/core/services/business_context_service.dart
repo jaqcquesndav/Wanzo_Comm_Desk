@@ -2,6 +2,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
+import 'package:wanzo/core/modules/activity_mode.dart';
 import 'package:wanzo/features/auth/models/user.dart';
 import 'package:wanzo/features/auth/services/auth_backend_service.dart';
 import 'package:wanzo/features/business_unit/models/business_unit.dart';
@@ -42,6 +43,21 @@ class BusinessContextService extends ChangeNotifier {
 
   /// `true` si l'entreprise courante est une coopérative.
   bool get isCooperative => companyVariant == 'cooperative';
+
+  /// Mode d'activité courant (défaut retail). Pilote l'affichage modulaire
+  /// via `ModuleRegistry` (sidebar desktop + bottom-nav mobile).
+  ActivityMode get activityMode =>
+      ActivityMode.fromString(_currentContext?.activityMode);
+
+  /// Change le mode d'activité, persiste et notifie (nav recomposée).
+  Future<void> setActivityMode(ActivityMode mode) async {
+    if (_currentContext == null) return;
+    if (_currentContext!.activityMode == mode.apiValue) return;
+    _currentContext = _currentContext!.copyWith(activityMode: mode.apiValue);
+    await _persistContext();
+    notifyListeners();
+    debugPrint('BusinessContextService: activityMode → ${mode.apiValue}');
+  }
 
   /// ID de l'unité commerciale courante
   String? get businessUnitId => _currentContext?.businessUnitId;
@@ -118,6 +134,7 @@ class BusinessContextService extends ChangeNotifier {
     _currentContext = BusinessContext(
       companyId: user.companyId,
       companyName: user.companyName,
+      activityMode: _currentContext?.activityMode ?? 'retail',
       businessUnitId: user.businessUnitId,
       businessUnitCode: user.businessUnitCode,
       businessUnitType: user.businessUnitType,
@@ -147,6 +164,7 @@ class BusinessContextService extends ChangeNotifier {
       companyId: user.companyId ?? company?.id,
       companyName: user.companyName ?? company?.name,
       companyVariant: company?.variant ?? 'standard',
+      activityMode: _currentContext?.activityMode ?? 'retail',
       businessUnitId: user.businessUnitId ?? businessUnit?.id,
       businessUnitCode: businessUnit?.code,
       businessUnitType:
@@ -254,6 +272,10 @@ class BusinessContext {
   /// Default 'standard' pour rétrocompat.
   final String companyVariant;
 
+  /// Mode d'activité ('retail'|'restaurant'|'hotel'|'services'). Défaut
+  /// 'retail'. Pilote l'affichage modulaire via `ModuleRegistry`.
+  final String activityMode;
+
   /// ID de l'unité commerciale assignée
   final String? businessUnitId;
 
@@ -300,6 +322,7 @@ class BusinessContext {
     this.companyId,
     this.companyName,
     this.companyVariant = 'standard',
+    this.activityMode = 'retail',
     this.businessUnitId,
     this.businessUnitCode,
     this.businessUnitType,
@@ -323,6 +346,7 @@ class BusinessContext {
           (json['companyVariant'] as String?) == 'cooperative'
               ? 'cooperative'
               : 'standard',
+      activityMode: json['activityMode'] as String? ?? 'retail',
       businessUnitId: json['businessUnitId'] as String?,
       businessUnitCode: json['businessUnitCode'] as String?,
       businessUnitType:
@@ -349,6 +373,7 @@ class BusinessContext {
     'companyId': companyId,
     'companyName': companyName,
     'companyVariant': companyVariant,
+    'activityMode': activityMode,
     'businessUnitId': businessUnitId,
     'businessUnitCode': businessUnitCode,
     'businessUnitType': businessUnitType?.apiValue,
@@ -376,6 +401,7 @@ class BusinessContext {
     String? companyId,
     String? companyName,
     String? companyVariant,
+    String? activityMode,
     String? businessUnitId,
     String? businessUnitCode,
     BusinessUnitType? businessUnitType,
@@ -394,6 +420,7 @@ class BusinessContext {
       companyId: companyId ?? this.companyId,
       companyName: companyName ?? this.companyName,
       companyVariant: companyVariant ?? this.companyVariant,
+      activityMode: activityMode ?? this.activityMode,
       businessUnitId: businessUnitId ?? this.businessUnitId,
       businessUnitCode: businessUnitCode ?? this.businessUnitCode,
       businessUnitType: businessUnitType ?? this.businessUnitType,
