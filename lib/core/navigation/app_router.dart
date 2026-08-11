@@ -38,6 +38,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../features/restaurant/cubit/restaurant_orders_cubit.dart';
 import '../../features/restaurant/repositories/restaurant_order_repository.dart';
 import '../../features/restaurant/screens/restaurant_pos_screen.dart';
+import '../../features/restaurant/screens/restaurant_menu_config_screen.dart';
 
 /// Configuration des routes de l\'application
 class AppRouter {
@@ -139,6 +140,11 @@ class AppRouter {
             builder: (context, state) => const RestaurantPosScreen(),
           ),
         ],
+      ),
+      // Composition de la carte (mode restaurant) — pas besoin du cubit.
+      GoRoute(
+        path: '/restaurant/menu',
+        builder: (context, state) => const RestaurantMenuConfigScreen(),
       ),
       GoRoute(
         path: '/onboarding',

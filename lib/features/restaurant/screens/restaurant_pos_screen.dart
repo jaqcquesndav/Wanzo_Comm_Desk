@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:wanzo/core/modules/module_registry.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
@@ -14,7 +15,9 @@ import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/sales/models/sale_item.dart';
 
 import '../cubit/restaurant_orders_cubit.dart';
+import '../models/menu_course.dart';
 import '../models/restaurant_order.dart';
+import '../repositories/menu_config_repository.dart';
 
 /// Point de vente restaurant — mise en page desktop dense en 3 colonnes :
 /// MENU (grille catalogue) | TICKET (commande en cours) | CAISSE (règlement).
@@ -50,9 +53,11 @@ class RestaurantPosScreen extends StatefulWidget {
 
 class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   late final List<Product> _products;
+  final MenuConfigRepository _menuRepo = MenuConfigRepository();
+  Map<String, MenuCourse> _menuConfig = {};
+  bool _menuLoading = true;
   String? _selectedOrderId;
   String _search = '';
-  ProductCategory? _categoryFilter;
 
   _PayMethod _method = _PayMethod.cash;
   final _cashController = TextEditingController();
@@ -62,6 +67,29 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   void initState() {
     super.initState();
     _products = context.read<InventoryRepository>().getAllProducts();
+    _loadMenu();
+  }
+
+  Future<void> _loadMenu() async {
+    final config = await _menuRepo.loadAll();
+    if (!mounted) return;
+    setState(() {
+      _menuConfig = config;
+      _menuLoading = false;
+    });
+  }
+
+  /// Produits à la carte, filtrés par recherche, groupés et triés par catégorie.
+  Map<MenuCourse, List<Product>> get _menuByCourse {
+    final q = _search.toLowerCase();
+    final grouped = <MenuCourse, List<Product>>{};
+    for (final p in _products) {
+      final course = _menuConfig[p.id];
+      if (course == null) continue;
+      if (q.isNotEmpty && !p.name.toLowerCase().contains(q)) continue;
+      grouped.putIfAbsent(course, () => []).add(p);
+    }
+    return grouped;
   }
 
   @override
@@ -81,6 +109,13 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     return WanzoScaffold(
       currentIndex: index < 0 ? 0 : index,
       title: 'Restaurant',
+      appBarActions: [
+        IconButton(
+          icon: const Icon(Icons.menu_book),
+          tooltip: 'Composer la carte',
+          onPressed: () => context.push('/restaurant/menu').then((_) => _loadMenu()),
+        ),
+      ],
       body: BlocListener<SalesBloc, SalesState>(
         listener: _onSalesState,
         child: BlocBuilder<RestaurantOrdersCubit, RestaurantOrdersState>(
@@ -216,21 +251,24 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     );
   }
 
-  // ── Colonne 1 : Menu ─────────────────────────────────────────────────────
+  // ── Colonne 1 : Menu (carte) ─────────────────────────────────────────────
   Widget _buildMenu(RestaurantOrder order) {
-    if (_products.isEmpty) {
-      return const EmptyStateView(
-        icon: Icons.inventory_2,
-        message: 'Aucun article au catalogue.',
+    if (_menuLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_menuConfig.isEmpty) {
+      return EmptyStateView(
+        icon: Icons.restaurant_menu,
+        message: 'La carte est vide.\nDésignez vos plats parmi vos produits.',
+        actionLabel: 'Composer la carte',
+        actionIcon: Icons.edit,
+        onAction: () => context.push('/restaurant/menu').then((_) => _loadMenu()),
       );
     }
-    final categories = _products.map((p) => p.category).toSet().toList();
-    final items = _products.where((p) {
-      final okCat = _categoryFilter == null || p.category == _categoryFilter;
-      final okSearch =
-          _search.isEmpty || p.name.toLowerCase().contains(_search.toLowerCase());
-      return okCat && okSearch;
-    }).toList();
+
+    final grouped = _menuByCourse;
+    final courses = grouped.keys.toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
 
     return Column(
       children: [
@@ -247,50 +285,46 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
             onChanged: (v) => setState(() => _search = v),
           ),
         ),
-        SizedBox(
-          height: 40,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: const Text('Tout'),
-                  selected: _categoryFilter == null,
-                  onSelected: (_) => setState(() => _categoryFilter = null),
-                ),
-              ),
-              for (final c in categories)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(c.displayName),
-                    selected: _categoryFilter == c,
-                    onSelected: (_) => setState(() => _categoryFilter = c),
-                  ),
-                ),
-            ],
-          ),
-        ),
         Expanded(
-          child: items.isEmpty
+          child: courses.isEmpty
               ? const EmptyStateView(
                   icon: Icons.search_off,
-                  message: 'Aucun article ne correspond.',
+                  message: 'Aucun plat ne correspond.',
                 )
-              : GridView.builder(
+              : ListView(
                   padding: const EdgeInsets.all(12),
-                  gridDelegate:
-                      const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 160,
-                    childAspectRatio: 1.25,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                  ),
-                  itemCount: items.length,
-                  itemBuilder: (context, i) =>
-                      _menuTile(order, items[i]),
+                  children: [
+                    for (final course in courses) ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+                        child: Text(
+                          course.label.toUpperCase(),
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelLarge
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.8,
+                              ),
+                        ),
+                      ),
+                      GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 160,
+                          childAspectRatio: 1.25,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
+                        ),
+                        itemCount: grouped[course]!.length,
+                        itemBuilder: (context, i) =>
+                            _menuTile(order, grouped[course]![i]),
+                      ),
+                    ],
+                  ],
                 ),
         ),
       ],
