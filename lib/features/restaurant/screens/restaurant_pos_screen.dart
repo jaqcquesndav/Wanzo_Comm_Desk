@@ -99,18 +99,47 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
                           message:
                               'Ouvrez une commande pour démarrer le service.',
                         )
-                      : Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Expanded(flex: 3, child: _buildMenu(selected)),
-                            const VerticalDivider(width: 1),
-                            Expanded(flex: 2, child: _buildTicket(selected)),
-                            const VerticalDivider(width: 1),
-                            SizedBox(
-                              width: 340,
-                              child: _buildCheckout(selected),
-                            ),
-                          ],
+                      : LayoutBuilder(
+                          builder: (context, c) {
+                            // Large : 3 colonnes Menu | Ticket | Caisse.
+                            // Compact : 2 colonnes, la caisse est empilée sous
+                            // le ticket (évite l'écrasement / overflow).
+                            final wide = c.maxWidth >= 1080;
+                            if (wide) {
+                              return Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Expanded(
+                                      flex: 3, child: _buildMenu(selected)),
+                                  const VerticalDivider(width: 1),
+                                  Expanded(
+                                      flex: 2, child: _buildTicket(selected)),
+                                  const VerticalDivider(width: 1),
+                                  SizedBox(
+                                    width: 340,
+                                    child: _buildCheckout(selected),
+                                  ),
+                                ],
+                              );
+                            }
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(flex: 3, child: _buildMenu(selected)),
+                                const VerticalDivider(width: 1),
+                                Expanded(
+                                  flex: 2,
+                                  child: Column(
+                                    children: [
+                                      Expanded(child: _buildTicket(selected)),
+                                      const Divider(height: 1),
+                                      _buildCheckout(selected),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                 ),
               ],
@@ -407,6 +436,9 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
       color: theme.colorScheme.surfaceContainerLow,
       padding: const EdgeInsets.all(16),
       child: Column(
+        // min + SizedBox (pas de Spacer) : fonctionne aussi bien en colonne
+        // pleine hauteur (large) qu'empilé sous le ticket (compact).
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
@@ -465,7 +497,7 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
                 ),
               ),
           ],
-          const Spacer(),
+          const SizedBox(height: 20),
           FilledButton.icon(
             onPressed: order.isEmpty ||
                     _submitting ||
