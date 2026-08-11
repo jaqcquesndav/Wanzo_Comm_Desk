@@ -124,7 +124,9 @@ class ModuleRegistry {
       icon: Icons.restaurant_menu,
       activeIcon: Icons.restaurant,
       route: '/restaurant/orders',
-      modes: {ActivityMode.restaurant},
+      // Restauration/bar en mode restaurant ET hôtellerie (les hôtels
+      // combinent F&B/bar/salle) → prise de commande sur carte disponible.
+      modes: {ActivityMode.restaurant, ActivityMode.hotel},
       primary: true,
       order: 1,
       inSidebar: true,
