@@ -603,7 +603,7 @@ class _InventoryScreenState extends State<InventoryScreen>
               "${_getTransactionTypeName(transaction.type, l10n)}: ${product?.name ?? l10n.unknownProductLabel}",
             ),
             subtitle: Text(
-              "${l10n.quantityLabel}: ${transaction.quantity}, ${l10n.dateLabel}: ${formatDate(transaction.date, l10n)}\\n${l10n.valueLabel}: ${formatCurrency(displayValue, displayCurrencyCode)} (${formatCurrency(transaction.totalValueInCdf, Currency.CDF.code)})\\nUnité: ${transaction.businessUnitCode != null ? '${transaction.businessUnitType?.code ?? 'company'} - ${transaction.businessUnitCode}' : transaction.businessUnitType?.code ?? 'company'}",
+              "${l10n.quantityLabel}: ${transaction.quantity}, ${l10n.dateLabel}: ${formatDate(transaction.date, l10n)}\n${l10n.valueLabel}: ${formatCurrency(displayValue, displayCurrencyCode)} (${formatCurrency(transaction.totalValueInCdf, Currency.CDF.code)})\nUnité: ${transaction.businessUnitCode != null ? '${transaction.businessUnitType?.code ?? 'company'} - ${transaction.businessUnitCode}' : transaction.businessUnitType?.code ?? 'company'}",
             ),
             leading: Icon(
               transaction.quantity > 0

@@ -5,6 +5,7 @@ import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/modules/activity_mode.dart';
+import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import '../bloc/settings_bloc.dart';
 import '../bloc/settings_event.dart';
 import '../bloc/settings_state.dart';
@@ -43,31 +44,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final isDesktop = screenWidth >= platform.desktopMinWidth;
     final isTablet = screenWidth >= platform.tabletMinWidth && !isDesktop;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.settingsTitle),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            // Vérifier s'il y a une page précédente dans la pile de navigation
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              // Si navigué via sidebar (go), retourner au dashboard
-              context.go('/dashboard');
-            }
-          },
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            tooltip: l10n.searchSettings,
-            onPressed: () {
-              // TODO: Implement search functionality
-            },
-          ),
-        ],
-      ),
+    return WanzoScaffold(
+      currentIndex: -1, // onglet actif dérivé de la route par le scaffold
+      title: l10n.settingsTitle,
+      onBackPressed: () {
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/dashboard');
+        }
+      },
       body: BlocConsumer<SettingsBloc, SettingsState>(
         listener: (context, state) {
           if (state is SettingsError) {
