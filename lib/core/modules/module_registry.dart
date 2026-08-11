@@ -173,9 +173,21 @@ class ModuleRegistry {
   ];
 
   /// Items de la sidebar desktop pour un [mode]/[role], triés.
+  ///
+  /// Tri DÉTERMINISTE : à `sidebarOrder` égal (ex. `sales` et
+  /// `restaurant_orders` valent 1), le module spécialisé du métier passe avant
+  /// le module commun — sinon l'ordre relatif serait indéfini (`List.sort`
+  /// n'est pas stable en Dart).
   static List<AppModule> sidebar(ActivityMode mode, String? role) =>
       all.where((m) => m.inSidebar && m.visibleFor(mode, role)).toList()
-        ..sort((a, b) => a.sidebarOrder.compareTo(b.sidebarOrder));
+        ..sort((a, b) {
+          final byOrder = a.sidebarOrder.compareTo(b.sidebarOrder);
+          if (byOrder != 0) return byOrder;
+          final aSpec = !a.modes.contains(ActivityMode.retail);
+          final bSpec = !b.modes.contains(ActivityMode.retail);
+          if (aSpec == bSpec) return a.id.compareTo(b.id);
+          return aSpec ? -1 : 1;
+        });
 
   /// Items de la bottom-nav (layout mobile du desktop), max 5.
   ///

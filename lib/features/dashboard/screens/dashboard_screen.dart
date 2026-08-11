@@ -670,7 +670,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
               context.read<InventoryBloc>().add(const LoadProducts());
             },
             child: ListView(
-              padding: const EdgeInsets.all(WanzoSpacing.md),
+              // Padding bas = hauteur du dock flottant (OperationsDock ancré en
+              // bas), pour ne pas masquer la fin du journal / « Voir plus ».
+              padding: const EdgeInsets.fromLTRB(
+                WanzoSpacing.md,
+                WanzoSpacing.md,
+                WanzoSpacing.md,
+                100,
+              ),
               children: [
                 _buildResponsiveKpiAndChart(
                   context,

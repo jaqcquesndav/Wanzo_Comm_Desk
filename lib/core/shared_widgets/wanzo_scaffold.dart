@@ -87,8 +87,12 @@ class WanzoScaffold extends StatelessWidget {
     final bottomDerived = mobileNavItems.indexWhere(
       (m) => loc == m.route || loc.startsWith('${m.route}/'),
     );
-    final sidebarActive = sidebarDerived >= 0 ? sidebarDerived : currentIndex;
-    final bottomActive = bottomDerived >= 0 ? bottomDerived : currentIndex;
+    // Purement route-dérivé : si la route courante n'est pas un élément de la
+    // surface (ex. /operations absent de la sidebar, /settings absent de la
+    // bottom-nav), on ne surligne RIEN (-1) plutôt que de retomber sur un
+    // index d'une autre surface qui surlignerait le mauvais élément.
+    final sidebarActive = sidebarDerived;
+    final bottomActive = bottomDerived;
 
     // Utiliser LayoutBuilder pour détecter la taille de l'écran
     return LayoutBuilder(
