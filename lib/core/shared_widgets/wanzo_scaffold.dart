@@ -76,6 +76,20 @@ class WanzoScaffold extends StatelessWidget {
         ),
     ];
 
+    // L'élément actif est DÉRIVÉ de la route courante (pas d'un index codé en
+    // dur par l'écran) : la surbrillance reste correcte quel que soit le mode,
+    // sidebar et bottom-nav ayant des ordres différents. Repli sur currentIndex
+    // pour les écrans hors nav (ex. -1).
+    final loc = GoRouterState.of(context).uri.path;
+    final sidebarDerived = desktopNavItems.indexWhere(
+      (m) => loc == m.route || loc.startsWith('${m.route}/'),
+    );
+    final bottomDerived = mobileNavItems.indexWhere(
+      (m) => loc == m.route || loc.startsWith('${m.route}/'),
+    );
+    final sidebarActive = sidebarDerived >= 0 ? sidebarDerived : currentIndex;
+    final bottomActive = bottomDerived >= 0 ? bottomDerived : currentIndex;
+
     // Utiliser LayoutBuilder pour détecter la taille de l'écran
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -88,7 +102,7 @@ class WanzoScaffold extends StatelessWidget {
         // Sur desktop et tablette, utiliser AdaptiveScaffold avec sidebar
         if (isDesktopSize || isTabletSize) {
           return AdaptiveScaffold(
-            currentIndex: currentIndex,
+            currentIndex: sidebarActive,
             title: title,
             body: body,
             navigationItems: desktopNavItems,
@@ -107,12 +121,12 @@ class WanzoScaffold extends StatelessWidget {
           ),
           body: body,
           bottomNavigationBar:
-              currentIndex >= 0 && currentIndex < mobileNavItems.length
+              bottomActive >= 0 && bottomActive < mobileNavItems.length
                   ? WanzoBottomNavigationBar(
-                    currentIndex: currentIndex,
+                    currentIndex: bottomActive,
                     items: mobileNavItems,
                     onTap: (index) {
-                      if (index == currentIndex) return;
+                      if (index == bottomActive) return;
                       if (index < 0 || index >= mobileNavItems.length) return;
                       context.go(mobileNavItems[index].route);
                     },
