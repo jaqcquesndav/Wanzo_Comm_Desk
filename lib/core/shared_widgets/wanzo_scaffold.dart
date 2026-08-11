@@ -41,11 +41,16 @@ class WanzoScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Navigation DÉRIVÉE du registre de modules (source unique), filtrée par
-    // mode d'activité + rôle. En mode `retail` (défaut) ces listes reproduisent
-    // exactement la navigation historique (mêmes items, même ordre) → aucun
-    // changement visuel. Ajouter un onglet = éditer ModuleRegistry.
-    final ctx = BusinessContextService();
+    // Le shell écoute BusinessContextService : changer de mode d'activité
+    // recompose immédiatement la navigation (sidebar / bottom-nav) sans
+    // redémarrage ni navigation manuelle.
+    return ListenableBuilder(
+      listenable: BusinessContextService(),
+      builder: (context, _) {
+        // Navigation DÉRIVÉE du registre de modules (source unique), filtrée
+        // par mode + rôle. En mode `retail` (défaut) : navigation historique
+        // identique → aucun changement visuel.
+        final ctx = BusinessContextService();
     final mode = ctx.activityMode;
     final role = ctx.currentContext?.userRole;
 
@@ -115,6 +120,8 @@ class WanzoScaffold extends StatelessWidget {
                   : null,
           floatingActionButton: floatingActionButton,
         );
+      },
+    );
       },
     );
   }

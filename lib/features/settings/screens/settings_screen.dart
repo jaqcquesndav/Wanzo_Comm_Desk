@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
+import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:wanzo/core/modules/activity_mode.dart';
 import '../bloc/settings_bloc.dart';
 import '../bloc/settings_event.dart';
 import '../bloc/settings_state.dart';
@@ -150,6 +152,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ) {
     final settingsItems = [
       _SettingsItem(
+        icon: Icons.storefront,
+        title: 'Mode d\'activité',
+        subtitle:
+            'Configuration de l\'app : ${BusinessContextService().activityMode.label}',
+        onTap: _showActivityModePicker,
+      ),
+      _SettingsItem(
         icon: Icons.business,
         title: l10n.companyInformation,
         subtitle: l10n.companyInformationSubtitle,
@@ -252,6 +261,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 16),
         _buildResetButton(l10n),
       ],
+    );
+  }
+
+  /// Sélecteur de mode d'activité — bascule l'app entre boutique/POS,
+  /// restaurant, hôtellerie, services. Persiste localement et recompose la
+  /// navigation (sidebar) via [BusinessContextService.setActivityMode].
+  void _showActivityModePicker() {
+    final ctx = BusinessContextService();
+    final current = ctx.activityMode;
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Mode d\'activité'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final mode in ActivityMode.values)
+                  RadioListTile<ActivityMode>(
+                    value: mode,
+                    groupValue: current,
+                    title: Text(mode.label),
+                    subtitle: Text(mode.description),
+                    onChanged: (selected) async {
+                      if (selected == null) return;
+                      Navigator.of(dialogContext).pop();
+                      await ctx.setActivityMode(selected);
+                      if (!mounted) return;
+                      setState(() {}); // rafraîchir le sous-titre de la carte
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Mode : ${selected.label}')),
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Fermer'),
+            ),
+          ],
+        );
+      },
     );
   }
 
