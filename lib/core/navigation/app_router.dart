@@ -40,6 +40,9 @@ import '../../features/restaurant/repositories/restaurant_order_repository.dart'
 import '../../features/restaurant/screens/restaurant_pos_screen.dart';
 import '../../features/restaurant/screens/restaurant_orders_board_screen.dart';
 import '../../features/restaurant/screens/restaurant_menu_config_screen.dart';
+import '../../features/atelier/cubit/atelier_orders_cubit.dart';
+import '../../features/atelier/services/atelier_api_service.dart';
+import '../../features/atelier/screens/atelier_orders_board_screen.dart';
 
 /// Configuration des routes de l\'application
 class AppRouter {
@@ -51,6 +54,10 @@ class AppRouter {
   /// un ShellRoute. Chargée à la première utilisation (mode restaurant).
   late final RestaurantOrdersCubit _restaurantOrdersCubit =
       RestaurantOrdersCubit(RestaurantOrderRepository())..load();
+
+  /// Cubit des commandes atelier (persistées backend), partagé via ShellRoute.
+  late final AtelierOrdersCubit _atelierOrdersCubit =
+      AtelierOrdersCubit(AtelierApiService())..load();
 
   late final GoRouter router = GoRouter(
     debugLogDiagnostics: true,
@@ -144,6 +151,20 @@ class AppRouter {
           GoRoute(
             path: '/restaurant/board',
             builder: (context, state) => const RestaurantOrdersBoardScreen(),
+          ),
+        ],
+      ),
+
+      // ── Mode atelier : board Kanban des commandes de confection ────────
+      ShellRoute(
+        builder: (context, state, child) => BlocProvider.value(
+          value: _atelierOrdersCubit,
+          child: child,
+        ),
+        routes: [
+          GoRoute(
+            path: '/atelier/board',
+            builder: (context, state) => const AtelierOrdersBoardScreen(),
           ),
         ],
       ),

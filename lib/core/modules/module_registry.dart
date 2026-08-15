@@ -136,6 +136,20 @@ class ModuleRegistry {
       sidebarOrder: 1,
       available: true,
     ),
+    // ── Mode Atelier (couture/cordonnerie) ──────────────────────────────
+    AppModule(
+      id: 'atelier_orders',
+      label: 'Commandes',
+      icon: Icons.content_cut_outlined,
+      activeIcon: Icons.content_cut,
+      route: '/atelier/board',
+      modes: {ActivityMode.atelier},
+      primary: true,
+      order: 1,
+      inSidebar: true,
+      sidebarOrder: 1,
+      available: true,
+    ),
     AppModule(
       id: 'restaurant_tables',
       label: 'Salle',
