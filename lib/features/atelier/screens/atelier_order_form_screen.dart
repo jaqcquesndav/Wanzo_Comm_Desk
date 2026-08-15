@@ -5,6 +5,7 @@ import '../../customer/models/customer.dart';
 import '../../customer/services/customer_api_service.dart';
 import '../cubit/atelier_orders_cubit.dart';
 import '../models/atelier_order.dart';
+import 'atelier_client_profile_screen.dart';
 
 /// Formulaire de création / modification d'une commande de confection.
 ///
@@ -92,6 +93,24 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
               children: [
                 // ── Client ──
                 _customerField(),
+                if (_customerId != null) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      icon: const Icon(Icons.straighten, size: 18),
+                      label: const Text('Mesures du client'),
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => AtelierClientProfileScreen(
+                            customerId: _customerId!,
+                            customerName: _customerName,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _labelCtrl,
