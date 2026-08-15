@@ -22,6 +22,9 @@ import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cub
 import 'package:wanzo/core/services/currency_service.dart'; // Added
 import 'package:wanzo/l10n/app_localizations.dart'; // Updated import
 import 'package:wanzo/features/auth/bloc/auth_bloc.dart';
+import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:wanzo/core/modules/activity_mode.dart';
+import 'package:wanzo/features/atelier/repositories/atelier_product_config_repository.dart';
 import '../config/product_category_config.dart';
 
 /// Écran d'ajout de produit
@@ -66,6 +69,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
   DateTime? _expirationDate;
 
   late final ImagePickerServiceInterface _imagePickerService;
+
+  // Mode atelier : type d'article (overlay local, ne touche pas `Product`).
+  // Reste inutilisé (et le sélecteur masqué) dans tous les autres modes.
+  final ActivityMode _activityMode = BusinessContextService().activityMode;
+  final AtelierProductConfigRepository _atelierConfigRepo =
+      AtelierProductConfigRepository();
+  AtelierProductType? _atelierType; // null = marchandise ordinaire
 
   @override
   void initState() {
@@ -134,6 +144,20 @@ class _AddProductScreenState extends State<AddProductScreen> {
     // Initialize expiration date fields
     _expirationDate = widget.product?.expirationDate;
     _hasExpirationDate = _expirationDate != null;
+
+    // Mode atelier : précharger le type existant (overlay local) en édition.
+    if (_activityMode == ActivityMode.atelier && _isEditing) {
+      final productId = widget.product?.id;
+      if (productId != null) {
+        _atelierConfigRepo.getType(productId).then((type) {
+          if (mounted) {
+            setState(() {
+              _atelierType = type;
+            });
+          }
+        });
+      }
+    }
   }
 
   @override
@@ -682,6 +706,37 @@ class _AddProductScreenState extends State<AddProductScreen> {
                       ),
                       const SizedBox(height: WanzoSpacing.lg),
 
+                      // Type d'article (mode atelier uniquement) — overlay local,
+                      // n'ajoute aucun champ dans les autres modes (dont retail).
+                      if (_activityMode == ActivityMode.atelier) ...[
+                        DropdownButtonFormField<AtelierProductType?>(
+                          value: _atelierType,
+                          decoration: const InputDecoration(
+                            labelText: 'Type d\'article',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.precision_manufacturing),
+                          ),
+                          items: [
+                            const DropdownMenuItem<AtelierProductType?>(
+                              value: null,
+                              child: Text('Marchandise'),
+                            ),
+                            ...AtelierProductType.values.map(
+                              (type) => DropdownMenuItem<AtelierProductType?>(
+                                value: type,
+                                child: Text(type.label),
+                              ),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            setState(() {
+                              _atelierType = value;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: WanzoSpacing.lg),
+                      ],
+
                       // Prix & Currency Section
                       _buildSectionTitle(context, l10n.pricingSectionTitle),
                       const SizedBox(height: WanzoSpacing.md),
@@ -1127,6 +1182,18 @@ class _AddProductScreenState extends State<AddProductScreen> {
       expirationDate: _hasExpirationDate ? _expirationDate : null,
       subCategory: _selectedSubCategory,
     );
+
+    // Mode atelier : persister le type d'article dans l'overlay local (keyé par
+    // productId), sans toucher l'entité `Product`. Aucun effet dans les autres
+    // modes. On utilise l'id déterminé ci-dessus (déjà généré si création).
+    if (_activityMode == ActivityMode.atelier) {
+      final type = _atelierType;
+      if (type == null) {
+        _atelierConfigRepo.clear(product.id);
+      } else {
+        _atelierConfigRepo.setType(product.id, type);
+      }
+    }
 
     if (_isEditing) {
       context.read<InventoryBloc>().add(UpdateProduct(product));
