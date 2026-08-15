@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/widgets/desktop/adaptive_modal.dart';
+import 'package:wanzo/core/widgets/desktop/adaptive_image_picker.dart';
 import 'package:wanzo/core/widgets/desktop/form_layout_widgets.dart';
 import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
@@ -59,11 +61,18 @@ class _CustomerFormModalState extends State<CustomerFormModal> {
   late CustomerCategory _selectedCategory;
   bool _isSubmitting = false;
 
+  /// Chemin LOCAL de la photo du client (pas d'upload serveur → 0 surcharge).
+  String? _imagePath;
+
   bool get _isEditing => widget.customer != null;
+
+  bool get _hasLocalPhoto =>
+      _imagePath != null && _imagePath!.isNotEmpty && !_imagePath!.startsWith('http');
 
   @override
   void initState() {
     super.initState();
+    _imagePath = widget.customer?.profilePicture;
 
     _nameController = TextEditingController(text: widget.customer?.name ?? '');
     _phoneController = TextEditingController(
@@ -121,6 +130,44 @@ class _CustomerFormModalState extends State<CustomerFormModal> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Photo du client — stockée LOCALEMENT sur l'appareil (pas d'upload
+            // serveur pour éviter la surcharge). Indicateur explicite.
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 120,
+                    height: 120,
+                    child: AdaptiveImagePickerWithPreview(
+                      initialImage: _hasLocalPhoto ? File(_imagePath!) : null,
+                      imageUrl: (_imagePath != null && _imagePath!.startsWith('http'))
+                          ? _imagePath
+                          : null,
+                      placeholder: 'Photo',
+                      onImageChanged: (file) =>
+                          setState(() => _imagePath = file?.path),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.phone_iphone,
+                          size: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Stockée localement sur cet appareil',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             // Section Informations principales
             FormSection(
               title: localizations.customerInformation,
@@ -333,6 +380,7 @@ class _CustomerFormModalState extends State<CustomerFormModal> {
         totalPurchases: widget.customer?.totalPurchases ?? 0.0,
         lastPurchaseDate: widget.customer?.lastPurchaseDate,
         category: _selectedCategory,
+        profilePicture: _imagePath,
       );
 
       if (_isEditing) {
