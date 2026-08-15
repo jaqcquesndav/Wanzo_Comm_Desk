@@ -8,6 +8,7 @@ import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/features/inventory/models/product.dart';
 import 'package:wanzo/features/inventory/repositories/inventory_repository.dart';
 import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
@@ -314,8 +315,10 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
                         physics: const NeverScrollableScrollPhysics(),
                         gridDelegate:
                             const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 160,
-                          childAspectRatio: 1.25,
+                          // Tuiles plus hautes : place à une vraie image de plat
+                          // (le resto a besoin de bien voir le visuel du menu).
+                          maxCrossAxisExtent: 180,
+                          childAspectRatio: 0.82,
                           crossAxisSpacing: 8,
                           mainAxisSpacing: 8,
                         ),
@@ -346,30 +349,47 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
           ),
       child: Card(
         margin: EdgeInsets.zero,
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(product.category.icon, color: theme.colorScheme.primary),
-              const Spacer(),
-              Text(
-                product.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontWeight: FontWeight.w600, fontSize: 13),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Image du plat, bien visible (réseau ou locale, cover). Repli sur
+            // l'icône de catégorie quand aucune image n'est définie.
+            Expanded(
+              child: SmartImage(
+                imageUrl: product.imageUrl,
+                imagePath: product.imagePath,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                placeholderIcon: product.category.icon,
+                placeholderColor: theme.colorScheme.surfaceContainerHighest,
+                placeholderIconSize: 34,
               ),
-              const SizedBox(height: 2),
-              Text(
-                formatCurrency(product.sellingPriceInCdf, 'CDF'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.bold,
-                ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    product.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    formatCurrency(product.sellingPriceInCdf, 'CDF'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

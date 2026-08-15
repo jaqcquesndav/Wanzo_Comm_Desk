@@ -207,7 +207,11 @@ class OperationJournalRepository {
               },
             )
             .timeout(
-              const Duration(seconds: 5),
+              // 15s (au lieu de 5s) : le journal est RECONSTRUIT côté backend
+              // (ventes/dépenses/stock) ; un timeout trop court faisait retomber
+              // sur le cache local — vide sur un nouvel appareil → le journal
+              // « disparaissait ». La source de vérité est le backend.
+              const Duration(seconds: 15),
               onTimeout: () {
                 debugPrint(
                   '⏱️ Timeout lors de la récupération des opérations du backend',
