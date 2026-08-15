@@ -18,6 +18,7 @@ class ModuleRegistry {
     ActivityMode.restaurant,
     ActivityMode.hotel,
     ActivityMode.services,
+    ActivityMode.atelier,
   };
 
   static const List<AppModule> all = [
@@ -123,7 +124,9 @@ class ModuleRegistry {
       label: 'Commandes',
       icon: Icons.restaurant_menu,
       activeIcon: Icons.restaurant,
-      route: '/restaurant/orders',
+      // La vue « Commandes » est le board Kanban (aperçu par statut, façon
+      // Trello) ; la caisse reste à un tap via le bouton dédié du board.
+      route: '/restaurant/board',
       // Restauration/bar en mode restaurant ET hôtellerie (les hôtels
       // combinent F&B/bar/salle) → prise de commande sur carte disponible.
       modes: {ActivityMode.restaurant, ActivityMode.hotel},

@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:go_router/go_router.dart'; // Import go_router
 import '../../constants/spacing.dart';
 import '../../constants/typography.dart';
+import '../services/business_context_service.dart';
+import '../modules/activity_mode.dart';
 import '../../features/auth/bloc/auth_bloc.dart';
 import '../../features/settings/bloc/settings_bloc.dart';
 import '../../features/settings/bloc/settings_state.dart';
@@ -98,7 +100,53 @@ class WanzoAppBar extends StatelessWidget implements PreferredSizeWidget {
           : null,      actions: [
         // Actions additionnelles si présentes
         if (additionalActions != null) ...additionalActions!,
-        
+
+        // Badge du mode d'activité courant (masqué en Boutique/retail par
+        // défaut → le POS reste visuellement inchangé). Tap → paramètres.
+        ListenableBuilder(
+          listenable: BusinessContextService(),
+          builder: (context, _) {
+            final mode = BusinessContextService().activityMode;
+            if (mode == ActivityMode.retail) return const SizedBox.shrink();
+            final scheme = Theme.of(context).colorScheme;
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+              child: Tooltip(
+                message: 'Mode : ${mode.label} — appuyez pour changer',
+                child: Material(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(20),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () => context.push('/settings'),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.tune, size: 14, color: scheme.onPrimaryContainer),
+                          const SizedBox(width: 4),
+                          Text(
+                            mode.shortLabel,
+                            style: TextStyle(
+                              color: scheme.onPrimaryContainer,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+
         // Icône de notifications
         BlocBuilder<NotificationsBloc, NotificationsState>(
           builder: (context, state) {

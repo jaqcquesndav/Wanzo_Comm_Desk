@@ -38,6 +38,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../features/restaurant/cubit/restaurant_orders_cubit.dart';
 import '../../features/restaurant/repositories/restaurant_order_repository.dart';
 import '../../features/restaurant/screens/restaurant_pos_screen.dart';
+import '../../features/restaurant/screens/restaurant_orders_board_screen.dart';
 import '../../features/restaurant/screens/restaurant_menu_config_screen.dart';
 
 /// Configuration des routes de l\'application
@@ -138,6 +139,11 @@ class AppRouter {
           GoRoute(
             path: '/restaurant/orders',
             builder: (context, state) => const RestaurantPosScreen(),
+          ),
+          // Vue Board (Kanban) des commandes — complémentaire à la caisse.
+          GoRoute(
+            path: '/restaurant/board',
+            builder: (context, state) => const RestaurantOrdersBoardScreen(),
           ),
         ],
       ),

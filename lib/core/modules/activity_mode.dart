@@ -16,7 +16,12 @@ enum ActivityMode {
   hotel,
 
   /// Prestations de services (interventions, forfaits).
-  services;
+  services,
+
+  /// Atelier de confection (couture, cordonnerie) : fonctionne en open shop
+  /// comme le restaurant — logique de commande + notion de fabrication, avec
+  /// fiche client à mesures. Le mode définit l'état (workflow de production).
+  atelier;
 
   /// Valeur stable persistée/échangée avec le backend.
   String get apiValue => name;
@@ -32,6 +37,8 @@ enum ActivityMode {
         return ActivityMode.hotel;
       case 'services':
         return ActivityMode.services;
+      case 'atelier':
+        return ActivityMode.atelier;
       case 'retail':
       default:
         return ActivityMode.retail;
@@ -49,6 +56,24 @@ enum ActivityMode {
         return 'Hôtellerie';
       case ActivityMode.services:
         return 'Services';
+      case ActivityMode.atelier:
+        return 'Atelier (Couture / Cordonnerie)';
+    }
+  }
+
+  /// Libellé court pour le badge de mode dans l'app bar.
+  String get shortLabel {
+    switch (this) {
+      case ActivityMode.retail:
+        return 'Boutique';
+      case ActivityMode.restaurant:
+        return 'Resto';
+      case ActivityMode.hotel:
+        return 'Hôtel';
+      case ActivityMode.services:
+        return 'Services';
+      case ActivityMode.atelier:
+        return 'Atelier';
     }
   }
 
@@ -63,6 +88,8 @@ enum ActivityMode {
         return 'Chambres, réservations et séjours clients.';
       case ActivityMode.services:
         return 'Prestations, interventions et forfaits.';
+      case ActivityMode.atelier:
+        return 'Confection sur mesure : commandes, mesures client, fabrication.';
     }
   }
 }
