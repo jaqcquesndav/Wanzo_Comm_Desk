@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../models/atelier_order.dart';
 import '../services/atelier_api_service.dart';
+import '../repositories/atelier_order_cache.dart';
 
 class AtelierOrdersState extends Equatable {
   final List<AtelierOrder> orders;
@@ -38,9 +39,12 @@ class AtelierOrdersState extends Equatable {
 /// recharge pour retrouver l'état de vérité.
 class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
   final AtelierApiService _api;
+  final AtelierOrderCache _cache;
   String? _businessUnitId;
 
-  AtelierOrdersCubit(this._api) : super(const AtelierOrdersState());
+  AtelierOrdersCubit(this._api, {AtelierOrderCache? cache})
+      : _cache = cache ?? AtelierOrderCache(),
+        super(const AtelierOrdersState());
 
   Future<void> load({String? businessUnitId}) async {
     _businessUnitId = businessUnitId ?? _businessUnitId;
@@ -48,8 +52,20 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
     try {
       final orders = await _api.getOrders(businessUnitId: _businessUnitId);
       emit(AtelierOrdersState(orders: orders, loading: false));
+      // Mémoriser pour l'affichage hors-ligne.
+      await _cache.save(_businessUnitId, orders);
     } catch (e) {
-      emit(state.copyWith(loading: false, error: e.toString()));
+      // Réseau indisponible : servir la dernière liste connue (offline).
+      final cached = await _cache.load(_businessUnitId);
+      if (cached.isNotEmpty) {
+        emit(AtelierOrdersState(
+          orders: cached,
+          loading: false,
+          error: 'Hors ligne — dernières commandes connues',
+        ));
+      } else {
+        emit(state.copyWith(loading: false, error: e.toString()));
+      }
     }
   }
 

@@ -136,6 +136,28 @@ class AtelierOrder extends Equatable {
     );
   }
 
+  /// Sérialisation COMPLÈTE (pour le cache local offline). Émet les mêmes clés
+  /// que [fromJson] sait relire, afin d'un aller-retour fidèle.
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'customerId': customerId,
+    if (customerName != null) 'customerName': customerName,
+    'label': label,
+    if (modelDetails != null) 'modelDetails': modelDetails,
+    if (entryDate != null) 'entryDate': entryDate!.toIso8601String(),
+    if (exitDate != null) 'exitDate': exitDate!.toIso8601String(),
+    'totalAmount': totalAmount,
+    'advanceAmount': advanceAmount,
+    'remainingAmount': remainingAmount,
+    'currencyCode': currencyCode,
+    'exchangeRate': exchangeRate,
+    if (fabricProvidedBy != null) 'fabricProvidedBy': fabricProvidedBy!.apiValue,
+    'status': status.apiValue,
+    if (saleId != null) 'saleId': saleId,
+    if (notes != null) 'notes': notes,
+    if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
+  };
+
   /// Payload de création/mise à jour (les champs null sont omis).
   Map<String, dynamic> toCreateJson() => {
     'customerId': customerId,
