@@ -5,6 +5,7 @@ import '../../customer/models/customer.dart';
 import '../../customer/services/customer_api_service.dart';
 import '../cubit/atelier_orders_cubit.dart';
 import '../models/atelier_order.dart';
+import '../services/atelier_api_service.dart';
 import 'atelier_client_profile_screen.dart';
 
 /// Formulaire de création / modification d'une commande de confection.
@@ -23,9 +24,12 @@ class AtelierOrderFormScreen extends StatefulWidget {
 class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _customerApi = CustomerApiService();
+  final _atelierApi = AtelierApiService();
 
   String? _customerId;
   String? _customerName;
+  // null = vérification en cours ; true/false = mesures déjà saisies ou non.
+  bool? _hasMeasurements;
   final _labelCtrl = TextEditingController();
   final _modelCtrl = TextEditingController();
   final _totalCtrl = TextEditingController(text: '0');
@@ -55,9 +59,42 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       _exitDate = o.exitDate;
       _currency = o.currencyCode;
       _fabric = o.fabricProvidedBy;
+      _checkMeasurements(o.customerId);
     } else {
       _entryDate = DateTime.now();
     }
+  }
+
+  /// Les mesures appartiennent au CLIENT (pas à la commande) : une fois saisies,
+  /// elles sont réutilisées d'une commande à l'autre. On l'indique clairement.
+  static const _measurementKeys = [
+    'totalHeight', 'chestContour', 'sleeveHeight', 'shoulder', 'totalHeight2',
+    'waistContour', 'thighContour', 'legContour', 'kneeContour', 'calfContour',
+    'shoeSize', 'footLength',
+  ];
+
+  Future<void> _checkMeasurements(String customerId) async {
+    if (mounted) setState(() => _hasMeasurements = null);
+    try {
+      final p = await _atelierApi.getProfile(customerId);
+      final has = p != null && _measurementKeys.any((k) => p[k] != null);
+      if (mounted) setState(() => _hasMeasurements = has);
+    } catch (_) {
+      if (mounted) setState(() => _hasMeasurements = false);
+    }
+  }
+
+  Future<void> _openMeasurements() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AtelierClientProfileScreen(
+          customerId: _customerId!,
+          customerName: _customerName,
+        ),
+      ),
+    );
+    // Rafraîchir l'indicateur au retour (des mesures ont pu être saisies).
+    if (_customerId != null) _checkMeasurements(_customerId!);
   }
 
   @override
@@ -95,21 +132,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                 _customerField(),
                 if (_customerId != null) ...[
                   const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      icon: const Icon(Icons.straighten, size: 18),
-                      label: const Text('Mesures du client'),
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => AtelierClientProfileScreen(
-                            customerId: _customerId!,
-                            customerName: _customerName,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  _measurementsBanner(),
                 ],
                 const SizedBox(height: 16),
                 TextFormField(
@@ -211,6 +234,48 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     );
   }
 
+  /// Indique si le client a déjà des mesures (réutilisées) ou non — pour lever
+  /// le doute « faut-il reprendre les mesures à chaque commande ? » (non).
+  Widget _measurementsBanner() {
+    final has = _hasMeasurements;
+    late final IconData icon;
+    late final Color color;
+    late final String text;
+    if (has == null) {
+      icon = Icons.hourglass_empty;
+      color = Colors.grey;
+      text = 'Vérification des mesures…';
+    } else if (has) {
+      icon = Icons.check_circle;
+      color = const Color(0xFF16A34A);
+      text = 'Mesures déjà enregistrées — réutilisées pour cette commande';
+    } else {
+      icon = Icons.straighten;
+      color = const Color(0xFFF59E0B);
+      text = 'Aucune mesure — à saisir une seule fois (réutilisée ensuite)';
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
+          if (has != null)
+            TextButton(
+              onPressed: _openMeasurements,
+              child: Text(has ? 'Voir / modifier' : 'Saisir'),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _customerField() {
     if (_isEdit) {
       // En édition, le client n'est pas modifiable (une commande = un client).
@@ -231,10 +296,13 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
           return const Iterable<Customer>.empty();
         }
       },
-      onSelected: (c) => setState(() {
-        _customerId = c.id;
-        _customerName = c.name;
-      }),
+      onSelected: (c) {
+        setState(() {
+          _customerId = c.id;
+          _customerName = c.name;
+        });
+        _checkMeasurements(c.id);
+      },
       fieldViewBuilder: (context, controller, focusNode, onSubmit) {
         return TextFormField(
           controller: controller,

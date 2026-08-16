@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/modules/module_registry.dart';
+import '../../../core/services/business_context_service.dart';
+import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/kanban/kanban_board.dart';
 import '../cubit/atelier_orders_cubit.dart';
 import '../models/atelier_order.dart';
+import '../widgets/atelier_actor_chip.dart';
 import 'atelier_order_form_screen.dart';
 
 /// Board Kanban des commandes de confection (couture/cordonnerie).
@@ -40,17 +44,24 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Commandes — Atelier'),
-        actions: [
-          IconButton(
-            tooltip: 'Actualiser',
-            icon: const Icon(Icons.refresh),
-            onPressed: () => context.read<AtelierOrdersCubit>().load(),
-          ),
-        ],
-      ),
+    // Conserve le shell de l'app (sidebar + header) : sinon écran nu sans
+    // navigation. Même approche que les autres écrans principaux.
+    final ctx = BusinessContextService();
+    final index = ModuleRegistry.indexOfSidebarRoute(
+      ctx.activityMode,
+      ctx.currentContext?.userRole,
+      '/atelier/board',
+    );
+    return WanzoScaffold(
+      currentIndex: index < 0 ? 0 : index,
+      title: 'Commandes — Atelier',
+      appBarActions: [
+        IconButton(
+          tooltip: 'Actualiser',
+          icon: const Icon(Icons.refresh),
+          onPressed: () => context.read<AtelierOrdersCubit>().load(),
+        ),
+      ],
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openForm(context),
         icon: const Icon(Icons.add),
@@ -267,6 +278,16 @@ class _AtelierCard extends StatelessWidget {
               ),
             ],
           ),
+          // Attribution façon Trello : qui a validé la dernière étape.
+          if (order.lastActionByName != null) ...[
+            const SizedBox(height: 8),
+            AtelierActorChip(
+              name: order.lastActionByName!,
+              avatarUrl: order.lastActionByAvatar,
+              action: order.lastAction,
+              at: order.lastActionAt,
+            ),
+          ],
         ],
       ),
     );

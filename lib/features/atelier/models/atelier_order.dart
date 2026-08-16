@@ -84,6 +84,12 @@ class AtelierOrder extends Equatable {
   final String? saleId;
   final String? notes;
   final DateTime? createdAt;
+  // ── Attribution (façon Trello : qui a fait quoi) ──
+  final String? createdByName;
+  final String? lastAction;
+  final String? lastActionByName;
+  final String? lastActionByAvatar;
+  final DateTime? lastActionAt;
 
   const AtelierOrder({
     required this.id,
@@ -103,6 +109,11 @@ class AtelierOrder extends Equatable {
     this.saleId,
     this.notes,
     this.createdAt,
+    this.createdByName,
+    this.lastAction,
+    this.lastActionByName,
+    this.lastActionByAvatar,
+    this.lastActionAt,
   });
 
   static double _toDouble(dynamic v) =>
@@ -133,6 +144,11 @@ class AtelierOrder extends Equatable {
       saleId: json['saleId'] as String?,
       notes: json['notes'] as String?,
       createdAt: _toDate(json['createdAt']),
+      createdByName: json['createdByName'] as String?,
+      lastAction: json['lastAction'] as String?,
+      lastActionByName: json['lastActionByName'] as String?,
+      lastActionByAvatar: json['lastActionByAvatar'] as String?,
+      lastActionAt: _toDate(json['lastActionAt']),
     );
   }
 
@@ -156,6 +172,11 @@ class AtelierOrder extends Equatable {
     if (saleId != null) 'saleId': saleId,
     if (notes != null) 'notes': notes,
     if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
+    if (createdByName != null) 'createdByName': createdByName,
+    if (lastAction != null) 'lastAction': lastAction,
+    if (lastActionByName != null) 'lastActionByName': lastActionByName,
+    if (lastActionByAvatar != null) 'lastActionByAvatar': lastActionByAvatar,
+    if (lastActionAt != null) 'lastActionAt': lastActionAt!.toIso8601String(),
   };
 
   /// Payload de création/mise à jour (les champs null sont omis).
@@ -197,6 +218,11 @@ class AtelierOrder extends Equatable {
       saleId: saleId ?? this.saleId,
       notes: notes,
       createdAt: createdAt,
+      createdByName: createdByName,
+      lastAction: lastAction,
+      lastActionByName: lastActionByName,
+      lastActionByAvatar: lastActionByAvatar,
+      lastActionAt: lastActionAt,
     );
   }
 

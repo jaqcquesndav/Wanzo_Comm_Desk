@@ -263,7 +263,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           title: const Text('Mode d\'activité'),
           content: SizedBox(
             width: 420,
-            child: Column(
+            // Défilable : avec 5 modes, le contenu pourrait dépasser la hauteur
+            // de la fenêtre sur petit écran → évite le débordement.
+            child: SingleChildScrollView(
+              child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 for (final mode in ActivityMode.values)
@@ -284,6 +287,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     },
                   ),
               ],
+              ),
             ),
           ),
           actions: [

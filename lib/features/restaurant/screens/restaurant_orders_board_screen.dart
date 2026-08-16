@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/modules/module_registry.dart';
+import '../../../core/services/business_context_service.dart';
+import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/kanban/kanban_board.dart';
 import '../cubit/restaurant_orders_cubit.dart';
@@ -35,17 +38,23 @@ class RestaurantOrdersBoardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Commandes'),
-        actions: [
-          IconButton(
-            tooltip: 'Ouvrir la caisse',
-            icon: const Icon(Icons.point_of_sale_outlined),
-            onPressed: () => context.push('/restaurant/orders'),
-          ),
-        ],
-      ),
+    // Conserve le shell de l'app (sidebar + header) comme les autres écrans.
+    final ctx = BusinessContextService();
+    final index = ModuleRegistry.indexOfSidebarRoute(
+      ctx.activityMode,
+      ctx.currentContext?.userRole,
+      '/restaurant/board',
+    );
+    return WanzoScaffold(
+      currentIndex: index < 0 ? 0 : index,
+      title: 'Commandes',
+      appBarActions: [
+        IconButton(
+          tooltip: 'Ouvrir la caisse',
+          icon: const Icon(Icons.point_of_sale_outlined),
+          onPressed: () => context.push('/restaurant/orders'),
+        ),
+      ],
       body: BlocBuilder<RestaurantOrdersCubit, RestaurantOrdersState>(
         builder: (context, state) {
           if (state.loading) {
