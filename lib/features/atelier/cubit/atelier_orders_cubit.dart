@@ -80,7 +80,8 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
     }
   }
 
-  Future<void> updateStatus(String id, AtelierOrderStatus status) async {
+  Future<void> updateStatus(String id, AtelierOrderStatus status,
+      {String? saleId}) async {
     // Optimiste : refléter tout de suite le déplacement de carte.
     final previous = state.orders;
     emit(state.copyWith(
@@ -89,7 +90,7 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
           .toList(),
     ));
     try {
-      final updated = await _api.updateStatus(id, status);
+      final updated = await _api.updateStatus(id, status, saleId: saleId);
       emit(state.copyWith(
         orders: state.orders.map((o) => o.id == id ? updated : o).toList(),
       ));

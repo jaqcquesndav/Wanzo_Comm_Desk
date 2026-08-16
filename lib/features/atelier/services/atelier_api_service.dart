@@ -38,9 +38,14 @@ class AtelierApiService {
     return AtelierOrder.fromJson(res['data'] as Map<String, dynamic>);
   }
 
-  Future<AtelierOrder> updateStatus(String id, AtelierOrderStatus status) async {
+  Future<AtelierOrder> updateStatus(String id, AtelierOrderStatus status,
+      {String? saleId}) async {
     final res = await _apiClient.patch('atelier/orders/$id/status',
-        body: {'status': status.apiValue}, requiresAuth: true);
+        body: {
+          'status': status.apiValue,
+          if (saleId != null) 'saleId': saleId,
+        },
+        requiresAuth: true);
     return AtelierOrder.fromJson(res['data'] as Map<String, dynamic>);
   }
 

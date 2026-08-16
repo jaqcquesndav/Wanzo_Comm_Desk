@@ -128,7 +128,35 @@ class AddSaleScreen extends StatefulWidget {
   /// Callback appelé après sauvegarde réussie (mode modal).
   final VoidCallback? onSaved;
 
-  const AddSaleScreen({super.key, this.onSaved});
+  /// Préremplissage optionnel (ex. règlement d'une commande atelier : on route
+  /// vers ce MÊME formulaire de facturation pour un workflow cohérent — ticket
+  /// de caisse, facture et journal des opérations en découlent).
+  final String? initialCustomerId;
+  final String? initialCustomerName;
+  final String? initialCustomerPhone;
+  final List<SaleItem>? initialItems;
+  final double? initialPaidAmount;
+  final String? initialCurrencyCode;
+  final String? initialPaymentMethod;
+  final String? initialNotes;
+
+  /// Appelé une fois la vente créée avec succès (permet de lier la vente à sa
+  /// source, ex. rattacher le `saleId` à la commande atelier).
+  final void Function(Sale createdSale)? onSaleCreated;
+
+  const AddSaleScreen({
+    super.key,
+    this.onSaved,
+    this.initialCustomerId,
+    this.initialCustomerName,
+    this.initialCustomerPhone,
+    this.initialItems,
+    this.initialPaidAmount,
+    this.initialCurrencyCode,
+    this.initialPaymentMethod,
+    this.initialNotes,
+    this.onSaleCreated,
+  });
 
   @override
   State<AddSaleScreen> createState() => _AddSaleScreenState();
@@ -180,6 +208,28 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     context.read<InventoryBloc>().add(const LoadProducts());
     context.read<CustomerBloc>();
 
+    // Préremplissage (ex. facturation d'une commande atelier). La devise est
+    // appliquée dans _initializeCurrencySettings (dépend des taux chargés).
+    if (widget.initialItems != null) _items.addAll(widget.initialItems!);
+    if (widget.initialCustomerId != null) {
+      _linkedCustomerId = widget.initialCustomerId;
+    }
+    if (widget.initialCustomerName != null) {
+      _customerNameController.text = widget.initialCustomerName!;
+    }
+    if (widget.initialCustomerPhone != null) {
+      _customerPhoneController.text = widget.initialCustomerPhone!;
+    }
+    if (widget.initialPaidAmount != null) {
+      _paidAmount = widget.initialPaidAmount!;
+    }
+    if (widget.initialPaymentMethod != null) {
+      _paymentMethod = widget.initialPaymentMethod!;
+    }
+    if (widget.initialNotes != null) {
+      _notesController.text = widget.initialNotes!;
+    }
+
     final currencySettingsCubit = context.read<CurrencySettingsCubit>();
     // Access state directly after cubit is obtained
     final currentCurrencyState = currencySettingsCubit.state;
@@ -226,6 +276,18 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                 ? _availableCurrencies.first
                 : settings.activeCurrency;
       }
+
+      // Devise imposée par le préremplissage (ex. commande atelier en USD/CDF).
+      if (widget.initialCurrencyCode != null) {
+        for (final c in Currency.values) {
+          if (c.code == widget.initialCurrencyCode &&
+              _availableCurrencies.contains(c)) {
+            _selectedTransactionCurrency = c;
+            break;
+          }
+        }
+      }
+
       _transactionExchangeRate =
           _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
     });
@@ -1195,6 +1257,10 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       status: _isPaidFully() ? SaleStatus.completed : SaleStatus.pending,
       notes: _notesController.text,
     );
+
+    // Lier la vente à sa source (ex. commande atelier) : rattache le saleId et
+    // met à jour l'avance/reste + statut côté commande.
+    widget.onSaleCreated?.call(saleForPdf);
 
     final invoiceService = InvoiceService();
     String? pdfPath;

@@ -6,6 +6,9 @@ import '../../../core/services/business_context_service.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/kanban/kanban_board.dart';
+import '../../sales/bloc/sales_bloc.dart';
+import '../../sales/models/sale_item.dart';
+import '../../sales/screens/add_sale_screen.dart';
 import '../cubit/atelier_orders_cubit.dart';
 import '../models/atelier_order.dart';
 import '../widgets/atelier_actor_chip.dart';
@@ -163,11 +166,11 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
                 ),
               ListTile(
                 leading: const Icon(Icons.receipt_long, color: Color(0xFF16A34A)),
-                title: const Text('Marquer réglée (facturer)'),
-                subtitle: const Text('Génère automatiquement la vente'),
+                title: const Text('Facturer / encaisser'),
+                subtitle: const Text('Ouvre le formulaire de vente (ticket + facture)'),
                 onTap: () {
-                  cubit.updateStatus(order.id, AtelierOrderStatus.paid);
                   Navigator.pop(ctx);
+                  _settleViaInvoice(context, cubit, order);
                 },
               ),
               ListTile(
@@ -196,6 +199,63 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
                 },
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Facturation/encaissement d'une commande via le FORMULAIRE DE VENTE normal
+  /// (workflow cohérent : ticket de caisse, facture, journal des opérations).
+  /// La vente créée est rattachée à la commande.
+  void _settleViaInvoice(
+    BuildContext context,
+    AtelierOrdersCubit cubit,
+    AtelierOrder order,
+  ) {
+    final salesBloc = context.read<SalesBloc>();
+    final amountToBill =
+        order.remainingAmount > 0 ? order.remainingAmount : order.totalAmount;
+    final line = SaleItem.withCalculatedTotal(
+      productName: order.label,
+      quantity: 1,
+      unitPrice: amountToBill,
+      currencyCode: order.currencyCode,
+      exchangeRate: order.exchangeRate,
+      itemType: SaleItemType.service,
+      notes: '[Atelier] ${order.modelDetails ?? ''} (commande ${order.id})'.trim(),
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MultiBlocProvider(
+          providers: [
+            BlocProvider.value(value: salesBloc),
+            BlocProvider.value(value: cubit),
+          ],
+          child: AddSaleScreen(
+            initialCustomerId: order.customerId,
+            initialCustomerName: order.customerName,
+            initialItems: [line],
+            initialPaidAmount: amountToBill,
+            initialCurrencyCode: order.currencyCode,
+            initialNotes: 'Règlement commande atelier « ${order.label} »',
+            onSaleCreated: (sale) {
+              final paid = sale.paidAmountInTransactionCurrency ?? 0;
+              final coversBalance = paid + 0.01 >= amountToBill;
+              if (coversBalance) {
+                cubit.updateStatus(
+                  order.id,
+                  AtelierOrderStatus.paid,
+                  saleId: sale.id,
+                );
+              } else {
+                cubit.updateOrder(order.id, {
+                  'saleId': sale.id,
+                  'advanceAmount': order.advanceAmount + paid,
+                });
+              }
+            },
+          ),
         ),
       ),
     );
