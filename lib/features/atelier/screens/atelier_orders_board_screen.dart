@@ -216,6 +216,9 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
     final amountToBill =
         order.remainingAmount > 0 ? order.remainingAmount : order.totalAmount;
     final line = SaleItem.withCalculatedTotal(
+      // UUID de la commande (pas un produit du stock) : le backend crée l'item
+      // sans référence produit ni décrément de stock (article de service).
+      productId: order.id,
       productName: order.label,
       quantity: 1,
       unitPrice: amountToBill,

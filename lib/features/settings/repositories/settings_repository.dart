@@ -322,7 +322,13 @@ class SettingsRepository {
     // Récupérer les paramètres locaux actuels pour préserver les champs non-API
     final currentLocal = _settingsBox.get(_settingsKey) ?? const Settings();
 
+    // Régime fiscal (source de vérité = accounting, propagé par le backend) :
+    // NORMAL ⇒ assujetti TVA ; SMT/FORFAITAIRE ⇒ exonéré (pas de TVA affichée).
+    final isTaxSubject =
+        apiData['isTaxSubject'] as bool? ?? currentLocal.isTaxSubject;
+
     return currentLocal.copyWith(
+      isTaxSubject: isTaxSubject,
       companyName: companyName.isNotEmpty ? companyName : null,
       companyLogo: companyLogoUrl.isNotEmpty ? companyLogoUrl : null,
       language: defaultLanguage.isNotEmpty ? defaultLanguage : null,

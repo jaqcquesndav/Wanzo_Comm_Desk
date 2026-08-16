@@ -377,15 +377,19 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
   /// Retourne le taux de TVA applicable (produit > settings > 0)
   double _getApplicableTaxRate([Product? product]) {
-    if (product != null && product.taxRate != null && product.taxRate! > 0) {
-      return product.taxRate!;
-    }
     final oldState = context.read<old_settings_bloc.SettingsBloc>().state;
     old_settings_model.Settings? settings;
     if (oldState is old_settings_state.SettingsLoaded) {
       settings = oldState.settings;
     } else if (oldState is old_settings_state.SettingsUpdated) {
       settings = oldState.settings;
+    }
+    // Entreprise NON assujettie (régime minimal/SMT/forfaitaire) → aucune TVA,
+    // quel que soit le taux du produit. Cohérent avec le backend et Adha.
+    if (settings != null && !settings.isTaxSubject) return 0.0;
+
+    if (product != null && product.taxRate != null && product.taxRate! > 0) {
+      return product.taxRate!;
     }
     if (settings != null && settings.showTaxes && settings.defaultTaxRate > 0) {
       return settings.defaultTaxRate;

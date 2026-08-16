@@ -104,9 +104,12 @@ class InvoiceService {
         .replaceAll('{SEQ}', sale.id.substring(0, 8));
 
     final total = sale.totalAmountInCdf;
-    final taxAmount = settings.showTaxes ? (sale.taxAmount ?? 0.0) : 0.0;
+    // La TVA n'apparaît que si l'entreprise est assujettie (régime NORMAL) ET que
+    // l'affichage des taxes est activé. En régime minimal/SMT : aucune TVA.
+    final showTax = settings.showTaxes && settings.isTaxSubject;
+    final taxAmount = showTax ? (sale.taxAmount ?? 0.0) : 0.0;
     final subtotal =
-        settings.showTaxes ? (sale.amountHT ?? (total - taxAmount)) : total;
+        showTax ? (sale.amountHT ?? (total - taxAmount)) : total;
     final effectiveTaxRate =
         subtotal > 0 ? (taxAmount / subtotal) * 100 : settings.defaultTaxRate;
     final taxRateLabel =
@@ -558,9 +561,12 @@ class InvoiceService {
     final formattedDate = dateFormat.format(sale.date);
 
     final total = sale.totalAmountInCdf;
-    final taxAmount = settings.showTaxes ? (sale.taxAmount ?? 0.0) : 0.0;
+    // La TVA n'apparaît que si l'entreprise est assujettie (régime NORMAL) ET que
+    // l'affichage des taxes est activé. En régime minimal/SMT : aucune TVA.
+    final showTax = settings.showTaxes && settings.isTaxSubject;
+    final taxAmount = showTax ? (sale.taxAmount ?? 0.0) : 0.0;
     final subtotal =
-        settings.showTaxes ? (sale.amountHT ?? (total - taxAmount)) : total;
+        showTax ? (sale.amountHT ?? (total - taxAmount)) : total;
     final effectiveTaxRate =
         subtotal > 0 ? (taxAmount / subtotal) * 100 : settings.defaultTaxRate;
     final taxRateLabel =
