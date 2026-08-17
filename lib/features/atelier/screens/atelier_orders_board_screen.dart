@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../constants/colors.dart';
 import '../../../core/modules/module_registry.dart';
 import '../../../core/services/business_context_service.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
@@ -132,76 +133,103 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
     AtelierOrdersCubit cubit,
     AtelierOrder order,
   ) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-              child: Text(order.label, style: Theme.of(ctx).textTheme.titleMedium),
+    // Présentation adaptative : feuille depuis le bas sur mobile ; dialog centré
+    // et compact sur grand écran.
+    final isWide = MediaQuery.sizeOf(context).width >= 720;
+
+    List<Widget> actions(BuildContext ctx) => [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Text(order.label, style: Theme.of(ctx).textTheme.titleMedium),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              '${order.customerName ?? 'Client'} · ${order.status.label}\n'
+              'Total ${formatCurrency(order.totalAmount, order.currencyCode)}'
+              ' · Reste ${formatCurrency(order.remainingAmount, order.currencyCode)}',
+              style: Theme.of(ctx).textTheme.bodySmall,
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                '${order.customerName ?? 'Client'} · ${order.status.label}\n'
-                'Total ${formatCurrency(order.totalAmount, order.currencyCode)}'
-                ' · Reste ${formatCurrency(order.remainingAmount, order.currencyCode)}',
-                style: Theme.of(ctx).textTheme.bodySmall,
+          ),
+          const Divider(),
+          if (order.status.isActive) ...[
+            for (final next in _nextStatuses(order.status))
+              ListTile(
+                leading: Icon(Icons.arrow_forward, color: _accent[next]),
+                title: Text('Passer à « ${next.label} »'),
+                onTap: () {
+                  cubit.updateStatus(order.id, next);
+                  Navigator.pop(ctx);
+                },
               ),
+            ListTile(
+              leading: const Icon(Icons.receipt_long, color: WanzoColors.success),
+              title: const Text('Facturer / encaisser'),
+              subtitle: const Text('Ouvre le formulaire de vente (ticket + facture)'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _settleViaInvoice(context, cubit, order);
+              },
             ),
-            const Divider(),
-            if (order.status.isActive) ...[
-              for (final next in _nextStatuses(order.status))
-                ListTile(
-                  leading: Icon(Icons.arrow_forward, color: _accent[next]),
-                  title: Text('Passer à « ${next.label} »'),
-                  onTap: () {
-                    cubit.updateStatus(order.id, next);
-                    Navigator.pop(ctx);
-                  },
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Modifier'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openForm(context, order: order);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.cancel_outlined, color: Theme.of(ctx).colorScheme.error),
+              title: const Text('Annuler la commande'),
+              onTap: () {
+                cubit.updateStatus(order.id, AtelierOrderStatus.cancelled);
+                Navigator.pop(ctx);
+              },
+            ),
+          ] else
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Supprimer'),
+              onTap: () {
+                cubit.deleteOrder(order.id);
+                Navigator.pop(ctx);
+              },
+            ),
+        ];
+
+    if (isWide) {
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => Dialog(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: actions(ctx),
                 ),
-              ListTile(
-                leading: const Icon(Icons.receipt_long, color: Color(0xFF16A34A)),
-                title: const Text('Facturer / encaisser'),
-                subtitle: const Text('Ouvre le formulaire de vente (ticket + facture)'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _settleViaInvoice(context, cubit, order);
-                },
               ),
-              ListTile(
-                leading: const Icon(Icons.edit_outlined),
-                title: const Text('Modifier'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _openForm(context, order: order);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.cancel_outlined, color: Colors.red),
-                title: const Text('Annuler la commande'),
-                onTap: () {
-                  cubit.updateStatus(order.id, AtelierOrderStatus.cancelled);
-                  Navigator.pop(ctx);
-                },
-              ),
-            ] else
-              ListTile(
-                leading: const Icon(Icons.delete_outline),
-                title: const Text('Supprimer'),
-                onTap: () {
-                  cubit.deleteOrder(order.id);
-                  Navigator.pop(ctx);
-                },
-              ),
-          ],
+            ),
+          ),
         ),
-      ),
-    );
+      );
+    } else {
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: actions(ctx),
+          ),
+        ),
+      );
+    }
   }
 
   /// Facturation/encaissement d'une commande via le FORMULAIRE DE VENTE normal
@@ -286,14 +314,20 @@ class _AtelierCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Carte façon Trello : surface + ombre douce, SANS bordure (fini l'aspect
+    // « grillagé/éclaté » où chaque carte était encadrée d'un trait).
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
-        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -335,8 +369,8 @@ class _AtelierCard extends StatelessWidget {
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: order.remainingAmount > 0
-                      ? const Color(0xFFF59E0B)
-                      : const Color(0xFF16A34A),
+                      ? WanzoColors.warning
+                      : WanzoColors.success,
                 ),
               ),
             ],
