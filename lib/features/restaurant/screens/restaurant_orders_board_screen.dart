@@ -136,80 +136,98 @@ class RestaurantOrdersBoardScreen extends StatelessWidget {
     RestaurantOrdersCubit cubit,
     RestaurantOrder order,
   ) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        return SafeArea(
+    final isWide = MediaQuery.sizeOf(context).width >= 720;
+
+    List<Widget> actions(BuildContext ctx) => [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(order.label, style: Theme.of(ctx).textTheme.titleMedium),
+                ),
+                Text(
+                  formatCurrency(order.totalCdf, 'CDF'),
+                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '${order.itemCount} article(s) · ${order.status.label}',
+            textAlign: TextAlign.center,
+            style: Theme.of(ctx).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+          if (order.status.isActive) ...[
+            for (final next in _nextStatuses(order.status))
+              ListTile(
+                leading: Icon(Icons.arrow_forward, color: _accent[next]),
+                title: Text('Passer à « ${next.label} »'),
+                onTap: () {
+                  cubit.updateStatus(order.id, next);
+                  Navigator.pop(ctx);
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.point_of_sale_outlined),
+              title: const Text('Encaisser (caisse)'),
+              onTap: () {
+                Navigator.pop(ctx);
+                context.push('/restaurant/orders');
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.cancel_outlined, color: Theme.of(ctx).colorScheme.error),
+              title: const Text('Annuler la commande'),
+              onTap: () {
+                cubit.cancel(order.id);
+                Navigator.pop(ctx);
+              },
+            ),
+          ] else
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Supprimer de la liste'),
+              onTap: () {
+                cubit.deleteOrder(order.id);
+                Navigator.pop(ctx);
+              },
+            ),
+        ];
+
+    if (isWide) {
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => Dialog(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: actions(ctx),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    } else {
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) => SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        order.label,
-                        style: Theme.of(ctx).textTheme.titleMedium,
-                      ),
-                    ),
-                    Text(
-                      formatCurrency(order.totalCdf, 'CDF'),
-                      style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                '${order.itemCount} article(s) · ${order.status.label}',
-                textAlign: TextAlign.center,
-                style: Theme.of(ctx).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 8),
-              if (order.status.isActive) ...[
-                for (final next in _nextStatuses(order.status))
-                  ListTile(
-                    leading: Icon(Icons.arrow_forward, color: _accent[next]),
-                    title: Text('Passer à « ${next.label} »'),
-                    onTap: () {
-                      cubit.updateStatus(order.id, next);
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                ListTile(
-                  leading: const Icon(Icons.point_of_sale_outlined),
-                  title: const Text('Encaisser (caisse)'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    context.push('/restaurant/orders');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.cancel_outlined, color: Colors.red),
-                  title: const Text('Annuler la commande'),
-                  onTap: () {
-                    cubit.cancel(order.id);
-                    Navigator.pop(ctx);
-                  },
-                ),
-              ] else
-                ListTile(
-                  leading: const Icon(Icons.delete_outline),
-                  title: const Text('Supprimer de la liste'),
-                  onTap: () {
-                    cubit.deleteOrder(order.id);
-                    Navigator.pop(ctx);
-                  },
-                ),
-            ],
+            children: actions(ctx),
           ),
-        );
-      },
-    );
+        ),
+      );
+    }
   }
 
   /// Statuts atteignables depuis un statut actif (flux avant uniquement).
@@ -236,14 +254,19 @@ class _OrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Carte façon Trello : ombre douce, sans bordure (cohérent avec l'atelier).
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
-        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
