@@ -274,9 +274,15 @@ class InventoryRepository {
   }
 
   /// Ajouter une nouvelle transaction de stock
+  /// [pushToApi] : pousser la transaction vers le backend. À `false` pour les
+  /// mouvements DÉCLENCHÉS PAR UNE VENTE : le backend décrémente déjà le stock à
+  /// la création de la vente (sales.service), donc pousser en plus une
+  /// transaction de stock = DOUBLE décrément. Dans ce cas on ne fait que le
+  /// décrément LOCAL (UI offline) ; le stock backend fait foi et se réconcilie.
   Future<StockTransaction> addStockTransaction(
-    StockTransaction transaction,
-  ) async {
+    StockTransaction transaction, {
+    bool pushToApi = true,
+  }) async {
     final product = getProductById(transaction.productId);
 
     if (product == null) {
@@ -316,10 +322,12 @@ class InventoryRepository {
     }
 
     // Update product stock quantity
+    // Mouvement de vente (pushToApi=false) : ne PAS forcer le re-push du produit
+    // (le stock backend est dérivé de la vente) ; sinon marquer en attente.
     final updatedProduct = product.copyWith(
       stockQuantity: newQuantity,
       updatedAt: DateTime.now(),
-      syncStatus: 'pending', // Marquer comme en attente de sync
+      syncStatus: pushToApi ? 'pending' : product.syncStatus,
     );
 
     await _productsBox.put(product.id, updatedProduct);
@@ -327,8 +335,8 @@ class InventoryRepository {
       '💾 Stock mis à jour localement: ${product.name} → $newQuantity',
     );
 
-    // 3. Synchroniser la transaction et le stock avec l'API
-    if (_apiService != null) {
+    // 3. Synchroniser la transaction et le stock avec l'API (sauf mouvement de vente)
+    if (pushToApi && _apiService != null) {
       try {
         // Envoyer la transaction au serveur
         final apiResponse = await _apiService

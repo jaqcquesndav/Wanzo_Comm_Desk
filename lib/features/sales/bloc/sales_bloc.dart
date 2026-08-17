@@ -260,8 +260,9 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
                     item.quantity.toDouble(), // Valeur totale
               );
 
-              // Ajouter la transaction au repository d'inventaire
-              await _inventoryRepository.addStockTransaction(stockTransaction);
+              // Décrément LOCAL uniquement : le backend décrémente déjà le stock
+              // à la création de la vente (évite le DOUBLE décrément).
+              await _inventoryRepository.addStockTransaction(stockTransaction, pushToApi: false);
               debugPrint(
                 'Stock mis à jour pour le produit $productId: -${item.quantity}',
               );
@@ -385,7 +386,9 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
               totalValueInCdf: item.unitPriceInCdf * item.quantity,
             );
 
-            await _inventoryRepository.addStockTransaction(stockTransaction);
+            // Restock LOCAL uniquement : le backend restocke via la suppression
+            // de la vente (évite le double).
+            await _inventoryRepository.addStockTransaction(stockTransaction, pushToApi: false);
           } catch (e) {
             if (kDebugMode) {
               print(
