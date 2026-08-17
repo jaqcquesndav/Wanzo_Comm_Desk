@@ -81,7 +81,7 @@ class KanbanBoard<T extends Object> extends StatelessWidget {
         // Sinon, vue par onglets (mobile / fenêtre étroite).
         final useBoard = constraints.maxWidth >= columnWidth * 1.6;
         return useBoard
-            ? _buildBoard(context, constraints.maxHeight)
+            ? _buildBoard(context, constraints.maxWidth, constraints.maxHeight)
             : _buildTabbed(context);
       },
     );
@@ -90,11 +90,49 @@ class KanbanBoard<T extends Object> extends StatelessWidget {
   // ── Grand écran : colonnes glissables (façon Trello) ────────────────────────
   // Les colonnes occupent TOUTE la hauteur disponible et défilent verticalement
   // chacune de leur côté (fini l'« IntrinsicHeight » qui figeait les colonnes en
-  // petites boîtes flottant en haut). Défilement horizontal du board entier.
-  Widget _buildBoard(BuildContext context, double availableHeight) {
+  // petites boîtes flottant en haut).
+  // Largeur : si toutes les colonnes tiennent dans la largeur dispo, elles se
+  // RÉPARTISSENT pour remplir l'espace (pas de vide/scroll inutile) ; sinon elles
+  // gardent `columnWidth` et le board défile horizontalement.
+  Widget _buildBoard(BuildContext context, double maxWidth, double availableHeight) {
     const outerPad = 16.0;
+    const gap = 12.0;
     final colHeight =
         availableHeight.isFinite ? (availableHeight - outerPad * 2) : 640.0;
+    final h = colHeight > 0 ? colHeight : null;
+    final n = columns.length;
+    final totalNeeded = n * columnWidth + (n - 1) * gap + outerPad * 2;
+    final fitsWithoutScroll = maxWidth.isFinite && totalNeeded <= maxWidth;
+
+    Widget column(KanbanColumnData<T> col) => _BoardColumn<T>(
+          column: col,
+          itemId: itemId,
+          cardBuilder: cardBuilder,
+          onMoveItem: onMoveItem,
+          onTapItem: onTapItem,
+          enableDragAndDrop: enableDragAndDrop && onMoveItem != null,
+        );
+
+    if (fitsWithoutScroll) {
+      // Colonnes flexibles qui remplissent la largeur.
+      return Padding(
+        padding: const EdgeInsets.all(outerPad),
+        child: SizedBox(
+          height: h,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < n; i++) ...[
+                if (i > 0) const SizedBox(width: gap),
+                Expanded(child: column(columns[i])),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Sinon : largeur fixe + défilement horizontal.
     return Scrollbar(
       thumbVisibility: true,
       child: SingleChildScrollView(
@@ -105,19 +143,8 @@ class KanbanBoard<T extends Object> extends StatelessWidget {
           children: [
             for (final col in columns)
               Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: SizedBox(
-                  width: columnWidth,
-                  height: colHeight > 0 ? colHeight : null,
-                  child: _BoardColumn<T>(
-                    column: col,
-                    itemId: itemId,
-                    cardBuilder: cardBuilder,
-                    onMoveItem: onMoveItem,
-                    onTapItem: onTapItem,
-                    enableDragAndDrop: enableDragAndDrop && onMoveItem != null,
-                  ),
-                ),
+                padding: const EdgeInsets.only(right: gap),
+                child: SizedBox(width: columnWidth, height: h, child: column(col)),
               ),
           ],
         ),
