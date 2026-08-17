@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 
 /// Une colonne du board = un statut du workflow.
@@ -371,14 +372,27 @@ class _ColumnItemList<T extends Object> extends StatelessWidget {
           child: cardBuilder(context, item),
         );
         if (!draggable) return card;
+        final feedback = _DragFeedback(width: 280, child: cardBuilder(context, item));
+        final whenDragging = Opacity(opacity: 0.4, child: card);
+        // Souris (desktop) → drag immédiat ; tactile → appui long (sinon le drag
+        // volerait le geste de défilement du board).
+        final isDesktop = defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.linux ||
+            defaultTargetPlatform == TargetPlatform.macOS;
+        if (isDesktop) {
+          return Draggable<T>(
+            data: item,
+            dragAnchorStrategy: pointerDragAnchorStrategy,
+            feedback: feedback,
+            childWhenDragging: whenDragging,
+            child: card,
+          );
+        }
         return LongPressDraggable<T>(
           data: item,
           dragAnchorStrategy: pointerDragAnchorStrategy,
-          feedback: _DragFeedback(
-            width: 280,
-            child: cardBuilder(context, item),
-          ),
-          childWhenDragging: Opacity(opacity: 0.4, child: card),
+          feedback: feedback,
+          childWhenDragging: whenDragging,
           child: card,
         );
       },
