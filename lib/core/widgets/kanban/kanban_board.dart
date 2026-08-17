@@ -80,39 +80,46 @@ class KanbanBoard<T extends Object> extends StatelessWidget {
         // Assez de place pour au moins ~1,5 colonne côte à côte → board glissé.
         // Sinon, vue par onglets (mobile / fenêtre étroite).
         final useBoard = constraints.maxWidth >= columnWidth * 1.6;
-        return useBoard ? _buildBoard(context) : _buildTabbed(context);
+        return useBoard
+            ? _buildBoard(context, constraints.maxHeight)
+            : _buildTabbed(context);
       },
     );
   }
 
-  // ── Grand écran : colonnes glissables ──────────────────────────────────────
-  Widget _buildBoard(BuildContext context) {
+  // ── Grand écran : colonnes glissables (façon Trello) ────────────────────────
+  // Les colonnes occupent TOUTE la hauteur disponible et défilent verticalement
+  // chacune de leur côté (fini l'« IntrinsicHeight » qui figeait les colonnes en
+  // petites boîtes flottant en haut). Défilement horizontal du board entier.
+  Widget _buildBoard(BuildContext context, double availableHeight) {
+    const outerPad = 16.0;
+    final colHeight =
+        availableHeight.isFinite ? (availableHeight - outerPad * 2) : 640.0;
     return Scrollbar(
       thumbVisibility: true,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.all(12),
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final col in columns)
-                Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: SizedBox(
-                    width: columnWidth,
-                    child: _BoardColumn<T>(
-                      column: col,
-                      itemId: itemId,
-                      cardBuilder: cardBuilder,
-                      onMoveItem: onMoveItem,
-                      onTapItem: onTapItem,
-                      enableDragAndDrop: enableDragAndDrop && onMoveItem != null,
-                    ),
+        padding: const EdgeInsets.all(outerPad),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final col in columns)
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: SizedBox(
+                  width: columnWidth,
+                  height: colHeight > 0 ? colHeight : null,
+                  child: _BoardColumn<T>(
+                    column: col,
+                    itemId: itemId,
+                    cardBuilder: cardBuilder,
+                    onMoveItem: onMoveItem,
+                    onTapItem: onTapItem,
+                    enableDragAndDrop: enableDragAndDrop && onMoveItem != null,
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
@@ -206,19 +213,17 @@ class _BoardColumnState<T extends Object> extends State<_BoardColumn<T>> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: _dragOver
-              ? col.color
-              : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          width: _dragOver ? 2 : 1,
-        ),
+        // Une seule bordure, discrète, qui s'illumine uniquement au survol d'un
+        // glisser-déposer (plus d'empilement de traits « éclaté »).
+        border: _dragOver
+            ? Border.all(color: col.color, width: 2)
+            : Border.all(color: Colors.transparent, width: 2),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
         children: [
           _header(context),
-          Flexible(
+          Expanded(
             child: _ColumnItemList<T>(
               column: col,
               itemId: widget.itemId,
@@ -326,10 +331,9 @@ class _ColumnItemList<T extends Object> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (column.items.isEmpty) {
-      return _EmptyColumn(color: column.color);
+      return Center(child: _EmptyColumn(color: column.color));
     }
     return ListView.separated(
-      shrinkWrap: true,
       padding: padding,
       itemCount: column.items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 8),
