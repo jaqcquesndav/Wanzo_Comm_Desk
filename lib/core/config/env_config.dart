@@ -48,6 +48,12 @@ class EnvConfig {
   /// Cette URL inclut déjà /commerce/api/v1, les endpoints ne doivent pas le répéter
   static String get commerceBaseUrl => '$apiGatewayUrl/$commerceApiPrefix';
 
+  /// Préfixe API pour customer-service (abonnements) via le gateway
+  static const String landApiPrefix = 'land/api/v1';
+
+  /// URL de base customer-service (abonnements). Inclut déjà /land/api/v1.
+  static String get landBaseUrl => '$apiGatewayUrl/$landApiPrefix';
+
   /// Retourne l'URL appropriée selon l'environnement (dev, staging, prod)
   static String getBaseUrl({bool useApiGateway = true}) {
     // Par défaut, utiliser l'API Gateway comme point d'entrée

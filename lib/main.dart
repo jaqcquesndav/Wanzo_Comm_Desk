@@ -29,6 +29,7 @@ import 'package:wanzo/core/services/customer_api_service.dart';
 import 'package:wanzo/core/services/sale_api_service.dart';
 import 'package:wanzo/features/expenses/services/expense_api_service.dart'; // Added import for ExpenseApiService
 import 'package:wanzo/features/adha/services/adha_api_service.dart'; // Added import for AdhaApiService
+import 'package:wanzo/features/subscription/widgets/subscription_banner_overlay.dart';
 import 'package:wanzo/features/settings/services/settings_api_service.dart'; // Settings API Service
 import 'package:wanzo/features/settings/services/financial_account_api_service.dart'; // Financial Account API Service
 import 'package:wanzo/features/inventory/services/inventory_api_service.dart'; // Inventory API Service
@@ -817,6 +818,9 @@ class WanzoApp extends StatelessWidget {
                   title: 'Wanzo - Gestion de Stock',
                   debugShowCheckedModeBanner: false,
                   routerConfig: appRouter.router,
+                  builder: (context, child) => SubscriptionBannerOverlay(
+                    child: child ?? const SizedBox.shrink(),
+                  ),
                   theme: WanzoTheme.lightTheme, // Use your custom light theme
                   darkTheme: WanzoTheme.darkTheme, // Use your custom dark theme
                   themeMode: themeMode, // Use settings-based theme mode

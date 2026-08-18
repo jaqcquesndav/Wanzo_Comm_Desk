@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../constants/colors.dart';
+import '../../shared_widgets/fiscal_year_indicator.dart';
 import '../../services/sync_service.dart';
 import 'package:get_it/get_it.dart';
 
@@ -324,6 +325,10 @@ class _DesktopSidebarState extends State<DesktopSidebar>
           _buildSyncButton(context, isExpanded, textColor, isDark),
 
           const SizedBox(height: 12),
+          if (isExpanded) ...[
+            const FiscalYearIndicator(compact: true),
+            const SizedBox(height: 12),
+          ],
           if (isExpanded)
             Text(
               'Wanzo Desktop v1.0.0',
