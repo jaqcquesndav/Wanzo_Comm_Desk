@@ -796,6 +796,7 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
           }
           break;
         case 'document':
+          final messenger = ScaffoldMessenger.of(context);
           final FilePickerResult? result = await FilePicker.platform.pickFiles(
             type: FileType.custom,
             allowedExtensions: [
@@ -814,7 +815,14 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
             withData: true,
           );
           if (result != null) {
+            const maxBytes = 10 * 1024 * 1024; // 10 Mo — évite les crashes mémoire
             for (final file in result.files) {
+              if (file.size > maxBytes) {
+                messenger.showSnackBar(
+                  SnackBar(content: Text('« ${file.name} » dépasse 10 Mo et a été ignoré')),
+                );
+                continue;
+              }
               if (file.bytes != null) {
                 final attachment = AdhaAttachment.fromBytes(
                   bytes: file.bytes!,

@@ -143,42 +143,11 @@ class DesktopHeader extends StatelessWidget {
       duration: const Duration(milliseconds: 200),
       width: width,
       padding: EdgeInsets.symmetric(horizontal: isSidebarExpanded ? 16 : 12),
+      // Header épuré façon accounting/compta : hamburger + nom d'app simple.
+      // (Plus de logo image ni de sous-titre « Business Manager » encombrants ;
+      // le titre de page est déjà affiché dans la barre principale.)
       child: Row(
         children: [
-          // Logo
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: WanzoColors.primary,
-              borderRadius: BorderRadius.circular(8),
-              boxShadow: [
-                BoxShadow(
-                  color: WanzoColors.primary.withValues(alpha: 0.3),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.asset(
-                'assets/images/logo.jpg',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return const Icon(
-                    Icons.storefront,
-                    color: Colors.white,
-                    size: 20,
-                  );
-                },
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 8),
-
-          // Bouton toggle sidebar (après le logo)
           IconButton(
             icon: Icon(
               isSidebarExpanded ? Icons.menu_open : Icons.menu,
@@ -187,34 +156,17 @@ class DesktopHeader extends StatelessWidget {
             onPressed: onToggleSidebar,
             tooltip: isSidebarExpanded ? 'Réduire le menu' : 'Étendre le menu',
           ),
-
           if (isSidebarExpanded) ...[
             const SizedBox(width: 8),
-
-            // Nom de l'app
             Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Wanzo',
-                    style: TextStyle(
-                      color: theme.colorScheme.onSurface,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    'Business Manager',
-                    style: TextStyle(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      fontSize: 11,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+              child: Text(
+                'Wanzo Commerce',
+                style: TextStyle(
+                  color: theme.colorScheme.onSurface,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
