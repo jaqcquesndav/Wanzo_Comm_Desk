@@ -155,7 +155,9 @@ class ApiClient {
 
   // ============= LOGGING =============
   /// Active/désactive les logs détaillés (mettre à false en production)
-  static const bool _enableVerboseLogs = true;
+  // Logs verbeux (URL, headers, corps) DÉSACTIVÉS en release pour ne pas exposer
+  // de données sensibles (tokens, PII) dans les logs de l'appareil.
+  static const bool _enableVerboseLogs = !kReleaseMode;
 
   /// Log une requête API sortante
   void _logRequest(String method, Uri url, {dynamic body}) {
