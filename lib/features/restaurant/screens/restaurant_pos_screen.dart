@@ -668,28 +668,34 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   /// l'option est activée. Réutilise le même `ReceiptPrinterService` que les
   /// autres modes (boutique, atelier).
   Future<void> _autoPrintCashTicket(Sale sale) async {
-    if (!ReceiptPrinterService.isCashPayment(sale.paymentMethod)) return;
-    // Capturer les paramètres AVANT tout await (pas d'accès à context ensuite).
-    old_settings_model.Settings? settings;
-    final st = context.read<old_settings_bloc.SettingsBloc>().state;
-    if (st is old_settings_state.SettingsLoaded) {
-      settings = st.settings;
-    } else if (st is old_settings_state.SettingsUpdated) {
-      settings = st.settings;
-    }
-    if (settings == null) return;
-    final printerService = ReceiptPrinterService();
-    if (!await printerService.getAutoPrintOnCashSale()) return;
-    final ok = await printerService.printCashReceipt(sale, settings);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Impression automatique échouée. Vérifiez la connexion de l\'imprimante.',
+    // ROBUSTESSE : l'impression ne doit JAMAIS bloquer ni faire planter
+    // l'encaissement (imprimante absente/hors-ligne, service indisponible…).
+    try {
+      if (!ReceiptPrinterService.isCashPayment(sale.paymentMethod)) return;
+      // Capturer les paramètres AVANT tout await (pas d'accès à context ensuite).
+      old_settings_model.Settings? settings;
+      final st = context.read<old_settings_bloc.SettingsBloc>().state;
+      if (st is old_settings_state.SettingsLoaded) {
+        settings = st.settings;
+      } else if (st is old_settings_state.SettingsUpdated) {
+        settings = st.settings;
+      }
+      if (settings == null) return;
+      final printerService = ReceiptPrinterService();
+      if (!await printerService.getAutoPrintOnCashSale()) return;
+      final ok = await printerService.printCashReceipt(sale, settings);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Impression automatique échouée. Vérifiez la connexion de l\'imprimante.',
+            ),
+            backgroundColor: Colors.orange,
           ),
-          backgroundColor: Colors.orange,
-        ),
-      );
+        );
+      }
+    } catch (_) {
+      // Silencieux : la vente est déjà enregistrée, l'impression est accessoire.
     }
   }
 }
