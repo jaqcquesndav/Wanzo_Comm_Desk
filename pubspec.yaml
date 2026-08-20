@@ -163,11 +163,21 @@ msix_config:
   display_name: Wanzo Commerce
   publisher_display_name: Wanzo
   identity_name: com.wanzo.commerce
-  msix_version: 1.0.1.0
+  # Éditeur FIXE (doit correspondre exactement au sujet du certificat de
+  # signature). Une identité d'éditeur stable est indispensable pour que les
+  # mises à jour MSIX s'installent PAR-DESSUS l'ancienne version.
+  publisher: CN=Wanzo
+  # PAS de msix_version codée en dur : elle est dérivée AUTOMATIQUEMENT de
+  # `version:` du pubspec (ex. 1.0.1+2 -> 1.0.1.2). Il suffit donc de bumper
+  # `version:` à chaque release pour que Windows accepte la mise à jour
+  # (la version MSIX doit être strictement croissante).
   logo_path: assets/icons/app_icon_square.png
   capabilities: internetClient, microphone
   languages: fr-FR, en-US, sw-TZ
   file_extension: .wanzo
   protocol_activation: wanzo
   execution_alias: wanzo
+  # Certificat : NON référencé ici (le mot de passe ne doit pas être commité).
+  # Il est passé au build via des variables d'environnement — voir
+  # windows/codesign/build_msix.ps1 et generate_cert.ps1.
   store: false
