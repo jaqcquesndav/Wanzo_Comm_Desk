@@ -1,19 +1,32 @@
+import 'dart:convert';
 import 'dart:io';
-import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
 
-/// Type de connexion pour l'imprimante thermique
-enum ThermalConnectionType { bluetooth, usb, network }
+/// Types de connexion pris en charge pour l'imprimante.
+enum ThermalConnectionType {
+  bluetooth, // Bluetooth classique (SPP/RFCOMM) — imprimantes 57–80 mm ESC/POS
+  usb, // USB OTG brut (déprécié ici : couvert par l'impression système/pilote)
+  network, // Réseau TCP/IP (port 9100 — standard ESC/POS)
+  epos, // Epson ePOS-Print (XML sur HTTP) — imprimantes réseau Epson TM
+  system, // Impression via le système/pilote OS (tout pilote installé : USB, WiFi, E-POS Printer Driver, Mopria…)
+}
 
-/// Représente un périphérique imprimante thermique découvert
+/// Représente une imprimante thermique découverte ou configurée.
 class ThermalPrinterDevice {
   final String name;
+
+  /// BT: adresse MAC  |  USB: "vendorId|productId"  |  Network: "ip:port"
   final String address;
   final ThermalConnectionType type;
 
@@ -23,251 +36,143 @@ class ThermalPrinterDevice {
     required this.type,
   });
 
-  Map<String, String> toMap() => {
-    'name': name,
-    'address': address,
-    'type': type.name,
-  };
+  String get displayName => name.isNotEmpty ? name : address;
 
-  factory ThermalPrinterDevice.fromMap(Map<String, String> map) {
-    return ThermalPrinterDevice(
-      name: map['name'] ?? '',
-      address: map['address'] ?? '',
-      type: ThermalConnectionType.values.firstWhere(
-        (e) => e.name == map['type'],
-        orElse: () => ThermalConnectionType.bluetooth,
-      ),
-    );
-  }
+  @override
+  String toString() => 'ThermalPrinterDevice($type, $name, $address)';
 }
 
-/// Service d'impression thermique de tickets de caisse
+/// Service d'impression de tickets de caisse sur imprimantes thermiques ESC/POS.
 ///
-/// Gère la découverte, la connexion et l'impression vers des imprimantes
-/// thermiques via Bluetooth Classic (SPP/RFCOMM) ou réseau TCP (port 9100).
+/// Supporte :
+/// - **Bluetooth** : Classic BT (SPP) via `print_bluetooth_thermal`.
+/// - **Réseau (TCP)** : Imprimantes POS en réseau local (port 9100) via `dart:io`.
+/// - **USB OTG** : Non supporté dans cette version (stub retournant false).
+///
+/// Le ticket n'est généré que pour les paiements en espèces.
+/// Seul le montant réellement reçu en cash est affiché.
 class ReceiptPrinterService {
-  // Largeur papier 58mm = 32 caractères en police A normale
+  static const _keyName = 'thermal_printer_name';
+  static const _keyAddress = 'thermal_printer_address';
+  static const _keyType = 'thermal_printer_type';
+  static const _keyAutoPrint = 'thermal_auto_print_cash';
+
+  static const String cashPaymentLabel = 'Espèces';
+
+  // 58 mm paper: ~32 chars wide at font A (normal size)
   static const int _colWidth = 32;
 
-  // Clés SharedPreferences
-  static const String _keyPrinterName = 'thermal_printer_name';
-  static const String _keyPrinterAddress = 'thermal_printer_address';
-  static const String _keyPrinterType = 'thermal_printer_type';
-  static const String _keyAutoPrint = 'thermal_auto_print_cash';
+  // ── Persistance des préférences ──────────────────────────────────────────
 
-  // ─── Persistance ───────────────────────────────────────────────
-
-  /// Récupère l'imprimante sauvegardée
   Future<ThermalPrinterDevice?> getSavedPrinter() async {
     final prefs = await SharedPreferences.getInstance();
-    final name = prefs.getString(_keyPrinterName);
-    final address = prefs.getString(_keyPrinterAddress);
-    final type = prefs.getString(_keyPrinterType);
-    if (name == null || address == null || type == null) return null;
+    final address = prefs.getString(_keyAddress);
+    if (address == null || address.isEmpty) return null;
     return ThermalPrinterDevice(
-      name: name,
+      name: prefs.getString(_keyName) ?? '',
       address: address,
-      type: ThermalConnectionType.values.firstWhere(
-        (e) => e.name == type,
-        orElse: () => ThermalConnectionType.bluetooth,
-      ),
+      type: ThermalConnectionType.values[prefs.getInt(_keyType) ?? 0],
     );
   }
 
-  /// Sauvegarde l'imprimante sélectionnée
   Future<void> savePrinter(ThermalPrinterDevice printer) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyPrinterName, printer.name);
-    await prefs.setString(_keyPrinterAddress, printer.address);
-    await prefs.setString(_keyPrinterType, printer.type.name);
+    await prefs.setString(_keyName, printer.name);
+    await prefs.setString(_keyAddress, printer.address);
+    await prefs.setInt(_keyType, printer.type.index);
   }
 
-  /// Supprime l'imprimante sauvegardée
   Future<void> clearSavedPrinter() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_keyPrinterName);
-    await prefs.remove(_keyPrinterAddress);
-    await prefs.remove(_keyPrinterType);
+    await prefs.remove(_keyAddress);
+    await prefs.remove(_keyName);
+    await prefs.remove(_keyType);
   }
 
-  /// Récupère le paramètre d'impression automatique après vente cash
   Future<bool> getAutoPrintOnCashSale() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_keyAutoPrint) ?? false;
   }
 
-  /// Définit le paramètre d'impression automatique après vente cash
   Future<void> setAutoPrintOnCashSale(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyAutoPrint, value);
   }
 
-  // ─── Découverte ────────────────────────────────────────────────
+  // ── Découverte des imprimantes ───────────────────────────────────────────
 
-  /// Scanne les appareils Bluetooth appairés
+  /// Retourne la liste des appareils Bluetooth déjà appairés au téléphone.
+  ///
+  /// **Note** : `pairedBluetooths` retourne silencieusement `[]` quand la
+  /// permission OS est absente. On vérifie via `isPermissionBluetoothGranted`
+  /// (méthode native du package) pour lever une exception explicite.
   Future<List<ThermalPrinterDevice>> scanBluetooth() async {
-    try {
-      // Sur Android uniquement, vérifier les permissions via permission_handler
-      // Sur Windows/macOS/Linux, pas de permission runtime nécessaire
-      if (Platform.isAndroid) {
-        final permOk = await PrintBluetoothThermal.isPermissionBluetoothGranted;
-        if (!permOk) {
-          debugPrint(
-            '[ReceiptPrinterService] Permission Bluetooth non accordée (Android)',
-          );
-          return [];
-        }
+    if (Platform.isAndroid) {
+      final granted = await PrintBluetoothThermal.isPermissionBluetoothGranted;
+      if (!granted) {
+        throw Exception(
+          'Permission BLUETOOTH_CONNECT refusée par le système.\n'
+          'Autorisez Bluetooth dans Paramètres → Applications → Wanzo.',
+        );
       }
-
-      final List<BluetoothInfo> paired =
-          await PrintBluetoothThermal.pairedBluetooths;
-
-      return paired
-          .map(
-            (bt) => ThermalPrinterDevice(
-              name: bt.name,
-              address: bt.macAdress, // Typo intentionnelle dans le package
-              type: ThermalConnectionType.bluetooth,
-            ),
-          )
-          .toList();
-    } catch (e) {
-      debugPrint('[ReceiptPrinterService] Erreur scan BT: $e');
-      return [];
     }
+
+    final paired = await PrintBluetoothThermal.pairedBluetooths;
+
+    // Filtre défensif : ignorer les entrées avec une adresse MAC vide qui
+    // peuvent apparaître sur certains ROM si bondedDevices renvoie des
+    // appareils mal initialisés.
+    return paired
+        .where((d) => d.macAdress.isNotEmpty)
+        .map(
+          (d) => ThermalPrinterDevice(
+            name: d.name.isNotEmpty ? d.name : d.macAdress,
+            address: d.macAdress,
+            type: ThermalConnectionType.bluetooth,
+          ),
+        )
+        .toList();
   }
 
-  /// Stub pour scan USB (non implémenté)
-  Future<List<ThermalPrinterDevice>> scanUsb() async {
-    // USB direct non supporté via print_bluetooth_thermal
-    // Pour desktop : utiliser flutter_libserialport ou connexion réseau TCP
-    return [];
-  }
+  /// USB OTG non supporté dans cette version — retourne une liste vide.
+  Future<List<ThermalPrinterDevice>> scanUsb() async => [];
 
-  // ─── Détection paiement ────────────────────────────────────────
+  // ── Vérification paiement cash ───────────────────────────────────────────
 
-  /// Vérifie si le mode de paiement est en espèces
   static bool isCashPayment(String? paymentMethod) {
     if (paymentMethod == null) return false;
-    final lower = paymentMethod.toLowerCase().trim();
-    return lower == 'espèces' ||
-        lower == 'especes' ||
-        lower == 'cash' ||
-        lower == 'comptant';
+    final pm = paymentMethod.toLowerCase();
+    return pm == 'espèces' || pm == 'especes' || pm == 'cash' || pm == 'espece';
   }
 
-  // ─── Impression ────────────────────────────────────────────────
+  // ── Construction du ticket (ESC/POS bytes) ────────────────────────────────
 
-  /// Point d'entrée principal : imprime un ticket de caisse
-  Future<bool> printCashReceipt(Sale sale, Settings settings) async {
-    try {
-      final printer = await getSavedPrinter();
-      if (printer == null) {
-        debugPrint('[ReceiptPrinterService] Aucune imprimante configurée');
-        return false;
-      }
-
-      final bytes = buildCashReceiptBytes(sale, settings);
-
-      switch (printer.type) {
-        case ThermalConnectionType.bluetooth:
-          return await _printBluetooth(printer, bytes);
-        case ThermalConnectionType.network:
-          return await _printNetwork(printer, bytes);
-        case ThermalConnectionType.usb:
-          debugPrint('[ReceiptPrinterService] USB non encore implémenté');
-          return false;
-      }
-    } catch (e) {
-      debugPrint('[ReceiptPrinterService] Erreur impression: $e');
-      return false;
-    }
-  }
-
-  /// Impression Bluetooth via print_bluetooth_thermal
-  Future<bool> _printBluetooth(
-    ThermalPrinterDevice printer,
-    List<int> bytes,
-  ) async {
-    try {
-      // Déconnecter si déjà connecté (évite le bug de socket SPP occupée)
-      final alreadyConnected = await PrintBluetoothThermal.connectionStatus;
-      if (alreadyConnected) {
-        await PrintBluetoothThermal.disconnect;
-      }
-
-      final connected = await PrintBluetoothThermal.connect(
-        macPrinterAddress: printer.address,
-      );
-      if (!connected) {
-        debugPrint(
-          '[ReceiptPrinterService] Échec connexion BT ${printer.name}',
-        );
-        return false;
-      }
-
-      // Vérifier la connexion effective
-      final status = await PrintBluetoothThermal.connectionStatus;
-      if (!status) {
-        debugPrint('[ReceiptPrinterService] Socket BT pas prête');
-        return false;
-      }
-
-      final sent = await PrintBluetoothThermal.writeBytes(bytes);
-      await PrintBluetoothThermal.disconnect;
-      return sent;
-    } catch (e) {
-      debugPrint('[ReceiptPrinterService] Erreur BT: $e');
-      return false;
-    }
-  }
-
-  /// Impression réseau TCP (port 9100)
-  Future<bool> _printNetwork(
-    ThermalPrinterDevice printer,
-    List<int> bytes,
-  ) async {
-    try {
-      final parts = printer.address.split(':');
-      final host = parts[0];
-      final port = parts.length > 1 ? int.tryParse(parts[1]) ?? 9100 : 9100;
-
-      final socket = await Socket.connect(
-        host,
-        port,
-        timeout: const Duration(seconds: 5),
-      );
-      socket.add(bytes);
-      await socket.flush();
-      await socket.close();
-      return true;
-    } catch (e) {
-      debugPrint('[ReceiptPrinterService] Erreur réseau: $e');
-      return false;
-    }
-  }
-
-  // ─── Construction du ticket ESC/POS ────────────────────────────
-
-  /// Construit les bytes ESC/POS pour un ticket de caisse
+  /// Construit les octets ESC/POS bruts du ticket de caisse.
+  ///
+  /// Mise en page compacte (économie de papier) :
+  /// - En-tête : nom (gras), adresse, tél, NIF/RCCM (sur une ligne), ID NAT
+  /// - Corps   : date+réf sur la même ligne, articles compacts
+  /// - Pied    : "Merci", wanzzo.com, QR code → https://wanzzo.com/
   List<int> buildCashReceiptBytes(Sale sale, Settings settings) {
+    final currency = sale.transactionCurrencyCode ?? 'CDF';
+    final totalInTx =
+        sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
+    final paidInTx =
+        sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf;
+    final change = paidInTx - totalInTx;
+    final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(sale.date);
     final bytes = <int>[];
 
-    // Reset + sélection WPC1252 pour les accents français
     bytes.addAll(_escReset());
 
-    // ════ EN-TÊTE ENTREPRISE / UNITÉ ════
+    // ── En-tête entreprise / unité (centré) ──────────────────────────────
     //
     // Quand l'utilisateur est rattaché à une BusinessUnit personne morale
-    // (coopérant entreprise d'une coopérative, succursale immatriculée
-    // séparément), la pièce commerciale doit afficher l'identité légale
-    // de CETTE BU — et non celle de l'entreprise parente.
-    //
-    // Sinon (admin niveau entreprise, BU personne physique, ou contexte
-    // non chargé), on retombe sur les Settings au niveau entreprise.
+    // (coopérant entreprise d'une coopérative, succursale immatriculée),
+    // la pièce commerciale doit afficher l'identité légale de CETTE BU
+    // — et non celle de l'entreprise parente.
     final ctx = BusinessContextService();
     final useBu = ctx.shouldUseBusinessUnitIdentity;
-
     final headerName = useBu
         ? (ctx.businessUnitName ?? settings.companyName)
         : settings.companyName;
@@ -287,273 +192,685 @@ class ReceiptPrinterService {
         ? (ctx.businessUnitIdNat ?? settings.idNatNumber)
         : settings.idNatNumber;
 
-    bytes.addAll(_escSeparatorDouble());
-    bytes.addAll(_escAlign(1)); // Centre
+    bytes.addAll(_escAlign(1));
+
+    // Nom en gras, taille normale (32 chars disponibles, pas 2× qui divise
+    // la largeur utile par 2 et tronque les noms longs).
     bytes.addAll(_escBold(true));
     bytes.addAll(
       _escLine(_truncate(headerName.toUpperCase(), _colWidth)),
     );
     bytes.addAll(_escBold(false));
 
-    // Adresse (avec word wrap)
+    // Adresse : wrap auto si trop longue
     if (headerAddress.isNotEmpty) {
-      for (final line in _wrapText(headerAddress, _colWidth)) {
-        bytes.addAll(_escLine(line));
+      for (final ln in _wrapText(headerAddress, _colWidth)) {
+        bytes.addAll(_escLine(ln));
       }
     }
 
     // Téléphone
     if (headerPhone.isNotEmpty) {
-      bytes.addAll(_escLine('Tél: $headerPhone'));
+      bytes.addAll(_escLine('Tel: $headerPhone'));
     }
 
-    // Identifiants légaux (de la BU si personne morale, sinon de l'entreprise)
-    if (headerTaxId.isNotEmpty) {
-      bytes.addAll(_escLine('NIF: $headerTaxId'));
+    // NIF et RCCM : sur la même ligne si ça tient (économie de papier)
+    final hasNif = headerTaxId.isNotEmpty;
+    final hasRccm = headerRccm.isNotEmpty;
+    final hasIdNat = headerIdNat.isNotEmpty;
+
+    if (hasNif && hasRccm) {
+      final nifStr = 'NIF:$headerTaxId';
+      final rccmStr = 'RCCM:${_truncate(headerRccm, 14)}';
+      final combined = '$nifStr  $rccmStr';
+      if (combined.length <= _colWidth) {
+        bytes.addAll(_escLine(combined));
+      } else {
+        bytes.addAll(
+          _escLine(_truncate('NIF: $headerTaxId', _colWidth)),
+        );
+        bytes.addAll(
+          _escLine(_truncate('RCCM: $headerRccm', _colWidth)),
+        );
+      }
+    } else if (hasNif) {
+      bytes.addAll(
+        _escLine(_truncate('NIF: $headerTaxId', _colWidth)),
+      );
+    } else if (hasRccm) {
+      bytes.addAll(
+        _escLine(_truncate('RCCM: $headerRccm', _colWidth)),
+      );
     }
-    if (headerRccm.isNotEmpty) {
-      bytes.addAll(_escLine('RCCM: $headerRccm'));
-    }
-    if (headerIdNat.isNotEmpty) {
-      bytes.addAll(_escLine('ID NAT: $headerIdNat'));
+    if (hasIdNat) {
+      bytes.addAll(
+        _escLine(_truncate('ID NAT: $headerIdNat', _colWidth)),
+      );
     }
 
     bytes.addAll(_escSeparatorDouble());
-
-    // ════ TITRE ════
-    bytes.addAll(_escAlign(1));
     bytes.addAll(_escBold(true));
     bytes.addAll(_escLine('TICKET DE CAISSE'));
     bytes.addAll(_escBold(false));
     bytes.addAll(_escSeparatorDouble());
 
-    // ════ RÉFÉRENCE & DATE ════
-    bytes.addAll(_escAlign(0)); // Gauche
+    // ── Infos vente ──────────────────────────────────────────────────────
+    bytes.addAll(_escAlign(0));
+
+    // Date et référence sur la même ligne
     final shortId =
         sale.id.length > 8 ? sale.id.substring(sale.id.length - 8) : sale.id;
-    final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(sale.date);
-    bytes.addAll(_escLine(_rowText(dateStr, '#$shortId')));
+    bytes.addAll(
+      _escLine(shortId.isNotEmpty ? _rowText(dateStr, '#$shortId') : dateStr),
+    );
 
-    // Client
-    if (sale.customerName.isNotEmpty &&
-        sale.customerName.toLowerCase() != 'inconnu') {
+    if (sale.customerName.isNotEmpty && sale.customerName != 'Inconnu') {
       bytes.addAll(
-        _escLine('Client: ${_truncate(sale.customerName, _colWidth - 8)}'),
+        _escLine(_truncate('Client: ${sale.customerName}', _colWidth)),
       );
     }
-
     bytes.addAll(_escSeparator());
 
-    // ════ LIGNES D'ARTICLES ════
-    final currencyCode = sale.transactionCurrencyCode ?? 'CDF';
-
+    // ── Articles ─────────────────────────────────────────────────────────
     for (final item in sale.items) {
-      final unitPrice =
-          item.currencyCode == currencyCode
-              ? item.unitPrice
-              : item.unitPriceInCdf;
-      final totalPrice =
-          item.currencyCode == currencyCode
-              ? item.totalPrice
-              : item.totalPriceInCdf;
-
-      final amountStr = _fmt(totalPrice, currencyCode);
-      bytes.addAll(_escLine(_rowText(item.productName, amountStr)));
-
-      // Détail quantité × prix unitaire
-      if (item.quantity > 1) {
-        final detail = '  ${item.quantity} x ${_fmt(unitPrice, currencyCode)}';
-        bytes.addAll(_escLine(detail));
-      }
+      final itemTotal = item.quantity * item.unitPrice;
+      final amtStr = _fmt(itemTotal, currency);
+      // Nom du produit tronqué dynamiquement selon la largeur du montant
+      bytes.addAll(_escLine(_rowText(item.productName, amtStr)));
+      bytes.addAll(
+        _escLine('  ${item.quantity} x ${_fmt(item.unitPrice, currency)}'),
+      );
     }
-
     bytes.addAll(_escSeparator());
 
-    // ════ REMISE ════
+    // ── Remise ───────────────────────────────────────────────────────────
     if (sale.discountPercentage > 0) {
+      final subtotalBefore = totalInTx / (1 - sale.discountPercentage / 100);
+      final discountAmt = subtotalBefore - totalInTx;
+      bytes.addAll(
+        _escLine(_rowText('Sous-total', _fmt(subtotalBefore, currency))),
+      );
       bytes.addAll(
         _escLine(
           _rowText(
-            'Remise (${sale.discountPercentage.toStringAsFixed(0)}%)',
-            '-${_fmt(_calculateDiscount(sale, currencyCode), currencyCode)}',
+            'Remise(${sale.discountPercentage.toStringAsFixed(0)}%)',
+            '-${_fmt(discountAmt, currency)}',
           ),
         ),
       );
     }
 
-    // ════ TVA (si activée) ════
-    final totalAmount =
-        sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
+    // ── TVA (si activée dans les paramètres) ─────────────────────────────
     if (settings.showTaxes && settings.defaultTaxRate > 0) {
       double totalTVA = 0.0;
       double rate = settings.defaultTaxRate;
       for (final item in sale.items) {
         final itemRate = item.taxRate ?? rate;
         if (itemRate > 0) {
-          final unitPrice =
-              item.currencyCode == currencyCode
-                  ? item.unitPrice
-                  : item.unitPriceInCdf;
-          final itemTotal = item.quantity * unitPrice;
+          final itemTotal = item.quantity * item.unitPrice;
           totalTVA += itemTotal * itemRate / (100 + itemRate);
           rate = itemRate;
         }
       }
       if (totalTVA > 0) {
-        final ht = totalAmount - totalTVA;
-        bytes.addAll(_escLine(_rowText('Total HT', _fmt(ht, currencyCode))));
+        final ht = totalInTx - totalTVA;
+        bytes.addAll(_escLine(_rowText('Total HT', _fmt(ht, currency))));
         bytes.addAll(
           _escLine(
             _rowText(
               'TVA (${rate.toStringAsFixed(0)}%)',
-              _fmt(totalTVA, currencyCode),
+              _fmt(totalTVA, currency),
             ),
           ),
         );
       }
     }
 
-    // ════ TOTAL ════
+    // ── Total ────────────────────────────────────────────────────────────
     bytes.addAll(_escBold(true));
-    bytes.addAll(_escLine(_rowText('TOTAL', _fmt(totalAmount, currencyCode))));
+    bytes.addAll(_escLine(_rowText('TOTAL', _fmt(totalInTx, currency))));
     bytes.addAll(_escBold(false));
     bytes.addAll(_escSeparatorDouble());
 
-    // ════ PAIEMENT ════
-    final paidAmount =
-        sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf;
+    // ── Règlement ────────────────────────────────────────────────────────
     bytes.addAll(_escBold(true));
-    bytes.addAll(
-      _escLine(_rowText('Especes:', _fmt(paidAmount, currencyCode))),
-    );
+    bytes.addAll(_escLine(_rowText('Especes:', _fmt(paidInTx, currency))));
     bytes.addAll(_escBold(false));
-
-    // Monnaie rendue
-    final change = paidAmount - totalAmount;
-    if (change > 0) {
-      bytes.addAll(_escLine(_rowText('Monnaie:', _fmt(change, currencyCode))));
+    if (change > 0.005) {
+      bytes.addAll(_escLine(_rowText('Monnaie:', _fmt(change, currency))));
     }
-
     bytes.addAll(_escSeparatorDouble());
 
-    // ════ PIED DE PAGE ════
+    // ── Pied de page ─────────────────────────────────────────────────────
     bytes.addAll(_escAlign(1));
+    bytes.addAll(_escBold(true));
     bytes.addAll(_escLine('Merci pour votre achat !'));
+    bytes.addAll(_escBold(false));
+    bytes.addAll(_escLine('wanzzo.com'));
+    bytes.addAll(_escFeed(1));
+    // QR code contenant toutes les infos de la vente (ID opération, client, montants)
+    bytes.addAll(_escQrCode(_buildQrData(sale, settings)));
     bytes.addAll(_escFeed(3));
     bytes.addAll(_escCut());
 
     return bytes;
   }
 
-  // ─── ESC/POS Commands ──────────────────────────────────────────
+  // ── Impression ───────────────────────────────────────────────────────────
 
-  /// Reset complet + sélection table de caractères WPC1252
+  /// Imprime le ticket de caisse sur l'imprimante thermique configurée.
+  /// Retourne `true` si l'envoi a réussi.
+  Future<bool> printCashReceipt(Sale sale, Settings settings) async {
+    final printer = await getSavedPrinter();
+    if (printer == null) {
+      debugPrint('[ReceiptPrinter] Aucune imprimante configurée.');
+      return false;
+    }
+    try {
+      return await _sendToPrinter(printer, sale, settings);
+    } catch (e) {
+      debugPrint('[ReceiptPrinter] Erreur impression: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _sendToPrinter(
+    ThermalPrinterDevice printer,
+    Sale sale,
+    Settings settings,
+  ) {
+    switch (printer.type) {
+      case ThermalConnectionType.bluetooth:
+        return _printBluetooth(printer, buildCashReceiptBytes(sale, settings));
+      case ThermalConnectionType.usb:
+        return _printUsb(printer);
+      case ThermalConnectionType.network:
+        return _printNetwork(printer, buildCashReceiptBytes(sale, settings));
+      case ThermalConnectionType.epos:
+        return _printEpos(printer, sale, settings);
+      case ThermalConnectionType.system:
+        return printReceiptViaSystem(sale, settings);
+    }
+  }
+
+  /// Impression Bluetooth classique/SPP via print_bluetooth_thermal.
+  /// Envoie les octets ESC/POS directement (même format qu'en réseau).
+  Future<bool> _printBluetooth(
+    ThermalPrinterDevice printer,
+    List<int> bytes,
+  ) async {
+    try {
+      // Si une connexion précédente est encore ouverte (coroutine Kotlin
+      // maintenue en vie), on déconnecte d'abord pour éviter les socket
+      // orphelines qui font échouer le prochain connect().
+      if (await PrintBluetoothThermal.connectionStatus) {
+        await PrintBluetoothThermal.disconnect;
+      }
+
+      final connected = await PrintBluetoothThermal.connect(
+        macPrinterAddress: printer.address,
+      );
+      if (!connected) {
+        debugPrint(
+          '[ReceiptPrinter] BT: échec de connexion à ${printer.displayName}',
+        );
+        return false;
+      }
+
+      // Vérifier que la connexion BT est réellement stable avant d'écrire.
+      // (connect() peut retourner true avant que la socket SPP soit prête.)
+      if (!await PrintBluetoothThermal.connectionStatus) {
+        debugPrint(
+          '[ReceiptPrinter] BT: connexion instable après connect() — abandon',
+        );
+        return false;
+      }
+
+      final success = await PrintBluetoothThermal.writeBytes(bytes);
+      await PrintBluetoothThermal.disconnect;
+      debugPrint(
+        '[ReceiptPrinter] BT: impression ${success ? "OK" : "échouée"} sur ${printer.displayName}',
+      );
+      return success;
+    } catch (e) {
+      debugPrint('[ReceiptPrinter] BT: erreur $e');
+      // En cas d'exception, tenter la déconnexion propre sans planter.
+      try {
+        await PrintBluetoothThermal.disconnect;
+      } catch (_) {}
+      return false;
+    }
+  }
+
+  /// USB OTG non supporté dans cette version.
+  Future<bool> _printUsb(ThermalPrinterDevice printer) async {
+    debugPrint('[ReceiptPrinter] USB printing not supported in this version.');
+    return false;
+  }
+
+  /// Impression réseau TCP/IP (port 9100 — standard ESC/POS).
+  Future<bool> _printNetwork(
+    ThermalPrinterDevice printer,
+    List<int> bytes,
+  ) async {
+    final parts = printer.address.split(':');
+    final ip = parts[0];
+    final port = parts.length > 1 ? int.tryParse(parts[1]) ?? 9100 : 9100;
+
+    Socket? socket;
+    try {
+      socket = await Socket.connect(
+        ip,
+        port,
+        timeout: const Duration(seconds: 10),
+      );
+      socket.add(bytes);
+      await socket.flush();
+      debugPrint('[ReceiptPrinter] Network: ticket envoyé à $ip:$port');
+      return true;
+    } catch (e) {
+      debugPrint('[ReceiptPrinter] Network: erreur $e');
+      return false;
+    } finally {
+      socket?.destroy();
+    }
+  }
+
+  // ── Epson ePOS-Print (XML sur HTTP) ───────────────────────────────────────
+
+  /// Imprime via le protocole Epson ePOS-Print (XML sur HTTP) — imprimantes
+  /// réseau Epson TM en mode ePOS-Print / « E-POS Printer Driver ».
+  /// Adresse = `ip` ou `ip:port` (port 80 par défaut).
+  Future<bool> _printEpos(
+    ThermalPrinterDevice printer,
+    Sale sale,
+    Settings settings,
+  ) async {
+    final parts = printer.address.split(':');
+    final ip = parts[0];
+    final port = parts.length > 1 ? int.tryParse(parts[1]) ?? 80 : 80;
+    final xml = _buildEposXml(sale, settings);
+
+    HttpClient? client;
+    try {
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+      final uri = Uri.parse(
+        'http://$ip:$port/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000',
+      );
+      final request = await client.postUrl(uri);
+      request.headers.set(
+        HttpHeaders.contentTypeHeader,
+        'text/xml; charset=utf-8',
+      );
+      request.headers.set('SOAPAction', '""');
+      request.add(utf8.encode(xml));
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      // ePOS-Print renvoie HTTP 200 + success="true" dans la réponse XML.
+      final ok = response.statusCode == 200 && body.contains('success="true"');
+      debugPrint(
+        '[ReceiptPrinter] ePOS: ${ok ? "OK" : "échec"} ($ip:$port) HTTP ${response.statusCode}',
+      );
+      return ok;
+    } catch (e) {
+      debugPrint('[ReceiptPrinter] ePOS: erreur $e');
+      return false;
+    } finally {
+      client?.close(force: true);
+    }
+  }
+
+  /// Construit le document ePOS-Print (enveloppe SOAP + epos-print) du ticket.
+  String _buildEposXml(Sale sale, Settings settings) {
+    final currency = sale.transactionCurrencyCode ?? 'CDF';
+    final totalInTx =
+        sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
+    final paidInTx =
+        sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf;
+    final change = paidInTx - totalInTx;
+    final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(sale.date);
+
+    final ctx = BusinessContextService();
+    final useBu = ctx.shouldUseBusinessUnitIdentity;
+    final headerName = useBu
+        ? (ctx.businessUnitName ?? settings.companyName)
+        : settings.companyName;
+    final headerAddress = useBu
+        ? (ctx.businessUnitAddress ?? settings.companyAddress)
+        : settings.companyAddress;
+    final headerPhone = useBu
+        ? (ctx.businessUnitPhone ?? settings.companyPhone)
+        : settings.companyPhone;
+
+    final b = StringBuffer();
+    void line(String s) => b.write('<text>${_xmlEscape(s)}&#10;</text>');
+    void align(String a) => b.write('<text align="$a"/>');
+    void bold(bool on) => b.write('<text em="${on ? 'true' : 'false'}"/>');
+
+    align('center');
+    bold(true);
+    line(headerName.toUpperCase());
+    bold(false);
+    if (headerAddress.isNotEmpty) line(headerAddress);
+    if (headerPhone.isNotEmpty) line('Tel: $headerPhone');
+    line('=' * _colWidth);
+    bold(true);
+    line('TICKET DE CAISSE');
+    bold(false);
+    line('=' * _colWidth);
+
+    align('left');
+    final shortId =
+        sale.id.length > 8 ? sale.id.substring(sale.id.length - 8) : sale.id;
+    line(shortId.isNotEmpty ? _rowText(dateStr, '#$shortId') : dateStr);
+    if (sale.customerName.isNotEmpty && sale.customerName != 'Inconnu') {
+      line(_truncate('Client: ${sale.customerName}', _colWidth));
+    }
+    line('-' * _colWidth);
+    for (final item in sale.items) {
+      line(_rowText(item.productName, _fmt(item.quantity * item.unitPrice, currency)));
+      line('  ${item.quantity} x ${_fmt(item.unitPrice, currency)}');
+    }
+    line('-' * _colWidth);
+    bold(true);
+    line(_rowText('TOTAL', _fmt(totalInTx, currency)));
+    bold(false);
+    line('=' * _colWidth);
+    bold(true);
+    line(_rowText('Especes:', _fmt(paidInTx, currency)));
+    bold(false);
+    if (change > 0.005) line(_rowText('Monnaie:', _fmt(change, currency)));
+    line('=' * _colWidth);
+
+    align('center');
+    bold(true);
+    line('Merci pour votre achat !');
+    bold(false);
+    line('wanzzo.com');
+    b.write('<feed line="1"/>');
+    b.write(
+      '<symbol type="qrcode_model_2" level="level_l" width="4" height="4">'
+      '${_xmlEscape(_buildQrData(sale, settings))}</symbol>',
+    );
+    b.write('<feed line="3"/>');
+    b.write('<cut type="feed"/>');
+
+    return '<?xml version="1.0" encoding="utf-8"?>'
+        '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>'
+        '<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">'
+        '$b'
+        '</epos-print></s:Body></s:Envelope>';
+  }
+
+  String _xmlEscape(String s) => s
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
+
+  // ── Impression via le système / pilote OS (universel) ─────────────────────
+
+  /// Rend le ticket en PDF (rouleau 80 mm) et ouvre la boîte d'impression du
+  /// système d'exploitation. Route vers TOUT pilote installé : USB (Mopria /
+  /// pilote constructeur), WiFi, « E-POS Printer Driver », etc. — couvre les
+  /// imprimantes qui ne parlent pas l'ESC/POS brut.
+  Future<bool> printReceiptViaSystem(Sale sale, Settings settings) async {
+    try {
+      final bytes = await _buildReceiptPdf(sale, settings).save();
+      return await Printing.layoutPdf(
+        name: 'Ticket ${sale.id}',
+        format: PdfPageFormat.roll80,
+        onLayout: (_) async => bytes,
+      );
+    } catch (e) {
+      debugPrint('[ReceiptPrinter] Système: erreur $e');
+      return false;
+    }
+  }
+
+  pw.Document _buildReceiptPdf(Sale sale, Settings settings) {
+    final currency = sale.transactionCurrencyCode ?? 'CDF';
+    final totalInTx =
+        sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
+    final paidInTx =
+        sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf;
+    final change = paidInTx - totalInTx;
+    final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(sale.date);
+
+    final ctx = BusinessContextService();
+    final useBu = ctx.shouldUseBusinessUnitIdentity;
+    final headerName = useBu
+        ? (ctx.businessUnitName ?? settings.companyName)
+        : settings.companyName;
+    final headerAddress = useBu
+        ? (ctx.businessUnitAddress ?? settings.companyAddress)
+        : settings.companyAddress;
+    final headerPhone = useBu
+        ? (ctx.businessUnitPhone ?? settings.companyPhone)
+        : settings.companyPhone;
+
+    final doc = pw.Document();
+    final mono = pw.Font.courier();
+    final monoBold = pw.Font.courierBold();
+    final shortId =
+        sale.id.length > 8 ? sale.id.substring(sale.id.length - 8) : sale.id;
+
+    pw.Widget rowLR(String l, String r, {bool strong = false}) => pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              child: pw.Text(l,
+                  style: pw.TextStyle(font: strong ? monoBold : mono, fontSize: 8)),
+            ),
+            pw.Text(r,
+                style: pw.TextStyle(font: strong ? monoBold : mono, fontSize: 8)),
+          ],
+        );
+
+    doc.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.roll80,
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+          children: [
+            pw.Center(
+              child: pw.Text(headerName.toUpperCase(),
+                  style: pw.TextStyle(font: monoBold, fontSize: 10)),
+            ),
+            if (headerAddress.isNotEmpty)
+              pw.Center(
+                  child: pw.Text(headerAddress,
+                      style: pw.TextStyle(font: mono, fontSize: 8))),
+            if (headerPhone.isNotEmpty)
+              pw.Center(
+                  child: pw.Text('Tel: $headerPhone',
+                      style: pw.TextStyle(font: mono, fontSize: 8))),
+            pw.Divider(thickness: 0.5),
+            pw.Center(
+                child: pw.Text('TICKET DE CAISSE',
+                    style: pw.TextStyle(font: monoBold, fontSize: 9))),
+            pw.Divider(thickness: 0.5),
+            rowLR(dateStr, '#$shortId'),
+            if (sale.customerName.isNotEmpty && sale.customerName != 'Inconnu')
+              pw.Text('Client: ${sale.customerName}',
+                  style: pw.TextStyle(font: mono, fontSize: 8)),
+            pw.Divider(thickness: 0.5),
+            ...sale.items.map(
+              (item) => pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                children: [
+                  rowLR(item.productName,
+                      _fmt(item.quantity * item.unitPrice, currency)),
+                  pw.Text('  ${item.quantity} x ${_fmt(item.unitPrice, currency)}',
+                      style: pw.TextStyle(font: mono, fontSize: 8)),
+                ],
+              ),
+            ),
+            pw.Divider(thickness: 0.5),
+            rowLR('TOTAL', _fmt(totalInTx, currency), strong: true),
+            rowLR('Especes', _fmt(paidInTx, currency)),
+            if (change > 0.005) rowLR('Monnaie', _fmt(change, currency)),
+            pw.SizedBox(height: 6),
+            pw.Center(
+                child: pw.Text('Merci pour votre achat !',
+                    style: pw.TextStyle(font: monoBold, fontSize: 9))),
+            pw.Center(
+                child: pw.Text('wanzzo.com',
+                    style: pw.TextStyle(font: mono, fontSize: 8))),
+            pw.SizedBox(height: 6),
+            pw.Center(
+              child: pw.BarcodeWidget(
+                barcode: pw.Barcode.qrCode(),
+                data: _buildQrData(sale, settings),
+                width: 80,
+                height: 80,
+                drawText: false,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    return doc;
+  }
+
+  // ── Helpers ESC/POS ──────────────────────────────────────────────────────
+
   List<int> _escReset() => [
-    0x1B, 0x40, // ESC @ — Reset
-    0x1B, 0x74, 0x10, // ESC t 16 — WPC1252 (Windows Latin-1)
+    0x1B, 0x40, // ESC @ — Initialise l'imprimante (reset complet)
+    0x1B, 0x74, 0x10, // ESC t 16 — Sélectionne la table de caractères WPC1252
+    // (Windows Latin-1) : é=0xE9, à=0xE0, ç=0xE7, è=0xE8, û=0xFB…
+    // Sans cette commande, l'imprimante reste en CP437 (réglage usine) et
+    // affiche des caractères incorrects pour le français.
   ];
 
-  /// Alignement : 0=gauche, 1=centre, 2=droite
-  List<int> _escAlign(int n) => [0x1B, 0x61, n];
+  List<int> _escAlign(int n) => [0x1B, 0x61, n]; // ESC a n (0=L, 1=C, 2=R)
 
-  /// Gras on/off
-  List<int> _escBold(bool on) => [0x1B, 0x45, on ? 1 : 0];
+  List<int> _escBold(bool on) => [0x1B, 0x45, on ? 1 : 0]; // ESC E n
 
-  /// Saut de ligne (n fois)
-  List<int> _escFeed(int n) => List.filled(n, 0x0A);
+  List<int> _escFeed(int n) => List.filled(n, 0x0A); // LF x n
 
-  /// Coupe partielle du papier
-  List<int> _escCut() => [0x1D, 0x56, 0x41, 0x03];
+  List<int> _escCut() => [0x1D, 0x56, 0x41, 0x03]; // GS V A 3
 
-  /// Ligne de texte (encodée WPC1252 + saut de ligne)
-  List<int> _escLine(String text) => [..._encodeWpc1252(text), 0x0A];
+  /// Encode une chaîne en octets WPC1252 puis ajoute un saut de ligne (LF).
+  ///
+  /// **Pourquoi pas `codeUnits` ?**
+  /// `String.codeUnits` renvoie les valeurs UTF-16, qui pour les caractères
+  /// Latin-1 (0x00–0xFF) sont identiques aux code points Unicode. Mais passés
+  /// tels quels à une imprimante en mode CP437, les valeurs > 0x7F sont
+  /// interprétées comme du CP437 : 'é' (0xE9) → 'Θ', 'à' (0xE0) → 'α', etc.
+  /// En sélectionnant WPC1252 via `_escReset()` et en tronquant les chars
+  /// hors Latin-1 à '?', l'impression française est correcte.
+  List<int> _escLine(String text) {
+    return [..._encodeWpc1252(text), 0x0A];
+  }
 
-  /// Séparateur simple (tirets)
-  List<int> _escSeparator() => _escLine('-' * _colWidth);
-
-  /// Séparateur double (signes égal)
-  List<int> _escSeparatorDouble() => _escLine('=' * _colWidth);
-
-  // ─── Encodage WPC1252 ─────────────────────────────────────────
-
-  /// Encode une chaîne en WPC1252 (Latin-1 compatible)
-  /// Les caractères hors 0x00–0xFF sont remplacés par '?'
+  /// Convertit une chaîne en octets compatibles WPC1252.
+  /// Les caractères hors Latin-1 (code point > 0xFF, quasi inexistants dans
+  /// du texte commercial français) sont remplacés par '?'.
   List<int> _encodeWpc1252(String text) {
     final result = <int>[];
     for (final rune in text.runes) {
-      if (rune <= 0xFF) {
-        result.add(rune);
-      } else {
-        result.add(0x3F); // '?'
-      }
+      result.add(rune < 0x100 ? rune : 0x3F); // '?' si hors Latin-1
     }
     return result;
   }
 
-  // ─── Formatage montants ────────────────────────────────────────
+  List<int> _escSeparator() => _escLine('-' * _colWidth);
 
-  /// Formate un montant avec séparateur de milliers
-  /// Remplace U+202F (espace fine insécable fr_FR) par espace normal
+  List<int> _escSeparatorDouble() => _escLine('=' * _colWidth);
+
+  /// Construit le contenu du QR code pour l'imprimante thermique.
+  ///
+  /// **Pourquoi aussi minimal ?**
+  /// Les imprimantes thermiques low-cost (58 mm) ont une limite matérielle sur
+  /// la version QR supportée par leur firmware. Au-delà de ~40 bytes de données,
+  /// certains firmwares retournent "2QR CREAT ERR!" car ils ne savent générer
+  /// que les QR version 1 (cap. 41 bytes en niveau L).
+  ///
+  /// On se limite donc à : ID court (8 derniers chars) + wanzzo.com ≈ 25 bytes.
+  /// C'est QR version 1 — compatible 100 % des imprimantes thermiques.
+  /// Les informations complètes sont disponibles sur le reçu PDF.
+  String _buildQrData(Sale sale, Settings settings) {
+    // Identifiant court : 8 derniers caractères de l'ID (suffit pour
+    // identifier la transaction dans le système wanzzo).
+    final shortId =
+        sale.id.length > 8 ? sale.id.substring(sale.id.length - 8) : sale.id;
+    return 'wanzzo.com|$shortId';
+  }
+
+  /// Génère un QR code ESC/POS (commandes GS ( k).
+  /// Compatible imprimantes thermiques 58 mm et 80 mm standards.
+  List<int> _escQrCode(String data) {
+    // UTF-8 pour supporter les caractères accentués français dans le QR
+    final dataBytes = utf8.encode(data);
+    final storeLen = dataBytes.length + 3; // +3 : paramètres cn/fn/m
+    final pL = storeLen & 0xFF;
+    final pH = (storeLen >> 8) & 0xFF;
+    return [
+      // Sélectionner modèle QR Code 2 (le plus répandu)
+      0x1D, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00,
+      // Taille du module : 3 points — moins de pixels par module → QR plus
+      // compact sur 58 mm, version QR plus basse nécessaire → plus compatible
+      0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x03,
+      // Niveau de correction d'erreurs : L (7 %) — version QR plus basse
+      // nécessaire pour la même quantité de données → moins de modules →
+      // image plus petite → compatible avec davantage de firmwares low-cost
+      0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x30,
+      // Stocker les données dans le buffer interne
+      0x1D, 0x28, 0x6B, pL, pH, 0x31, 0x50, 0x30,
+      ...dataBytes,
+      // Imprimer le QR code depuis le buffer
+      0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30,
+    ];
+  }
+
+  // ── Formatage texte ──────────────────────────────────────────────────────
+
+  /// Formate deux colonnes sur _colWidth caractères (left-aligned + right-aligned).
+  String _rowText(String left, String right) {
+    final total = _colWidth;
+    final available = total - right.length;
+    if (available <= 0) return '$left $right';
+    return left.padRight(available).substring(0, available) + right;
+  }
+
+  /// Formate un montant avec séparateur milliers.
+  ///
+  /// **Fix U+202F** : la locale `fr_FR` de `intl` utilise l'espace fine
+  /// insécable (U+202F = 8239) comme séparateur de milliers. Ce caractère
+  /// est > 0xFF → remplacé par '?' dans `_encodeWpc1252`. On le normalise
+  /// en espace ordinaire avant encodage.
   String _fmt(double amount, String currency) {
     final formatter = NumberFormat('#,##0', 'fr_FR');
     final formatted = formatter
         .format(amount)
-        .replaceAll('\u202F', ' ')
-        .replaceAll('\u00A0', ' ');
+        .replaceAll('\u202F', ' ') // espace fine insécable → espace
+        .replaceAll('\u00A0', ' '); // espace insécable → espace
     return '$formatted $currency';
   }
 
-  double _calculateDiscount(Sale sale, String currencyCode) {
-    final total =
-        sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
-    // Pour retrouver le montant avant remise, on inverse la formule
-    // total = subtotal * (1 - discount/100)
-    // subtotal = total / (1 - discount/100)
-    // discount_amount = subtotal - total
-    if (sale.discountPercentage <= 0 || sale.discountPercentage >= 100) {
-      return 0;
-    }
-    final subtotal = total / (1 - sale.discountPercentage / 100);
-    return subtotal - total;
-  }
-
-  // ─── Helpers de mise en page ───────────────────────────────────
-
-  /// Deux colonnes : gauche aligné-gauche, droite aligné-droite
-  String _rowText(String left, String right) {
-    final available = _colWidth - right.length;
-    if (available <= 0) return right;
-    final truncLeft =
-        left.length > available ? '${left.substring(0, available - 1)}.' : left;
-    return truncLeft.padRight(available) + right;
-  }
-
-  /// Découpe un texte long aux espaces
-  List<String> _wrapText(String text, int maxWidth) {
-    if (text.length <= maxWidth) return [text];
-    final words = text.split(' ');
-    final lines = <String>[];
-    var currentLine = '';
-
-    for (final word in words) {
-      if (currentLine.isEmpty) {
-        currentLine = word;
-      } else if (currentLine.length + 1 + word.length <= maxWidth) {
-        currentLine += ' $word';
-      } else {
-        lines.add(currentLine);
-        currentLine = word;
-      }
-    }
-    if (currentLine.isNotEmpty) {
-      lines.add(currentLine);
-    }
-    return lines;
-  }
-
-  /// Tronque une chaîne à maxLen caractères
+  /// Tronque un texte à maxLen caractères.
   String _truncate(String text, int maxLen) {
     if (text.length <= maxLen) return text;
-    return '${text.substring(0, maxLen - 1)}.';
+    return '${text.substring(0, maxLen - 1)}…';
+  }
+
+  /// Découpe [text] en lignes de [maxWidth] chars maximum.
+  /// Coupe de préférence aux espaces pour éviter de couper les mots.
+  List<String> _wrapText(String text, int maxWidth) {
+    if (text.length <= maxWidth) return [text];
+    final lines = <String>[];
+    var remaining = text.trim();
+    while (remaining.length > maxWidth) {
+      var split = maxWidth;
+      final spaceIdx = remaining.lastIndexOf(' ', maxWidth);
+      if (spaceIdx > maxWidth ~/ 2) split = spaceIdx;
+      lines.add(remaining.substring(0, split).trim());
+      remaining = remaining.substring(split).trim();
+    }
+    if (remaining.isNotEmpty) lines.add(remaining);
+    return lines;
   }
 }
