@@ -177,7 +177,12 @@ msix_config:
   file_extension: .wanzo
   protocol_activation: wanzo
   execution_alias: wanzo
-  # Certificat : NON référencé ici (le mot de passe ne doit pas être commité).
-  # Il est passé au build via des variables d'environnement — voir
-  # windows/codesign/build_msix.ps1 et generate_cert.ps1.
+  # Certificat de signature PERSISTANT — LE MÊME pour TOUTES les versions, ce
+  # qui permet aux mises à jour de s'installer PAR-DESSUS l'ancienne. Le .pfx
+  # est git-ignoré (présent seulement sur la machine de build) : le mot de passe
+  # ci-dessous est inutilisable sans ce fichier.
+  # ⚠️ Ne régénérez JAMAIS wanzo_codesign.pfx, sinon les mises à jour re-échouent.
+  certificate_path: windows/codesign/wanzo_codesign.pfx
+  certificate_password: Wanzo#Sign#2026!
+  install_certificate: false
   store: false
