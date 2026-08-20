@@ -35,8 +35,10 @@ versions.**
 
 ### 2) Approuver le certificat sur chaque poste client — UNE FOIS
 ```powershell
-# PowerShell administrateur
-Import-Certificate -FilePath wanzo_codesign.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+# PowerShell ADMINISTRATEUR — importer dans les AUTORITES RACINES de confiance.
+# (Cert auto-signe = sa propre racine ; sinon erreur 0x800B010A "chaine vers
+#  une racine de confiance introuvable". TrustedPeople seul NE suffit PAS.)
+Import-Certificate -FilePath wanzo_codesign.cer -CertStoreLocation Cert:\LocalMachine\Root
 ```
 
 ### 3) Builder le MSIX (à chaque release)
