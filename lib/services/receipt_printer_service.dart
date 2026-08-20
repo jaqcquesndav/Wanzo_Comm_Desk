@@ -389,7 +389,12 @@ class ReceiptPrinterService {
       case ThermalConnectionType.epos:
         return _printEpos(printer, sale, settings);
       case ThermalConnectionType.system:
-        return printReceiptViaSystem(sale, settings);
+        return printReceiptViaSystem(
+          sale,
+          settings,
+          printerUrl: printer.address,
+          printerName: printer.name,
+        );
     }
   }
 
@@ -610,13 +615,49 @@ class ReceiptPrinterService {
 
   // ── Impression via le système / pilote OS (universel) ─────────────────────
 
-  /// Rend le ticket en PDF (rouleau 80 mm) et ouvre la boîte d'impression du
-  /// système d'exploitation. Route vers TOUT pilote installé : USB (Mopria /
-  /// pilote constructeur), WiFi, « E-POS Printer Driver », etc. — couvre les
-  /// imprimantes qui ne parlent pas l'ESC/POS brut.
-  Future<bool> printReceiptViaSystem(Sale sale, Settings settings) async {
+  /// Liste les imprimantes connues du système d'exploitation (USB installée en
+  /// pilote, réseau, etc.) — via le framework d'impression OS. Utilisé sur
+  /// ordinateur (Windows/Linux/macOS) et Android pour choisir l'imprimante par
+  /// défaut du point de vente.
+  Future<List<Printer>> listSystemPrinters() async {
+    try {
+      return await Printing.listPrinters();
+    } catch (e) {
+      debugPrint('[ReceiptPrinter] listPrinters: $e');
+      return [];
+    }
+  }
+
+  /// Rend le ticket en PDF (rouleau 80 mm) et l'imprime via le système/pilote OS.
+  ///
+  /// - Si [printerUrl] désigne une imprimante précise (choisie dans les
+  ///   paramètres), l'impression est **DIRECTE et SILENCIEUSE** (`directPrintPdf`)
+  ///   → ticket automatique « comme au supermarché », sans boîte de dialogue.
+  /// - Sinon (valeur `system`), on ouvre la boîte d'impression de l'OS
+  ///   (`layoutPdf`) pour laisser l'utilisateur choisir.
+  ///
+  /// Route vers TOUT pilote installé : USB (Mopria / pilote constructeur), WiFi,
+  /// « E-POS Printer Driver », imprimante A4/laser, etc.
+  Future<bool> printReceiptViaSystem(
+    Sale sale,
+    Settings settings, {
+    String? printerUrl,
+    String? printerName,
+  }) async {
     try {
       final bytes = await _buildReceiptPdf(sale, settings).save();
+      final hasSpecificPrinter =
+          printerUrl != null && printerUrl.isNotEmpty && printerUrl != 'system';
+      if (hasSpecificPrinter) {
+        // Impression directe silencieuse vers l'imprimante enregistrée.
+        return await Printing.directPrintPdf(
+          printer: Printer(url: printerUrl, name: printerName ?? printerUrl),
+          name: 'Ticket ${sale.id}',
+          format: PdfPageFormat.roll80,
+          onLayout: (_) async => bytes,
+        );
+      }
+      // Repli : boîte d'impression du système (choix manuel).
       return await Printing.layoutPdf(
         name: 'Ticket ${sale.id}',
         format: PdfPageFormat.roll80,

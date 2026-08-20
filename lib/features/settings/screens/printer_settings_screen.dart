@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+import 'package:printing/printing.dart';
 
 import '../../../services/receipt_printer_service.dart';
 
@@ -26,6 +27,11 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen>
     with SingleTickerProviderStateMixin {
   final _printerService = ReceiptPrinterService();
 
+  /// Bluetooth thermique (print_bluetooth_thermal) est un plugin mobile. Sur
+  /// ordinateur (Windows/Linux/macOS), on privilégie Réseau / E-POS / Système.
+  bool get _isDesktop =>
+      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+
   late TabController _tabController;
 
   bool _autoPrint = false;
@@ -44,6 +50,10 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen>
   final _eposIpController = TextEditingController();
   final _eposPortController = TextEditingController(text: '80');
   final _eposFormKey = GlobalKey<FormState>();
+
+  // Système / pilote OS (imprimantes installées : USB, réseau…)
+  final List<Printer> _systemPrinters = [];
+  bool _systemScanning = false;
 
   // Onglets : 0=Bluetooth, 1=Réseau, 2=E-POS, 3=Système
   static const _typeIndex = {
@@ -64,7 +74,7 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen>
 
   void _onTabChanged() {
     if (_tabController.indexIsChanging) return;
-    if (_tabController.index == 0 && !_btScanning) {
+    if (_tabController.index == 0 && !_btScanning && !_isDesktop) {
       _startBtScan();
     }
   }
@@ -87,9 +97,12 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen>
           _eposIpController.text = parts[0];
           if (parts.length > 1) _eposPortController.text = parts[1];
         }
+      } else if (_isDesktop) {
+        // Sur ordinateur, ouvrir directement l'onglet Système (USB/pilote).
+        _tabController.index = 3;
       }
     });
-    if (_tabController.index == 0) {
+    if (_tabController.index == 0 && !_isDesktop) {
       _startBtScan();
     }
   }
@@ -102,6 +115,8 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen>
   // ── Bluetooth ──────────────────────────────────────────────────────────
 
   Future<void> _startBtScan() async {
+    // Bluetooth thermique = plugin mobile uniquement.
+    if (_isDesktop) return;
     setState(() {
       _btDevices.clear();
       _btScanning = true;
@@ -233,9 +248,40 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen>
 
   // ── Système / pilote ─────────────────────────────────────────────────────
 
+  /// Détecte les imprimantes connues du système (USB installée en pilote,
+  /// réseau…) pour permettre l'impression DIRECTE et automatique.
+  Future<void> _scanSystemPrinters() async {
+    setState(() {
+      _systemPrinters.clear();
+      _systemScanning = true;
+    });
+    try {
+      final printers = await _printerService.listSystemPrinters();
+      if (mounted) setState(() => _systemPrinters.addAll(printers));
+    } finally {
+      if (mounted) setState(() => _systemScanning = false);
+    }
+  }
+
+  /// Enregistre une imprimante système précise → impression AUTOMATIQUE et
+  /// silencieuse (comme le ticket de caisse au supermarché), sans dialogue.
+  Future<void> _selectSystemPrinter(Printer p) async {
+    final device = ThermalPrinterDevice(
+      name: p.name.isNotEmpty ? p.name : 'Imprimante système',
+      address: p.url, // url = identifiant système, réutilisé par directPrintPdf
+      type: ThermalConnectionType.system,
+    );
+    await _printerService.savePrinter(device);
+    if (!mounted) return;
+    setState(() => _savedPrinter = device);
+    _showSavedSnack(device);
+  }
+
+  /// Repli : impression via la boîte de dialogue de l'OS (choix manuel à chaque
+  /// fois). Utile si aucune imprimante précise ne doit être fixée.
   Future<void> _saveSystemPrinter() async {
     const printer = ThermalPrinterDevice(
-      name: 'Imprimante système (pilote)',
+      name: 'Boîte d\'impression du système',
       address: 'system',
       type: ThermalConnectionType.system,
     );
@@ -364,6 +410,21 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen>
   // ── Bluetooth tab ──────────────────────────────────────────────────────
 
   Widget _buildBluetoothTab() {
+    if (_isDesktop) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Center(
+          child: Text(
+            'Le Bluetooth thermique est géré sur mobile.\n\n'
+            'Sur ordinateur, utilisez l\'onglet « Système » (imprimante USB / '
+            'installée, impression automatique), « Réseau » (TCP 9100) ou '
+            '« E-POS ».',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+      );
+    }
     return Column(
       children: [
         Padding(
@@ -546,7 +607,8 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen>
   // ── Système tab ────────────────────────────────────────────────────────
 
   Widget _buildSystemTab() {
-    final isSaved = _savedPrinter?.type == ThermalConnectionType.system;
+    final dialogSaved = _savedPrinter?.type == ThermalConnectionType.system &&
+        _savedPrinter?.address == 'system';
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -558,24 +620,82 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen>
           ),
           const SizedBox(height: 8),
           const Text(
-            'Ouvre la boîte d\'impression du système d\'exploitation. Compatible '
-            'avec TOUTE imprimante disposant d\'un pilote installé sur l\'appareil :\n'
-            '• USB (via Mopria ou le pilote du constructeur)\n'
+            'Choisissez une imprimante installée sur l\'appareil pour une '
+            'impression AUTOMATIQUE et silencieuse du ticket (comme au '
+            'supermarché), sans boîte de dialogue. Compatible :\n'
+            '• USB branché (pilote Windows / Mopria / constructeur)\n'
             '• WiFi / réseau\n'
-            '• « E-POS Printer Driver » (pilote Epson Android)\n'
-            '• Toute imprimante A4 / laser / jet d\'encre\n\n'
-            'Le ticket est rendu au format rouleau 80 mm puis envoyé au pilote choisi.',
+            '• « E-POS Printer Driver » (pilote Epson)\n'
+            '• Toute imprimante A4 / laser / jet d\'encre',
             style: TextStyle(fontSize: 12, color: Colors.grey),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              icon: Icon(isSaved ? Icons.check_circle : Icons.print),
+              icon: _systemScanning
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.search),
               label: Text(
-                isSaved
-                    ? 'Impression système activée'
-                    : 'Utiliser l\'impression système',
+                _systemScanning
+                    ? 'Détection…'
+                    : 'Détecter les imprimantes installées',
+              ),
+              onPressed: _systemScanning ? null : _scanSystemPrinters,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (_systemPrinters.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                _systemScanning
+                    ? 'Recherche des imprimantes du système…'
+                    : 'Aucune imprimante détectée. Branchez/installez l\'imprimante '
+                        'puis appuyez sur Détecter.',
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            )
+          else
+            ..._systemPrinters.map((p) {
+              final isSaved = _savedPrinter?.type ==
+                      ThermalConnectionType.system &&
+                  _savedPrinter?.address == p.url;
+              return Card(
+                child: ListTile(
+                  leading: const Icon(Icons.print),
+                  title: Text(p.name.isNotEmpty ? p.name : p.url),
+                  subtitle: Text(
+                    p.isDefault ? 'Par défaut du système' : p.url,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: isSaved
+                      ? const Icon(Icons.check_circle, color: Colors.green)
+                      : const Icon(Icons.add_circle_outline),
+                  onTap: () => _selectSystemPrinter(p),
+                ),
+              );
+            }),
+          const Divider(height: 28),
+          Text(
+            'Sinon, imprimer via la boîte de dialogue de l\'OS (choix manuel à '
+            'chaque vente) :',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: Icon(dialogSaved ? Icons.check_circle : Icons.print_outlined),
+              label: Text(
+                dialogSaved
+                    ? 'Boîte de dialogue activée'
+                    : 'Utiliser la boîte de dialogue',
               ),
               onPressed: _saveSystemPrinter,
             ),

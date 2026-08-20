@@ -14,6 +14,13 @@ import 'package:wanzo/features/inventory/repositories/inventory_repository.dart'
 import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/sales/models/sale_item.dart';
+import 'package:wanzo/services/receipt_printer_service.dart';
+import 'package:wanzo/features/settings/bloc/settings_bloc.dart'
+    as old_settings_bloc;
+import 'package:wanzo/features/settings/bloc/settings_state.dart'
+    as old_settings_state;
+import 'package:wanzo/features/settings/models/settings.dart'
+    as old_settings_model;
 
 import '../cubit/restaurant_orders_cubit.dart';
 import '../models/menu_course.dart';
@@ -651,5 +658,38 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
 
     setState(() => _submitting = true);
     context.read<SalesBloc>().add(AddSale(sale));
+
+    // Auto-impression du ticket de caisse (ventes espèces) — même câblage que
+    // la boutique/atelier (AddSaleScreen). Fire-and-forget.
+    _autoPrintCashTicket(sale);
+  }
+
+  /// Imprime automatiquement le ticket de caisse pour un règlement espèces si
+  /// l'option est activée. Réutilise le même `ReceiptPrinterService` que les
+  /// autres modes (boutique, atelier).
+  Future<void> _autoPrintCashTicket(Sale sale) async {
+    if (!ReceiptPrinterService.isCashPayment(sale.paymentMethod)) return;
+    // Capturer les paramètres AVANT tout await (pas d'accès à context ensuite).
+    old_settings_model.Settings? settings;
+    final st = context.read<old_settings_bloc.SettingsBloc>().state;
+    if (st is old_settings_state.SettingsLoaded) {
+      settings = st.settings;
+    } else if (st is old_settings_state.SettingsUpdated) {
+      settings = st.settings;
+    }
+    if (settings == null) return;
+    final printerService = ReceiptPrinterService();
+    if (!await printerService.getAutoPrintOnCashSale()) return;
+    final ok = await printerService.printCashReceipt(sale, settings);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Impression automatique échouée. Vérifiez la connexion de l\'imprimante.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
   }
 }
