@@ -14,8 +14,8 @@
         <domain includeSubdomains="true">10.0.2.2</domain>
     </domain-config>
     
-    <!-- En production, forcer HTTPS uniquement -->
-    <!-- 
-    <base-config cleartextTrafficPermitted="false" />
-    -->
+    <!-- Impression POS locale (E-POS HTTP, imprimantes réseau) : autoriser le
+         trafic cleartext vers TOUTE IP locale d'imprimante. Les appels API
+         métier restent en HTTPS (le backend n'est joignable qu'en https). -->
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>
