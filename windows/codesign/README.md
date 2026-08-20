@@ -57,5 +57,55 @@ par‑dessus l'ancienne. ✅
 - Ne jamais changer `publisher` / le certificat entre deux versions destinées à
   se mettre à jour l'une l'autre.
 
-> Alternative Store : mettre `store: true` dans `msix_config` et publier sur le
-> Microsoft Store (c'est le Store qui signe et gère les mises à jour).
+---
+
+# Chemins de PRODUCTION retenus (sans friction pour les utilisateurs)
+
+Le script auto‑signé ci‑dessus (`build_msix.ps1`) reste utile pour les tests
+**internes**, mais impose d'approuver le certificat sur chaque poste → trop
+compliqué pour les utilisateurs finaux. En production on utilise **A** ou **B**.
+
+## A) Azure Trusted Signing (distribution depuis VOTRE site, sans manip)
+Signature par une AC de confiance Microsoft → **install/màj en un clic**, coût
+facturé sur **Azure**. Script : `build_msix_azure.ps1`.
+
+1. Portail Azure → créer une ressource **Trusted Signing** (Code Signing Account)
+   + un **Certificate profile** (Public Trust). Relever : endpoint (région),
+   nom du compte, nom du profil, et le **sujet exact** du certificat.
+2. Installer **Windows SDK** (`signtool.exe`) + le **dlib Trusted Signing**
+   (`Azure.CodeSigning.Dlib.dll`), puis `az login`.
+3. Copier `azure_signing_metadata.template.json` → `azure_signing_metadata.json`
+   et renseigner endpoint / compte / profil.
+4. Builder :
+   ```powershell
+   $env:AZURE_TS_DLIB      = "C:\...\Azure.CodeSigning.Dlib.dll"
+   $env:AZURE_TS_METADATA  = "windows\codesign\azure_signing_metadata.json"
+   $env:AZURE_TS_PUBLISHER = "CN=Wanzo, O=Wanzo, C=CD"   # == sujet du cert Azure
+   $env:SIGNTOOL           = "C:\Program Files (x86)\Windows Kits\10\bin\<ver>\x64\signtool.exe"
+   powershell -ExecutionPolicy Bypass -File windows\codesign\build_msix_azure.ps1
+   ```
+   → `.msix` signé AC, publiable tel quel sur le site. Màj = bump `version:`.
+
+## B) Microsoft Store (le Store signe et gère les màj)
+Aucun certificat. Script : `build_msix_store.ps1`.
+
+1. **Partner Center** → créer le compte développeur, **réserver le nom**,
+   relever l'**Identité du produit** (Identity Name, Publisher `CN=…`,
+   Publisher display name).
+2. Préparer le listing + **politique de confidentialité (URL obligatoire)**.
+3. Builder :
+   ```powershell
+   $env:WANZO_STORE_IDENTITY_NAME     = "12345Wanzo.WanzoCommerce"
+   $env:WANZO_STORE_PUBLISHER         = "CN=ABCD1234-...."
+   $env:WANZO_STORE_PUBLISHER_DISPLAY = "Wanzo"
+   powershell -ExecutionPolicy Bypass -File windows\codesign\build_msix_store.ps1
+   ```
+   → téléverser le `.msix` dans Partner Center, soumettre à la certification.
+
+> Le publisher/identité diffèrent entre A (sujet du cert Azure) et B (identité
+> Partner Center) : chaque script passe ses propres valeurs en ligne de commande,
+> le `pubspec.yaml` reste la base commune.
+>
+> ⚠️ Azure sponsorship : les **crédits Azure** couvrent **Azure Trusted Signing (A)**,
+> PAS le compte Partner Center du Store (B), qui est un programme séparé (sauf
+> bénéfice Microsoft for Startups). À vérifier dans vos offres.
