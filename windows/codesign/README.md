@@ -111,3 +111,22 @@ Aucun certificat. Script : `build_msix_store.ps1`.
 > ⚠️ Azure sponsorship : les **crédits Azure** couvrent **Azure Trusted Signing (A)**,
 > PAS le compte Partner Center du Store (B), qui est un programme séparé (sauf
 > bénéfice Microsoft for Startups). À vérifier dans vos offres.
+
+---
+
+## Distribution DESKTOP PORTABLE (ZIP) — intérimaire, sans certificat
+
+Le MSIX auto-signé échoue à l'install publique (0x800B010A). En attendant un
+MSIX signé-AC (Azure Trusted Signing) ou le Store, on distribue un **ZIP
+portable** : l'utilisateur dézippe et lance `wanzo.exe`.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows\codesign\build_portable_zip.ps1
+```
+→ `build\Wanzo_Commerce_windows_portable.zip`.
+
+⚠️ Le script **embarque le runtime Visual C++** (msvcp140/vcruntime140…).
+SANS lui, l'app plante sur un PC "propre" avec un message trompeur
+« connectivity_plus_plugin.dll introuvable » (la DLL est présente, mais sa
+dépendance runtime manque). Ne jamais zipper le dossier `Release` "à la main"
+sans ces DLL.
