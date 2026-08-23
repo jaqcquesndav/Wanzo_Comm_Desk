@@ -428,7 +428,10 @@ class _SyncButtonWidgetState extends State<_SyncButtonWidget> {
     });
 
     try {
-      final success = await _syncService!.syncData();
+      // Sync MANUEL = synchronisation COMPLÈTE (comme sur mobile) : tire toutes
+      // les données (produits, clients, ventes, dépenses, journal...) et purge
+      // les entrées obsolètes. syncData() ne faisait qu'un sync incrémental.
+      final success = await _syncService!.forceFullSyncNow();
       if (mounted) {
         setState(() {
           _isSyncing = false;

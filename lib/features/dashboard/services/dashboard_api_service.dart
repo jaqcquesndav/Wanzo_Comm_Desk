@@ -310,11 +310,15 @@ class DashboardApiService {
     };
 
     try {
-      if (!Hive.isBoxOpen('offline_operation_journal')) {
+      // IMPORTANT : la synchro écrit dans 'operation_journal_entries'
+      // (cf. OperationJournalRepository). L'ancien nom 'offline_operation_journal'
+      // n'était jamais alimenté → trésorerie/graphiques toujours à zéro.
+      const boxName = 'operation_journal_entries';
+      if (!Hive.isBoxOpen(boxName)) {
         return result;
       }
 
-      final box = Hive.box<OperationJournalEntry>('offline_operation_journal');
+      final box = Hive.box<OperationJournalEntry>(boxName);
       if (box.isEmpty) return result;
 
       final now = DateTime.now();
