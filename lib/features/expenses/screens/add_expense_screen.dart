@@ -384,6 +384,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         ),
       ],
       child: ResponsiveFormWrapper(
+        isModal: widget.onSaved != null,
         child: Padding(
           padding: const EdgeInsets.all(WanzoSpacing.md),
           child: Form(
@@ -1423,6 +1424,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           state is ExpenseLoading ? null : _submitExpense,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: WanzoColors.primary,
+                        // Le bouton principal s'étend sur toute la largeur du
+                        // formulaire (au lieu d'une largeur réduite au contenu).
+                        minimumSize: const Size.fromHeight(52),
                         padding: const EdgeInsets.symmetric(
                           vertical: WanzoSpacing.md,
                         ),

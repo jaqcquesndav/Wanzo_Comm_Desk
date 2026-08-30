@@ -48,6 +48,12 @@ import '../../features/atelier/cubit/atelier_orders_cubit.dart';
 import '../../features/atelier/services/atelier_api_service.dart';
 import '../../features/atelier/screens/atelier_orders_board_screen.dart';
 
+/// Page SANS animation de transition : sur desktop, la navigation entre les
+/// écrans principaux doit être INSTANTANÉE (pas de fondu/glissement). On
+/// enveloppe le contenu dans un [NoTransitionPage] de go_router.
+Page<dynamic> _noAnim(GoRouterState state, Widget child) =>
+    NoTransitionPage<dynamic>(key: state.pageKey, child: child);
+
 /// Configuration des routes de l\'application
 class AppRouter {
   final AuthBloc authBloc;
@@ -149,17 +155,20 @@ class AppRouter {
         routes: [
           GoRoute(
             path: '/restaurant/orders',
-            builder: (context, state) => const RestaurantPosScreen(),
+            pageBuilder: (context, state) =>
+                _noAnim(state, const RestaurantPosScreen()),
           ),
           // Vue Board (Kanban) des commandes — complémentaire à la caisse.
           GoRoute(
             path: '/restaurant/board',
-            builder: (context, state) => const RestaurantOrdersBoardScreen(),
+            pageBuilder: (context, state) =>
+                _noAnim(state, const RestaurantOrdersBoardScreen()),
           ),
           // Écran cuisine (KDS) — plein écran secondaire côté salle/cuisine.
           GoRoute(
             path: '/restaurant/kitchen',
-            builder: (context, state) => const RestaurantKitchenScreen(),
+            pageBuilder: (context, state) =>
+                _noAnim(state, const RestaurantKitchenScreen()),
           ),
         ],
       ),
@@ -173,14 +182,16 @@ class AppRouter {
         routes: [
           GoRoute(
             path: '/atelier/board',
-            builder: (context, state) => const AtelierOrdersBoardScreen(),
+            pageBuilder: (context, state) =>
+                _noAnim(state, const AtelierOrdersBoardScreen()),
           ),
         ],
       ),
       // Composition de la carte (mode restaurant) — pas besoin du cubit.
       GoRoute(
         path: '/restaurant/menu',
-        builder: (context, state) => const RestaurantMenuConfigScreen(),
+        pageBuilder: (context, state) =>
+            _noAnim(state, const RestaurantMenuConfigScreen()),
       ),
       GoRoute(
         path: '/onboarding',
@@ -214,15 +225,18 @@ class AppRouter {
         // Le tableau de bord dépend du métier : en mode restaurant on sert un
         // écran dédié (service/cuisine/plats), sinon le tableau de bord
         // boutique historique reste STRICTEMENT inchangé (aucun risque retail).
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           if (BusinessContextService().activityMode ==
               ActivityMode.restaurant) {
-            return BlocProvider.value(
-              value: _restaurantOrdersCubit,
-              child: const RestaurantDashboardScreen(),
+            return _noAnim(
+              state,
+              BlocProvider.value(
+                value: _restaurantOrdersCubit,
+                child: const RestaurantDashboardScreen(),
+              ),
             );
           }
-          return const DashboardScreen();
+          return _noAnim(state, const DashboardScreen());
         },
       ),
 
@@ -230,24 +244,28 @@ class AppRouter {
       GoRoute(
         path: '/sales',
         name: 'sales_list',
-        builder: (context, state) => const SalesListScreen(),
+        pageBuilder: (context, state) =>
+            _noAnim(state, const SalesListScreen()),
         routes: [
           GoRoute(
             path: 'add',
             name: 'add_sale',
-            builder: (context, state) => const AddSaleScreen(),
+            pageBuilder: (context, state) =>
+                _noAnim(state, const AddSaleScreen()),
           ),
         ],
       ),
       GoRoute(
         path: '/expenses',
         name: 'expenses_list',
-        builder: (context, state) => const ExpensesListScreen(),
+        pageBuilder: (context, state) =>
+            _noAnim(state, const ExpensesListScreen()),
         routes: [
           GoRoute(
             path: 'add',
             name: 'add_expense',
-            builder: (context, state) => const AddExpenseScreen(),
+            pageBuilder: (context, state) =>
+                _noAnim(state, const AddExpenseScreen()),
           ),
         ],
       ),
@@ -255,27 +273,32 @@ class AppRouter {
       // Route pour opérations (mobile - garde les onglets)
       GoRoute(
         path: '/inventory',
-        builder: (context, state) => const InventoryScreen(),
+        pageBuilder: (context, state) =>
+            _noAnim(state, const InventoryScreen()),
         routes: [
           GoRoute(
             path: 'add',
-            builder: (context, state) => const AddProductScreen(),
+            pageBuilder: (context, state) =>
+                _noAnim(state, const AddProductScreen()),
           ),
           GoRoute(
             path: 'edit/:productId',
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final product = state.extra as Product?;
-              return AddProductScreen(product: product);
+              return _noAnim(state, AddProductScreen(product: product));
             },
           ),
           GoRoute(
             path: 'product/:productId',
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final product = state.extra as Product?;
               final productId = state.pathParameters['productId'] ?? '';
-              return ProductDetailsScreen(
-                productId: productId,
-                product: product,
+              return _noAnim(
+                state,
+                ProductDetailsScreen(
+                  productId: productId,
+                  product: product,
+                ),
               );
             },
           ),
@@ -283,32 +306,40 @@ class AppRouter {
       ),
       GoRoute(
         path: '/contacts',
-        builder: (context, state) => const ContactsScreen(),
+        pageBuilder: (context, state) =>
+            _noAnim(state, const ContactsScreen()),
       ),
-      GoRoute(path: '/adha', builder: (context, state) => const AdhaScreen()),
+      GoRoute(
+        path: '/adha',
+        pageBuilder: (context, state) => _noAnim(state, const AdhaScreen()),
+      ),
       GoRoute(
         path: '/customers',
         builder: (context, state) => const SizedBox.shrink(),
         routes: [
           GoRoute(
             path: 'add',
-            builder: (context, state) => const AddCustomerScreen(),
+            pageBuilder: (context, state) =>
+                _noAnim(state, const AddCustomerScreen()),
           ),
           GoRoute(
             path: 'edit/:customerId',
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final customer = state.extra as Customer?;
-              return AddCustomerScreen(customer: customer);
+              return _noAnim(state, AddCustomerScreen(customer: customer));
             },
           ),
           GoRoute(
             path: 'detail/:customerId',
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final customer = state.extra as Customer?;
               final customerId = state.pathParameters['customerId'] ?? '';
-              return CustomerDetailsScreen(
-                customerId: customerId,
-                customer: customer,
+              return _noAnim(
+                state,
+                CustomerDetailsScreen(
+                  customerId: customerId,
+                  customer: customer,
+                ),
               );
             },
           ),
@@ -320,23 +351,27 @@ class AppRouter {
         routes: [
           GoRoute(
             path: 'add',
-            builder: (context, state) => const AddSupplierScreen(),
+            pageBuilder: (context, state) =>
+                _noAnim(state, const AddSupplierScreen()),
           ),
           GoRoute(
             path: 'edit/:supplierId',
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final supplier = state.extra as Supplier?;
-              return AddSupplierScreen(supplier: supplier);
+              return _noAnim(state, AddSupplierScreen(supplier: supplier));
             },
           ),
           GoRoute(
             path: 'detail/:supplierId',
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final supplier = state.extra as Supplier?;
               final supplierId = state.pathParameters['supplierId'] ?? '';
-              return SupplierDetailsScreen(
-                supplierId: supplierId,
-                supplier: supplier,
+              return _noAnim(
+                state,
+                SupplierDetailsScreen(
+                  supplierId: supplierId,
+                  supplier: supplier,
+                ),
               );
             },
           ),
@@ -344,43 +379,52 @@ class AppRouter {
       ),
       GoRoute(
         path: '/settings',
-        builder: (context, state) => const SettingsScreen(),
+        pageBuilder: (context, state) =>
+            _noAnim(state, const SettingsScreen()),
         routes: [
           GoRoute(
             path: 'notifications',
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final settings = state.extra as dynamic;
-              return NotificationSettingsScreen(settings: settings);
+              return _noAnim(
+                state,
+                NotificationSettingsScreen(settings: settings),
+              );
             },
           ),
           GoRoute(
             path: 'security',
-            builder: (context, state) => const SecuritySettingsScreen(),
+            pageBuilder: (context, state) =>
+                _noAnim(state, const SecuritySettingsScreen()),
           ),
         ],
       ),
       GoRoute(
         path: '/notifications',
-        builder: (context, state) => const NotificationsScreen(),
+        pageBuilder: (context, state) =>
+            _noAnim(state, const NotificationsScreen()),
       ),
       GoRoute(
         path: '/profile',
-        builder: (context, state) => const ProfileScreen(),
+        pageBuilder: (context, state) => _noAnim(state, const ProfileScreen()),
       ),
       GoRoute(
         path: '/operations',
         name: AppRoute.operations.name,
-        builder: (context, state) => const OperationsScreen(),
+        pageBuilder: (context, state) =>
+            _noAnim(state, const OperationsScreen()),
         routes: [
           GoRoute(
             path: 'sales/add',
             name: 'add_sale_from_operations',
-            builder: (context, state) => const AddSaleScreen(),
+            pageBuilder: (context, state) =>
+                _noAnim(state, const AddSaleScreen()),
           ),
           GoRoute(
             path: 'expenses/add',
             name: 'add_expense_from_operations',
-            builder: (context, state) => const AddExpenseScreen(),
+            pageBuilder: (context, state) =>
+                _noAnim(state, const AddExpenseScreen()),
           ),
         ],
       ),
@@ -389,26 +433,29 @@ class AppRouter {
       GoRoute(
         path: '/sale-detail/:id',
         name: AppRoute.saleDetail.name,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final sale = state.extra as Sale?;
 
           if (sale == null) {
-            return Scaffold(
-              appBar: AppBar(title: const Text('Error')),
-              body: const Center(
-                child: Text('Sale data not provided or invalid.'),
+            return _noAnim(
+              state,
+              Scaffold(
+                appBar: AppBar(title: const Text('Error')),
+                body: const Center(
+                  child: Text('Sale data not provided or invalid.'),
+                ),
               ),
             );
           }
-          return SaleDetailsScreen(sale: sale);
+          return _noAnim(state, SaleDetailsScreen(sale: sale));
         },
       ),
       GoRoute(
         path: '/expense-detail/:id',
         name: AppRoute.expenseDetail.name,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = state.pathParameters['id']!;
-          return ExpenseDetailScreen(expenseId: id);
+          return _noAnim(state, ExpenseDetailScreen(expenseId: id));
         },
       ),
       // Route pour les ventes par ID (redirection vers le détail)

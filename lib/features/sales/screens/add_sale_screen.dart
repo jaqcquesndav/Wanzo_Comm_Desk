@@ -518,6 +518,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             ),
           ],
           child: ResponsiveFormWrapper(
+            isModal: widget.onSaved != null,
             child: Form(
               key: _formKey,
               child: ListView(
@@ -1139,6 +1140,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
               builder: (context, state) {
                 bool isLoading = state is SalesLoading;
                 return SizedBox(
+                  width: double.infinity, // Le bouton occupe toute la largeur
                   height: 54, // Augmentation de la hauteur du conteneur
                   child: ElevatedButton(
                     onPressed:

@@ -78,15 +78,29 @@ class ResponsiveFormWrapper extends StatelessWidget {
   final double? maxWidth;
   final EdgeInsets? horizontalPadding;
 
+  /// Vrai lorsque le formulaire est rendu DANS une modal (Dialog desktop). Le
+  /// Dialog borne déjà la largeur (cf. `FormNavigationService`) : on NE doit pas
+  /// re-centrer ni imposer une seconde largeur max, sinon le contenu se
+  /// retrouve dans une colonne étroite avec d'énormes marges latérales. Dans ce
+  /// cas on laisse le contenu remplir la largeur disponible (le padding modeste
+  /// est déjà porté par le corps du formulaire).
+  final bool isModal;
+
   const ResponsiveFormWrapper({
     super.key,
     required this.child,
     this.maxWidth,
     this.horizontalPadding,
+    this.isModal = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    // En modal : pas de Center ni de max-width — le formulaire occupe toute la
+    // largeur du Dialog (marges = padding interne du formulaire uniquement).
+    if (isModal) {
+      return child;
+    }
     return LayoutBuilder(
       builder: (context, constraints) {
         final screenWidth = constraints.maxWidth;

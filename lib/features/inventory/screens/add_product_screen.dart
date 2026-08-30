@@ -416,6 +416,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
             _selectedInputCurrency ??= _appActiveCurrency;
 
             return ResponsiveFormWrapper(
+              isModal: widget.onSaved != null,
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(WanzoSpacing.md),
                 child: Form(
@@ -1074,6 +1075,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
                               : l10n.addProductButton,
                         ),
                         style: ElevatedButton.styleFrom(
+                          // Bouton principal pleine largeur du formulaire.
+                          minimumSize: const Size.fromHeight(52),
                           padding: const EdgeInsets.symmetric(
                             vertical: WanzoSpacing.md,
                           ),

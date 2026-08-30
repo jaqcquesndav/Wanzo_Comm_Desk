@@ -6,6 +6,9 @@ import 'package:wanzo/core/modules/module_registry.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/widgets/smart_image.dart';
+import 'package:wanzo/features/inventory/models/product.dart';
+import 'package:wanzo/features/inventory/repositories/inventory_repository.dart';
 
 import '../cubit/restaurant_orders_cubit.dart';
 import '../models/restaurant_order.dart';
@@ -29,21 +32,12 @@ class RestaurantDashboardScreen extends StatelessWidget {
       '/dashboard',
     );
 
+    // Les actions clés (service, cuisine, carte…) sont présentées comme des
+    // raccourcis dans le corps (voir `_quickActions`) : on évite de les
+    // dupliquer dans la barre d'application.
     return WanzoScaffold(
       currentIndex: index < 0 ? 0 : index,
       title: 'Tableau de bord',
-      appBarActions: [
-        IconButton(
-          icon: const Icon(Icons.menu_book),
-          tooltip: 'Composer la carte',
-          onPressed: () => context.push('/restaurant/menu'),
-        ),
-        IconButton(
-          icon: const Icon(Icons.point_of_sale),
-          tooltip: 'Ouvrir le service',
-          onPressed: () => context.go('/restaurant/orders'),
-        ),
-      ],
       body: BlocBuilder<RestaurantOrdersCubit, RestaurantOrdersState>(
         builder: (context, state) {
           if (state.loading) {
@@ -58,6 +52,8 @@ class RestaurantDashboardScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    _quickActions(context),
+                    const SizedBox(height: 28),
                     _kpiRow(context, m),
                     const SizedBox(height: 28),
                     if (wide)
@@ -115,6 +111,45 @@ class RestaurantDashboardScreen extends StatelessWidget {
     );
   }
 
+  /// Raccourcis d'action du service (équivalent restaurant des actions rapides
+  /// de la boutique) : ouvrir/encaisser une commande, cuisine, carte.
+  Widget _quickActions(BuildContext context) {
+    final actions = <_QuickAction>[
+      _QuickAction(
+        icon: Icons.point_of_sale,
+        color: const Color(0xFF0EA5E9),
+        label: 'Nouvelle commande',
+        onTap: () => context.go('/restaurant/orders'),
+      ),
+      _QuickAction(
+        icon: Icons.payments,
+        color: const Color(0xFF16A34A),
+        label: 'Encaisser',
+        onTap: () => context.go('/restaurant/orders'),
+      ),
+      _QuickAction(
+        icon: Icons.soup_kitchen,
+        color: const Color(0xFFF59E0B),
+        label: 'Cuisine',
+        onTap: () => context.go('/restaurant/kitchen'),
+      ),
+      _QuickAction(
+        icon: Icons.menu_book,
+        color: const Color(0xFF7C3AED),
+        label: 'Carte / menu',
+        onTap: () => context.push('/restaurant/menu'),
+      ),
+    ];
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        for (final a in actions)
+          SizedBox(width: 210, child: _QuickActionCard(action: a)),
+      ],
+    );
+  }
+
   Widget _kpiRow(BuildContext context, _RestaurantMetrics m) {
     final cards = [
       _KpiCard(
@@ -156,33 +191,47 @@ class RestaurantDashboardScreen extends StatelessWidget {
     if (orders.isEmpty) {
       return _hint(context, 'Aucune commande en cours pour le moment.');
     }
+    // La liste peut grandir en plein service : on plafonne à 5 et on renvoie
+    // vers le tableau des commandes (Kanban) pour tout voir.
+    const int cap = 5;
+    final shown = orders.take(cap).toList();
+    final hasMore = orders.length > cap;
     return Card(
       margin: EdgeInsets.zero,
       child: Column(
         children: [
-          for (var i = 0; i < orders.length; i++) ...[
+          for (var i = 0; i < shown.length; i++) ...[
             if (i > 0) const Divider(height: 1),
             ListTile(
               onTap: () => context.go('/restaurant/orders'),
               leading: CircleAvatar(
                 backgroundColor:
-                    _statusColor(orders[i].status).withValues(alpha: 0.16),
+                    _statusColor(shown[i].status).withValues(alpha: 0.16),
                 child: Icon(Icons.receipt_long,
-                    color: _statusColor(orders[i].status)),
+                    color: _statusColor(shown[i].status)),
               ),
               title: Text(
-                orders[i].label,
+                shown[i].label,
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               subtitle: Text(
-                  '${orders[i].itemCount} article(s) · ${orders[i].status.label}'),
+                  '${shown[i].itemCount} article(s) · ${shown[i].status.label}'),
               trailing: Text(
-                formatCurrency(orders[i].totalCdf, 'CDF'),
+                formatCurrency(shown[i].totalCdf, 'CDF'),
                 style: Theme.of(context)
                     .textTheme
                     .titleMedium
                     ?.copyWith(fontWeight: FontWeight.bold),
               ),
+            ),
+          ],
+          if (hasMore) ...[
+            const Divider(height: 1),
+            ListTile(
+              onTap: () => context.go('/restaurant/board'),
+              leading: const Icon(Icons.dashboard_customize_outlined),
+              title: Text('Voir toutes les commandes (${orders.length})'),
+              trailing: const Icon(Icons.chevron_right),
             ),
           ],
         ],
@@ -197,7 +246,11 @@ class RestaurantDashboardScreen extends StatelessWidget {
         'Les plats les plus vendus s\'afficheront après les premiers règlements.',
       );
     }
-    final theme = Theme.of(context);
+    // Résolution de la photo du plat par productId (même source que le POS /
+    // la carte : le catalogue produits). Repli sur l'icône de catégorie.
+    final products = <String, Product>{
+      for (final p in _allProducts(context)) p.id: p,
+    };
     return Card(
       margin: EdgeInsets.zero,
       child: Column(
@@ -205,17 +258,7 @@ class RestaurantDashboardScreen extends StatelessWidget {
           for (var i = 0; i < dishes.length; i++) ...[
             if (i > 0) const Divider(height: 1),
             ListTile(
-              leading: CircleAvatar(
-                backgroundColor:
-                    theme.colorScheme.primary.withValues(alpha: 0.12),
-                child: Text(
-                  '${i + 1}',
-                  style: TextStyle(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+              leading: _dishLeading(context, products[dishes[i].productId], i),
               title: Text(
                 dishes[i].name,
                 maxLines: 1,
@@ -230,6 +273,63 @@ class RestaurantDashboardScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Vignette du plat : photo produit (réseau/local) avec un badge de rang, ou
+  /// l'icône de catégorie en repli lorsque le produit n'a pas d'image.
+  Widget _dishLeading(BuildContext context, Product? product, int index) {
+    final theme = Theme.of(context);
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: Stack(
+        children: [
+          SmartImage(
+            imageUrl: product?.imageUrl,
+            imagePath: product?.imagePath,
+            width: 44,
+            height: 44,
+            fit: BoxFit.cover,
+            borderRadius: BorderRadius.circular(8),
+            placeholderIcon: product?.category.icon ?? Icons.restaurant,
+            placeholderColor: theme.colorScheme.surfaceContainerHighest,
+            placeholderIconSize: 20,
+          ),
+          Positioned(
+            left: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(6),
+                  bottomLeft: Radius.circular(8),
+                ),
+              ),
+              child: Text(
+                '${index + 1}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Catalogue produits (source des photos). Lecture directe du repository —
+  /// même mécanisme que le POS restaurant. Repli silencieux si indisponible.
+  List<Product> _allProducts(BuildContext context) {
+    try {
+      return context.read<InventoryRepository>().getAllProducts();
+    } catch (_) {
+      return const [];
+    }
   }
 
   Widget _hint(BuildContext context, String text) {
@@ -317,9 +417,64 @@ class _KpiCard extends StatelessWidget {
 }
 
 class _DishCount {
+  final String productId;
   final String name;
   final int quantity;
-  const _DishCount(this.name, this.quantity);
+  const _DishCount(this.productId, this.name, this.quantity);
+}
+
+/// Descriptif d'une action rapide du tableau de bord restaurant.
+class _QuickAction {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final VoidCallback onTap;
+  const _QuickAction({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.onTap,
+  });
+}
+
+/// Carte cliquable d'action rapide (icône colorée + libellé).
+class _QuickActionCard extends StatelessWidget {
+  final _QuickAction action;
+  const _QuickActionCard({required this.action});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: action.onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: action.color.withValues(alpha: 0.16),
+                child: Icon(action.icon, color: action.color, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  action.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Indicateurs restaurant dérivés des commandes (aucune dépendance externe).
@@ -362,14 +517,18 @@ class _RestaurantMetrics {
       source =
           orders.where((o) => o.status == RestaurantOrderStatus.paid).toList();
     }
+    // Agrégat par productId (permet de résoudre la photo du plat), en
+    // conservant un libellé représentatif.
     final counts = <String, int>{};
+    final names = <String, String>{};
     for (final o in source) {
       for (final l in o.lines) {
-        counts[l.productName] = (counts[l.productName] ?? 0) + l.quantity;
+        counts[l.productId] = (counts[l.productId] ?? 0) + l.quantity;
+        names[l.productId] = l.productName;
       }
     }
     final topDishes = counts.entries
-        .map((e) => _DishCount(e.key, e.value))
+        .map((e) => _DishCount(e.key, names[e.key] ?? '', e.value))
         .toList()
       ..sort((a, b) => b.quantity.compareTo(a.quantity));
 
