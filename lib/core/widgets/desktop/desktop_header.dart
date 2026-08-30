@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:badges/badges.dart' as badges;
 import '../../../constants/colors.dart';
+import '../../utils/logout_confirmation.dart';
 import '../../../features/auth/bloc/auth_bloc.dart';
 import '../../../features/settings/bloc/settings_bloc.dart';
 import '../../../features/settings/bloc/settings_event.dart';
@@ -217,31 +218,15 @@ class DesktopHeader extends StatelessWidget {
     String userName,
     String userEmail,
   ) {
-    return BlocBuilder<SettingsBloc, SettingsState>(
-      builder: (context, settingsState) {
-        AppThemeMode currentThemeMode = AppThemeMode.system;
-        if (settingsState is SettingsLoaded) {
-          currentThemeMode = settingsState.settings.themeMode;
-        } else if (settingsState is SettingsUpdated) {
-          currentThemeMode = settingsState.settings.themeMode;
-        }
-
-        return PopupMenuButton<String>(
+    return PopupMenuButton<String>(
           offset: const Offset(0, 50),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          onSelected:
-              (value) => _handleMenuSelection(context, value, currentThemeMode),
+          onSelected: (value) => _handleMenuSelection(context, value),
           itemBuilder:
-              (BuildContext context) => _buildMenuItems(
-                context,
-                theme,
-                isDark,
-                userName,
-                userEmail,
-                currentThemeMode,
-              ),
+              (BuildContext context) =>
+                  _buildMenuItems(context, theme, userName, userEmail),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
@@ -298,17 +283,13 @@ class DesktopHeader extends StatelessWidget {
             ),
           ),
         );
-      },
-    );
   }
 
   List<PopupMenuEntry<String>> _buildMenuItems(
     BuildContext context,
     ThemeData theme,
-    bool isDark,
     String userName,
     String userEmail,
-    AppThemeMode currentThemeMode,
   ) {
     return [
       // En-tête du menu avec info utilisateur
@@ -363,16 +344,6 @@ class DesktopHeader extends StatelessWidget {
 
       const PopupMenuDivider(),
 
-      // Profil
-      PopupMenuItem<String>(
-        value: 'profile',
-        child: _buildMenuItem(
-          icon: Icons.person_outline,
-          label: 'Mon profil',
-          color: theme.colorScheme.primary,
-        ),
-      ),
-
       // Paramètres
       PopupMenuItem<String>(
         value: 'settings',
@@ -383,57 +354,16 @@ class DesktopHeader extends StatelessWidget {
         ),
       ),
 
-      const PopupMenuDivider(),
-
-      // Thème avec sous-menu
+      // Bascule de thème clair/sombre — reste ouvert au clic pour laisser
+      // l'utilisateur voir le changement sans rouvrir le menu.
       PopupMenuItem<String>(
         enabled: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Apparence',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 12,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                _buildThemeOption(
-                  context,
-                  icon: Icons.light_mode,
-                  label: 'Clair',
-                  isSelected: currentThemeMode == AppThemeMode.light,
-                  onTap: () => _changeTheme(context, AppThemeMode.light),
-                ),
-                const SizedBox(width: 8),
-                _buildThemeOption(
-                  context,
-                  icon: Icons.dark_mode,
-                  label: 'Sombre',
-                  isSelected: currentThemeMode == AppThemeMode.dark,
-                  onTap: () => _changeTheme(context, AppThemeMode.dark),
-                ),
-                const SizedBox(width: 8),
-                _buildThemeOption(
-                  context,
-                  icon: Icons.brightness_auto,
-                  label: 'Auto',
-                  isSelected: currentThemeMode == AppThemeMode.system,
-                  onTap: () => _changeTheme(context, AppThemeMode.system),
-                ),
-              ],
-            ),
-          ],
-        ),
+        child: _buildThemeToggle(context, theme),
       ),
 
       const PopupMenuDivider(),
 
-      // Déconnexion
+      // Déconnexion (destructive)
       PopupMenuItem<String>(
         value: 'logout',
         child: _buildMenuItem(
@@ -443,6 +373,52 @@ class DesktopHeader extends StatelessWidget {
         ),
       ),
     ];
+  }
+
+  /// Bascule clair/sombre sans fermer le menu : dispatch [UpdateDisplaySettings]
+  /// et laisse le [BlocBuilder] rafraîchir le libellé/l'icône en direct.
+  Widget _buildThemeToggle(BuildContext context, ThemeData theme) {
+    return BlocBuilder<SettingsBloc, SettingsState>(
+      builder: (context, settingsState) {
+        AppThemeMode currentThemeMode = AppThemeMode.system;
+        if (settingsState is SettingsLoaded) {
+          currentThemeMode = settingsState.settings.themeMode;
+        } else if (settingsState is SettingsUpdated) {
+          currentThemeMode = settingsState.settings.themeMode;
+        }
+
+        final bool isDarkNow =
+            currentThemeMode == AppThemeMode.dark ||
+            (currentThemeMode == AppThemeMode.system &&
+                MediaQuery.platformBrightnessOf(context) == Brightness.dark);
+
+        return InkWell(
+          onTap: () {
+            context.read<SettingsBloc>().add(
+              UpdateDisplaySettings(
+                themeMode:
+                    isDarkNow ? AppThemeMode.light : AppThemeMode.dark,
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                Icon(
+                  isDarkNow ? Icons.light_mode : Icons.dark_mode,
+                  color: theme.colorScheme.onSurfaceVariant,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Text(isDarkNow ? 'Mode clair' : 'Mode sombre'),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildMenuItem({
@@ -459,84 +435,21 @@ class DesktopHeader extends StatelessWidget {
     );
   }
 
-  Widget _buildThemeOption(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-          decoration: BoxDecoration(
-            color:
-                isSelected
-                    ? WanzoColors.primary.withValues(alpha: 0.1)
-                    : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isSelected ? WanzoColors.primary : theme.dividerColor,
-              width: isSelected ? 2 : 1,
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 20,
-                color:
-                    isSelected
-                        ? WanzoColors.primary
-                        : theme.colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color:
-                      isSelected
-                          ? WanzoColors.primary
-                          : theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _handleMenuSelection(
+  Future<void> _handleMenuSelection(
     BuildContext context,
     String value,
-    AppThemeMode currentThemeMode,
-  ) {
+  ) async {
     switch (value) {
-      case 'profile':
-        context.push('/profile');
-        break;
       case 'settings':
         context.push('/settings');
         break;
       case 'logout':
-        context.read<AuthBloc>().add(const AuthLogoutRequested());
+        // Confirmation avant de déclencher la logique de déconnexion existante.
+        final confirmed = await confirmLogout(context);
+        if (confirmed && context.mounted) {
+          context.read<AuthBloc>().add(const AuthLogoutRequested());
+        }
         break;
     }
-  }
-
-  void _changeTheme(BuildContext context, AppThemeMode themeMode) {
-    context.read<SettingsBloc>().add(
-      UpdateDisplaySettings(themeMode: themeMode),
-    );
-    Navigator.of(context).pop(); // Fermer le menu
   }
 }

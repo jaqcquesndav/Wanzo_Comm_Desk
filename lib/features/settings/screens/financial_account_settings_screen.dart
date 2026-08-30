@@ -156,10 +156,10 @@ class _FinancialAccountSettingsScreenState
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         onPressed: () => _navigateToAddAccount(context),
-        icon: const Icon(Icons.add),
-        label: const Text('Ajouter un compte'),
+        tooltip: 'Ajouter un compte',
+        child: const Icon(Icons.add),
       ),
     );
   }

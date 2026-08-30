@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:wanzo/constants/constants.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
+import 'package:wanzo/core/utils/logout_confirmation.dart';
 import '../bloc/auth_bloc.dart';
 
 /// Écran affiché quand la synchronisation Kafka est en cours (Cas 3 de /auth/me)
@@ -170,8 +171,13 @@ class _SyncPendingScreenState extends State<SyncPendingScreen>
 
                   // Bouton déconnexion
                   TextButton.icon(
-                    onPressed: () {
-                      context.read<AuthBloc>().add(const AuthLogoutRequested());
+                    onPressed: () async {
+                      final confirmed = await confirmLogout(context);
+                      if (confirmed && context.mounted) {
+                        context.read<AuthBloc>().add(
+                          const AuthLogoutRequested(),
+                        );
+                      }
                     },
                     icon: const Icon(Icons.logout, color: Colors.white54),
                     label: Text(

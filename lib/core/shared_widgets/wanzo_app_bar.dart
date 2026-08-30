@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart'; // Import go_router
 import '../../constants/spacing.dart';
 import '../../constants/typography.dart';
 import '../services/business_context_service.dart';
+import '../utils/logout_confirmation.dart';
 import '../modules/activity_mode.dart';
 import '../../features/auth/bloc/auth_bloc.dart';
 import '../../features/settings/bloc/settings_bloc.dart';
@@ -182,9 +183,12 @@ class WanzoAppBar extends StatelessWidget implements PreferredSizeWidget {
         
         // Menu utilisateur
         PopupMenuButton<String>(
-          onSelected: (value) {
+          onSelected: (value) async {
             if (value == 'logout') {
-              context.read<AuthBloc>().add(const AuthLogoutRequested());
+              final confirmed = await confirmLogout(context);
+              if (confirmed && context.mounted) {
+                context.read<AuthBloc>().add(const AuthLogoutRequested());
+              }
             } else if (value == 'profile') {
               // Navigation vers le profil
               context.push('/profile'); // MODIFIED: Use context.push for profile

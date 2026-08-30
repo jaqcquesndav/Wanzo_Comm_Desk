@@ -136,15 +136,15 @@ class _SalesListScreenState extends State<SalesListScreen> {
               tooltip: 'Actualiser',
             ),
           ],
-          floatingActionButton: FloatingActionButton.extended(
+          floatingActionButton: FloatingActionButton(
             onPressed:
                 () => FormNavigationService.instance.openSaleForm(
                   context,
                   onSuccess:
                       () => context.read<SalesBloc>().add(const LoadSales()),
                 ),
-            icon: const Icon(Icons.add),
-            label: const Text('Nouvelle vente'),
+            tooltip: 'Nouvelle vente',
+            child: const Icon(Icons.add),
           ),
           body: _buildBody(context, state),
         );

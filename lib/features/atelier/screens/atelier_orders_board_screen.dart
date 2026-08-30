@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../constants/colors.dart';
 import '../../../core/modules/module_registry.dart';
 import '../../../core/services/business_context_service.dart';
+import '../../../core/services/form_navigation_service.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/kanban/kanban_board.dart';
@@ -70,10 +71,10 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
           onPressed: () => context.read<AtelierOrdersCubit>().load(),
         ),
       ],
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         onPressed: () => _openForm(context),
-        icon: const Icon(Icons.add),
-        label: const Text('Nouvelle commande'),
+        tooltip: 'Nouvelle commande',
+        child: const Icon(Icons.add),
       ),
       body: BlocBuilder<AtelierOrdersCubit, AtelierOrdersState>(
         builder: (context, state) {
@@ -122,14 +123,35 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
 
   Future<void> _openForm(BuildContext context, {AtelierOrder? order}) async {
     final cubit = context.read<AtelierOrdersCubit>();
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BlocProvider.value(
-          value: cubit,
-          child: AtelierOrderFormScreen(order: order),
-        ),
-      ),
+    final child = BlocProvider.value(
+      value: cubit,
+      child: AtelierOrderFormScreen(order: order),
     );
+    // Desktop/tablet : ouvrir en modal (comme vente/dépense/produit via
+    // FormNavigationService) plutôt qu'une page pleine. Le formulaire se ferme
+    // lui-même (Navigator.pop) et met à jour le cubit → le board se rafraîchit.
+    if (FormNavigationService.instance.shouldUseModal(context)) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 720,
+              maxHeight: MediaQuery.of(context).size.height * 0.9,
+            ),
+            child: child,
+          ),
+        ),
+      );
+    } else {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => child),
+      );
+    }
   }
 
   void _showActions(

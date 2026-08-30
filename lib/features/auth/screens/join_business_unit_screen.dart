@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:wanzo/constants/constants.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
+import 'package:wanzo/core/utils/logout_confirmation.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import '../bloc/auth_bloc.dart';
 
@@ -250,10 +251,14 @@ class _JoinBusinessUnitScreenState extends State<JoinBusinessUnitScreen> {
                           onPressed:
                               _isSubmitting
                                   ? null
-                                  : () {
-                                    context.read<AuthBloc>().add(
-                                      const AuthLogoutRequested(),
-                                    );
+                                  : () async {
+                                    final confirmed =
+                                        await confirmLogout(context);
+                                    if (confirmed && context.mounted) {
+                                      context.read<AuthBloc>().add(
+                                        const AuthLogoutRequested(),
+                                      );
+                                    }
                                   },
                           icon: Icon(
                             Icons.logout,

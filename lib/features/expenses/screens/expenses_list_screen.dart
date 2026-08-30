@@ -147,7 +147,7 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
               tooltip: 'Actualiser',
             ),
           ],
-          floatingActionButton: FloatingActionButton.extended(
+          floatingActionButton: FloatingActionButton(
             onPressed:
                 () => FormNavigationService.instance.openExpenseForm(
                   context,
@@ -155,8 +155,8 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
                       () =>
                           context.read<ExpenseBloc>().add(const LoadExpenses()),
                 ),
-            icon: const Icon(Icons.add),
-            label: const Text('Nouvelle dépense'),
+            tooltip: 'Nouvelle dépense',
+            child: const Icon(Icons.add),
           ),
           body: _buildBody(context, state),
         );
