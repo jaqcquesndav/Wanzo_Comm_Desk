@@ -10,8 +10,12 @@ import '../../../core/widgets/kanban/kanban_board.dart';
 import '../../sales/bloc/sales_bloc.dart';
 import '../../sales/models/sale_item.dart';
 import '../../sales/screens/add_sale_screen.dart';
+import '../../settings/bloc/settings_bloc.dart';
+import '../../settings/bloc/settings_state.dart';
+import '../../settings/models/settings.dart';
 import '../cubit/atelier_orders_cubit.dart';
 import '../models/atelier_order.dart';
+import '../services/atelier_sheet_pdf.dart';
 import '../widgets/atelier_actor_chip.dart';
 import 'atelier_order_form_screen.dart';
 
@@ -152,6 +156,20 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
             ),
           ),
           const Divider(),
+          ListTile(
+            leading: const Icon(Icons.print_outlined),
+            title: Text(
+              order.metier == AtelierMetier.maintenance
+                  ? 'Fiche de réparation / imprimer'
+                  : 'Bon de commande / imprimer',
+            ),
+            subtitle: const Text('État de sortie imprimable (A4)'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _printSheet(context, order);
+            },
+          ),
+          const Divider(height: 1),
           if (order.status.isActive) ...[
             for (final next in _nextStatuses(order.status))
               ListTile(
@@ -228,6 +246,26 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
             children: actions(ctx),
           ),
         ),
+      );
+    }
+  }
+
+  /// Génère et ouvre la fiche imprimable (état de sortie) de la commande.
+  /// Métier-aware : le service choisit la mise en page selon `order.metier`.
+  Future<void> _printSheet(BuildContext context, AtelierOrder order) async {
+    final messenger = ScaffoldMessenger.of(context);
+    Settings? settings;
+    final settingsState = context.read<SettingsBloc>().state;
+    if (settingsState is SettingsLoaded) {
+      settings = settingsState.settings;
+    } else if (settingsState is SettingsUpdated) {
+      settings = settingsState.settings;
+    }
+    try {
+      await AtelierSheetPdf.printSheet(order, settings: settings);
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Impossible de générer la fiche : $e')),
       );
     }
   }
