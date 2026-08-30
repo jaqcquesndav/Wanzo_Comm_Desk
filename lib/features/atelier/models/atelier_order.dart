@@ -108,11 +108,31 @@ extension AtelierMetierX on AtelierMetier {
 
 /// Fiche de réception/réparation d'un atelier de MAINTENANCE (miroir du jsonb
 /// backend `maintenanceDetails`). Propre à chaque intervention.
+/// Spécialités d'un atelier de maintenance — le métier étant « maintenance »
+/// (choisi au niveau du mode), la commande précise le domaine, qui adapte les
+/// champs de la fiche appareil (ex. automobile → immatriculation/VIN/km).
+const List<String> kMaintenanceSpecialties = [
+  'Informatique',
+  'Électronique',
+  'Téléphonie',
+  'Électroménager',
+  'Automobile',
+  'Électromécanique',
+  'Thermique / Froid & Clim',
+  'Autre',
+];
+
 class MaintenanceDetails extends Equatable {
+  final String? specialty; // Domaine : Informatique, Automobile, Thermique…
   final String? deviceType; // Type d'appareil (TV, smartphone, moteur…)
   final String? brand; // Marque
-  final String? model; // Modèle / n° de série
-  final String? serialNumber; // N° de série / IMEI / VIN
+  final String? model; // Modèle
+  final String? serialNumber; // N° de série / IMEI
+  // ── Spécifiques automobile / engin ──
+  final String? plate; // Immatriculation
+  final String? vin; // N° de châssis (VIN)
+  final String? mileage; // Kilométrage
+  final String? fuel; // Carburant (essence/diesel/…)
   final String? color;
   final String? exteriorState; // État extérieur à la réception
   final String? accessories; // Accessoires reçus
@@ -125,10 +145,15 @@ class MaintenanceDetails extends Equatable {
   final String? technicianName; // Technicien
 
   const MaintenanceDetails({
+    this.specialty,
     this.deviceType,
     this.brand,
     this.model,
     this.serialNumber,
+    this.plate,
+    this.vin,
+    this.mileage,
+    this.fuel,
     this.color,
     this.exteriorState,
     this.accessories,
@@ -152,10 +177,15 @@ class MaintenanceDetails extends Equatable {
 
   factory MaintenanceDetails.fromJson(Map<String, dynamic> json) =>
       MaintenanceDetails(
+        specialty: json['specialty'] as String?,
         deviceType: json['deviceType'] as String?,
         brand: json['brand'] as String?,
         model: json['model'] as String?,
         serialNumber: json['serialNumber'] as String?,
+        plate: json['plate'] as String?,
+        vin: json['vin'] as String?,
+        mileage: json['mileage'] as String?,
+        fuel: json['fuel'] as String?,
         color: json['color'] as String?,
         exteriorState: json['exteriorState'] as String?,
         accessories: json['accessories'] as String?,
@@ -171,10 +201,15 @@ class MaintenanceDetails extends Equatable {
       );
 
   Map<String, dynamic> toJson() => {
+        if (specialty != null) 'specialty': specialty,
         if (deviceType != null) 'deviceType': deviceType,
         if (brand != null) 'brand': brand,
         if (model != null) 'model': model,
         if (serialNumber != null) 'serialNumber': serialNumber,
+        if (plate != null) 'plate': plate,
+        if (vin != null) 'vin': vin,
+        if (mileage != null) 'mileage': mileage,
+        if (fuel != null) 'fuel': fuel,
         if (color != null) 'color': color,
         if (exteriorState != null) 'exteriorState': exteriorState,
         if (accessories != null) 'accessories': accessories,
@@ -189,7 +224,8 @@ class MaintenanceDetails extends Equatable {
 
   @override
   List<Object?> get props => [
-        deviceType, brand, model, serialNumber, color, exteriorState,
+        specialty, deviceType, brand, model, serialNumber, plate, vin,
+        mileage, fuel, color, exteriorState,
         accessories, reportedFault, diagnostic, repairDone, exitState,
         testResult, warrantyDays, technicianName,
       ];

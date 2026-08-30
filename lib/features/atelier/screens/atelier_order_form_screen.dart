@@ -43,10 +43,15 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   final _advanceCtrl = TextEditingController(text: '0');
   final _rateCtrl = TextEditingController(text: '1');
   // ── Fiche appareil (atelier de maintenance) ──
+  String? _specialty; // Domaine : Informatique, Automobile, Thermique…
   final _devTypeCtrl = TextEditingController();
   final _devBrandCtrl = TextEditingController();
   final _devModelCtrl = TextEditingController();
   final _devSerialCtrl = TextEditingController();
+  final _plateCtrl = TextEditingController(); // Immatriculation (auto)
+  final _vinCtrl = TextEditingController(); // VIN / châssis (auto)
+  final _mileageCtrl = TextEditingController(); // Kilométrage (auto)
+  final _fuelCtrl = TextEditingController(); // Carburant (auto)
   final _faultCtrl = TextEditingController();
   final _diagnosticCtrl = TextEditingController();
   final _repairCtrl = TextEditingController();
@@ -81,10 +86,15 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       _fabric = o.fabricProvidedBy;
       final m = o.maintenanceDetails;
       if (m != null) {
+        _specialty = m.specialty;
         _devTypeCtrl.text = m.deviceType ?? '';
         _devBrandCtrl.text = m.brand ?? '';
         _devModelCtrl.text = m.model ?? '';
         _devSerialCtrl.text = m.serialNumber ?? '';
+        _plateCtrl.text = m.plate ?? '';
+        _vinCtrl.text = m.vin ?? '';
+        _mileageCtrl.text = m.mileage ?? '';
+        _fuelCtrl.text = m.fuel ?? '';
         _faultCtrl.text = m.reportedFault ?? '';
         _diagnosticCtrl.text = m.diagnostic ?? '';
         _repairCtrl.text = m.repairDone ?? '';
@@ -148,6 +158,10 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     _devBrandCtrl.dispose();
     _devModelCtrl.dispose();
     _devSerialCtrl.dispose();
+    _plateCtrl.dispose();
+    _vinCtrl.dispose();
+    _mileageCtrl.dispose();
+    _fuelCtrl.dispose();
     _faultCtrl.dispose();
     _diagnosticCtrl.dispose();
     _repairCtrl.dispose();
@@ -427,23 +441,43 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     );
   }
 
-  /// Sélecteur de métier. En édition, le métier est figé (une commande garde son
-  /// métier). En création, il détermine tout le reste du formulaire.
+  /// En MAINTENANCE, le métier est fixé par le mode → on choisit la SPÉCIALITÉ
+  /// (informatique, automobile, thermique…) qui adapte la fiche appareil.
+  /// En couture, on choisit couture vs cordonnerie (le mode « atelier » regroupe
+  /// les deux). Plus de sélecteur de métier redondant.
   Widget _metierSelector() {
+    if (_isMaintenance) {
+      return DropdownButtonFormField<String>(
+        value: _specialty,
+        isExpanded: true,
+        decoration: const InputDecoration(
+            labelText: 'Spécialité de maintenance',
+            border: OutlineInputBorder()),
+        items: [
+          for (final s in kMaintenanceSpecialties)
+            DropdownMenuItem(value: s, child: Text(s)),
+        ],
+        onChanged: (v) => setState(() => _specialty = v),
+      );
+    }
     if (_isEdit) {
       return InputDecorator(
         decoration: const InputDecoration(
-            labelText: 'Métier', border: OutlineInputBorder()),
+            labelText: 'Type', border: OutlineInputBorder()),
         child: Text(_metier.label),
       );
     }
     return DropdownButtonFormField<AtelierMetier>(
-      value: _metier,
+      value: _metier == AtelierMetier.maintenance
+          ? AtelierMetier.couture
+          : _metier,
       decoration: const InputDecoration(
-          labelText: 'Métier de l\'atelier', border: OutlineInputBorder()),
-      items: [
-        for (final m in AtelierMetier.values)
-          DropdownMenuItem(value: m, child: Text(m.label)),
+          labelText: 'Type d\'atelier', border: OutlineInputBorder()),
+      items: const [
+        DropdownMenuItem(
+            value: AtelierMetier.couture, child: Text('Couture')),
+        DropdownMenuItem(
+            value: AtelierMetier.cordonnerie, child: Text('Cordonnerie')),
       ],
       onChanged: (v) {
         if (v == null) return;
@@ -476,22 +510,52 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   /// Fiche appareil/panne d'un atelier de MAINTENANCE (calquée sur la fiche de
   /// réception/réparation papier). Aucun vocabulaire couture ici.
   Widget _maintenanceSection() {
+    // La fiche s'adapte au type d'engin/appareil selon la spécialité.
+    final isVehicle = _specialty == 'Automobile';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle('Appareil reçu'),
-        _tf(_devTypeCtrl, 'Type d\'appareil',
-            hint: 'TV, smartphone, moteur, frigo…'),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(child: _tf(_devBrandCtrl, 'Marque')),
-            const SizedBox(width: 12),
-            Expanded(child: _tf(_devModelCtrl, 'Modèle')),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _tf(_devSerialCtrl, 'N° de série / IMEI / VIN'),
+        _sectionTitle(isVehicle ? 'Véhicule reçu' : 'Appareil reçu'),
+        if (isVehicle) ...[
+          Row(
+            children: [
+              Expanded(child: _tf(_devBrandCtrl, 'Marque')),
+              const SizedBox(width: 12),
+              Expanded(child: _tf(_devModelCtrl, 'Modèle')),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _tf(_plateCtrl, 'Immatriculation')),
+              const SizedBox(width: 12),
+              Expanded(child: _tf(_mileageCtrl, 'Kilométrage',
+                  keyboard: TextInputType.number)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _tf(_vinCtrl, 'N° de châssis (VIN)')),
+              const SizedBox(width: 12),
+              Expanded(
+                  child: _tf(_fuelCtrl, 'Carburant', hint: 'Essence, diesel…')),
+            ],
+          ),
+        ] else ...[
+          _tf(_devTypeCtrl, 'Type d\'appareil',
+              hint: 'TV, smartphone, PC, frigo…'),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _tf(_devBrandCtrl, 'Marque')),
+              const SizedBox(width: 12),
+              Expanded(child: _tf(_devModelCtrl, 'Modèle')),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _tf(_devSerialCtrl, 'N° de série / IMEI'),
+        ],
         const SizedBox(height: 12),
         _tf(_faultCtrl, 'Panne signalée par le client',
             hint: 'Symptômes, circonstances…', min: 2, max: 3),
@@ -558,10 +622,15 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     String? t(TextEditingController c) =>
         c.text.trim().isEmpty ? null : c.text.trim();
     final d = MaintenanceDetails(
+      specialty: _specialty,
       deviceType: t(_devTypeCtrl),
       brand: t(_devBrandCtrl),
       model: t(_devModelCtrl),
       serialNumber: t(_devSerialCtrl),
+      plate: t(_plateCtrl),
+      vin: t(_vinCtrl),
+      mileage: t(_mileageCtrl),
+      fuel: t(_fuelCtrl),
       reportedFault: t(_faultCtrl),
       diagnostic: t(_diagnosticCtrl),
       repairDone: t(_repairCtrl),
@@ -572,7 +641,8 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
           : int.tryParse(_warrantyCtrl.text.trim()),
       technicianName: t(_technicianCtrl),
     );
-    return d.isEmpty ? null : d;
+    final hasSpecialty = _specialty != null && _specialty!.isNotEmpty;
+    return (d.isEmpty && !hasSpecialty) ? null : d;
   }
 
   Future<void> _save() async {
