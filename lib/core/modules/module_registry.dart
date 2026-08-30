@@ -137,6 +137,20 @@ class ModuleRegistry {
       sidebarOrder: 1,
       available: true,
     ),
+    // Écran cuisine (KDS) — plein écran des commandes envoyées en préparation.
+    AppModule(
+      id: 'restaurant_kitchen',
+      label: 'Cuisine',
+      icon: Icons.soup_kitchen_outlined,
+      activeIcon: Icons.soup_kitchen,
+      route: '/restaurant/kitchen',
+      modes: {ActivityMode.restaurant, ActivityMode.hotel},
+      primary: true,
+      order: 2,
+      inSidebar: true,
+      sidebarOrder: 2,
+      available: true,
+    ),
     // ── Mode Atelier (couture/cordonnerie) ──────────────────────────────
     AppModule(
       id: 'atelier_orders',

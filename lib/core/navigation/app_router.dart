@@ -41,6 +41,7 @@ import '../../features/restaurant/screens/restaurant_pos_screen.dart';
 import '../../features/restaurant/screens/restaurant_orders_board_screen.dart';
 import '../../features/restaurant/screens/restaurant_menu_config_screen.dart';
 import '../../features/restaurant/screens/restaurant_dashboard_screen.dart';
+import '../../features/restaurant/screens/restaurant_kitchen_screen.dart';
 import '../modules/activity_mode.dart';
 import '../services/business_context_service.dart';
 import '../../features/atelier/cubit/atelier_orders_cubit.dart';
@@ -154,6 +155,11 @@ class AppRouter {
           GoRoute(
             path: '/restaurant/board',
             builder: (context, state) => const RestaurantOrdersBoardScreen(),
+          ),
+          // Écran cuisine (KDS) — plein écran secondaire côté salle/cuisine.
+          GoRoute(
+            path: '/restaurant/kitchen',
+            builder: (context, state) => const RestaurantKitchenScreen(),
           ),
         ],
       ),
