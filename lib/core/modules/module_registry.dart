@@ -152,13 +152,28 @@ class ModuleRegistry {
       available: true,
     ),
     // ── Mode Atelier (couture/cordonnerie) ──────────────────────────────
+    // Deux entrées pour la MÊME route : icône adaptée au métier (une seule est
+    // visible à la fois selon le mode) — plus de ciseaux en mode maintenance.
     AppModule(
       id: 'atelier_orders',
       label: 'Commandes',
       icon: Icons.content_cut_outlined,
       activeIcon: Icons.content_cut,
       route: '/atelier/board',
-      modes: {ActivityMode.atelier, ActivityMode.atelierMaintenance},
+      modes: {ActivityMode.atelier},
+      primary: true,
+      order: 1,
+      inSidebar: true,
+      sidebarOrder: 1,
+      available: true,
+    ),
+    AppModule(
+      id: 'atelier_maintenance_orders',
+      label: 'Commandes',
+      icon: Icons.handyman_outlined,
+      activeIcon: Icons.handyman,
+      route: '/atelier/board',
+      modes: {ActivityMode.atelierMaintenance},
       primary: true,
       order: 1,
       inSidebar: true,
