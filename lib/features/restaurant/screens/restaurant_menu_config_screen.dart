@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
+import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/features/inventory/models/product.dart';
 import 'package:wanzo/features/inventory/repositories/inventory_repository.dart';
@@ -117,10 +118,32 @@ class _RestaurantMenuConfigScreenState
   }
 
   Widget _tile(Product product) {
+    final theme = Theme.of(context);
     final current = _config[product.id];
+    final description = product.description.trim();
     return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      // Vignette du plat : l'exploitant voit la photo pendant qu'il compose la
+      // carte. Repli sur l'icône de catégorie si aucune image.
+      leading: SmartImage(
+        imageUrl: product.imageUrl,
+        imagePath: product.imagePath,
+        fit: BoxFit.cover,
+        width: 52,
+        height: 52,
+        borderRadius: BorderRadius.circular(8),
+        placeholderIcon: product.category.icon,
+        placeholderColor: theme.colorScheme.surfaceContainerHighest,
+        placeholderIconSize: 22,
+      ),
       title: Text(product.name),
-      subtitle: Text(formatCurrency(product.sellingPriceInCdf, 'CDF')),
+      subtitle: Text(
+        description.isEmpty
+            ? formatCurrency(product.sellingPriceInCdf, 'CDF')
+            : '${formatCurrency(product.sellingPriceInCdf, 'CDF')} · $description',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       trailing: DropdownButton<MenuCourse?>(
         value: current,
         hint: const Text('Pas au menu'),

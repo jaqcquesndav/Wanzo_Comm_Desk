@@ -40,6 +40,9 @@ import '../../features/restaurant/repositories/restaurant_order_repository.dart'
 import '../../features/restaurant/screens/restaurant_pos_screen.dart';
 import '../../features/restaurant/screens/restaurant_orders_board_screen.dart';
 import '../../features/restaurant/screens/restaurant_menu_config_screen.dart';
+import '../../features/restaurant/screens/restaurant_dashboard_screen.dart';
+import '../modules/activity_mode.dart';
+import '../services/business_context_service.dart';
 import '../../features/atelier/cubit/atelier_orders_cubit.dart';
 import '../../features/atelier/services/atelier_api_service.dart';
 import '../../features/atelier/screens/atelier_orders_board_screen.dart';
@@ -202,7 +205,19 @@ class AppRouter {
       // Routes principales de l'application
       GoRoute(
         path: '/dashboard',
-        builder: (context, state) => const DashboardScreen(),
+        // Le tableau de bord dépend du métier : en mode restaurant on sert un
+        // écran dédié (service/cuisine/plats), sinon le tableau de bord
+        // boutique historique reste STRICTEMENT inchangé (aucun risque retail).
+        builder: (context, state) {
+          if (BusinessContextService().activityMode ==
+              ActivityMode.restaurant) {
+            return BlocProvider.value(
+              value: _restaurantOrdersCubit,
+              child: const RestaurantDashboardScreen(),
+            );
+          }
+          return const DashboardScreen();
+        },
       ),
 
       // Routes principales pour Ventes, Dépenses, Financement (Desktop)

@@ -34,6 +34,34 @@ import '../repositories/menu_config_repository.dart';
 /// Ce n'est PAS le mobile étiré : tout est visible d'un coup, adapté au comptoir.
 enum _PayMethod { cash, mobileMoney, credit }
 
+/// Onglet de la colonne menu : plats de la carte ou articles hors carte.
+enum _MenuTab { carte, autres }
+
+/// Petit badge de catégorie (« Plats », « Boissons »…) posé sur la photo.
+class _CourseBadge extends StatelessWidget {
+  final String label;
+  const _CourseBadge({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
 extension _PayMethodX on _PayMethod {
   String get label => switch (this) {
         _PayMethod.cash => 'Espèces',
@@ -66,6 +94,9 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   bool _menuLoading = true;
   String? _selectedOrderId;
   String _search = '';
+  // Colonne menu : « Carte » (plats configurés) ou « Autres » (produits hors
+  // carte : pâtisserie, jus, bouteilles… vendus directement).
+  _MenuTab _menuTab = _MenuTab.carte;
 
   _PayMethod _method = _PayMethod.cash;
   final _cashController = TextEditingController();
@@ -98,6 +129,17 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
       grouped.putIfAbsent(course, () => []).add(p);
     }
     return grouped;
+  }
+
+  /// Produits HORS carte (stock ordinaire), filtrés par la recherche. Vendus
+  /// directement sans les inscrire au menu.
+  List<Product> get _nonMenuProducts {
+    final q = _search.toLowerCase();
+    return _products.where((p) {
+      if (_menuConfig.containsKey(p.id)) return false;
+      if (q.isNotEmpty && !p.name.toLowerCase().contains(q)) return false;
+      return true;
+    }).toList();
   }
 
   @override
@@ -264,6 +306,61 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     if (_menuLoading) {
       return const Center(child: CircularProgressIndicator());
     }
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+          child: Row(
+            children: [
+              // Sélecteur Carte / Autres (desktop : bouton segmenté, pas de
+              // feuille modale).
+              SegmentedButton<_MenuTab>(
+                segments: const [
+                  ButtonSegment(
+                    value: _MenuTab.carte,
+                    label: Text('Carte'),
+                    icon: Icon(Icons.restaurant_menu, size: 16),
+                  ),
+                  ButtonSegment(
+                    value: _MenuTab.autres,
+                    label: Text('Autres'),
+                    icon: Icon(Icons.local_cafe, size: 16),
+                  ),
+                ],
+                selected: {_menuTab},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) =>
+                    setState(() => _menuTab = s.first),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: _menuTab == _MenuTab.carte
+                        ? 'Rechercher un plat…'
+                        : 'Rechercher un article…',
+                    prefixIcon: const Icon(Icons.search),
+                    isDense: true,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onChanged: (v) => setState(() => _search = v),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _menuTab == _MenuTab.carte
+              ? _buildCarte(order)
+              : _buildAutres(order),
+        ),
+      ],
+    );
+  }
+
+  // Onglet Carte : plats configurés, groupés par catégorie.
+  Widget _buildCarte(RestaurantOrder order) {
     if (_menuConfig.isEmpty) {
       return EmptyStateView(
         icon: Icons.restaurant_menu,
@@ -278,71 +375,71 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     final courses = grouped.keys.toList()
       ..sort((a, b) => a.order.compareTo(b.order));
 
-    return Column(
+    if (courses.isEmpty) {
+      return const EmptyStateView(
+        icon: Icons.search_off,
+        message: 'Aucun plat ne correspond.',
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.all(12),
       children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: TextField(
-            decoration: InputDecoration(
-              hintText: 'Rechercher un plat…',
-              prefixIcon: const Icon(Icons.search),
-              isDense: true,
-              border:
-                  OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        for (final course in courses) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+            child: Text(
+              course.label.toUpperCase(),
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.8,
+                  ),
             ),
-            onChanged: (v) => setState(() => _search = v),
           ),
-        ),
-        Expanded(
-          child: courses.isEmpty
-              ? const EmptyStateView(
-                  icon: Icons.search_off,
-                  message: 'Aucun plat ne correspond.',
-                )
-              : ListView(
-                  padding: const EdgeInsets.all(12),
-                  children: [
-                    for (final course in courses) ...[
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-                        child: Text(
-                          course.label.toUpperCase(),
-                          style: Theme.of(context)
-                              .textTheme
-                              .labelLarge
-                              ?.copyWith(
-                                color: Theme.of(context).colorScheme.primary,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.8,
-                              ),
-                        ),
-                      ),
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate:
-                            const SliverGridDelegateWithMaxCrossAxisExtent(
-                          // Tuiles plus hautes : place à une vraie image de plat
-                          // (le resto a besoin de bien voir le visuel du menu).
-                          maxCrossAxisExtent: 180,
-                          childAspectRatio: 0.82,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
-                        ),
-                        itemCount: grouped[course]!.length,
-                        itemBuilder: (context, i) =>
-                            _menuTile(order, grouped[course]![i]),
-                      ),
-                    ],
-                  ],
-                ),
-        ),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: _menuGrid,
+            itemCount: grouped[course]!.length,
+            itemBuilder: (context, i) =>
+                _menuTile(order, grouped[course]![i], course: course),
+          ),
+        ],
       ],
     );
   }
 
-  Widget _menuTile(RestaurantOrder order, Product product) {
+  // Onglet Autres : produits hors carte, grille plate.
+  Widget _buildAutres(RestaurantOrder order) {
+    final products = _nonMenuProducts;
+    if (products.isEmpty) {
+      return const EmptyStateView(
+        icon: Icons.inventory_2_outlined,
+        message:
+            'Aucun article hors carte.\nLes produits non inscrits au menu (pâtisserie, jus…) apparaissent ici.',
+      );
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.all(12),
+      gridDelegate: _menuGrid,
+      itemCount: products.length,
+      itemBuilder: (context, i) => _menuTile(order, products[i]),
+    );
+  }
+
+  // Grille commune aux tuiles-plats (photo prominente + nom/desc/prix).
+  static const SliverGridDelegateWithMaxCrossAxisExtent _menuGrid =
+      SliverGridDelegateWithMaxCrossAxisExtent(
+    maxCrossAxisExtent: 180,
+    childAspectRatio: 0.72,
+    crossAxisSpacing: 8,
+    mainAxisSpacing: 8,
+  );
+
+  Widget _menuTile(RestaurantOrder order, Product product,
+      {MenuCourse? course}) {
     final theme = Theme.of(context);
+    final description = product.description.trim();
     return InkWell(
       borderRadius: BorderRadius.circular(10),
       onTap: () => context.read<RestaurantOrdersCubit>().addLine(
@@ -361,16 +458,28 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Image du plat, bien visible (réseau ou locale, cover). Repli sur
-            // l'icône de catégorie quand aucune image n'est définie.
+            // l'icône de catégorie quand aucune image n'est définie, avec badge
+            // de catégorie en surimpression.
             Expanded(
-              child: SmartImage(
-                imageUrl: product.imageUrl,
-                imagePath: product.imagePath,
-                fit: BoxFit.cover,
-                width: double.infinity,
-                placeholderIcon: product.category.icon,
-                placeholderColor: theme.colorScheme.surfaceContainerHighest,
-                placeholderIconSize: 34,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  SmartImage(
+                    imageUrl: product.imageUrl,
+                    imagePath: product.imagePath,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    placeholderIcon: product.category.icon,
+                    placeholderColor: theme.colorScheme.surfaceContainerHighest,
+                    placeholderIconSize: 34,
+                  ),
+                  if (course != null)
+                    Positioned(
+                      top: 6,
+                      left: 6,
+                      child: _CourseBadge(label: course.label),
+                    ),
+                ],
               ),
             ),
             Padding(
@@ -380,12 +489,23 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
                 children: [
                   Text(
                     product.name,
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                         fontWeight: FontWeight.w600, fontSize: 13),
                   ),
-                  const SizedBox(height: 2),
+                  if (description.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 4),
                   Text(
                     formatCurrency(product.sellingPriceInCdf, 'CDF'),
                     style: theme.textTheme.bodySmall?.copyWith(
