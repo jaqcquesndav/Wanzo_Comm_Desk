@@ -16,6 +16,7 @@ import '../../settings/bloc/settings_state.dart';
 import '../../settings/models/settings.dart';
 import '../cubit/atelier_orders_cubit.dart';
 import '../models/atelier_order.dart';
+import '../services/atelier_perf.dart';
 import '../services/atelier_sheet_pdf.dart';
 import '../widgets/atelier_actor_chip.dart';
 import 'atelier_order_form_screen.dart';
@@ -105,16 +106,23 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
               ),
           ];
 
-          return KanbanBoard<AtelierOrder>(
-            columns: columns,
-            itemId: (o) => o.id,
-            cardBuilder: (context, o) => _AtelierCard(order: o),
-            onMoveItem: (order, toColumnId) {
-              final target = AtelierOrderStatusX.fromApiValue(toColumnId);
-              if (target == order.status) return;
-              cubit.updateStatus(order.id, target);
-            },
-            onTapItem: (order) => _showActions(context, cubit, order),
+          return Column(
+            children: [
+              _PerfKpis(orders: state.orders),
+              Expanded(
+                child: KanbanBoard<AtelierOrder>(
+                  columns: columns,
+                  itemId: (o) => o.id,
+                  cardBuilder: (context, o) => _AtelierCard(order: o),
+                  onMoveItem: (order, toColumnId) {
+                    final target = AtelierOrderStatusX.fromApiValue(toColumnId);
+                    if (target == order.status) return;
+                    cubit.updateStatus(order.id, target);
+                  },
+                  onTapItem: (order) => _showActions(context, cubit, order),
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -477,6 +485,65 @@ class _ErrorView extends StatelessWidget {
             icon: const Icon(Icons.refresh),
             label: const Text('Réessayer'),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bandeau de KPI de performance de prestation (en-tête du board). Destinés à
+/// terme à alimenter la cote crédit de l'entreprise.
+class _PerfKpis extends StatelessWidget {
+  final List<AtelierOrder> orders;
+  const _PerfKpis({required this.orders});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = computeAtelierPerf(orders);
+    if (!p.hasData) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+
+    Widget kpi(IconData icon, String value, String label) => Expanded(
+          child: Row(
+            children: [
+              Icon(icon, size: 16, color: theme.colorScheme.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(value,
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w700),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(label,
+                        style: const TextStyle(
+                            fontSize: 10.5, color: Color(0xFF6B7280)),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Row(
+        children: [
+          kpi(Icons.pending_actions_outlined, '${p.inProgress}', 'En cours'),
+          kpi(Icons.timer_outlined,
+              p.avgCycleDays > 0 ? '${p.avgCycleDays.toStringAsFixed(1)} j' : '—',
+              'Délai moyen'),
+          kpi(Icons.verified_outlined,
+              p.onTimeRate > 0 ? '${(p.onTimeRate * 100).round()} %' : '—',
+              'À temps'),
         ],
       ),
     );

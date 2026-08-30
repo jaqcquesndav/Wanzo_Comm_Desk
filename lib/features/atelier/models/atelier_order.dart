@@ -231,6 +231,24 @@ class MaintenanceDetails extends Equatable {
       ];
 }
 
+/// Événement d'étape horodaté (miroir du backend `StageEvent`). Base des KPI de
+/// performance de prestation (durée par étape, cycle) → future cote crédit.
+class StageEvent {
+  final String status;
+  final DateTime? at;
+  const StageEvent({required this.status, this.at});
+
+  factory StageEvent.fromJson(Map<String, dynamic> j) => StageEvent(
+        status: j['status'] as String? ?? '',
+        at: j['at'] == null ? null : DateTime.tryParse('${j['at']}'),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'status': status,
+        if (at != null) 'at': at!.toIso8601String(),
+      };
+}
+
 /// Qui fournit le tissu de la confection.
 enum FabricProvidedBy { client, atelier }
 
@@ -255,6 +273,8 @@ class AtelierOrder extends Equatable {
   final String? modelDetails;
   final AtelierMetier metier;
   final MaintenanceDetails? maintenanceDetails;
+  /// Historique horodaté des étapes (KPI de performance de prestation).
+  final List<StageEvent> stageHistory;
   final DateTime? entryDate;
   final DateTime? exitDate;
   final double totalAmount;
@@ -282,6 +302,7 @@ class AtelierOrder extends Equatable {
     this.modelDetails,
     this.metier = AtelierMetier.couture,
     this.maintenanceDetails,
+    this.stageHistory = const [],
     this.entryDate,
     this.exitDate,
     this.totalAmount = 0,
@@ -322,6 +343,12 @@ class AtelierOrder extends Equatable {
           ? MaintenanceDetails.fromJson(
               json['maintenanceDetails'] as Map<String, dynamic>)
           : null,
+      stageHistory: (json['stageHistory'] is List)
+          ? (json['stageHistory'] as List)
+              .whereType<Map<String, dynamic>>()
+              .map(StageEvent.fromJson)
+              .toList()
+          : const [],
       entryDate: _toDate(json['entryDate']),
       exitDate: _toDate(json['exitDate']),
       totalAmount: _toDouble(json['totalAmount']),
@@ -370,6 +397,8 @@ class AtelierOrder extends Equatable {
     if (lastActionByName != null) 'lastActionByName': lastActionByName,
     if (lastActionByAvatar != null) 'lastActionByAvatar': lastActionByAvatar,
     if (lastActionAt != null) 'lastActionAt': lastActionAt!.toIso8601String(),
+    if (stageHistory.isNotEmpty)
+      'stageHistory': stageHistory.map((e) => e.toJson()).toList(),
   };
 
   /// Payload de création/mise à jour (les champs null sont omis).
@@ -406,6 +435,7 @@ class AtelierOrder extends Equatable {
       modelDetails: modelDetails,
       metier: metier ?? this.metier,
       maintenanceDetails: maintenanceDetails ?? this.maintenanceDetails,
+      stageHistory: stageHistory,
       entryDate: entryDate,
       exitDate: exitDate,
       totalAmount: totalAmount,
