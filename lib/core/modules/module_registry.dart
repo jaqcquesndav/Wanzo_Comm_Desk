@@ -102,9 +102,11 @@ class ModuleRegistry {
       modes: _allModes,
       primary: true,
       order: 4,
-      inSidebar: true,
+      // Desktop : Adha est déjà accessible via le bouton du header → pas de
+      // doublon dans le sidebar. Reste en bottom-nav sur mobile.
+      inSidebar: false,
       sidebarOrder: 5,
-      dividerBefore: true,
+      dividerBefore: false,
       isAdhaPanel: true,
     ),
     AppModule(
