@@ -13,6 +13,7 @@ import '../../../core/services/barcode_scanner_service.dart'; // Import du servi
 import '../../../core/platform/image_picker/image_picker_service_factory.dart';
 import '../../../core/platform/image_picker/image_picker_service_interface.dart';
 import '../../../core/widgets/desktop/responsive_form_container.dart';
+import '../../../core/widgets/desktop/modal_form_shell.dart';
 import '../bloc/inventory_bloc.dart';
 import '../bloc/inventory_event.dart';
 import '../bloc/inventory_state.dart';
@@ -1100,19 +1101,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
       ),
     );
 
-    // Mode modal : Scaffold simple avec bouton fermer
+    // Mode modal : en-tête léger (pas de seconde AppBar dans le Dialog)
     if (widget.onSaved != null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: Text(
-            _isEditing ? l10n.editProductTitle : l10n.addProductTitle,
-          ),
-          leading: IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ),
-        body: bodyContent,
+      return ModalFormShell(
+        title: _isEditing ? l10n.editProductTitle : l10n.addProductTitle,
+        icon: Icons.inventory_2_outlined,
+        child: bodyContent,
       );
     }
 

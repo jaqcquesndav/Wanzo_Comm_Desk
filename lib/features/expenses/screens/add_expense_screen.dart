@@ -14,6 +14,7 @@ import '../../../core/utils/currency_formatter.dart';
 import '../../../core/platform/image_picker/image_picker_service_factory.dart';
 import '../../../core/platform/image_picker/image_picker_service_interface.dart';
 import '../../../core/widgets/desktop/responsive_form_container.dart';
+import '../../../core/widgets/desktop/modal_form_shell.dart';
 import '../../../features/settings/presentation/cubit/currency_settings_cubit.dart';
 import '../../../features/supplier/bloc/supplier_bloc.dart';
 import '../../../features/supplier/bloc/supplier_event.dart';
@@ -1463,17 +1464,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       ),
     );
 
-    // Mode modal : Scaffold simple avec bouton fermer
+    // Mode modal : en-tête léger (pas de seconde AppBar dans le Dialog)
     if (widget.onSaved != null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Nouvelle Dépense'),
-          leading: IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ),
-        body: bodyContent,
+      return ModalFormShell(
+        title: 'Nouvelle dépense',
+        icon: Icons.receipt_long,
+        child: bodyContent,
       );
     }
 

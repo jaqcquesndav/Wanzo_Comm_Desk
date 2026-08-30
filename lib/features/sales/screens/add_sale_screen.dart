@@ -9,6 +9,7 @@ import 'package:wanzo/core/models/currency_settings_model.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/widgets/desktop/responsive_form_container.dart';
 import 'package:wanzo/core/widgets/desktop/adaptive_modal.dart';
+import 'package:wanzo/core/widgets/desktop/modal_form_shell.dart';
 import 'package:wanzo/core/widgets/smart_image.dart'; // SmartImage for Cloudinary URLs
 import 'package:wanzo/features/customer/bloc/customer_bloc.dart';
 import 'package:wanzo/features/customer/bloc/customer_event.dart';
@@ -441,18 +442,11 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
           );
         }
       },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Nouvelle vente'),
-          leading:
-              widget.onSaved != null
-                  ? IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.of(context).pop(),
-                  )
-                  : null,
-        ),
-        body: MultiBlocListener(
+      child: ModalOrPageScaffold(
+        isModal: widget.onSaved != null,
+        title: 'Nouvelle vente',
+        icon: Icons.point_of_sale,
+        child: MultiBlocListener(
           listeners: [
             BlocListener<SalesBloc, SalesState>(
               listener: (context, state) {
@@ -1138,7 +1132,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             ),
           ),
         ),
-        bottomNavigationBar: BottomAppBar(
+        bottomBar: BottomAppBar(
           child: Padding(
             padding: const EdgeInsets.all(WanzoSpacing.md),
             child: BlocBuilder<SalesBloc, SalesState>(
