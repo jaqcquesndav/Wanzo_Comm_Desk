@@ -46,8 +46,8 @@ class OperationFilter extends Equatable {
       return false;
     }
 
-    // Filtre par statut
-    if (status != null && operation.status != status) {
+    // Filtre par statut (le filtre porte la valeur API du statut, pas l'enum).
+    if (status != null && operation.status.apiValue != status) {
       return false;
     }
 
