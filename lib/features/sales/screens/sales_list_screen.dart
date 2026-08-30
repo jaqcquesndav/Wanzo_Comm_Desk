@@ -11,6 +11,7 @@ import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/navigation/app_router.dart';
 import '../../../core/services/form_navigation_service.dart';
 import '../../../core/widgets/table_export_button.dart';
+import '../../../core/widgets/desktop/row_actions_menu.dart';
 import '../../../services/export/table_export_service.dart';
 import '../bloc/sales_bloc.dart';
 import '../models/sale.dart';
@@ -548,37 +549,26 @@ class _SalesDataTable extends StatelessWidget {
                                 ),
                               // Actions
                               DataCell(
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.visibility,
-                                        size: 20,
-                                      ),
-                                      tooltip: 'Voir détails',
-                                      onPressed: () => onSaleTap(sale),
-                                      color: theme.colorScheme.primary,
-                                      visualDensity: VisualDensity.compact,
+                                RowActionsMenu(
+                                  actions: [
+                                    RowAction(
+                                      label: 'Voir détails',
+                                      icon: Icons.visibility,
+                                      onSelected: () => onSaleTap(sale),
                                     ),
-                                    IconButton(
-                                      icon: const Icon(Icons.edit, size: 20),
-                                      tooltip: 'Modifier',
-                                      onPressed: () => _editSale(context, sale),
-                                      color: Colors.orange,
-                                      visualDensity: VisualDensity.compact,
+                                    RowAction(
+                                      label: 'Modifier',
+                                      icon: Icons.edit,
+                                      onSelected:
+                                          () => _editSale(context, sale),
                                     ),
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.delete_outline,
-                                        size: 20,
-                                      ),
-                                      tooltip: 'Supprimer',
-                                      onPressed:
+                                    RowAction(
+                                      label: 'Supprimer',
+                                      icon: Icons.delete_outline,
+                                      destructive: true,
+                                      onSelected:
                                           () =>
                                               _confirmDeleteSale(context, sale),
-                                      color: Colors.red,
-                                      visualDensity: VisualDensity.compact,
                                     ),
                                   ],
                                 ),
