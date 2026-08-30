@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../constants/colors.dart';
-
 /// Indicateur discret de l'exercice fiscal en cours.
 ///
 /// Les applications de gestion commerciale sont synchronisées sur l'exercice
@@ -22,9 +20,10 @@ class FiscalYearIndicator extends StatelessWidget {
     final year = DateTime.now().year;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final fg = isDark ? WanzoColors.infoLight : WanzoColors.infoDark;
-    final bg = (isDark ? WanzoColors.infoDark : WanzoColors.infoLight)
-        .withValues(alpha: isDark ? 0.18 : 0.12);
+    // Respecte le thème : couleur primaire Wanzo (plus de bleu « info » codé en dur).
+    final primary = theme.colorScheme.primary;
+    final fg = isDark ? theme.colorScheme.onSurface : primary;
+    final bg = primary.withValues(alpha: isDark ? 0.22 : 0.10);
 
     return Tooltip(
       message:
@@ -38,7 +37,7 @@ class FiscalYearIndicator extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: fg.withValues(alpha: 0.25)),
+          border: Border.all(color: primary.withValues(alpha: 0.30)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

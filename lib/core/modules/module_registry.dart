@@ -19,6 +19,7 @@ class ModuleRegistry {
     ActivityMode.hotel,
     ActivityMode.services,
     ActivityMode.atelier,
+    ActivityMode.atelierMaintenance,
   };
 
   static const List<AppModule> all = [
@@ -143,7 +144,7 @@ class ModuleRegistry {
       icon: Icons.content_cut_outlined,
       activeIcon: Icons.content_cut,
       route: '/atelier/board',
-      modes: {ActivityMode.atelier},
+      modes: {ActivityMode.atelier, ActivityMode.atelierMaintenance},
       primary: true,
       order: 1,
       inSidebar: true,

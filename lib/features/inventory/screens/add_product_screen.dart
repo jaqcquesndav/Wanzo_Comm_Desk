@@ -147,7 +147,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     _hasExpirationDate = _expirationDate != null;
 
     // Mode atelier : précharger le type existant (overlay local) en édition.
-    if (_activityMode == ActivityMode.atelier && _isEditing) {
+    if (_activityMode.isAtelier && _isEditing) {
       final productId = widget.product?.id;
       if (productId != null) {
         _atelierConfigRepo.getType(productId).then((type) {
@@ -709,7 +709,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
                       // Type d'article (mode atelier uniquement) — overlay local,
                       // n'ajoute aucun champ dans les autres modes (dont retail).
-                      if (_activityMode == ActivityMode.atelier) ...[
+                      if (_activityMode.isAtelier) ...[
                         DropdownButtonFormField<AtelierProductType?>(
                           value: _atelierType,
                           decoration: const InputDecoration(
@@ -1180,7 +1180,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     // Mode atelier : persister le type d'article dans l'overlay local (keyé par
     // productId), sans toucher l'entité `Product`. Aucun effet dans les autres
     // modes. On utilise l'id déterminé ci-dessus (déjà généré si création).
-    if (_activityMode == ActivityMode.atelier) {
+    if (_activityMode.isAtelier) {
       final type = _atelierType;
       if (type == null) {
         _atelierConfigRepo.clear(product.id);

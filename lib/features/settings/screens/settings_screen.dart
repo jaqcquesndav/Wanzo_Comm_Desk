@@ -269,7 +269,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                for (final mode in ActivityMode.values)
+                // App boutique/commerce : hôtellerie vit dans l'app Assets,
+                // et « services » est couvert par la facturation → non listés.
+                for (final mode in const [
+                  ActivityMode.retail,
+                  ActivityMode.restaurant,
+                  ActivityMode.atelier,
+                  ActivityMode.atelierMaintenance,
+                ])
                   RadioListTile<ActivityMode>(
                     value: mode,
                     groupValue: current,

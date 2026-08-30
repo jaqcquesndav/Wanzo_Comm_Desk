@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:wanzo/core/modules/activity_mode.dart';
+import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/features/customer/models/customer.dart';
 import 'package:wanzo/features/customer/services/customer_api_service.dart';
 import 'package:wanzo/features/atelier/cubit/atelier_orders_cubit.dart';
@@ -94,6 +96,11 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       if (o.metier.usesMeasurements) _checkMeasurements(o.customerId);
     } else {
       _entryDate = DateTime.now();
+      // Défaut du métier selon le mode d'activité de l'entreprise.
+      if (BusinessContextService().activityMode ==
+          ActivityMode.atelierMaintenance) {
+        _metier = AtelierMetier.maintenance;
+      }
     }
   }
 

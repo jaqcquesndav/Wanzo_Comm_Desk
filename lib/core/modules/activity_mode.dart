@@ -21,7 +21,17 @@ enum ActivityMode {
   /// Atelier de confection (couture, cordonnerie) : fonctionne en open shop
   /// comme le restaurant — logique de commande + notion de fabrication, avec
   /// fiche client à mesures. Le mode définit l'état (workflow de production).
-  atelier;
+  atelier,
+
+  /// Atelier de maintenance / réparation (électronique, électroménager, garage
+  /// auto…) : même moteur de commandes que l'atelier, mais fiche APPAREIL/panne
+  /// à la place des mensurations, et workflow diagnostic → réparation → test.
+  atelierMaintenance;
+
+  /// Vrai pour tout atelier (confection OU maintenance) — sert au gating des
+  /// modules et écrans communs à l'atelier.
+  bool get isAtelier =>
+      this == ActivityMode.atelier || this == ActivityMode.atelierMaintenance;
 
   /// Valeur stable persistée/échangée avec le backend.
   String get apiValue => name;
@@ -39,6 +49,8 @@ enum ActivityMode {
         return ActivityMode.services;
       case 'atelier':
         return ActivityMode.atelier;
+      case 'atelierMaintenance':
+        return ActivityMode.atelierMaintenance;
       case 'retail':
       default:
         return ActivityMode.retail;
@@ -58,6 +70,8 @@ enum ActivityMode {
         return 'Services';
       case ActivityMode.atelier:
         return 'Atelier (Couture / Cordonnerie)';
+      case ActivityMode.atelierMaintenance:
+        return 'Atelier de Maintenance / Réparation';
     }
   }
 
@@ -74,6 +88,8 @@ enum ActivityMode {
         return 'Services';
       case ActivityMode.atelier:
         return 'Atelier';
+      case ActivityMode.atelierMaintenance:
+        return 'Maintenance';
     }
   }
 
@@ -90,6 +106,8 @@ enum ActivityMode {
         return 'Prestations, interventions et forfaits.';
       case ActivityMode.atelier:
         return 'Confection sur mesure : commandes, mesures client, fabrication.';
+      case ActivityMode.atelierMaintenance:
+        return 'Réparation d\'appareils / garage : fiche appareil, panne, diagnostic, réparation.';
     }
   }
 }

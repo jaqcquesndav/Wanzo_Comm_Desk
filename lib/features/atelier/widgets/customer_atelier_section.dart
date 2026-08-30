@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import 'package:wanzo/core/modules/activity_mode.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/features/atelier/models/atelier_order.dart';
 import 'package:wanzo/features/atelier/screens/atelier_client_profile_screen.dart';
@@ -31,8 +30,7 @@ class _CustomerAtelierSectionState extends State<CustomerAtelierSection> {
   List<AtelierOrder> _orders = const [];
   bool _loading = true;
 
-  bool get _isAtelier =>
-      BusinessContextService().activityMode == ActivityMode.atelier;
+  bool get _isAtelier => BusinessContextService().activityMode.isAtelier;
 
   @override
   void initState() {
