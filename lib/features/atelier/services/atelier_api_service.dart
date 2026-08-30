@@ -1,5 +1,5 @@
-import '../../../core/services/api_client.dart';
-import '../models/atelier_order.dart';
+import 'package:wanzo/core/services/api_client.dart';
+import 'package:wanzo/features/atelier/models/atelier_order.dart';
 
 /// Client API du module Atelier (backend `/atelier`).
 ///
@@ -13,10 +13,12 @@ class AtelierApiService {
 
   // ── Commandes ──────────────────────────────────────────────────────────────
 
-  Future<List<AtelierOrder>> getOrders({String? businessUnitId, String? status}) async {
+  Future<List<AtelierOrder>> getOrders(
+      {String? businessUnitId, String? status, String? customerId}) async {
     final qp = <String, String>{};
     if (businessUnitId != null) qp['businessUnitId'] = businessUnitId;
     if (status != null) qp['status'] = status;
+    if (customerId != null) qp['customerId'] = customerId;
     final res = await _apiClient.get('atelier/orders',
         queryParameters: qp.isEmpty ? null : qp, requiresAuth: true);
     final data = res?['data'];

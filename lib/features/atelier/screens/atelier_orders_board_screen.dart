@@ -145,7 +145,7 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              '${order.customerName ?? 'Client'} · ${order.status.label}\n'
+              '${order.customerName ?? 'Client'} · ${order.status.labelFor(order.metier)}\n'
               'Total ${formatCurrency(order.totalAmount, order.currencyCode)}'
               ' · Reste ${formatCurrency(order.remainingAmount, order.currencyCode)}',
               style: Theme.of(ctx).textTheme.bodySmall,
@@ -156,7 +156,7 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
             for (final next in _nextStatuses(order.status))
               ListTile(
                 leading: Icon(Icons.arrow_forward, color: _accent[next]),
-                title: Text('Passer à « ${next.label} »'),
+                title: Text('Passer à « ${next.labelFor(order.metier)} »'),
                 onTap: () {
                   cubit.updateStatus(order.id, next);
                   Navigator.pop(ctx);

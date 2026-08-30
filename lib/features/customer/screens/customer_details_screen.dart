@@ -9,6 +9,7 @@ import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
 import '../bloc/customer_state.dart';
 import '../models/customer.dart';
+import '../../atelier/widgets/customer_atelier_section.dart';
 import 'add_customer_screen.dart';
 
 /// Écran de détails d'un client
@@ -284,6 +285,11 @@ class CustomerDetailsScreen extends StatelessWidget {
                     ),
                   ),
                 ],
+                // Section atelier (mesures + historique) — visible en mode atelier.
+                CustomerAtelierSection(
+                  customerId: customer.id,
+                  customerName: customer.name,
+                ),
               ],
             ),
           ),
@@ -584,6 +590,12 @@ class CustomerDetailsScreen extends StatelessWidget {
             const SizedBox(height: 16),
           ],
 
+          // Section atelier (mesures + historique) — visible en mode atelier.
+          CustomerAtelierSection(
+            customerId: customer.id,
+            customerName: customer.name,
+          ),
+          const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [

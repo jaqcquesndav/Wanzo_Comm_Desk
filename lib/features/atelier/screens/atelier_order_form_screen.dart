@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../customer/models/customer.dart';
-import '../../customer/services/customer_api_service.dart';
-import '../cubit/atelier_orders_cubit.dart';
-import '../models/atelier_order.dart';
-import '../services/atelier_api_service.dart';
-import 'atelier_client_profile_screen.dart';
+import 'package:wanzo/features/customer/models/customer.dart';
+import 'package:wanzo/features/customer/services/customer_api_service.dart';
+import 'package:wanzo/features/atelier/cubit/atelier_orders_cubit.dart';
+import 'package:wanzo/features/atelier/models/atelier_order.dart';
+import 'package:wanzo/features/atelier/screens/atelier_client_profile_screen.dart';
+import 'package:wanzo/features/atelier/services/atelier_api_service.dart';
 
 /// Formulaire de création / modification d'une commande de confection.
 ///
@@ -26,15 +26,32 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   final _customerApi = CustomerApiService();
   final _atelierApi = AtelierApiService();
 
+  /// Dernier métier choisi dans la session : un atelier ne fait en général qu'un
+  /// seul métier, on évite de reforcer « couture » à chaque commande.
+  static AtelierMetier _lastMetier = AtelierMetier.couture;
+
   String? _customerId;
   String? _customerName;
   // null = vérification en cours ; true/false = mesures déjà saisies ou non.
   bool? _hasMeasurements;
+  AtelierMetier _metier = _lastMetier;
   final _labelCtrl = TextEditingController();
   final _modelCtrl = TextEditingController();
   final _totalCtrl = TextEditingController(text: '0');
   final _advanceCtrl = TextEditingController(text: '0');
   final _rateCtrl = TextEditingController(text: '1');
+  // ── Fiche appareil (atelier de maintenance) ──
+  final _devTypeCtrl = TextEditingController();
+  final _devBrandCtrl = TextEditingController();
+  final _devModelCtrl = TextEditingController();
+  final _devSerialCtrl = TextEditingController();
+  final _faultCtrl = TextEditingController();
+  final _diagnosticCtrl = TextEditingController();
+  final _repairCtrl = TextEditingController();
+  final _warrantyCtrl = TextEditingController();
+  final _technicianCtrl = TextEditingController();
+  String? _exitState;
+  String? _testResult;
   DateTime? _entryDate;
   DateTime? _exitDate;
   String _currency = 'CDF';
@@ -50,6 +67,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     if (o != null) {
       _customerId = o.customerId;
       _customerName = o.customerName;
+      _metier = o.metier;
       _labelCtrl.text = o.label;
       _modelCtrl.text = o.modelDetails ?? '';
       _totalCtrl.text = o.totalAmount.toString();
@@ -59,7 +77,21 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       _exitDate = o.exitDate;
       _currency = o.currencyCode;
       _fabric = o.fabricProvidedBy;
-      _checkMeasurements(o.customerId);
+      final m = o.maintenanceDetails;
+      if (m != null) {
+        _devTypeCtrl.text = m.deviceType ?? '';
+        _devBrandCtrl.text = m.brand ?? '';
+        _devModelCtrl.text = m.model ?? '';
+        _devSerialCtrl.text = m.serialNumber ?? '';
+        _faultCtrl.text = m.reportedFault ?? '';
+        _diagnosticCtrl.text = m.diagnostic ?? '';
+        _repairCtrl.text = m.repairDone ?? '';
+        _warrantyCtrl.text = m.warrantyDays?.toString() ?? '';
+        _technicianCtrl.text = m.technicianName ?? '';
+        _exitState = m.exitState;
+        _testResult = m.testResult;
+      }
+      if (o.metier.usesMeasurements) _checkMeasurements(o.customerId);
     } else {
       _entryDate = DateTime.now();
     }
@@ -90,6 +122,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
         builder: (_) => AtelierClientProfileScreen(
           customerId: _customerId!,
           customerName: _customerName,
+          metier: _metier,
         ),
       ),
     );
@@ -104,8 +137,19 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     _totalCtrl.dispose();
     _advanceCtrl.dispose();
     _rateCtrl.dispose();
+    _devTypeCtrl.dispose();
+    _devBrandCtrl.dispose();
+    _devModelCtrl.dispose();
+    _devSerialCtrl.dispose();
+    _faultCtrl.dispose();
+    _diagnosticCtrl.dispose();
+    _repairCtrl.dispose();
+    _warrantyCtrl.dispose();
+    _technicianCtrl.dispose();
     super.dispose();
   }
+
+  bool get _isMaintenance => _metier == AtelierMetier.maintenance;
 
   double get _remaining {
     final t = double.tryParse(_totalCtrl.text) ?? 0;
@@ -128,33 +172,41 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                // ── Métier de l'atelier ──
+                _metierSelector(),
+                const SizedBox(height: 16),
                 // ── Client ──
                 _customerField(),
-                if (_customerId != null) ...[
+                if (_customerId != null && _metier.usesMeasurements) ...[
                   const SizedBox(height: 8),
                   _measurementsBanner(),
                 ],
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _labelCtrl,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Libellé *',
-                    hintText: 'Ex. Robe wax, Costume 3 pièces…',
-                    border: OutlineInputBorder(),
+                    hintText: _isMaintenance
+                        ? 'Ex. Réparation TV Samsung, Vidange moteur…'
+                        : 'Ex. Robe wax, Costume 3 pièces…',
+                    border: const OutlineInputBorder(),
                   ),
                   validator: (v) => (v == null || v.trim().isEmpty) ? 'Requis' : null,
                 ),
                 const SizedBox(height: 16),
-                TextFormField(
-                  controller: _modelCtrl,
-                  minLines: 2,
-                  maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: 'Modèle et détails',
-                    hintText: 'Modèle, finitions, tissu, remarques…',
-                    border: OutlineInputBorder(),
+                if (_isMaintenance)
+                  _maintenanceSection()
+                else
+                  TextFormField(
+                    controller: _modelCtrl,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Modèle et détails',
+                      hintText: 'Modèle, finitions, tissu, remarques…',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
-                ),
                 const SizedBox(height: 16),
                 // ── Dates ──
                 Row(
@@ -215,9 +267,11 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                     ),
                   ),
                 ],
-                const SizedBox(height: 16),
-                // ── Tissu ──
-                _fabricDropdown(),
+                if (!_isMaintenance) ...[
+                  const SizedBox(height: 16),
+                  // ── Tissu (couture) ──
+                  _fabricDropdown(),
+                ],
                 const SizedBox(height: 24),
                 FilledButton.icon(
                   onPressed: _saving ? null : _save,
@@ -366,23 +420,176 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     );
   }
 
+  /// Sélecteur de métier. En édition, le métier est figé (une commande garde son
+  /// métier). En création, il détermine tout le reste du formulaire.
+  Widget _metierSelector() {
+    if (_isEdit) {
+      return InputDecorator(
+        decoration: const InputDecoration(
+            labelText: 'Métier', border: OutlineInputBorder()),
+        child: Text(_metier.label),
+      );
+    }
+    return DropdownButtonFormField<AtelierMetier>(
+      value: _metier,
+      decoration: const InputDecoration(
+          labelText: 'Métier de l\'atelier', border: OutlineInputBorder()),
+      items: [
+        for (final m in AtelierMetier.values)
+          DropdownMenuItem(value: m, child: Text(m.label)),
+      ],
+      onChanged: (v) {
+        if (v == null) return;
+        setState(() => _metier = v);
+        if (v.usesMeasurements && _customerId != null) {
+          _checkMeasurements(_customerId!);
+        }
+      },
+    );
+  }
+
+  Widget _sectionTitle(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(text,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+      );
+
+  Widget _tf(TextEditingController c, String label,
+      {String? hint, int min = 1, int max = 1, TextInputType? keyboard}) {
+    return TextFormField(
+      controller: c,
+      minLines: min,
+      maxLines: max,
+      keyboardType: keyboard,
+      decoration: InputDecoration(
+          labelText: label, hintText: hint, border: const OutlineInputBorder()),
+    );
+  }
+
+  /// Fiche appareil/panne d'un atelier de MAINTENANCE (calquée sur la fiche de
+  /// réception/réparation papier). Aucun vocabulaire couture ici.
+  Widget _maintenanceSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle('Appareil reçu'),
+        _tf(_devTypeCtrl, 'Type d\'appareil',
+            hint: 'TV, smartphone, moteur, frigo…'),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(child: _tf(_devBrandCtrl, 'Marque')),
+            const SizedBox(width: 12),
+            Expanded(child: _tf(_devModelCtrl, 'Modèle')),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _tf(_devSerialCtrl, 'N° de série / IMEI / VIN'),
+        const SizedBox(height: 12),
+        _tf(_faultCtrl, 'Panne signalée par le client',
+            hint: 'Symptômes, circonstances…', min: 2, max: 3),
+        const SizedBox(height: 20),
+        _sectionTitle('Diagnostic & réparation'),
+        _tf(_diagnosticCtrl, 'Diagnostic technique', min: 2, max: 3),
+        const SizedBox(height: 12),
+        _tf(_repairCtrl, 'Réparation / réglage effectué', min: 2, max: 3),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _exitState,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                    labelText: 'État de sortie', border: OutlineInputBorder()),
+                items: const [
+                  DropdownMenuItem(value: 'repaired', child: Text('Réparé')),
+                  DropdownMenuItem(value: 'partial', child: Text('Partiel')),
+                  DropdownMenuItem(
+                      value: 'not_repaired', child: Text('Non réparé')),
+                  DropdownMenuItem(
+                      value: 'irreparable', child: Text('Irréparable')),
+                ],
+                onChanged: (v) => setState(() => _exitState = v),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _testResult,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                    labelText: 'Test final', border: OutlineInputBorder()),
+                items: const [
+                  DropdownMenuItem(value: 'conform', child: Text('Conforme')),
+                  DropdownMenuItem(value: 'to_review', child: Text('À revoir')),
+                  DropdownMenuItem(
+                      value: 'not_tested', child: Text('Non testé')),
+                ],
+                onChanged: (v) => setState(() => _testResult = v),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _tf(_warrantyCtrl, 'Garantie (jours)',
+                  keyboard: TextInputType.number),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: _tf(_technicianCtrl, 'Technicien')),
+          ],
+        ),
+      ],
+    );
+  }
+
+  MaintenanceDetails? _buildMaintenanceDetails() {
+    if (!_isMaintenance) return null;
+    String? t(TextEditingController c) =>
+        c.text.trim().isEmpty ? null : c.text.trim();
+    final d = MaintenanceDetails(
+      deviceType: t(_devTypeCtrl),
+      brand: t(_devBrandCtrl),
+      model: t(_devModelCtrl),
+      serialNumber: t(_devSerialCtrl),
+      reportedFault: t(_faultCtrl),
+      diagnostic: t(_diagnosticCtrl),
+      repairDone: t(_repairCtrl),
+      exitState: _exitState,
+      testResult: _testResult,
+      warrantyDays: _warrantyCtrl.text.trim().isEmpty
+          ? null
+          : int.tryParse(_warrantyCtrl.text.trim()),
+      technicianName: t(_technicianCtrl),
+    );
+    return d.isEmpty ? null : d;
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
+    _lastMetier = _metier;
     final cubit = context.read<AtelierOrdersCubit>();
     final draft = AtelierOrder(
       id: widget.order?.id ?? '',
       customerId: _customerId!,
       customerName: _customerName,
       label: _labelCtrl.text.trim(),
-      modelDetails: _modelCtrl.text.trim().isEmpty ? null : _modelCtrl.text.trim(),
+      metier: _metier,
+      maintenanceDetails: _buildMaintenanceDetails(),
+      modelDetails: _isMaintenance
+          ? null
+          : (_modelCtrl.text.trim().isEmpty ? null : _modelCtrl.text.trim()),
       entryDate: _entryDate,
       exitDate: _exitDate,
       totalAmount: double.tryParse(_totalCtrl.text) ?? 0,
       advanceAmount: double.tryParse(_advanceCtrl.text) ?? 0,
       currencyCode: _currency,
       exchangeRate: _currency == 'CDF' ? 1 : (double.tryParse(_rateCtrl.text) ?? 1),
-      fabricProvidedBy: _fabric,
+      fabricProvidedBy: _isMaintenance ? null : _fabric,
     );
 
     final result = _isEdit

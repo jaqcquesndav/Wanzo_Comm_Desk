@@ -1,19 +1,27 @@
 import 'package:flutter/material.dart';
-import '../services/atelier_api_service.dart';
+import 'package:wanzo/features/atelier/models/atelier_order.dart';
+import 'package:wanzo/features/atelier/services/atelier_api_service.dart';
 
 /// Fiche de mesures d'un client d'atelier.
 ///
 /// Les mesures sont un attribut STABLE du client (réutilisées à chaque
-/// commande). Deux sections : couture (mesures corporelles) et cordonnerie
-/// (pointure) — on remplit ce qui est pertinent. Cette fiche n'est accessible
-/// qu'en mode atelier.
+/// commande). L'écran n'affiche QUE les mesures pertinentes au métier :
+/// mensurations corporelles pour la couture, pointure pour la cordonnerie
+/// (les deux si le métier n'est pas précisé). Cette fiche n'est accessible
+/// qu'en mode atelier — jamais pour la maintenance.
 class AtelierClientProfileScreen extends StatefulWidget {
   final String customerId;
   final String? customerName;
+
+  /// Métier de la commande d'origine : détermine quelles mesures afficher.
+  /// `null` → on affiche couture + cordonnerie (accès générique).
+  final AtelierMetier? metier;
+
   const AtelierClientProfileScreen({
     super.key,
     required this.customerId,
     this.customerName,
+    this.metier,
   });
 
   @override
@@ -89,8 +97,14 @@ class _AtelierClientProfileScreenState
     'footLength': TextEditingController(),
   };
 
+  // Sélection des sections selon le métier (couture / cordonnerie / les deux).
+  bool get _showCouture => widget.metier != AtelierMetier.cordonnerie;
+  bool get _showCordonnerie => widget.metier != AtelierMetier.couture;
+
   Future<void> _save() async {
     setState(() => _saving = true);
+    // Les mesures sont FACULTATIVES : on n'envoie que les champs réellement
+    // saisis (aucun n'est obligatoire, couture comme cordonnerie).
     final payload = <String, dynamic>{};
     _c.forEach((k, ctrl) {
       final v = double.tryParse(ctrl.text.trim().replaceAll(',', '.'));
@@ -101,14 +115,18 @@ class _AtelierClientProfileScreenState
       if (v != null) payload[k] = v;
     });
     if (_notesCtrl.text.trim().isNotEmpty) payload['notes'] = _notesCtrl.text.trim();
+    debugPrint('🧵 [Atelier] _save mesures customer=${widget.customerId} '
+        'payload=$payload');
     try {
-      await _api.upsertProfile(widget.customerId, payload);
+      final saved = await _api.upsertProfile(widget.customerId, payload);
+      debugPrint('🧵 [Atelier] mesures enregistrées OK: $saved');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Mesures enregistrées')),
       );
       Navigator.of(context).pop(true);
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('🧵 [Atelier] ÉCHEC save mesures: $e\n$st');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Échec : $e')),
@@ -132,12 +150,16 @@ class _AtelierClientProfileScreenState
                 child: ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
-                    _sectionTitle(context, 'Couture — mesures corporelles (cm)'),
-                    _grid(_fields, _c),
-                    const SizedBox(height: 20),
-                    _sectionTitle(context, 'Cordonnerie'),
-                    _grid(_shoeFields, _shoeCtrl),
-                    const SizedBox(height: 20),
+                    if (_showCouture) ...[
+                      _sectionTitle(context, 'Couture — mesures corporelles (cm)'),
+                      _grid(_fields, _c),
+                      const SizedBox(height: 20),
+                    ],
+                    if (_showCordonnerie) ...[
+                      _sectionTitle(context, 'Cordonnerie'),
+                      _grid(_shoeFields, _shoeCtrl),
+                      const SizedBox(height: 20),
+                    ],
                     TextField(
                       controller: _notesCtrl,
                       minLines: 2,

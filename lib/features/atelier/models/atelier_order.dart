@@ -48,6 +48,151 @@ extension AtelierOrderStatusX on AtelierOrderStatus {
   /// Une commande active est en cours de production (pas encore réglée/annulée).
   bool get isActive =>
       this != AtelierOrderStatus.paid && this != AtelierOrderStatus.cancelled;
+
+  /// Libellé du statut ADAPTÉ AU MÉTIER : un atelier de maintenance ne parle pas
+  /// de « coupe/couture » mais de « diagnostic/réparation/test ». Les valeurs
+  /// internes restent les mêmes (le board Kanban ne change pas), seul le
+  /// vocabulaire affiché change — pour ne pas dérouter l'utilisateur.
+  String labelFor(AtelierMetier metier) {
+    if (metier != AtelierMetier.maintenance) return label;
+    switch (this) {
+      case AtelierOrderStatus.draft:
+        return 'Reçu';
+      case AtelierOrderStatus.measured:
+        return 'Diagnostiqué';
+      case AtelierOrderStatus.cutting:
+        return 'En réparation';
+      case AtelierOrderStatus.sewing:
+        return 'Test / contrôle';
+      case AtelierOrderStatus.ready:
+        return 'Prêt';
+      case AtelierOrderStatus.delivered:
+        return 'Livré';
+      case AtelierOrderStatus.paid:
+        return 'Réglé';
+      case AtelierOrderStatus.cancelled:
+        return 'Annulé';
+    }
+  }
+}
+
+/// Métier de l'atelier (miroir du backend `AtelierMetier`). Rend le mode
+/// Atelier EXPLICITE : chaque métier n'expose que son vocabulaire et ses champs.
+enum AtelierMetier { couture, cordonnerie, maintenance }
+
+extension AtelierMetierX on AtelierMetier {
+  String get apiValue => name;
+
+  String get label {
+    switch (this) {
+      case AtelierMetier.couture:
+        return 'Couture';
+      case AtelierMetier.cordonnerie:
+        return 'Cordonnerie';
+      case AtelierMetier.maintenance:
+        return 'Maintenance / réparation';
+    }
+  }
+
+  /// Vrai si ce métier prend des mesures corporelles/pied (profil client
+  /// réutilisable). La maintenance travaille sur une fiche appareil par commande.
+  bool get usesMeasurements => this != AtelierMetier.maintenance;
+
+  static AtelierMetier fromApiValue(String? value) {
+    return AtelierMetier.values.firstWhere(
+      (m) => m.name == value,
+      orElse: () => AtelierMetier.couture,
+    );
+  }
+}
+
+/// Fiche de réception/réparation d'un atelier de MAINTENANCE (miroir du jsonb
+/// backend `maintenanceDetails`). Propre à chaque intervention.
+class MaintenanceDetails extends Equatable {
+  final String? deviceType; // Type d'appareil (TV, smartphone, moteur…)
+  final String? brand; // Marque
+  final String? model; // Modèle / n° de série
+  final String? serialNumber; // N° de série / IMEI / VIN
+  final String? color;
+  final String? exteriorState; // État extérieur à la réception
+  final String? accessories; // Accessoires reçus
+  final String? reportedFault; // Panne signalée par le client
+  final String? diagnostic; // Diagnostic technique
+  final String? repairDone; // Réparation / réglage effectué
+  final String? exitState; // repaired | partial | not_repaired | irreparable
+  final String? testResult; // conform | to_review | not_tested
+  final int? warrantyDays; // Garantie accordée (jours)
+  final String? technicianName; // Technicien
+
+  const MaintenanceDetails({
+    this.deviceType,
+    this.brand,
+    this.model,
+    this.serialNumber,
+    this.color,
+    this.exteriorState,
+    this.accessories,
+    this.reportedFault,
+    this.diagnostic,
+    this.repairDone,
+    this.exitState,
+    this.testResult,
+    this.warrantyDays,
+    this.technicianName,
+  });
+
+  bool get isEmpty =>
+      (deviceType == null || deviceType!.isEmpty) &&
+      (brand == null || brand!.isEmpty) &&
+      (model == null || model!.isEmpty) &&
+      (serialNumber == null || serialNumber!.isEmpty) &&
+      (reportedFault == null || reportedFault!.isEmpty) &&
+      (diagnostic == null || diagnostic!.isEmpty) &&
+      (repairDone == null || repairDone!.isEmpty);
+
+  factory MaintenanceDetails.fromJson(Map<String, dynamic> json) =>
+      MaintenanceDetails(
+        deviceType: json['deviceType'] as String?,
+        brand: json['brand'] as String?,
+        model: json['model'] as String?,
+        serialNumber: json['serialNumber'] as String?,
+        color: json['color'] as String?,
+        exteriorState: json['exteriorState'] as String?,
+        accessories: json['accessories'] as String?,
+        reportedFault: json['reportedFault'] as String?,
+        diagnostic: json['diagnostic'] as String?,
+        repairDone: json['repairDone'] as String?,
+        exitState: json['exitState'] as String?,
+        testResult: json['testResult'] as String?,
+        warrantyDays: json['warrantyDays'] == null
+            ? null
+            : int.tryParse('${json['warrantyDays']}'),
+        technicianName: json['technicianName'] as String?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (deviceType != null) 'deviceType': deviceType,
+        if (brand != null) 'brand': brand,
+        if (model != null) 'model': model,
+        if (serialNumber != null) 'serialNumber': serialNumber,
+        if (color != null) 'color': color,
+        if (exteriorState != null) 'exteriorState': exteriorState,
+        if (accessories != null) 'accessories': accessories,
+        if (reportedFault != null) 'reportedFault': reportedFault,
+        if (diagnostic != null) 'diagnostic': diagnostic,
+        if (repairDone != null) 'repairDone': repairDone,
+        if (exitState != null) 'exitState': exitState,
+        if (testResult != null) 'testResult': testResult,
+        if (warrantyDays != null) 'warrantyDays': warrantyDays,
+        if (technicianName != null) 'technicianName': technicianName,
+      };
+
+  @override
+  List<Object?> get props => [
+        deviceType, brand, model, serialNumber, color, exteriorState,
+        accessories, reportedFault, diagnostic, repairDone, exitState,
+        testResult, warrantyDays, technicianName,
+      ];
 }
 
 /// Qui fournit le tissu de la confection.
@@ -72,6 +217,8 @@ class AtelierOrder extends Equatable {
   final String? customerName;
   final String label;
   final String? modelDetails;
+  final AtelierMetier metier;
+  final MaintenanceDetails? maintenanceDetails;
   final DateTime? entryDate;
   final DateTime? exitDate;
   final double totalAmount;
@@ -97,6 +244,8 @@ class AtelierOrder extends Equatable {
     this.customerName,
     required this.label,
     this.modelDetails,
+    this.metier = AtelierMetier.couture,
+    this.maintenanceDetails,
     this.entryDate,
     this.exitDate,
     this.totalAmount = 0,
@@ -132,6 +281,11 @@ class AtelierOrder extends Equatable {
           : json['customerName'] as String?,
       label: json['label'] as String? ?? '',
       modelDetails: json['modelDetails'] as String?,
+      metier: AtelierMetierX.fromApiValue(json['metier'] as String?),
+      maintenanceDetails: json['maintenanceDetails'] is Map<String, dynamic>
+          ? MaintenanceDetails.fromJson(
+              json['maintenanceDetails'] as Map<String, dynamic>)
+          : null,
       entryDate: _toDate(json['entryDate']),
       exitDate: _toDate(json['exitDate']),
       totalAmount: _toDouble(json['totalAmount']),
@@ -160,6 +314,9 @@ class AtelierOrder extends Equatable {
     if (customerName != null) 'customerName': customerName,
     'label': label,
     if (modelDetails != null) 'modelDetails': modelDetails,
+    'metier': metier.apiValue,
+    if (maintenanceDetails != null)
+      'maintenanceDetails': maintenanceDetails!.toJson(),
     if (entryDate != null) 'entryDate': entryDate!.toIso8601String(),
     if (exitDate != null) 'exitDate': exitDate!.toIso8601String(),
     'totalAmount': totalAmount,
@@ -184,6 +341,9 @@ class AtelierOrder extends Equatable {
     'customerId': customerId,
     'label': label,
     if (modelDetails != null) 'modelDetails': modelDetails,
+    'metier': metier.apiValue,
+    if (maintenanceDetails != null)
+      'maintenanceDetails': maintenanceDetails!.toJson(),
     if (entryDate != null) 'entryDate': entryDate!.toIso8601String(),
     if (exitDate != null) 'exitDate': exitDate!.toIso8601String(),
     'totalAmount': totalAmount,
@@ -199,6 +359,8 @@ class AtelierOrder extends Equatable {
     double? remainingAmount,
     double? advanceAmount,
     String? saleId,
+    AtelierMetier? metier,
+    MaintenanceDetails? maintenanceDetails,
   }) {
     return AtelierOrder(
       id: id,
@@ -206,6 +368,8 @@ class AtelierOrder extends Equatable {
       customerName: customerName,
       label: label,
       modelDetails: modelDetails,
+      metier: metier ?? this.metier,
+      maintenanceDetails: maintenanceDetails ?? this.maintenanceDetails,
       entryDate: entryDate,
       exitDate: exitDate,
       totalAmount: totalAmount,
