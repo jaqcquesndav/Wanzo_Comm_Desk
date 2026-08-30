@@ -10,10 +10,10 @@ import 'package:wanzo/features/inventory/repositories/inventory_repository.dart'
 import '../models/menu_course.dart';
 import '../repositories/menu_config_repository.dart';
 
-/// Configuration de la CARTE du restaurant : parmi les produits du catalogue,
-/// désigner ceux qui sont servis (au menu) et leur catégorie (entrée, plat,
-/// dessert, boisson…). Les produits sans catégorie restent du stock ordinaire
-/// et n'apparaissent PAS lors de la prise de commande.
+/// Composition de la CARTE du restaurant : on construit un vrai menu, organisé
+/// par service (Entrées, Plats, …). Chaque plat est une carte (photo, nom, prix,
+/// description) ; on ajoute un plat via un sélecteur de produits du catalogue.
+/// Les produits non ajoutés restent du stock ordinaire (invisibles à la carte).
 class RestaurantMenuConfigScreen extends StatefulWidget {
   const RestaurantMenuConfigScreen({super.key});
 
@@ -28,7 +28,6 @@ class _RestaurantMenuConfigScreenState
   late final List<Product> _products;
   Map<String, MenuCourse> _config = {};
   bool _loading = true;
-  String _search = '';
 
   @override
   void initState() {
@@ -46,20 +45,34 @@ class _RestaurantMenuConfigScreenState
     });
   }
 
-  Future<void> _assign(Product product, MenuCourse? course) async {
-    if (course == null) {
-      await _menuRepo.removeFromMenu(product.id);
-      setState(() => _config.remove(product.id));
-    } else {
-      await _menuRepo.setCourse(product.id, course);
-      setState(() => _config[product.id] = course);
+  Product? _productById(String id) {
+    for (final p in _products) {
+      if (p.id == id) return p;
     }
+    return null;
   }
 
-  List<Product> get _filtered {
-    if (_search.isEmpty) return _products;
-    final q = _search.toLowerCase();
-    return _products.where((p) => p.name.toLowerCase().contains(q)).toList();
+  /// Plats de la carte pour un service donné.
+  List<Product> _dishesFor(MenuCourse course) {
+    final ids = _config.entries
+        .where((e) => e.value == course)
+        .map((e) => e.key)
+        .toList();
+    return ids
+        .map(_productById)
+        .whereType<Product>()
+        .toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+
+  Future<void> _setCourse(String productId, MenuCourse course) async {
+    await _menuRepo.setCourse(productId, course);
+    setState(() => _config[productId] = course);
+  }
+
+  Future<void> _removeFromMenu(String productId) async {
+    await _menuRepo.removeFromMenu(productId);
+    setState(() => _config.remove(productId));
   }
 
   @override
@@ -69,12 +82,15 @@ class _RestaurantMenuConfigScreenState
       appBar: AppBar(
         title: const Text('Composer la carte'),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(28),
+          preferredSize: const Size.fromHeight(24),
           child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              '$onMenuCount produit(s) à la carte',
-              style: Theme.of(context).textTheme.bodySmall,
+            padding: const EdgeInsets.only(bottom: 8, left: 16),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '$onMenuCount plat(s) à la carte · ${_products.length} au catalogue',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
           ),
         ),
@@ -87,76 +103,284 @@ class _RestaurantMenuConfigScreenState
                   message:
                       'Aucun produit au catalogue.\nAjoutez vos plats et boissons dans le Stock.',
                 )
-              : Column(
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: TextField(
-                        decoration: InputDecoration(
-                          hintText: 'Rechercher un produit…',
-                          prefixIcon: const Icon(Icons.search),
-                          isDense: true,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onChanged: (v) => setState(() => _search = v),
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        itemCount: _filtered.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (context, i) =>
-                            _tile(_filtered[i]),
-                      ),
-                    ),
+                    // MenuCourse.values est déjà déclaré dans l'ordre de service.
+                    for (final course in MenuCourse.values)
+                      _courseSection(course),
                   ],
                 ),
     );
   }
 
-  Widget _tile(Product product) {
+  Widget _courseSection(MenuCourse course) {
     final theme = Theme.of(context);
-    final current = _config[product.id];
-    final description = product.description.trim();
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      // Vignette du plat : l'exploitant voit la photo pendant qu'il compose la
-      // carte. Repli sur l'icône de catégorie si aucune image.
-      leading: SmartImage(
-        imageUrl: product.imageUrl,
-        imagePath: product.imagePath,
-        fit: BoxFit.cover,
-        width: 52,
-        height: 52,
-        borderRadius: BorderRadius.circular(8),
-        placeholderIcon: product.category.icon,
-        placeholderColor: theme.colorScheme.surfaceContainerHighest,
-        placeholderIconSize: 22,
-      ),
-      title: Text(product.name),
-      subtitle: Text(
-        description.isEmpty
-            ? formatCurrency(product.sellingPriceInCdf, 'CDF')
-            : '${formatCurrency(product.sellingPriceInCdf, 'CDF')} · $description',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: DropdownButton<MenuCourse?>(
-        value: current,
-        hint: const Text('Pas au menu'),
-        underline: const SizedBox(),
-        items: [
-          const DropdownMenuItem<MenuCourse?>(
-            value: null,
-            child: Text('Pas au menu'),
+    final dishes = _dishesFor(course);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(course.label,
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text('${dishes.length}',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.primary)),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () => _showAddDish(course),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Ajouter un plat'),
+              ),
+            ],
           ),
-          for (final c in MenuCourse.values)
-            DropdownMenuItem<MenuCourse?>(value: c, child: Text(c.label)),
+          const SizedBox(height: 8),
+          if (dishes.isEmpty)
+            _emptyCourse(course)
+          else
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [for (final p in dishes) _dishCard(p)],
+            ),
         ],
-        onChanged: (course) => _assign(product, course),
+      ),
+    );
+  }
+
+  Widget _emptyCourse(MenuCourse course) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: () => _showAddDish(course),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: theme.colorScheme.outline.withValues(alpha: 0.4),
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(Icons.add_circle_outline,
+                color: theme.colorScheme.outline, size: 22),
+            const SizedBox(height: 4),
+            Text('Aucun plat dans « ${course.label} » — ajouter',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.outline)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dishCard(Product p) {
+    final theme = Theme.of(context);
+    final description = p.description.trim();
+    return SizedBox(
+      width: 220,
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        margin: EdgeInsets.zero,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
+              children: [
+                SmartImage(
+                  imageUrl: p.imageUrl,
+                  imagePath: p.imagePath,
+                  fit: BoxFit.cover,
+                  width: 220,
+                  height: 120,
+                  placeholderIcon: p.category.icon,
+                  placeholderColor: theme.colorScheme.surfaceContainerHighest,
+                  placeholderIconSize: 34,
+                ),
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Material(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      tooltip: 'Retirer de la carte',
+                      icon: const Icon(Icons.close, size: 18, color: Colors.white),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _removeFromMenu(p.id),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(p.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 14)),
+                  const SizedBox(height: 2),
+                  Text(formatCurrency(p.sellingPriceInCdf, 'CDF'),
+                      style: TextStyle(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13)),
+                  if (description.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant)),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Sélecteur de produits à AJOUTER à un service : liste recherchable des
+  /// produits pas encore à la carte (ou sur un autre service).
+  Future<void> _showAddDish(MenuCourse course) async {
+    final available = _products
+        .where((p) => _config[p.id] != course)
+        .toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final picked = await showDialog<Product>(
+      context: context,
+      builder: (ctx) => _AddDishDialog(course: course, products: available),
+    );
+    if (picked != null) {
+      await _setCourse(picked.id, course);
+    }
+  }
+}
+
+/// Dialogue d'ajout d'un plat à un service : recherche + liste avec vignette.
+class _AddDishDialog extends StatefulWidget {
+  final MenuCourse course;
+  final List<Product> products;
+  const _AddDishDialog({required this.course, required this.products});
+
+  @override
+  State<_AddDishDialog> createState() => _AddDishDialogState();
+}
+
+class _AddDishDialogState extends State<_AddDishDialog> {
+  String _q = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final q = _q.trim().toLowerCase();
+    final list = q.isEmpty
+        ? widget.products
+        : widget.products
+            .where((p) => p.name.toLowerCase().contains(q))
+            .toList();
+    return Dialog(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 460,
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Ajouter à « ${widget.course.label} »',
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    autofocus: true,
+                    onChanged: (v) => setState(() => _q = v),
+                    decoration: InputDecoration(
+                      hintText: 'Rechercher un produit…',
+                      prefixIcon: const Icon(Icons.search),
+                      isDense: true,
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: list.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('Aucun produit disponible',
+                          style: TextStyle(color: Color(0xFF6B7280))),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: list.length,
+                      itemBuilder: (context, i) {
+                        final p = list[i];
+                        return ListTile(
+                          leading: SmartImage(
+                            imageUrl: p.imageUrl,
+                            imagePath: p.imagePath,
+                            fit: BoxFit.cover,
+                            width: 44,
+                            height: 44,
+                            borderRadius: BorderRadius.circular(8),
+                            placeholderIcon: p.category.icon,
+                            placeholderColor:
+                                theme.colorScheme.surfaceContainerHighest,
+                            placeholderIconSize: 20,
+                          ),
+                          title: Text(p.name,
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                          subtitle:
+                              Text(formatCurrency(p.sellingPriceInCdf, 'CDF')),
+                          onTap: () => Navigator.pop(context, p),
+                        );
+                      },
+                    ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Fermer'),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
