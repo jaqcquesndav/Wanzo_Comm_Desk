@@ -717,7 +717,14 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     final maxY = (maxSales > maxExpenses ? maxSales : maxExpenses) * 1.2;
     final safeMaxY = maxY > 0 ? maxY : 100.0;
 
-    return BarChart(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Largeur de barre DYNAMIQUE : épaisse quand il y a peu de points,
+        // plus fine quand il y en a beaucoup (2 barres par groupe).
+        final count = allDates.length;
+        final groupWidth = constraints.maxWidth / (count == 0 ? 1 : count);
+        final barW = (groupWidth / 3).clamp(7.0, 26.0);
+        return BarChart(
       BarChartData(
         alignment: BarChartAlignment.spaceAround,
         maxY: safeMaxY,
@@ -827,7 +834,7 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
               BarChartRodData(
                 toY: incomeValue,
                 color: _incomeColor,
-                width: widget.isExpanded ? 8 : 6,
+                width: barW,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(4),
                   topRight: Radius.circular(4),
@@ -836,7 +843,7 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
               BarChartRodData(
                 toY: expenseValue,
                 color: _expenseColor,
-                width: widget.isExpanded ? 8 : 6,
+                width: barW,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(4),
                   topRight: Radius.circular(4),
@@ -846,6 +853,8 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
           );
         }),
       ),
+        );
+      },
     );
   }
 
@@ -871,13 +880,16 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
 
     return Row(
       children: [
-        // Graphique circulaire
+        // Graphique en anneau avec le solde affiché au centre
         Expanded(
           flex: 2,
-          child: PieChart(
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              PieChart(
             PieChartData(
-              sectionsSpace: 2,
-              centerSpaceRadius: widget.isExpanded ? 50 : 30,
+              sectionsSpace: 3,
+              centerSpaceRadius: widget.isExpanded ? 56 : 40,
               sections: [
                 PieChartSectionData(
                   color: _incomeColor,
@@ -939,6 +951,27 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
                 ),
               ],
             ),
+          ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Solde',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 9,
+                          color: theme.colorScheme.onSurfaceVariant)),
+                  Text(
+                    _formatAmount(totalIncome - totalExpense),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      fontSize: widget.isExpanded ? 13 : 11,
+                      color: totalIncome >= totalExpense
+                          ? _incomeColor
+                          : _expenseColor,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
         // Légende détaillée
@@ -1476,35 +1509,47 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     );
   }
 
-  /// Sélecteur de type de graphique (ligne, barres, secteurs)
+  /// Sélecteur de type de graphique (ligne, barres, secteurs) — contrôle
+  /// segmenté (pilule) : le type courant est mis en évidence, un tap = un
+  /// changement immédiat (fini le menu caché derrière une icône).
   Widget _buildChartTypeSelector(BuildContext context) {
-    return PopupMenuButton<ChartType>(
-      initialValue: _selectedChartType,
-      icon: Icon(
-        _selectedChartType.icon,
-        size: 20,
-        color: Theme.of(context).colorScheme.secondary,
+    final theme = Theme.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(WanzoTheme.borderRadiusSm),
       ),
-      tooltip: 'Type: ${_selectedChartType.displayName}',
-      onSelected: (ChartType type) {
-        setState(() {
-          _selectedChartType = type;
-        });
-      },
-      itemBuilder:
-          (context) =>
-              ChartType.values.map((type) {
-                return PopupMenuItem<ChartType>(
-                  value: type,
-                  child: Row(
-                    children: [
-                      Icon(type.icon, size: 18),
-                      const SizedBox(width: 8),
-                      Text(type.displayName),
-                    ],
-                  ),
-                );
-              }).toList(),
+      padding: const EdgeInsets.all(2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: ChartType.values.map((type) {
+          final isSelected = _selectedChartType == type;
+          return Tooltip(
+            message: type.displayName,
+            child: GestureDetector(
+              onTap: () => setState(() => _selectedChartType = type),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : Colors.transparent,
+                  borderRadius:
+                      BorderRadius.circular(WanzoTheme.borderRadiusSm - 2),
+                ),
+                child: Icon(
+                  type.icon,
+                  size: 16,
+                  color: isSelected
+                      ? theme.colorScheme.onPrimary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 
