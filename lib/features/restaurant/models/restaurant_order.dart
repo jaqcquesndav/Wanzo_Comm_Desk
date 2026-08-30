@@ -110,6 +110,10 @@ class RestaurantOrder extends Equatable {
   final DateTime createdAt;
   final String? notes;
 
+  /// Historique horodaté des étapes [{status, at}] — KPI de temps de service
+  /// (prestation), base de la future cote crédit.
+  final List<Map<String, dynamic>> stageHistory;
+
   const RestaurantOrder({
     required this.id,
     required this.label,
@@ -117,7 +121,20 @@ class RestaurantOrder extends Equatable {
     required this.status,
     required this.createdAt,
     this.notes,
+    this.stageHistory = const [],
   });
+
+  /// Temps de préparation/service : de la création au passage « servie ».
+  Duration? get serviceTime {
+    DateTime? servedAt;
+    for (final e in stageHistory) {
+      if (e['status'] == RestaurantOrderStatus.served.apiValue) {
+        servedAt = DateTime.tryParse('${e['at']}');
+      }
+    }
+    if (servedAt == null) return null;
+    return servedAt.difference(createdAt);
+  }
 
   /// Total de la commande en CDF (arrondi au centime).
   double get totalCdf =>
@@ -132,6 +149,7 @@ class RestaurantOrder extends Equatable {
     List<RestaurantOrderLine>? lines,
     RestaurantOrderStatus? status,
     String? notes,
+    List<Map<String, dynamic>>? stageHistory,
   }) {
     return RestaurantOrder(
       id: id,
@@ -140,6 +158,7 @@ class RestaurantOrder extends Equatable {
       status: status ?? this.status,
       createdAt: createdAt,
       notes: notes ?? this.notes,
+      stageHistory: stageHistory ?? this.stageHistory,
     );
   }
 
@@ -150,6 +169,7 @@ class RestaurantOrder extends Equatable {
     'status': status.apiValue,
     'createdAt': createdAt.toIso8601String(),
     if (notes != null) 'notes': notes,
+    if (stageHistory.isNotEmpty) 'stageHistory': stageHistory,
   };
 
   factory RestaurantOrder.fromJson(Map<String, dynamic> json) {
@@ -164,11 +184,16 @@ class RestaurantOrder extends Equatable {
           DateTime.tryParse(json['createdAt'] as String? ?? '') ??
           DateTime.now(),
       notes: json['notes'] as String?,
+      stageHistory: (json['stageHistory'] as List<dynamic>?)
+              ?.whereType<Map<String, dynamic>>()
+              .toList() ??
+          const [],
     );
   }
 
   @override
-  List<Object?> get props => [id, label, lines, status, createdAt, notes];
+  List<Object?> get props =>
+      [id, label, lines, status, createdAt, notes, stageHistory];
 }
 
 /// Arrondi bancaire au centime — centralisé pour tout le module.

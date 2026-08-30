@@ -110,7 +110,12 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
   ) async {
     final order = state.byId(orderId);
     if (order == null) return;
-    await _upsert(order.copyWith(status: status));
+    // Historise le passage d'étape (KPI temps de service / cote crédit).
+    final history = [
+      ...order.stageHistory,
+      {'status': status.apiValue, 'at': DateTime.now().toIso8601String()},
+    ];
+    await _upsert(order.copyWith(status: status, stageHistory: history));
   }
 
   /// Marque la commande réglée. À appeler APRÈS création réussie de la `Sale`.

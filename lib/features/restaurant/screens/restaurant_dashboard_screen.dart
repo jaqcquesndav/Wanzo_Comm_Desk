@@ -176,6 +176,14 @@ class RestaurantDashboardScreen extends StatelessWidget {
         label: 'Réglées (jour)',
         value: '${m.paidTodayCount}',
       ),
+      _KpiCard(
+        icon: Icons.timer_outlined,
+        color: const Color(0xFF8B5CF6),
+        label: 'Temps service moy.',
+        value: m.avgServiceMinutes > 0
+            ? '${m.avgServiceMinutes.round()} min'
+            : '—',
+      ),
     ];
     return Wrap(
       spacing: 16,
@@ -484,6 +492,7 @@ class _RestaurantMetrics {
   final double revenueToday;
   final int paidTodayCount;
   final List<_DishCount> topDishes;
+  final double avgServiceMinutes; // temps moyen création → servie (prestation)
 
   const _RestaurantMetrics({
     required this.active,
@@ -491,6 +500,7 @@ class _RestaurantMetrics {
     required this.revenueToday,
     required this.paidTodayCount,
     required this.topDishes,
+    required this.avgServiceMinutes,
   });
 
   factory _RestaurantMetrics.from(List<RestaurantOrder> orders) {
@@ -532,12 +542,21 @@ class _RestaurantMetrics {
         .toList()
       ..sort((a, b) => b.quantity.compareTo(a.quantity));
 
+    // Temps de service moyen (prestation) : création → « servie ».
+    final durations =
+        orders.map((o) => o.serviceTime).whereType<Duration>().toList();
+    final avgServiceMinutes = durations.isEmpty
+        ? 0.0
+        : durations.map((d) => d.inMinutes).reduce((a, b) => a + b) /
+            durations.length;
+
     return _RestaurantMetrics(
       active: active,
       inKitchen: inKitchen,
       revenueToday: revenueToday,
       paidTodayCount: paidToday.length,
       topDishes: topDishes.take(5).toList(),
+      avgServiceMinutes: avgServiceMinutes,
     );
   }
 }
