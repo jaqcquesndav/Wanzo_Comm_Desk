@@ -27,7 +27,14 @@ import 'package:wanzo/features/settings/models/settings.dart';
 class AtelierSheetPdf {
   /// En-tête émetteur : identité de la BusinessUnit si l'utilisateur y est
   /// rattaché (même règle que les pièces commerciales), sinon les Settings.
-  static ({String name, String address, String phone}) _issuer(
+  static ({
+    String name,
+    String address,
+    String phone,
+    String rccm,
+    String taxId,
+    String idNat,
+  }) _issuer(
     Settings? settings,
   ) {
     final ctx = BusinessContextService();
@@ -43,6 +50,9 @@ class AtelierSheetPdf {
           : 'Atelier',
       address: pick(ctx.businessUnitAddress, settings?.companyAddress),
       phone: pick(ctx.businessUnitPhone, settings?.companyPhone),
+      rccm: pick(ctx.businessUnitRccm, settings?.rccmNumber),
+      taxId: pick(ctx.businessUnitTaxId, settings?.taxIdentificationNumber),
+      idNat: pick(ctx.businessUnitIdNat, settings?.idNatNumber),
     );
   }
 
@@ -84,6 +94,8 @@ class AtelierSheetPdf {
           final data = await rootBundle.load(logoPath);
           logo = pw.Image(pw.MemoryImage(data.buffer.asUint8List()),
               width: 64, height: 64);
+        } else if (logoPath.startsWith('http')) {
+          logo = pw.Image(await networkImage(logoPath), width: 64, height: 64);
         } else {
           final f = File(logoPath);
           if (await f.exists()) {
@@ -145,7 +157,14 @@ class AtelierSheetPdf {
 
   // ── En-tête ─────────────────────────────────────────────────────────────
   static pw.Widget _header(
-    ({String name, String address, String phone}) issuer,
+    ({
+      String name,
+      String address,
+      String phone,
+      String rccm,
+      String taxId,
+      String idNat,
+    }) issuer,
     String title,
     pw.Widget? logo,
     pw.Font regular,
@@ -177,6 +196,15 @@ class AtelierSheetPdf {
                               style: pw.TextStyle(font: regular, fontSize: 9)),
                         if (issuer.phone.isNotEmpty)
                           pw.Text('Tél: ${issuer.phone}',
+                              style: pw.TextStyle(font: regular, fontSize: 9)),
+                        if (issuer.taxId.isNotEmpty)
+                          pw.Text('NIF: ${issuer.taxId}',
+                              style: pw.TextStyle(font: regular, fontSize: 9)),
+                        if (issuer.rccm.isNotEmpty)
+                          pw.Text('RCCM: ${issuer.rccm}',
+                              style: pw.TextStyle(font: regular, fontSize: 9)),
+                        if (issuer.idNat.isNotEmpty)
+                          pw.Text('ID NAT: ${issuer.idNat}',
                               style: pw.TextStyle(font: regular, fontSize: 9)),
                       ],
                     ),

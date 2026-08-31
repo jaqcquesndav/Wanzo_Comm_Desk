@@ -32,13 +32,17 @@ class SaleItemAdapter extends TypeAdapter<SaleItem> {
       taxRate: fields[12] as double?,
       taxAmount: fields[13] as double?,
       notes: fields[14] as String?,
+      performerId: fields[15] as String?,
+      performerName: fields[16] as String?,
+      commissionRate: fields[17] as double?,
+      commissionAmount: fields[18] as double?,
     );
   }
 
   @override
   void write(BinaryWriter writer, SaleItem obj) {
     writer
-      ..writeByte(15)
+      ..writeByte(19)
       ..writeByte(10)
       ..write(obj.id)
       ..writeByte(0)
@@ -68,7 +72,15 @@ class SaleItemAdapter extends TypeAdapter<SaleItem> {
       ..writeByte(13)
       ..write(obj.taxAmount)
       ..writeByte(14)
-      ..write(obj.notes);
+      ..write(obj.notes)
+      ..writeByte(15)
+      ..write(obj.performerId)
+      ..writeByte(16)
+      ..write(obj.performerName)
+      ..writeByte(17)
+      ..write(obj.commissionRate)
+      ..writeByte(18)
+      ..write(obj.commissionAmount);
   }
 
   @override
@@ -142,6 +154,10 @@ SaleItem _$SaleItemFromJson(Map<String, dynamic> json) => SaleItem(
       taxRate: (json['taxRate'] as num?)?.toDouble(),
       taxAmount: (json['taxAmount'] as num?)?.toDouble(),
       notes: json['notes'] as String?,
+      performerId: json['performerId'] as String?,
+      performerName: json['performerName'] as String?,
+      commissionRate: (json['commissionRate'] as num?)?.toDouble(),
+      commissionAmount: (json['commissionAmount'] as num?)?.toDouble(),
     );
 
 Map<String, dynamic> _$SaleItemToJson(SaleItem instance) => <String, dynamic>{
@@ -160,6 +176,11 @@ Map<String, dynamic> _$SaleItemToJson(SaleItem instance) => <String, dynamic>{
       if (instance.taxRate case final value?) 'taxRate': value,
       if (instance.taxAmount case final value?) 'taxAmount': value,
       if (instance.notes case final value?) 'notes': value,
+      if (instance.performerId case final value?) 'performerId': value,
+      if (instance.performerName case final value?) 'performerName': value,
+      if (instance.commissionRate case final value?) 'commissionRate': value,
+      if (instance.commissionAmount case final value?)
+        'commissionAmount': value,
     };
 
 const _$SaleItemTypeEnumMap = {

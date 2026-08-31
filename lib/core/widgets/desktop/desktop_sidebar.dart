@@ -16,6 +16,10 @@ class DesktopNavItem {
   final bool isDividerBefore;
   final bool isAdhaPanel; // Si cet item ouvre le panneau Adha
 
+  /// En-tête de section affiché au-dessus de cet item (premier du groupe).
+  /// `null` = pas d'en-tête. N'entre pas dans le comptage d'index.
+  final String? sectionHeader;
+
   const DesktopNavItem({
     required this.icon,
     this.activeIcon,
@@ -24,6 +28,7 @@ class DesktopNavItem {
     this.children,
     this.isDividerBefore = false,
     this.isAdhaPanel = false,
+    this.sectionHeader,
   });
 }
 
@@ -164,35 +169,7 @@ class _DesktopSidebarState extends State<DesktopSidebar>
         final item = widget.items[index];
         final isSelected = index == widget.currentIndex;
 
-        // Divider avant l'item si demandé
-        if (item.isDividerBefore) {
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Divider(
-                  color: textColor.withValues(alpha: 0.2),
-                  thickness: 1,
-                  indent: isExpanded ? 16 : 8,
-                  endIndent: isExpanded ? 16 : 8,
-                ),
-              ),
-              _buildNavItem(
-                context,
-                item,
-                index,
-                isSelected,
-                isExpanded,
-                textColor,
-                activeItemBg,
-                hoverColor,
-                isDark,
-              ),
-            ],
-          );
-        }
-
-        return _buildNavItem(
+        final navItem = _buildNavItem(
           context,
           item,
           index,
@@ -203,7 +180,84 @@ class _DesktopSidebarState extends State<DesktopSidebar>
           hoverColor,
           isDark,
         );
+
+        // En-tête de section et/ou séparateur AVANT l'item, sans décaler
+        // l'index de navigation (ils sont rendus dans la même cellule que
+        // le premier item du groupe).
+        final bool showHeader =
+            item.sectionHeader != null && item.sectionHeader!.isNotEmpty;
+        if (!showHeader && !item.isDividerBefore) {
+          return navItem;
+        }
+
+        // Pas de séparateur/en-tête tout en haut de la liste (index 0).
+        final bool atTop = index == 0;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (item.isDividerBefore && !atTop)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Divider(
+                  color: textColor.withValues(alpha: 0.2),
+                  thickness: 1,
+                  indent: isExpanded ? 16 : 8,
+                  endIndent: isExpanded ? 16 : 8,
+                ),
+              ),
+            if (showHeader)
+              _buildSectionHeader(
+                item.sectionHeader!,
+                isExpanded,
+                textColor,
+                atTop: atTop,
+              ),
+            navItem,
+          ],
+        );
       },
+    );
+  }
+
+  /// En-tête de section : libellé compact quand la sidebar est étendue, fin
+  /// séparateur quand elle est réduite (le texte n'a pas de place).
+  Widget _buildSectionHeader(
+    String label,
+    bool isExpanded,
+    Color textColor, {
+    required bool atTop,
+  }) {
+    if (!isExpanded) {
+      // Sidebar réduite : un simple filet, sauf tout en haut.
+      if (atTop) return const SizedBox(height: 4);
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Divider(
+          color: textColor.withValues(alpha: 0.18),
+          thickness: 1,
+          indent: 8,
+          endIndent: 8,
+        ),
+      );
+    }
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: atTop ? 4 : 16,
+        bottom: 6,
+      ),
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          color: textColor.withValues(alpha: 0.5),
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.8,
+        ),
+        overflow: TextOverflow.ellipsis,
+      ),
     );
   }
 

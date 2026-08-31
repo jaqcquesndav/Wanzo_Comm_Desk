@@ -276,7 +276,27 @@ class SettingsRepository {
 
     // Log each field mapping
     final companyName = apiData['companyName'] as String? ?? '';
-    final companyLogoUrl = apiData['companyLogoUrl'] as String? ?? '';
+    final companyLogoUrl =
+        (apiData['companyLogoUrl'] ?? apiData['logoUrl']) as String? ?? '';
+    // Identifiants légaux (NIF/Id Nat/RCCM) : accepter plusieurs clés API
+    final taxId =
+        (apiData['taxId'] ??
+                apiData['companyTaxId'] ??
+                apiData['taxIdentificationNumber'])
+            as String? ??
+        '';
+    final idNat =
+        (apiData['nationalId'] ??
+                apiData['companyNationalId'] ??
+                apiData['idNatNumber'])
+            as String? ??
+        '';
+    final rccm =
+        (apiData['registrationNumber'] ??
+                apiData['companyRccm'] ??
+                apiData['rccmNumber'])
+            as String? ??
+        '';
     final defaultLanguage = apiData['defaultLanguage'] as String? ?? 'fr';
     final currency = apiData['currency'] as String? ?? 'CDF';
     final dateFormat = apiData['dateFormat'] as String? ?? 'DD/MM/YYYY';
@@ -338,6 +358,9 @@ class SettingsRepository {
       companyEmail: contactEmail.isNotEmpty ? contactEmail : null,
       companyPhone: contactPhone.isNotEmpty ? contactPhone : null,
       companyAddress: companyAddress.isNotEmpty ? companyAddress : null,
+      taxIdentificationNumber: taxId.isNotEmpty ? taxId : null,
+      idNatNumber: idNat.isNotEmpty ? idNat : null,
+      rccmNumber: rccm.isNotEmpty ? rccm : null,
       maintenanceMode: maintenanceMode,
       socialMediaLinks: socialMediaLinks,
     );
@@ -374,6 +397,16 @@ class SettingsRepository {
     }
     if (settings.companyAddress.isNotEmpty) {
       apiData['companyAddress'] = settings.companyAddress;
+    }
+    // Identifiants légaux (NIF/Id Nat/RCCM) : round-trip vers l'API
+    if (settings.taxIdentificationNumber.isNotEmpty) {
+      apiData['taxId'] = settings.taxIdentificationNumber;
+    }
+    if (settings.idNatNumber.isNotEmpty) {
+      apiData['nationalId'] = settings.idNatNumber;
+    }
+    if (settings.rccmNumber.isNotEmpty) {
+      apiData['registrationNumber'] = settings.rccmNumber;
     }
     apiData['maintenanceMode'] = settings.maintenanceMode;
     if (settings.socialMediaLinks != null &&

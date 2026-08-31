@@ -546,6 +546,15 @@ class ReceiptPrinterService {
     final headerPhone = useBu
         ? (ctx.businessUnitPhone ?? settings.companyPhone)
         : settings.companyPhone;
+    final headerTaxId = useBu
+        ? (ctx.businessUnitTaxId ?? settings.taxIdentificationNumber)
+        : settings.taxIdentificationNumber;
+    final headerRccm = useBu
+        ? (ctx.businessUnitRccm ?? settings.rccmNumber)
+        : settings.rccmNumber;
+    final headerIdNat = useBu
+        ? (ctx.businessUnitIdNat ?? settings.idNatNumber)
+        : settings.idNatNumber;
 
     final b = StringBuffer();
     void line(String s) => b.write('<text>${_xmlEscape(s)}&#10;</text>');
@@ -558,6 +567,9 @@ class ReceiptPrinterService {
     bold(false);
     if (headerAddress.isNotEmpty) line(headerAddress);
     if (headerPhone.isNotEmpty) line('Tel: $headerPhone');
+    if (headerTaxId.isNotEmpty) line('NIF: $headerTaxId');
+    if (headerRccm.isNotEmpty) line('RCCM: $headerRccm');
+    if (headerIdNat.isNotEmpty) line('ID NAT: $headerIdNat');
     line('=' * _colWidth);
     bold(true);
     line('TICKET DE CAISSE');
@@ -689,6 +701,15 @@ class ReceiptPrinterService {
     final headerPhone = useBu
         ? (ctx.businessUnitPhone ?? settings.companyPhone)
         : settings.companyPhone;
+    final headerTaxId = useBu
+        ? (ctx.businessUnitTaxId ?? settings.taxIdentificationNumber)
+        : settings.taxIdentificationNumber;
+    final headerRccm = useBu
+        ? (ctx.businessUnitRccm ?? settings.rccmNumber)
+        : settings.rccmNumber;
+    final headerIdNat = useBu
+        ? (ctx.businessUnitIdNat ?? settings.idNatNumber)
+        : settings.idNatNumber;
 
     final doc = pw.Document();
     final mono = pw.Font.courier();
@@ -726,6 +747,18 @@ class ReceiptPrinterService {
             if (headerPhone.isNotEmpty)
               pw.Center(
                   child: pw.Text('Tel: $headerPhone',
+                      style: pw.TextStyle(font: mono, fontSize: 8))),
+            if (headerTaxId.isNotEmpty)
+              pw.Center(
+                  child: pw.Text('NIF: $headerTaxId',
+                      style: pw.TextStyle(font: mono, fontSize: 8))),
+            if (headerRccm.isNotEmpty)
+              pw.Center(
+                  child: pw.Text('RCCM: $headerRccm',
+                      style: pw.TextStyle(font: mono, fontSize: 8))),
+            if (headerIdNat.isNotEmpty)
+              pw.Center(
+                  child: pw.Text('ID NAT: $headerIdNat',
                       style: pw.TextStyle(font: mono, fontSize: 8))),
             pw.Divider(thickness: 0.5),
             pw.Center(

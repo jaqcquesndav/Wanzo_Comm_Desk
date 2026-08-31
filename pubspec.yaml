@@ -55,6 +55,9 @@ dependencies:
   # Scanner de codes-barres
   mobile_scanner: ^5.1.1
   permission_handler: ^11.3.1
+
+  # QR (génération du QR public par table restaurant)
+  qr_flutter: ^4.1.0
   
   # Authentication
   auth0_flutter: ^1.8.0

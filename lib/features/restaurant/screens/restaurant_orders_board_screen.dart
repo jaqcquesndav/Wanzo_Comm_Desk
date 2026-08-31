@@ -7,8 +7,14 @@ import '../../../core/services/business_context_service.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/kanban/kanban_board.dart';
+import '../../customer/bloc/customer_bloc.dart';
+import '../../customer/bloc/customer_event.dart';
+import '../../customer/bloc/customer_state.dart';
+import '../../customer/models/customer.dart';
 import '../cubit/restaurant_orders_cubit.dart';
 import '../models/restaurant_order.dart';
+import '../widgets/restaurant_order_quick_view_dialog.dart';
+import 'restaurant_floor_plan_view.dart';
 
 /// Vue « Commandes » du restaurant en board Kanban (façon Trello/Asana).
 ///
@@ -16,8 +22,22 @@ import '../models/restaurant_order.dart';
 /// (En saisie → En cuisine → Servie) change son statut. L'encaissement (statut
 /// « Réglée ») passe TOUJOURS par la caisse (création d'une `Sale`) : la colonne
 /// Réglée n'accepte donc pas le dépôt direct. Remplace la liste desktop bancale.
-class RestaurantOrdersBoardScreen extends StatelessWidget {
+/// Mode d'affichage de l'écran commandes : plan de salle (tables) ou board
+/// Kanban (flux de service). Le plan de salle est la vue par défaut.
+enum _OrdersView { plan, board }
+
+class RestaurantOrdersBoardScreen extends StatefulWidget {
   const RestaurantOrdersBoardScreen({super.key});
+
+  @override
+  State<RestaurantOrdersBoardScreen> createState() =>
+      _RestaurantOrdersBoardScreenState();
+}
+
+class _RestaurantOrdersBoardScreenState
+    extends State<RestaurantOrdersBoardScreen> {
+  // Plan de salle par défaut (prise de commande table-first).
+  _OrdersView _view = _OrdersView.plan;
 
   static const _accent = <RestaurantOrderStatus, Color>{
     RestaurantOrderStatus.open: Color(0xFF64748B), // slate
@@ -55,13 +75,51 @@ class RestaurantOrdersBoardScreen extends StatelessWidget {
           onPressed: () => context.push('/restaurant/orders'),
         ),
       ],
-      body: BlocBuilder<RestaurantOrdersCubit, RestaurantOrdersState>(
-        builder: (context, state) {
-          if (state.loading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final cubit = context.read<RestaurantOrdersCubit>();
-          final columns = [
+      body: Column(
+        children: [
+          // Bascule Plan de salle / Board — les deux partagent le même cubit.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: SegmentedButton<_OrdersView>(
+                segments: const [
+                  ButtonSegment(
+                    value: _OrdersView.plan,
+                    label: Text('Plan de salle'),
+                    icon: Icon(Icons.table_restaurant),
+                  ),
+                  ButtonSegment(
+                    value: _OrdersView.board,
+                    label: Text('Board'),
+                    icon: Icon(Icons.view_kanban_outlined),
+                  ),
+                ],
+                selected: {_view},
+                onSelectionChanged: (s) =>
+                    setState(() => _view = s.first),
+              ),
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: _view == _OrdersView.plan
+                ? const RestaurantFloorPlanView()
+                : _buildBoard(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBoard(BuildContext context) {
+    return BlocBuilder<RestaurantOrdersCubit, RestaurantOrdersState>(
+      builder: (context, state) {
+        if (state.loading) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final cubit = context.read<RestaurantOrdersCubit>();
+        final columns = [
             for (final status in _columnOrder)
               KanbanColumnData<RestaurantOrder>(
                 id: status.apiValue,
@@ -90,29 +148,94 @@ class RestaurantOrdersBoardScreen extends StatelessWidget {
               if (target == order.status) return;
               cubit.updateStatus(order.id, target);
             },
-            onTapItem: (order) => _showActions(context, cubit, order),
+            onTapItem: (order) =>
+                showRestaurantOrderQuickView(context, cubit, order),
           );
         },
-      ),
-    );
+      );
   }
 
   Future<void> _createOrder(
     BuildContext context,
     RestaurantOrdersCubit cubit,
   ) async {
-    final controller = TextEditingController();
+    // Charge les clients existants pour proposer des suggestions dans le champ
+    // « Libellé », tout en laissant saisir librement une table (« Table 4 »…).
+    final customerBloc = context.read<CustomerBloc>()..add(const LoadCustomers());
+    String typed = '';
     final label = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Nouvelle commande'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Libellé (Table 4, Emporter, nom du client…)',
+        content: SizedBox(
+          width: 360,
+          child: BlocBuilder<CustomerBloc, CustomerState>(
+            bloc: customerBloc,
+            builder: (context, state) {
+              final customers = <Customer>[
+                if (state is CustomersLoaded)
+                  ...state.customers
+                else if (state is CustomerSearchResults)
+                  ...state.customers,
+              ];
+              return Autocomplete<Customer>(
+                optionsBuilder: (value) {
+                  final q = value.text.trim().toLowerCase();
+                  if (q.isEmpty) return const Iterable<Customer>.empty();
+                  return customers.where(
+                    (c) =>
+                        c.name.toLowerCase().contains(q) ||
+                        c.phoneNumber.toLowerCase().contains(q),
+                  );
+                },
+                displayStringForOption: (c) => c.name,
+                onSelected: (c) => typed = c.name,
+                fieldViewBuilder:
+                    (context, textController, focusNode, onFieldSubmitted) {
+                  return TextField(
+                    controller: textController,
+                    focusNode: focusNode,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Libellé (Table 4, Emporter, nom du client…)',
+                    ),
+                    onChanged: (v) => typed = v,
+                    onSubmitted: (v) => Navigator.pop(ctx, v),
+                  );
+                },
+                optionsViewBuilder: (context, onSelected, options) {
+                  return Align(
+                    alignment: Alignment.topLeft,
+                    child: Material(
+                      elevation: 4.0,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxHeight: 240,
+                          maxWidth: 360,
+                        ),
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(8.0),
+                          shrinkWrap: true,
+                          itemCount: options.length,
+                          itemBuilder: (context, index) {
+                            final option = options.elementAt(index);
+                            return ListTile(
+                              leading: const Icon(Icons.person, size: 20),
+                              title: Text(option.name),
+                              subtitle: option.phoneNumber.isNotEmpty
+                                  ? Text(option.phoneNumber)
+                                  : null,
+                              onTap: () => onSelected(option),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
           ),
-          onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
         actions: [
           TextButton(
@@ -120,7 +243,7 @@ class RestaurantOrdersBoardScreen extends StatelessWidget {
             child: const Text('Annuler'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
+            onPressed: () => Navigator.pop(ctx, typed),
             child: const Text('Créer'),
           ),
         ],
@@ -128,120 +251,6 @@ class RestaurantOrdersBoardScreen extends StatelessWidget {
     );
     if (label != null && label.trim().isNotEmpty) {
       await cubit.openOrder(label);
-    }
-  }
-
-  void _showActions(
-    BuildContext context,
-    RestaurantOrdersCubit cubit,
-    RestaurantOrder order,
-  ) {
-    final isWide = MediaQuery.sizeOf(context).width >= 720;
-
-    List<Widget> actions(BuildContext ctx) => [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(order.label, style: Theme.of(ctx).textTheme.titleMedium),
-                ),
-                Text(
-                  formatCurrency(order.totalCdf, 'CDF'),
-                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            '${order.itemCount} article(s) · ${order.status.label}',
-            textAlign: TextAlign.center,
-            style: Theme.of(ctx).textTheme.bodySmall,
-          ),
-          const SizedBox(height: 8),
-          if (order.status.isActive) ...[
-            for (final next in _nextStatuses(order.status))
-              ListTile(
-                leading: Icon(Icons.arrow_forward, color: _accent[next]),
-                title: Text('Passer à « ${next.label} »'),
-                onTap: () {
-                  cubit.updateStatus(order.id, next);
-                  Navigator.pop(ctx);
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.point_of_sale_outlined),
-              title: const Text('Encaisser (caisse)'),
-              onTap: () {
-                Navigator.pop(ctx);
-                context.push('/restaurant/orders');
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.cancel_outlined, color: Theme.of(ctx).colorScheme.error),
-              title: const Text('Annuler la commande'),
-              onTap: () {
-                cubit.cancel(order.id);
-                Navigator.pop(ctx);
-              },
-            ),
-          ] else
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('Supprimer de la liste'),
-              onTap: () {
-                cubit.deleteOrder(order.id);
-                Navigator.pop(ctx);
-              },
-            ),
-        ];
-
-    if (isWide) {
-      showDialog<void>(
-        context: context,
-        builder: (ctx) => Dialog(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: actions(ctx),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    } else {
-      showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        builder: (ctx) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: actions(ctx),
-          ),
-        ),
-      );
-    }
-  }
-
-  /// Statuts atteignables depuis un statut actif (flux avant uniquement).
-  List<RestaurantOrderStatus> _nextStatuses(RestaurantOrderStatus current) {
-    switch (current) {
-      case RestaurantOrderStatus.open:
-        return [RestaurantOrderStatus.sent, RestaurantOrderStatus.served];
-      case RestaurantOrderStatus.sent:
-        return [RestaurantOrderStatus.served];
-      case RestaurantOrderStatus.served:
-        return const [];
-      case RestaurantOrderStatus.paid:
-      case RestaurantOrderStatus.cancelled:
-        return const [];
     }
   }
 }

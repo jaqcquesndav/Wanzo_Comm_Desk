@@ -5,6 +5,8 @@ import 'package:wanzo/core/services/currency_service.dart';
 import 'package:intl/intl.dart'; // Keep for _formatDate
 import '../../sales/models/sale.dart';
 import '../../sales/repositories/sales_repository.dart';
+import '../../receivables/utils/receivables_utils.dart';
+import 'package:wanzo/core/services/business_context_service.dart';
 import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
 import '../bloc/customer_state.dart';
@@ -391,6 +393,19 @@ class CustomerDetailsScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         OutlinedButton.icon(
+                          onPressed: () => _remindCustomer(context, customer),
+                          icon: const Icon(
+                            Icons.notifications_active_outlined,
+                            color: Colors.orange,
+                          ),
+                          label: const Text('Relancer'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.orange.shade800,
+                            minimumSize: const Size(double.infinity, 44),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
                           onPressed: () => _confirmDelete(context, customer),
                           icon: const Icon(Icons.delete, color: Colors.red),
                           label: Text(localizations.deleteButtonLabel),
@@ -712,6 +727,44 @@ class CustomerDetailsScreen extends StatelessWidget {
     final localizations = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(localizations.featureComingSoonMessage)),
+    );
+  }
+
+  /// Relance de paiement : calcule le solde dû (offline, depuis les ventes
+  /// locales) puis ouvre WhatsApp (repli SMS) avec un message pré-rempli.
+  Future<void> _remindCustomer(BuildContext context, Customer customer) async {
+    final currencyService = context.read<CurrencyService>();
+    final sales = await context.read<SalesRepository>().getSalesByCustomer(
+      customer.id,
+    );
+    if (!context.mounted) return;
+
+    final totalDue = sales
+        .where(isOpenReceivable)
+        .fold<double>(0, (sum, s) => sum + s.remainingAmountInCdf);
+
+    if (totalDue <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ce client n\'a aucun solde impayé.'),
+        ),
+      );
+      return;
+    }
+
+    final business =
+        BusinessContextService().currentContext?.companyName ??
+        BusinessContextService().businessUnitName ??
+        'Wanzo';
+    final message = buildReminderMessage(
+      businessName: business,
+      customerName: customer.name,
+      amountDueText: currencyService.formatAmount(totalDue),
+    );
+    await launchWhatsAppOrSms(
+      context,
+      message: message,
+      phone: customer.phoneNumber,
     );
   }
 

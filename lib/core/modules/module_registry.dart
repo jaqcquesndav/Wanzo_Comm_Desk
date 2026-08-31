@@ -20,6 +20,7 @@ class ModuleRegistry {
     ActivityMode.services,
     ActivityMode.atelier,
     ActivityMode.atelierMaintenance,
+    ActivityMode.salon,
   };
 
   static const List<AppModule> all = [
@@ -38,6 +39,9 @@ class ModuleRegistry {
     ),
     // Revenus / Charges : deux entrées distinctes en sidebar desktop,
     // fusionnées en un seul onglet « Opérations » sur la bottom-nav mobile.
+    // Bandes de `sidebarOrder` : 0 = pilotage, 10-19 = modules métier
+    // spécialisés (Commandes, Cuisine…), 20-29 = finances, 30-39 = gestion,
+    // 90+ = système. Les bandes évitent l'entrelacement spécialisé/commun.
     AppModule(
       id: 'sales',
       label: 'Revenus',
@@ -46,7 +50,8 @@ class ModuleRegistry {
       route: '/sales',
       modes: _allModes,
       inSidebar: true,
-      sidebarOrder: 1,
+      sidebarOrder: 20,
+      section: 'Finances',
     ),
     AppModule(
       id: 'expenses',
@@ -56,7 +61,8 @@ class ModuleRegistry {
       route: '/expenses',
       modes: _allModes,
       inSidebar: true,
-      sidebarOrder: 2,
+      sidebarOrder: 21,
+      section: 'Finances',
     ),
     AppModule(
       id: 'operations',
@@ -78,7 +84,8 @@ class ModuleRegistry {
       primary: true,
       order: 2,
       inSidebar: true,
-      sidebarOrder: 3,
+      sidebarOrder: 30,
+      section: 'Gestion',
     ),
     AppModule(
       id: 'contacts',
@@ -90,8 +97,8 @@ class ModuleRegistry {
       primary: true,
       order: 3,
       inSidebar: true,
-      sidebarOrder: 4,
-      dividerBefore: true,
+      sidebarOrder: 31,
+      section: 'Gestion',
     ),
     AppModule(
       id: 'adha',
@@ -117,8 +124,8 @@ class ModuleRegistry {
       route: '/settings',
       modes: _allModes,
       inSidebar: true,
-      sidebarOrder: 6,
-      dividerBefore: true,
+      sidebarOrder: 90,
+      section: 'Système',
     ),
 
     // ── Modules métier futurs (déclarés, écrans à venir → available:false).
@@ -136,7 +143,8 @@ class ModuleRegistry {
       primary: true,
       order: 1,
       inSidebar: true,
-      sidebarOrder: 1,
+      sidebarOrder: 10,
+      section: 'Service',
       available: true,
     ),
     // Écran cuisine (KDS) — plein écran des commandes envoyées en préparation.
@@ -150,7 +158,8 @@ class ModuleRegistry {
       primary: true,
       order: 2,
       inSidebar: true,
-      sidebarOrder: 2,
+      sidebarOrder: 11,
+      section: 'Service',
       available: true,
     ),
     // ── Mode Atelier (couture/cordonnerie) ──────────────────────────────
@@ -166,7 +175,8 @@ class ModuleRegistry {
       primary: true,
       order: 1,
       inSidebar: true,
-      sidebarOrder: 1,
+      sidebarOrder: 10,
+      section: 'Atelier',
       available: true,
     ),
     AppModule(
@@ -179,21 +189,68 @@ class ModuleRegistry {
       primary: true,
       order: 1,
       inSidebar: true,
-      sidebarOrder: 1,
+      sidebarOrder: 10,
+      section: 'Atelier',
       available: true,
     ),
+    // Tables & QR — chaque table porte un QR public (menu + commande en ligne).
     AppModule(
       id: 'restaurant_tables',
-      label: 'Salle',
+      label: 'Tables',
       icon: Icons.table_restaurant,
       activeIcon: Icons.table_bar,
       route: '/restaurant/tables',
       modes: {ActivityMode.restaurant},
       primary: true,
+      order: 3,
+      inSidebar: true,
+      sidebarOrder: 12,
+      section: 'Service',
+      available: true,
+    ),
+    // ── Mode Salon de coiffure / beauté ─────────────────────────────────
+    // Prestations = la carte (services tarifés, distincts du stock).
+    AppModule(
+      id: 'salon_prestations',
+      label: 'Prestations',
+      icon: Icons.content_cut_outlined,
+      activeIcon: Icons.content_cut,
+      route: '/salon/prestations',
+      modes: {ActivityMode.salon},
+      primary: true,
+      order: 1,
+      inSidebar: true,
+      sidebarOrder: 10,
+      section: 'Salon',
+      available: true,
+    ),
+    AppModule(
+      id: 'salon_stylists',
+      label: 'Coiffeurs',
+      icon: Icons.badge_outlined,
+      activeIcon: Icons.badge,
+      route: '/salon/stylists',
+      modes: {ActivityMode.salon},
+      primary: true,
       order: 2,
       inSidebar: true,
-      sidebarOrder: 2,
-      available: false,
+      sidebarOrder: 11,
+      section: 'Salon',
+      available: true,
+    ),
+    AppModule(
+      id: 'salon_performance',
+      label: 'Performances',
+      icon: Icons.leaderboard_outlined,
+      activeIcon: Icons.leaderboard,
+      route: '/salon/performance',
+      modes: {ActivityMode.salon},
+      primary: true,
+      order: 3,
+      inSidebar: true,
+      sidebarOrder: 12,
+      section: 'Salon',
+      available: true,
     ),
     AppModule(
       id: 'hotel_rooms',
@@ -205,7 +262,8 @@ class ModuleRegistry {
       primary: true,
       order: 1,
       inSidebar: true,
-      sidebarOrder: 1,
+      sidebarOrder: 10,
+      section: 'Service',
       available: false,
     ),
     AppModule(
@@ -218,7 +276,8 @@ class ModuleRegistry {
       primary: true,
       order: 2,
       inSidebar: true,
-      sidebarOrder: 2,
+      sidebarOrder: 11,
+      section: 'Service',
       available: false,
     ),
   ];

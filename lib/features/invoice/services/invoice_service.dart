@@ -82,6 +82,9 @@ class InvoiceService {
           final logoData = await rootBundle.load(settings.companyLogo);
           final logoImage = pw.MemoryImage(logoData.buffer.asUint8List());
           logoWidget = pw.Image(logoImage, width: 80, height: 80);
+        } else if (settings.companyLogo.startsWith('http')) {
+          final logoImage = await networkImage(settings.companyLogo);
+          logoWidget = pw.Image(logoImage, width: 80, height: 80);
         } else {
           final logoFile = File(settings.companyLogo);
           if (await logoFile.exists()) {
@@ -544,6 +547,9 @@ class InvoiceService {
         if (settings.companyLogo.startsWith('assets/')) {
           final logoData = await rootBundle.load(settings.companyLogo);
           final logoImage = pw.MemoryImage(logoData.buffer.asUint8List());
+          logoWidget = pw.Image(logoImage, width: 60, height: 60);
+        } else if (settings.companyLogo.startsWith('http')) {
+          final logoImage = await networkImage(settings.companyLogo);
           logoWidget = pw.Image(logoImage, width: 60, height: 60);
         } else {
           final logoFile = File(settings.companyLogo);

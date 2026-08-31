@@ -64,16 +64,28 @@ class WanzoScaffold extends StatelessWidget {
         ),
     ];
 
+    // En-tête de section porté par le PREMIER item de chaque groupe (le shell
+    // le dérive du champ `section` du module) : regroupement visuel clair sans
+    // décaler l'index de navigation.
+    final sidebarModules = ModuleRegistry.sidebar(mode, role);
+    String? previousSection;
     final List<SidebarNavItem> desktopNavItems = [
-      for (final m in ModuleRegistry.sidebar(mode, role))
-        SidebarNavItem(
-          icon: m.icon,
-          activeIcon: m.activeIcon,
-          label: m.label,
-          route: m.route,
-          isDividerBefore: m.dividerBefore,
-          isAdhaPanel: m.isAdhaPanel,
-        ),
+      for (final m in sidebarModules)
+        () {
+          final header = (m.section != null && m.section != previousSection)
+              ? m.section
+              : null;
+          previousSection = m.section;
+          return SidebarNavItem(
+            icon: m.icon,
+            activeIcon: m.activeIcon,
+            label: m.label,
+            route: m.route,
+            isDividerBefore: m.dividerBefore,
+            isAdhaPanel: m.isAdhaPanel,
+            sectionHeader: header,
+          );
+        }(),
     ];
 
     // L'élément actif est DÉRIVÉ de la route courante (pas d'un index codé en

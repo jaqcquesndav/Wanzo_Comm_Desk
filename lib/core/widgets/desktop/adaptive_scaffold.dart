@@ -18,6 +18,10 @@ class SidebarNavItem {
   final bool isDividerBefore;
   final bool isAdhaPanel; // Marque si cet item ouvre le panneau Adha
 
+  /// En-tête de section affiché AU-DESSUS de cet item (premier item du groupe).
+  /// `null` = pas d'en-tête. Rendu sans décaler l'index de navigation.
+  final String? sectionHeader;
+
   const SidebarNavItem({
     required this.icon,
     this.activeIcon,
@@ -26,6 +30,7 @@ class SidebarNavItem {
     this.children,
     this.isDividerBefore = false,
     this.isAdhaPanel = false,
+    this.sectionHeader,
   });
 
   /// Convertir en DesktopNavItem
@@ -37,6 +42,7 @@ class SidebarNavItem {
       route: route,
       isDividerBefore: isDividerBefore,
       isAdhaPanel: isAdhaPanel,
+      sectionHeader: sectionHeader,
       children: children?.map((c) => c.toDesktopNavItem()).toList(),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/services/form_navigation_service.dart';
 import 'package:wanzo/features/customer/bloc/customer_bloc.dart';
@@ -55,6 +56,13 @@ class _ContactsScreenState extends State<ContactsScreen>
     return WanzoScaffold(
       currentIndex: contactsPageIndex,
       title: localizations.contactsScreenTitle,
+      appBarActions: [
+        IconButton(
+          icon: const Icon(Icons.request_quote_outlined),
+          tooltip: 'Créances clients',
+          onPressed: () => context.push('/receivables'),
+        ),
+      ],
       body: Column(
         children: [
           TabBar(

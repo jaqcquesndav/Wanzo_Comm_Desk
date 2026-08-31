@@ -6,6 +6,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
+import 'package:wanzo/core/enums/user_role.dart';
+import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/widgets/desktop/responsive_form_container.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
 import 'package:wanzo/features/auth/bloc/auth_bloc.dart';
@@ -44,9 +46,17 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
   bool _hasChanges = false;
   bool _showCodeConfigSection = false;
 
+  /// Seul un administrateur (ou super admin) peut modifier le profil de
+  /// l'entreprise. Les autres rôles voient les informations en lecture seule.
+  late final bool _canEditCompany;
+
   @override
   void initState() {
     super.initState();
+
+    final roleStr = BusinessContextService().currentContext?.userRole;
+    _canEditCompany =
+        roleStr != null && UserRoleExtension.fromApiValue(roleStr).isAdmin;
 
     // Initialise les contrôleurs avec les valeurs actuelles
     _companyNameController = TextEditingController(
@@ -133,7 +143,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
       appBar: AppBar(
         title: Text(l10n.companyInformation),
         actions: [
-          if (_hasChanges)
+          if (_hasChanges && _canEditCompany)
             IconButton(
               icon: const Icon(Icons.save),
               onPressed: _saveSettings,
@@ -186,6 +196,12 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
           icon: Icons.business,
         ),
 
+        // Bannière lecture seule pour les non-administrateurs
+        if (!_canEditCompany) ...[
+          const SizedBox(height: 8),
+          _buildReadOnlyBanner(context),
+        ],
+
         // Indicateur Business Unit actuelle
         _buildCurrentBusinessUnitIndicator(context, l10n),
         const SizedBox(height: 24),
@@ -217,12 +233,14 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                         )
                         : null,
               ),
-              const SizedBox(height: 12),
-              TextButton.icon(
-                onPressed: () => _selectLogo(l10n),
-                icon: const Icon(Icons.add_photo_alternate),
-                label: Text(l10n.changeLogo),
-              ),
+              if (_canEditCompany) ...[
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: () => _selectLogo(l10n),
+                  icon: const Icon(Icons.add_photo_alternate),
+                  label: Text(l10n.changeLogo),
+                ),
+              ],
             ],
           ),
         ),
@@ -238,6 +256,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
             // Nom de l'entreprise
             TextFormField(
               controller: _companyNameController,
+              readOnly: !_canEditCompany,
               decoration: InputDecoration(
                 labelText: '${l10n.companyName} *',
                 border: const OutlineInputBorder(),
@@ -253,6 +272,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
             // Email
             TextFormField(
               controller: _companyEmailController,
+              readOnly: !_canEditCompany,
               decoration: InputDecoration(
                 labelText: l10n.email,
                 border: const OutlineInputBorder(),
@@ -274,6 +294,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
             // Téléphone
             TextFormField(
               controller: _companyPhoneController,
+              readOnly: !_canEditCompany,
               decoration: InputDecoration(
                 labelText: l10n.phoneNumber,
                 border: const OutlineInputBorder(),
@@ -284,6 +305,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
             // Numéro d'identification fiscale
             TextFormField(
               controller: _taxNumberController,
+              readOnly: !_canEditCompany,
               decoration: InputDecoration(
                 labelText: l10n.taxIdentificationNumber,
                 border: const OutlineInputBorder(),
@@ -293,6 +315,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
             // Numéro RCCM
             TextFormField(
               controller: _rccmNumberController,
+              readOnly: !_canEditCompany,
               decoration: InputDecoration(
                 labelText: l10n.rccmNumber,
                 border: const OutlineInputBorder(),
@@ -303,6 +326,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
             // Numéro ID NAT
             TextFormField(
               controller: _idNatNumberController,
+              readOnly: !_canEditCompany,
               decoration: InputDecoration(
                 labelText: l10n.idNatNumber,
                 border: const OutlineInputBorder(),
@@ -317,6 +341,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
         // Adresse (pleine largeur car multilignes)
         TextFormField(
           controller: _companyAddressController,
+          readOnly: !_canEditCompany,
           decoration: InputDecoration(
             labelText: l10n.address,
             border: const OutlineInputBorder(),
@@ -331,7 +356,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
         const SizedBox(height: 32),
 
         // Bouton d'enregistrement
-        if (_hasChanges)
+        if (_hasChanges && _canEditCompany)
           Center(
             child: SizedBox(
               width: isDesktop || isTablet ? 300 : double.infinity,
@@ -344,6 +369,31 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  /// Bannière informant que seul l'administrateur peut modifier le profil
+  Widget _buildReadOnlyBanner(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.amber[200]!),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.lock_outline, color: Colors.amber[800], size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              "Seul l'administrateur peut modifier le profil de l'entreprise.",
+              style: TextStyle(color: Colors.amber[900], fontSize: 13),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -657,6 +707,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _businessUnitCodeController,
+            readOnly: !_canEditCompany,
             decoration: InputDecoration(
               labelText: l10n.businessUnitCodeLabel,
               hintText: l10n.businessUnitCodeHint,
@@ -707,6 +758,8 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
   ImageProvider _getImageProvider(String imagePath) {
     if (imagePath.startsWith('assets/')) {
       return AssetImage(imagePath);
+    } else if (imagePath.startsWith('http')) {
+      return NetworkImage(imagePath);
     } else {
       return FileImage(File(imagePath));
     }

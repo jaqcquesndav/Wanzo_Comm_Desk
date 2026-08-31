@@ -83,6 +83,26 @@ class SaleItem extends Equatable {
   @HiveField(14)
   final String? notes;
 
+  /// Identifiant de l'exécutant de la prestation (ex. coiffeur/coiffeuse pour
+  /// le mode salon). `null` pour une ligne sans exécutant (produit de détail,
+  /// vente boutique classique). Persisté par le backend (`SaleItem.performerId`).
+  @HiveField(15)
+  final String? performerId;
+
+  /// Nom de l'exécutant (snapshot lisible, découplé de la fiche coiffeur).
+  @HiveField(16)
+  final String? performerName;
+
+  /// Taux de commission appliqué à cette ligne, en pourcentage (ex. 30.0 =
+  /// 30 %). Figé au moment de la vente (le taux de la fiche peut changer après).
+  @HiveField(17)
+  final double? commissionRate;
+
+  /// Montant de commission calculé pour cette ligne (dans la devise de la
+  /// transaction). Snapshot au moment de la vente.
+  @HiveField(18)
+  final double? commissionAmount;
+
   /// Constructeur
   const SaleItem({
     this.id,
@@ -100,6 +120,10 @@ class SaleItem extends Equatable {
     this.taxRate,
     this.taxAmount,
     this.notes,
+    this.performerId,
+    this.performerName,
+    this.commissionRate,
+    this.commissionAmount,
   });
 
   factory SaleItem.fromJson(Map<String, dynamic> json) =>
@@ -119,6 +143,9 @@ class SaleItem extends Equatable {
     required SaleItemType itemType,
     double? taxRate,
     String? notes,
+    String? performerId,
+    String? performerName,
+    double? commissionRate,
   }) {
     // Calcul du prix total avec remise
     final discountAmount = discount ?? 0.0;
@@ -127,6 +154,12 @@ class SaleItem extends Equatable {
     // Calcul du montant de taxe si taxRate est fourni
     final calculatedTaxAmount =
         taxRate != null ? (calculatedTotalPrice * taxRate / 100) : null;
+
+    // Commission (mode salon) : figée sur le total de la ligne au moment de la
+    // vente. Le taux vient de la prestation (override) ou de la fiche coiffeur.
+    final calculatedCommissionAmount = commissionRate != null
+        ? (calculatedTotalPrice * commissionRate / 100)
+        : null;
 
     return SaleItem(
       id: id,
@@ -144,6 +177,10 @@ class SaleItem extends Equatable {
       taxRate: taxRate,
       taxAmount: calculatedTaxAmount,
       notes: notes,
+      performerId: performerId,
+      performerName: performerName,
+      commissionRate: commissionRate,
+      commissionAmount: calculatedCommissionAmount,
     );
   }
 
@@ -164,6 +201,10 @@ class SaleItem extends Equatable {
     double? taxRate,
     double? taxAmount,
     String? notes,
+    String? performerId,
+    String? performerName,
+    double? commissionRate,
+    double? commissionAmount,
   }) {
     return SaleItem(
       id: id ?? this.id,
@@ -181,6 +222,10 @@ class SaleItem extends Equatable {
       taxRate: taxRate ?? this.taxRate,
       taxAmount: taxAmount ?? this.taxAmount,
       notes: notes ?? this.notes,
+      performerId: performerId ?? this.performerId,
+      performerName: performerName ?? this.performerName,
+      commissionRate: commissionRate ?? this.commissionRate,
+      commissionAmount: commissionAmount ?? this.commissionAmount,
     );
   }
 
@@ -201,5 +246,9 @@ class SaleItem extends Equatable {
     taxRate,
     taxAmount,
     notes,
+    performerId,
+    performerName,
+    commissionRate,
+    commissionAmount,
   ];
 }

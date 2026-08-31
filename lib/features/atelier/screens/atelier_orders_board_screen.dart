@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../constants/colors.dart';
+import '../../../core/modules/activity_mode.dart';
 import '../../../core/modules/module_registry.dart';
 import '../../../core/services/business_context_service.dart';
 import '../../../core/services/form_navigation_service.dart';
@@ -57,6 +58,11 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
     // Conserve le shell de l'app (sidebar + header) : sinon écran nu sans
     // navigation. Même approche que les autres écrans principaux.
     final ctx = BusinessContextService();
+    // Métier courant → libellés d'étapes ADAPTÉS (un atelier de maintenance
+    // n'affiche pas « Coupe/Couture » mais « Diagnostic/Réparation/Test »).
+    final boardMetier = ctx.activityMode == ActivityMode.atelierMaintenance
+        ? AtelierMetier.maintenance
+        : AtelierMetier.couture;
     final index = ModuleRegistry.indexOfSidebarRoute(
       ctx.activityMode,
       ctx.currentContext?.userRole,
@@ -64,7 +70,9 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
     );
     return WanzoScaffold(
       currentIndex: index < 0 ? 0 : index,
-      title: 'Commandes — Atelier',
+      title: boardMetier == AtelierMetier.maintenance
+          ? 'Commandes — Maintenance'
+          : 'Commandes — Atelier',
       appBarActions: [
         IconButton(
           tooltip: 'Actualiser',
@@ -93,7 +101,7 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
             for (final status in _columnOrder)
               KanbanColumnData<AtelierOrder>(
                 id: status.apiValue,
-                title: status.label,
+                title: status.labelFor(boardMetier),
                 color: _accent[status]!,
                 items: state.orders.where((o) => o.status == status).toList(),
                 // Le règlement (facturation auto) et l'annulation passent par le

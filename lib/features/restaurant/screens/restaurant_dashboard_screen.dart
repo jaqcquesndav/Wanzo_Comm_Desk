@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import 'package:wanzo/core/modules/module_registry.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:wanzo/core/services/form_navigation_service.dart';
+import 'package:wanzo/core/shared_widgets/quick_actions_sheet.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
@@ -12,6 +14,7 @@ import 'package:wanzo/features/inventory/repositories/inventory_repository.dart'
 
 import '../cubit/restaurant_orders_cubit.dart';
 import '../models/restaurant_order.dart';
+import '../widgets/restaurant_order_quick_view_dialog.dart';
 
 /// Tableau de bord du mode RESTAURANT (desktop / comptoir).
 ///
@@ -32,12 +35,19 @@ class RestaurantDashboardScreen extends StatelessWidget {
       '/dashboard',
     );
 
-    // Les actions clés (service, cuisine, carte…) sont présentées comme des
-    // raccourcis dans le corps (voir `_quickActions`) : on évite de les
-    // dupliquer dans la barre d'application.
+    // Les actions clés (service, cuisine, carte…) sont présentées via la
+    // feuille partagée d'actions rapides, ouverte depuis un unique déclencheur
+    // (le bouton flottant), et jamais dupliquées dans le corps de la page.
     return WanzoScaffold(
       currentIndex: index < 0 ? 0 : index,
       title: 'Tableau de bord',
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'restaurant_dashboard_fab',
+        tooltip: 'Actions rapides',
+        onPressed: () => _showRestaurantQuickActions(context),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        child: Icon(Icons.add, color: Theme.of(context).colorScheme.onPrimary),
+      ),
       body: BlocBuilder<RestaurantOrdersCubit, RestaurantOrdersState>(
         builder: (context, state) {
           if (state.loading) {
@@ -52,8 +62,6 @@ class RestaurantDashboardScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _quickActions(context),
-                    const SizedBox(height: 28),
                     _kpiRow(context, m),
                     const SizedBox(height: 28),
                     if (wide)
@@ -111,41 +119,54 @@ class RestaurantDashboardScreen extends StatelessWidget {
     );
   }
 
-  /// Raccourcis d'action du service (équivalent restaurant des actions rapides
-  /// de la boutique) : ouvrir/encaisser une commande, cuisine, carte.
-  Widget _quickActions(BuildContext context) {
-    final actions = <_QuickAction>[
-      _QuickAction(
-        icon: Icons.point_of_sale,
-        color: const Color(0xFF0EA5E9),
-        label: 'Nouvelle commande',
-        onTap: () => context.go('/restaurant/orders'),
-      ),
-      _QuickAction(
-        icon: Icons.payments,
-        color: const Color(0xFF16A34A),
-        label: 'Encaisser',
-        onTap: () => context.go('/restaurant/orders'),
-      ),
-      _QuickAction(
-        icon: Icons.soup_kitchen,
-        color: const Color(0xFFF59E0B),
-        label: 'Cuisine',
-        onTap: () => context.go('/restaurant/kitchen'),
-      ),
-      _QuickAction(
-        icon: Icons.menu_book,
-        color: const Color(0xFF7C3AED),
-        label: 'Carte / menu',
-        onTap: () => context.push('/restaurant/menu'),
-      ),
-    ];
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        for (final a in actions)
-          SizedBox(width: 210, child: _QuickActionCard(action: a)),
+  /// Actions rapides du service (équivalent restaurant des actions rapides de
+  /// la boutique) présentées via la feuille partagée — même présentation et
+  /// même ordre que l'application mobile.
+  void _showRestaurantQuickActions(BuildContext context) {
+    showWanzoQuickActions(
+      context,
+      actions: [
+        QuickActionItem(
+          icon: Icons.add_shopping_cart,
+          color: const Color(0xFF0EA5E9),
+          label: 'Nouvelle commande',
+          onTap: () => context.go('/restaurant/board'),
+        ),
+        // Vente directe : un restaurant vend aussi des produits STOCKABLES
+        // (bouteilles, pâtisserie…) hors carte. On garde la facturation
+        // boutique — sur desktop, le formulaire de vente s'ouvre en modal.
+        QuickActionItem(
+          icon: Icons.point_of_sale,
+          color: const Color(0xFF197CA8),
+          label: 'Vente directe',
+          onTap: () => FormNavigationService.instance.openSaleForm(context),
+        ),
+        QuickActionItem(
+          icon: Icons.soup_kitchen,
+          color: const Color(0xFFF59E0B),
+          label: 'Cuisine',
+          onTap: () => context.go('/restaurant/board'),
+        ),
+        QuickActionItem(
+          icon: Icons.menu_book,
+          color: const Color(0xFF8B5CF6),
+          label: 'Carte',
+          onTap: () => context.push('/restaurant/menu'),
+        ),
+        QuickActionItem(
+          icon: Icons.point_of_sale,
+          color: const Color(0xFF16A34A),
+          // Action sans commande : oriente vers le plan de salle / board pour
+          // choisir la commande à encaisser (pas la caisse vide).
+          label: 'Encaisser',
+          onTap: () => context.push('/restaurant/board'),
+        ),
+        QuickActionItem(
+          icon: Icons.money_off,
+          color: Colors.red,
+          label: 'Dépense',
+          onTap: () => context.push('/expenses/add'),
+        ),
       ],
     );
   }
@@ -211,7 +232,13 @@ class RestaurantDashboardScreen extends StatelessWidget {
           for (var i = 0; i < shown.length; i++) ...[
             if (i > 0) const Divider(height: 1),
             ListTile(
-              onTap: () => context.go('/restaurant/orders'),
+              // Commande concrète → aperçu rapide d'actions (mêmes actions que
+              // le board / le plan de salle), sans quitter le tableau de bord.
+              onTap: () => showRestaurantOrderQuickView(
+                context,
+                context.read<RestaurantOrdersCubit>(),
+                shown[i],
+              ),
               leading: CircleAvatar(
                 backgroundColor:
                     _statusColor(shown[i].status).withValues(alpha: 0.16),
@@ -429,60 +456,6 @@ class _DishCount {
   final String name;
   final int quantity;
   const _DishCount(this.productId, this.name, this.quantity);
-}
-
-/// Descriptif d'une action rapide du tableau de bord restaurant.
-class _QuickAction {
-  final IconData icon;
-  final Color color;
-  final String label;
-  final VoidCallback onTap;
-  const _QuickAction({
-    required this.icon,
-    required this.color,
-    required this.label,
-    required this.onTap,
-  });
-}
-
-/// Carte cliquable d'action rapide (icône colorée + libellé).
-class _QuickActionCard extends StatelessWidget {
-  final _QuickAction action;
-  const _QuickActionCard({required this.action});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      margin: EdgeInsets.zero,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: action.onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: action.color.withValues(alpha: 0.16),
-                child: Icon(action.icon, color: action.color, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  action.label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// Indicateurs restaurant dérivés des commandes (aucune dépendance externe).

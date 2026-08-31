@@ -9,8 +9,10 @@ import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
-import 'package:wanzo/features/inventory/models/product.dart';
-import 'package:wanzo/features/inventory/repositories/inventory_repository.dart';
+import 'package:wanzo/features/customer/bloc/customer_bloc.dart';
+import 'package:wanzo/features/customer/bloc/customer_event.dart';
+import 'package:wanzo/features/customer/bloc/customer_state.dart';
+import 'package:wanzo/features/customer/models/customer.dart';
 import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/sales/models/sale_item.dart';
@@ -24,18 +26,20 @@ import 'package:wanzo/features/settings/models/settings.dart'
 
 import '../cubit/restaurant_orders_cubit.dart';
 import '../models/menu_course.dart';
+import '../models/menu_item.dart';
 import '../models/restaurant_order.dart';
-import '../repositories/menu_config_repository.dart';
+import '../repositories/menu_repository.dart';
 
 /// Point de vente restaurant — mise en page desktop dense en 3 colonnes :
-/// MENU (grille catalogue) | TICKET (commande en cours) | CAISSE (règlement).
+/// MENU (la CARTE) | TICKET (commande en cours) | CAISSE (règlement).
 /// Un bandeau supérieur sélectionne la commande active (table/emporter).
+///
+/// La CARTE est un vrai catalogue de plats ([MenuItem]) authorés directement,
+/// PAS une surcouche du stock. La vente directe de produits stockables se fait
+/// via l'action « Vente directe » du tableau de bord (facturation boutique).
 ///
 /// Ce n'est PAS le mobile étiré : tout est visible d'un coup, adapté au comptoir.
 enum _PayMethod { cash, mobileMoney, credit }
-
-/// Onglet de la colonne menu : plats de la carte ou articles hors carte.
-enum _MenuTab { carte, autres }
 
 /// Petit badge de catégorie (« Plats », « Boissons »…) posé sur la photo.
 class _CourseBadge extends StatelessWidget {
@@ -81,22 +85,22 @@ extension _PayMethodX on _PayMethod {
 }
 
 class RestaurantPosScreen extends StatefulWidget {
-  const RestaurantPosScreen({super.key});
+  /// Commande à pré-sélectionner à l'ouverture (ex. depuis le plan de salle),
+  /// passée via le query param `orderId` de la route `/restaurant/orders`.
+  final String? initialOrderId;
+
+  const RestaurantPosScreen({super.key, this.initialOrderId});
 
   @override
   State<RestaurantPosScreen> createState() => _RestaurantPosScreenState();
 }
 
 class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
-  late final List<Product> _products;
-  final MenuConfigRepository _menuRepo = MenuConfigRepository();
-  Map<String, MenuCourse> _menuConfig = {};
+  final MenuRepository _menuRepo = MenuRepository();
+  List<MenuItem> _dishes = [];
   bool _menuLoading = true;
   String? _selectedOrderId;
   String _search = '';
-  // Colonne menu : « Carte » (plats configurés) ou « Autres » (produits hors
-  // carte : pâtisserie, jus, bouteilles… vendus directement).
-  _MenuTab _menuTab = _MenuTab.carte;
 
   _PayMethod _method = _PayMethod.cash;
   final _cashController = TextEditingController();
@@ -105,41 +109,34 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   @override
   void initState() {
     super.initState();
-    _products = context.read<InventoryRepository>().getAllProducts();
+    // Pré-sélection depuis le plan de salle (query param `orderId`).
+    _selectedOrderId = widget.initialOrderId;
     _loadMenu();
   }
 
   Future<void> _loadMenu() async {
-    final config = await _menuRepo.loadAll();
+    final dishes = await _menuRepo.loadAll();
     if (!mounted) return;
     setState(() {
-      _menuConfig = config;
+      _dishes = dishes;
       _menuLoading = false;
     });
   }
 
-  /// Produits à la carte, filtrés par recherche, groupés et triés par catégorie.
-  Map<MenuCourse, List<Product>> get _menuByCourse {
-    final q = _search.toLowerCase();
-    final grouped = <MenuCourse, List<Product>>{};
-    for (final p in _products) {
-      final course = _menuConfig[p.id];
-      if (course == null) continue;
-      if (q.isNotEmpty && !p.name.toLowerCase().contains(q)) continue;
-      grouped.putIfAbsent(course, () => []).add(p);
+  /// Plats de la CARTE, filtrés par recherche (nom + description), groupés et
+  /// triés par catégorie (entrée → plat → … → boisson).
+  Map<MenuCourse, List<MenuItem>> get _menuByCourse {
+    final q = _search.trim().toLowerCase();
+    final grouped = <MenuCourse, List<MenuItem>>{};
+    for (final item in _dishes) {
+      if (q.isNotEmpty) {
+        final inName = item.name.toLowerCase().contains(q);
+        final inDesc = (item.description?.toLowerCase().contains(q)) ?? false;
+        if (!inName && !inDesc) continue;
+      }
+      grouped.putIfAbsent(item.course, () => []).add(item);
     }
     return grouped;
-  }
-
-  /// Produits HORS carte (stock ordinaire), filtrés par la recherche. Vendus
-  /// directement sans les inscrire au menu.
-  List<Product> get _nonMenuProducts {
-    final q = _search.toLowerCase();
-    return _products.where((p) {
-      if (_menuConfig.containsKey(p.id)) return false;
-      if (q.isNotEmpty && !p.name.toLowerCase().contains(q)) return false;
-      return true;
-    }).toList();
   }
 
   @override
@@ -159,11 +156,17 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     return WanzoScaffold(
       currentIndex: index < 0 ? 0 : index,
       title: 'Restaurant',
+      // La caisse est une page poussée (depuis le tableau de bord / le board) :
+      // on garantit un retour fiable, avec repli sur le tableau de bord quand
+      // elle a été atteinte via `context.go` (pile vide → rien à dépiler).
+      onBackPressed: () =>
+          context.canPop() ? context.pop() : context.go('/dashboard'),
       appBarActions: [
         IconButton(
           icon: const Icon(Icons.menu_book),
           tooltip: 'Composer la carte',
-          onPressed: () => context.push('/restaurant/menu').then((_) => _loadMenu()),
+          onPressed: () =>
+              context.push('/restaurant/menu').then((_) => _loadMenu()),
         ),
       ],
       body: BlocListener<SalesBloc, SalesState>(
@@ -301,76 +304,44 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     );
   }
 
-  // ── Colonne 1 : Menu (carte) ─────────────────────────────────────────────
+  // ── Colonne 1 : Menu (la carte) ──────────────────────────────────────────
   Widget _buildMenu(RestaurantOrder order) {
     if (_menuLoading) {
       return const Center(child: CircularProgressIndicator());
+    }
+    // Carte vide (aucun plat authoré) → inviter à la composer.
+    if (_dishes.isEmpty) {
+      return EmptyStateView(
+        icon: Icons.restaurant_menu,
+        message: 'La carte est vide.\nAjoutez vos plats pour prendre les commandes.',
+        actionLabel: 'Composer la carte',
+        actionIcon: Icons.edit,
+        onAction: () =>
+            context.push('/restaurant/menu').then((_) => _loadMenu()),
+      );
     }
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-          child: Row(
-            children: [
-              // Sélecteur Carte / Autres (desktop : bouton segmenté, pas de
-              // feuille modale).
-              SegmentedButton<_MenuTab>(
-                segments: const [
-                  ButtonSegment(
-                    value: _MenuTab.carte,
-                    label: Text('Carte'),
-                    icon: Icon(Icons.restaurant_menu, size: 16),
-                  ),
-                  ButtonSegment(
-                    value: _MenuTab.autres,
-                    label: Text('Autres'),
-                    icon: Icon(Icons.local_cafe, size: 16),
-                  ),
-                ],
-                selected: {_menuTab},
-                showSelectedIcon: false,
-                onSelectionChanged: (s) =>
-                    setState(() => _menuTab = s.first),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  decoration: InputDecoration(
-                    hintText: _menuTab == _MenuTab.carte
-                        ? 'Rechercher un plat…'
-                        : 'Rechercher un article…',
-                    prefixIcon: const Icon(Icons.search),
-                    isDense: true,
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-                  onChanged: (v) => setState(() => _search = v),
-                ),
-              ),
-            ],
+          child: TextField(
+            decoration: InputDecoration(
+              hintText: 'Rechercher un plat…',
+              prefixIcon: const Icon(Icons.search),
+              isDense: true,
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            onChanged: (v) => setState(() => _search = v),
           ),
         ),
-        Expanded(
-          child: _menuTab == _MenuTab.carte
-              ? _buildCarte(order)
-              : _buildAutres(order),
-        ),
+        Expanded(child: _buildCarte(order)),
       ],
     );
   }
 
-  // Onglet Carte : plats configurés, groupés par catégorie.
+  // Carte : plats authorés, groupés par catégorie.
   Widget _buildCarte(RestaurantOrder order) {
-    if (_menuConfig.isEmpty) {
-      return EmptyStateView(
-        icon: Icons.restaurant_menu,
-        message: 'La carte est vide.\nDésignez vos plats parmi vos produits.',
-        actionLabel: 'Composer la carte',
-        actionIcon: Icons.edit,
-        onAction: () => context.push('/restaurant/menu').then((_) => _loadMenu()),
-      );
-    }
-
     final grouped = _menuByCourse;
     final courses = grouped.keys.toList()
       ..sort((a, b) => a.order.compareTo(b.order));
@@ -402,28 +373,10 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
             gridDelegate: _menuGrid,
             itemCount: grouped[course]!.length,
             itemBuilder: (context, i) =>
-                _menuTile(order, grouped[course]![i], course: course),
+                _menuTile(order, grouped[course]![i]),
           ),
         ],
       ],
-    );
-  }
-
-  // Onglet Autres : produits hors carte, grille plate.
-  Widget _buildAutres(RestaurantOrder order) {
-    final products = _nonMenuProducts;
-    if (products.isEmpty) {
-      return const EmptyStateView(
-        icon: Icons.inventory_2_outlined,
-        message:
-            'Aucun article hors carte.\nLes produits non inscrits au menu (pâtisserie, jus…) apparaissent ici.',
-      );
-    }
-    return GridView.builder(
-      padding: const EdgeInsets.all(12),
-      gridDelegate: _menuGrid,
-      itemCount: products.length,
-      itemBuilder: (context, i) => _menuTile(order, products[i]),
     );
   }
 
@@ -436,87 +389,143 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     mainAxisSpacing: 8,
   );
 
-  Widget _menuTile(RestaurantOrder order, Product product,
-      {MenuCourse? course}) {
+  /// Ajoute un plat au ticket. Sans groupe d'options → ajout direct (qty 1).
+  /// Avec groupes → ouvre le sélecteur de modificateurs en DIALOG centré, puis
+  /// ajoute la ligne au prix (base + suppléments), les choix consignés dans la
+  /// note. Le dédoublonnage existant (productId + note) garde distinctes les
+  /// variantes d'un même plat.
+  Future<void> _addDish(RestaurantOrder order, MenuItem item) async {
+    final cubit = context.read<RestaurantOrdersCubit>();
+    final messenger = ScaffoldMessenger.of(context);
+
+    double unitPrice = item.priceCdf;
+    String? note;
+
+    if (item.modifierGroups.isNotEmpty) {
+      final result = await showDialog<_ModifierResult>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => _ModifierPickerDialog(item: item),
+      );
+      if (result == null) return; // Annulé.
+      unitPrice = item.priceCdf + result.priceDelta;
+      note = result.note.isEmpty ? null : result.note;
+    }
+
+    cubit.addLine(
+      order.id,
+      RestaurantOrderLine(
+        productId: item.id,
+        productName: item.name,
+        unitPriceCdf: unitPrice,
+        quantity: 1,
+        note: note,
+      ),
+    );
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(milliseconds: 700),
+          content: Text('${item.name} ajouté'),
+        ),
+      );
+  }
+
+  Widget _menuTile(RestaurantOrder order, MenuItem item) {
     final theme = Theme.of(context);
-    final description = product.description.trim();
+    final description = item.description?.trim() ?? '';
+    final soldOut = !item.available;
     return InkWell(
       borderRadius: BorderRadius.circular(10),
-      onTap: () => context.read<RestaurantOrdersCubit>().addLine(
-            order.id,
-            RestaurantOrderLine(
-              productId: product.id,
-              productName: product.name,
-              unitPriceCdf: product.sellingPriceInCdf,
-              quantity: 1,
-            ),
-          ),
-      child: Card(
-        margin: EdgeInsets.zero,
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Image du plat, bien visible (réseau ou locale, cover). Repli sur
-            // l'icône de catégorie quand aucune image n'est définie, avec badge
-            // de catégorie en surimpression.
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  SmartImage(
-                    imageUrl: product.imageUrl,
-                    imagePath: product.imagePath,
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    placeholderIcon: product.category.icon,
-                    placeholderColor: theme.colorScheme.surfaceContainerHighest,
-                    placeholderIconSize: 34,
-                  ),
-                  if (course != null)
+      onTap: soldOut ? null : () => _addDish(order, item),
+      child: Opacity(
+        opacity: soldOut ? 0.5 : 1,
+        child: Card(
+          margin: EdgeInsets.zero,
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Image du plat, bien visible (réseau ou locale, cover). Repli sur
+              // l'icône « plat » quand aucune image n'est définie, avec badge de
+              // catégorie en surimpression et badge « Épuisé » si indisponible.
+              Expanded(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    SmartImage(
+                      imageUrl: item.photoUrl,
+                      imagePath: item.photoPath,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      placeholderIcon: Icons.restaurant,
+                      placeholderColor:
+                          theme.colorScheme.surfaceContainerHighest,
+                      placeholderIconSize: 34,
+                    ),
                     Positioned(
                       top: 6,
                       left: 6,
-                      child: _CourseBadge(label: course.label),
+                      child: _CourseBadge(label: item.course.label),
                     ),
-                ],
+                    if (soldOut)
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.error,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text('Épuisé',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    product.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 13),
-                  ),
-                  if (description.isNotEmpty) ...[
-                    const SizedBox(height: 2),
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      description,
+                      item.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                    if (description.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        description,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    Text(
+                      formatCurrency(item.priceCdf, 'CDF'),
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
-                  const SizedBox(height: 4),
-                  Text(
-                    formatCurrency(product.sellingPriceInCdf, 'CDF'),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -568,8 +577,11 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
                       dense: true,
                       contentPadding: EdgeInsets.zero,
                       title: Text(line.productName),
-                      subtitle:
-                          Text(formatCurrency(line.unitPriceCdf, 'CDF')),
+                      subtitle: Text(
+                        (line.note != null && line.note!.isNotEmpty)
+                            ? '${formatCurrency(line.unitPriceCdf, 'CDF')} · ${line.note}'
+                            : formatCurrency(line.unitPriceCdf, 'CDF'),
+                      ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -703,20 +715,87 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   }
 
   Future<void> _promptNewOrder() async {
-    final controller = TextEditingController();
     final cubit = context.read<RestaurantOrdersCubit>();
+    // Charge les clients existants pour proposer des suggestions dans le champ
+    // « Table / client » (autocomplétion desktop), tout en laissant saisir
+    // librement un libellé de table (« Table 4 », « Emporter »…).
+    final customerBloc = context.read<CustomerBloc>()..add(const LoadCustomers());
+    // Valeur courante saisie (suggestion sélectionnée OU texte libre).
+    String typed = '';
     final label = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Nouvelle commande'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Table / client',
-            hintText: 'Ex. Table 4, Emporter…',
+        content: SizedBox(
+          width: 360,
+          child: BlocBuilder<CustomerBloc, CustomerState>(
+            bloc: customerBloc,
+            builder: (context, state) {
+              final customers = <Customer>[
+                if (state is CustomersLoaded)
+                  ...state.customers
+                else if (state is CustomerSearchResults)
+                  ...state.customers,
+              ];
+              return Autocomplete<Customer>(
+                optionsBuilder: (value) {
+                  final q = value.text.trim().toLowerCase();
+                  if (q.isEmpty) return const Iterable<Customer>.empty();
+                  return customers.where(
+                    (c) =>
+                        c.name.toLowerCase().contains(q) ||
+                        c.phoneNumber.toLowerCase().contains(q),
+                  );
+                },
+                displayStringForOption: (c) => c.name,
+                onSelected: (c) => typed = c.name,
+                fieldViewBuilder:
+                    (context, textController, focusNode, onFieldSubmitted) {
+                  return TextField(
+                    controller: textController,
+                    focusNode: focusNode,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Table / client',
+                      hintText: 'Ex. Table 4, Emporter, ou un client existant…',
+                    ),
+                    onChanged: (v) => typed = v,
+                    onSubmitted: (v) => Navigator.of(dialogContext).pop(v),
+                  );
+                },
+                optionsViewBuilder: (context, onSelected, options) {
+                  return Align(
+                    alignment: Alignment.topLeft,
+                    child: Material(
+                      elevation: 4.0,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxHeight: 240,
+                          maxWidth: 360,
+                        ),
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(8.0),
+                          shrinkWrap: true,
+                          itemCount: options.length,
+                          itemBuilder: (context, index) {
+                            final option = options.elementAt(index);
+                            return ListTile(
+                              leading: const Icon(Icons.person, size: 20),
+                              title: Text(option.name),
+                              subtitle: option.phoneNumber.isNotEmpty
+                                  ? Text(option.phoneNumber)
+                                  : null,
+                              onTap: () => onSelected(option),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
           ),
-          onSubmitted: (v) => Navigator.of(dialogContext).pop(v),
         ),
         actions: [
           TextButton(
@@ -724,7 +803,7 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
             child: const Text('Annuler'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            onPressed: () => Navigator.of(dialogContext).pop(typed),
             child: const Text('Ouvrir'),
           ),
         ],
@@ -753,7 +832,10 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
             exchangeRate: 1.0,
             unitPriceInCdf: l.unitPriceCdf,
             totalPriceInCdf: l.totalCdf,
-            itemType: SaleItemType.product,
+            // Plat préparé = revenu de prestation (service), pas un article de
+            // stock : évite un décrément de stock / « produit introuvable » sur
+            // un id qui est celui d'un MenuItem, pas d'un Product.
+            itemType: SaleItemType.service,
           ),
         )
         .toList();
@@ -817,5 +899,263 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     } catch (_) {
       // Silencieux : la vente est déjà enregistrée, l'impression est accessoire.
     }
+  }
+}
+
+/// Résultat du sélecteur de modificateurs : surcoût total (somme des deltas) et
+/// note lisible listant les choix (ex. « Bien cuit · +Fromage »).
+class _ModifierResult {
+  final double priceDelta;
+  final String note;
+  const _ModifierResult({required this.priceDelta, required this.note});
+}
+
+/// Sélecteur de modificateurs présenté en DIALOG centré (convention desktop),
+/// affiché à la commande d'un plat qui EN a. Rend chaque groupe : choix unique
+/// obligatoire = radios ; multiple = cases à cocher, bornées par min/max.
+/// Calcule le surcoût et consigne les choix.
+class _ModifierPickerDialog extends StatefulWidget {
+  final MenuItem item;
+  const _ModifierPickerDialog({required this.item});
+
+  @override
+  State<_ModifierPickerDialog> createState() => _ModifierPickerDialogState();
+}
+
+class _ModifierPickerDialogState extends State<_ModifierPickerDialog> {
+  /// Options sélectionnées par groupe : {indexGroupe: {indexOption…}}.
+  late final Map<int, Set<int>> _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = {
+      for (int i = 0; i < widget.item.modifierGroups.length; i++) i: <int>{},
+    };
+  }
+
+  /// Plancher de choix requis pour un groupe (obligatoire → au moins 1).
+  int _minFor(ModifierGroup g) => g.minSelect ?? (g.required ? 1 : 0);
+
+  /// Le groupe satisfait-il sa contrainte de sélection ?
+  bool _groupSatisfied(int gi, ModifierGroup g) =>
+      _selected[gi]!.length >= _minFor(g);
+
+  /// Tous les groupes sont-ils satisfaits (bouton d'ajout actif) ?
+  bool get _allSatisfied {
+    for (int i = 0; i < widget.item.modifierGroups.length; i++) {
+      if (!_groupSatisfied(i, widget.item.modifierGroups[i])) return false;
+    }
+    return true;
+  }
+
+  double get _totalDelta {
+    double d = 0;
+    widget.item.modifierGroups.asMap().forEach((gi, g) {
+      for (final oi in _selected[gi]!) {
+        d += g.options[oi].priceDeltaCdf;
+      }
+    });
+    return d;
+  }
+
+  void _toggleSingle(int gi, int oi) {
+    setState(() => _selected[gi] = {oi});
+  }
+
+  void _toggleMulti(int gi, int oi, ModifierGroup g) {
+    final set = _selected[gi]!;
+    setState(() {
+      if (set.contains(oi)) {
+        set.remove(oi);
+      } else {
+        // Respect du maximum : au-delà, on n'ajoute pas.
+        if (g.maxSelect != null && set.length >= g.maxSelect!) return;
+        set.add(oi);
+      }
+    });
+  }
+
+  void _confirm() {
+    // Construit la note : « Bien cuit · +Fromage » (les options à surcoût
+    // sont préfixées d'un « + »).
+    final tokens = <String>[];
+    double delta = 0;
+    widget.item.modifierGroups.asMap().forEach((gi, g) {
+      for (final oi in _selected[gi]!) {
+        final opt = g.options[oi];
+        delta += opt.priceDeltaCdf;
+        tokens.add(opt.priceDeltaCdf > 0 ? '+${opt.name}' : opt.name);
+      }
+    });
+    Navigator.pop(
+      context,
+      _ModifierResult(priceDelta: delta, note: tokens.join(' · ')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final groups = widget.item.modifierGroups;
+    final totalPrice = widget.item.priceCdf + _totalDelta;
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 480,
+          maxHeight: MediaQuery.of(context).size.height * 0.9,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.item.name,
+                            style: theme.textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 2),
+                        Text(formatCurrency(widget.item.priceCdf, 'CDF'),
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant)),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Fermer',
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                shrinkWrap: true,
+                children: [
+                  for (int gi = 0; gi < groups.length; gi++)
+                    _buildGroup(theme, gi, groups[gi]),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Row(
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Annuler'),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _allSatisfied ? _confirm : null,
+                      icon: const Icon(Icons.add_shopping_cart),
+                      label: Text(
+                          'Ajouter · ${formatCurrency(totalPrice, 'CDF')}'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGroup(ThemeData theme, int gi, ModifierGroup g) {
+    final satisfied = _groupSatisfied(gi, g);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(g.name,
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: (g.required && !satisfied
+                        ? theme.colorScheme.error
+                        : theme.colorScheme.primary)
+                    .withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                g.required ? 'Obligatoire' : 'Facultatif',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: g.required && !satisfied
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.primary,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (!g.isSingleChoice && g.maxSelect != null)
+          Text('Jusqu\'à ${g.maxSelect} choix',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        const SizedBox(height: 4),
+        for (int oi = 0; oi < g.options.length; oi++)
+          _buildOption(theme, gi, oi, g),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildOption(ThemeData theme, int gi, int oi, ModifierGroup g) {
+    final opt = g.options[oi];
+    final selected = _selected[gi]!.contains(oi);
+    final delta = opt.priceDeltaCdf;
+    final trailing = delta > 0
+        ? Text('+${formatCurrency(delta, 'CDF')}',
+            style: TextStyle(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w600))
+        : null;
+    if (g.isSingleChoice) {
+      return RadioListTile<int>(
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+        value: oi,
+        groupValue: _selected[gi]!.isEmpty ? null : _selected[gi]!.first,
+        onChanged: (_) => _toggleSingle(gi, oi),
+        title: Text(opt.name),
+        secondary: trailing,
+      );
+    }
+    // Choix multiple : désactive les cases non cochées une fois le max atteint.
+    final atMax = g.maxSelect != null && _selected[gi]!.length >= g.maxSelect!;
+    return CheckboxListTile(
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      value: selected,
+      onChanged:
+          (!selected && atMax) ? null : (_) => _toggleMulti(gi, oi, g),
+      title: Text(opt.name),
+      secondary: trailing,
+      controlAffinity: ListTileControlAffinity.leading,
+    );
   }
 }

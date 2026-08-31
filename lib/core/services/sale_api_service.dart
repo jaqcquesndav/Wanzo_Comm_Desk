@@ -4,6 +4,7 @@ import '../models/api_response.dart';
 import '../exceptions/api_exceptions.dart';
 import '../../features/sales/models/sale.dart';
 import './api_client.dart';
+import './business_context_service.dart';
 import './image_upload_service.dart';
 
 class SaleApiService {
@@ -19,6 +20,8 @@ class SaleApiService {
   Map<String, dynamic> _saleToCreateDto(Sale sale) {
     return {
       if (sale.localId != null) 'localId': sale.localId,
+      // Mode métier ayant produit la vente (colonne mode du journal comptable).
+      'sourceMode': BusinessContextService().activityMode.apiValue,
       'date': sale.date.toIso8601String(),
       if (sale.dueDate != null) 'dueDate': sale.dueDate!.toIso8601String(),
       if (sale.customerId != null) 'customerId': sale.customerId,
@@ -58,6 +61,15 @@ class SaleApiService {
                   'itemType': item.itemType.name,
                   if (item.taxRate != null) 'taxRate': item.taxRate,
                   if (item.notes != null) 'notes': item.notes,
+                  // Mode salon : exécutant + commission figée (émis seulement
+                  // si renseignés). Chemin de sync offline (sync_service).
+                  if (item.performerId != null) 'performerId': item.performerId,
+                  if (item.performerName != null)
+                    'performerName': item.performerName,
+                  if (item.commissionRate != null)
+                    'commissionRate': item.commissionRate,
+                  if (item.commissionAmount != null)
+                    'commissionAmount': item.commissionAmount,
                 },
               )
               .toList(),

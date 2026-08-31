@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:wanzo/core/enums/currency_enum.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/services/platform_share_service.dart';
+import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:wanzo/features/customer/repositories/customer_repository.dart';
 import 'package:wanzo/constants/spacing.dart';
 import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
@@ -16,6 +18,8 @@ import 'package:wanzo/features/settings/models/settings.dart'
     as old_settings_model;
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
 import 'package:wanzo/features/invoice/services/invoice_service.dart';
+import 'package:wanzo/features/receivables/utils/receivables_utils.dart';
+import 'package:wanzo/features/receivables/widgets/overdue_chip.dart';
 import 'package:wanzo/services/receipt_printer_service.dart';
 
 /// Écran de détails d'une vente
@@ -78,23 +82,6 @@ class SaleDetailsScreen extends StatelessWidget {
               // Actions directes sur desktop
               if (isDesktop) ...[
                 IconButton(
-                  icon: const Icon(Icons.edit),
-                  tooltip: "Modifier",
-                  onPressed: () {
-                    context.push(
-                      '/sales/edit',
-                      extra: {
-                        'sale': sale,
-                        'currencySettings':
-                            context
-                                .read<CurrencySettingsCubit>()
-                                .state
-                                .settings,
-                      },
-                    );
-                  },
-                ),
-                IconButton(
                   icon: const Icon(Icons.print),
                   tooltip: "Imprimer",
                   onPressed:
@@ -121,20 +108,7 @@ class SaleDetailsScreen extends StatelessWidget {
                 // Menu d'options pour mobile
                 PopupMenuButton<String>(
                   onSelected: (value) {
-                    if (value == "edit") {
-                      // Naviguer vers l'écran d'édition
-                      context.push(
-                        '/sales/edit',
-                        extra: {
-                          'sale': sale,
-                          'currencySettings':
-                              context
-                                  .read<CurrencySettingsCubit>()
-                                  .state
-                                  .settings,
-                        },
-                      );
-                    } else if (value == "delete") {
+                    if (value == "delete") {
                       _showDeleteConfirmation(context);
                     } else if (value == "print") {
                       _showDocumentTypeSelectionDialog(
@@ -150,16 +124,6 @@ class SaleDetailsScreen extends StatelessWidget {
                   },
                   itemBuilder:
                       (context) => [
-                        const PopupMenuItem<String>(
-                          value: "edit",
-                          child: Row(
-                            children: [
-                              Icon(Icons.edit),
-                              SizedBox(width: 8),
-                              Text("Modifier"),
-                            ],
-                          ),
-                        ),
                         const PopupMenuItem<String>(
                           value: "print",
                           child: Row(
@@ -255,16 +219,24 @@ class SaleDetailsScreen extends StatelessWidget {
                           "Vente #${sale.id.substring(0, 8)}",
                           style: Theme.of(context).textTheme.headlineSmall,
                         ),
-                        Chip(
-                          label: Text(
-                            statusText,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
+                        Wrap(
+                          spacing: WanzoSpacing.sm,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (isSaleOverdue(sale))
+                              OverdueChip(days: overdueDays(sale)),
+                            Chip(
+                              label: Text(
+                                statusText,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              backgroundColor: statusColor,
+                              avatar: Icon(statusIcon, color: Colors.white),
                             ),
-                          ),
-                          backgroundColor: statusColor,
-                          avatar: Icon(statusIcon, color: Colors.white),
+                          ],
                         ),
                       ],
                     ),
@@ -523,16 +495,24 @@ class SaleDetailsScreen extends StatelessWidget {
                         "Vente #${sale.id.substring(0, 8)}",
                         style: Theme.of(context).textTheme.headlineSmall,
                       ),
-                      Chip(
-                        label: Text(
-                          statusText,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
+                      Wrap(
+                        spacing: WanzoSpacing.sm,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          if (isSaleOverdue(sale))
+                            OverdueChip(days: overdueDays(sale)),
+                          Chip(
+                            label: Text(
+                              statusText,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            backgroundColor: statusColor,
+                            avatar: Icon(statusIcon, color: Colors.white),
                           ),
-                        ),
-                        backgroundColor: statusColor,
-                        avatar: Icon(statusIcon, color: Colors.white),
+                        ],
                       ),
                     ],
                   ),
@@ -1032,6 +1012,25 @@ class SaleDetailsScreen extends StatelessWidget {
                   icon: const Icon(Icons.receipt, size: 18),
                   label: const Text("Ticket thermique"),
                 ),
+              // Envoi dématérialisé (e-facture / e-reçu) par messagerie.
+              if (!isPrintAction) ...[
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    _shareViaMessaging(context, useWhatsApp: true);
+                  },
+                  icon: const Icon(Icons.chat, size: 18, color: Colors.green),
+                  label: const Text("Envoyer par WhatsApp"),
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    _shareViaMessaging(context, useWhatsApp: false);
+                  },
+                  icon: const Icon(Icons.sms_outlined, size: 18),
+                  label: const Text("Envoyer par SMS"),
+                ),
+              ],
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext),
                 child: const Text("Annuler"),
@@ -1153,6 +1152,57 @@ class SaleDetailsScreen extends StatelessWidget {
           ),
         );
       }
+    }
+  }
+
+  /// Envoie la pièce (e-facture / e-reçu) par messagerie (WhatsApp ou SMS).
+  ///
+  /// Câble proprement l'ancien chemin `wa.me` : deep-link avec un message FR
+  /// pré-rempli (entreprise + référence + montant). Le numéro du client est
+  /// résolu depuis le cache local (offline-first) via le [CustomerRepository].
+  void _shareViaMessaging(
+    BuildContext context, {
+    required bool useWhatsApp,
+  }) async {
+    // Résolution du numéro de téléphone du client (best-effort, offline).
+    String? phone;
+    final customerId = sale.customerId;
+    if (customerId != null && customerId.isNotEmpty) {
+      try {
+        final customer =
+            await context.read<CustomerRepository>().getCustomer(customerId);
+        phone = customer?.phoneNumber;
+      } catch (_) {
+        phone = null;
+      }
+    }
+    if (!context.mounted) return;
+
+    final business =
+        BusinessContextService().currentContext?.companyName ??
+        BusinessContextService().businessUnitName ??
+        'Wanzo';
+    final reference = (sale.invoiceNumber != null &&
+            sale.invoiceNumber!.isNotEmpty)
+        ? sale.invoiceNumber!
+        : (sale.id.length >= 8 ? sale.id.substring(0, 8) : sale.id);
+    final currencyCode = sale.transactionCurrencyCode ?? 'CDF';
+    final amountText = formatCurrency(
+      sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf,
+      currencyCode,
+    );
+
+    final message = buildDocumentMessage(
+      businessName: business,
+      documentLabel: 'facture',
+      reference: reference,
+      amountText: amountText,
+    );
+
+    if (useWhatsApp) {
+      await launchWhatsAppOrSms(context, message: message, phone: phone);
+    } else {
+      await launchSmsMessage(context, message: message, phone: phone);
     }
   }
 

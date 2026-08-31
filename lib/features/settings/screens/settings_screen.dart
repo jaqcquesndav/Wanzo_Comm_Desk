@@ -136,117 +136,151 @@ class _SettingsScreenState extends State<SettingsScreen> {
     bool isDesktop,
     bool isTablet,
   ) {
-    final settingsItems = [
-      _SettingsItem(
-        icon: Icons.storefront,
-        title: 'Mode d\'activité',
-        subtitle:
-            'Configuration de l\'app : ${BusinessContextService().activityMode.label}',
-        onTap: _showActivityModePicker,
+    // Sections thématiques façon Windows 11 : liste verticale à colonne unique,
+    // chaque entrée = icône + titre + sous-titre + chevron (style ListTile).
+    final sections = <_SettingsSection>[
+      _SettingsSection(
+        title: l10n.settingsTitle,
+        items: [
+          _SettingsItem(
+            icon: Icons.storefront,
+            title: 'Mode d\'activité',
+            subtitle:
+                'Configuration de l\'app : ${BusinessContextService().activityMode.label}',
+            onTap: _showActivityModePicker,
+          ),
+          _SettingsItem(
+            icon: Icons.security,
+            title: 'Sécurité locale',
+            subtitle: 'Verrouillage par code PIN et sécurité hors ligne',
+            onTap: () => _navigateToSecuritySettings(),
+          ),
+        ],
       ),
-      _SettingsItem(
-        icon: Icons.business,
+      _SettingsSection(
         title: l10n.companyInformation,
-        subtitle: l10n.companyInformationSubtitle,
-        onTap: () => _navigateToCompanySettings(settings),
+        items: [
+          _SettingsItem(
+            icon: Icons.business,
+            title: l10n.companyInformation,
+            subtitle: l10n.companyInformationSubtitle,
+            onTap: () => _navigateToCompanySettings(settings),
+          ),
+          _SettingsItem(
+            icon: Icons.receipt_long,
+            title: l10n.invoiceSettings,
+            subtitle: l10n.invoiceSettingsSubtitle,
+            onTap: () => _navigateToInvoiceSettings(settings),
+          ),
+          _SettingsItem(
+            icon: Icons.account_balance_wallet,
+            title: l10n.financeSettings,
+            subtitle: l10n.financeSettingsSubtitle,
+            onTap: () => _navigateToFinancialSettings(),
+          ),
+        ],
       ),
-      _SettingsItem(
-        icon: Icons.receipt_long,
-        title: l10n.invoiceSettings,
-        subtitle: l10n.invoiceSettingsSubtitle,
-        onTap: () => _navigateToInvoiceSettings(settings),
-      ),
-      _SettingsItem(
-        icon: Icons.print,
-        title: l10n.printerSettingsTitle,
-        subtitle: l10n.printerSettingsSubtitle,
-        onTap: () => _navigateToPrinterSettings(),
-      ),
-      _SettingsItem(
-        icon: Icons.account_balance_wallet,
-        title: l10n.financeSettings,
-        subtitle: l10n.financeSettingsSubtitle,
-        onTap: () => _navigateToFinancialSettings(),
-      ),
-      _SettingsItem(
-        icon: Icons.palette,
-        title: l10n.appearanceAndDisplay,
-        subtitle: l10n.appearanceAndDisplaySubtitle,
-        onTap: () => _navigateToDisplaySettings(settings),
-      ),
-      _SettingsItem(
-        icon: Icons.inventory_2,
+      _SettingsSection(
         title: l10n.inventorySettings,
-        subtitle: l10n.inventorySettingsSubtitle,
-        onTap: () => _navigateToInventorySettings(settings),
+        items: [
+          _SettingsItem(
+            icon: Icons.inventory_2,
+            title: l10n.inventorySettings,
+            subtitle: l10n.inventorySettingsSubtitle,
+            onTap: () => _navigateToInventorySettings(settings),
+          ),
+          _SettingsItem(
+            icon: Icons.print,
+            title: l10n.printerSettingsTitle,
+            subtitle: l10n.printerSettingsSubtitle,
+            onTap: () => _navigateToPrinterSettings(),
+          ),
+        ],
       ),
-      _SettingsItem(
-        icon: Icons.backup,
-        title: l10n.backupAndReports,
-        subtitle: l10n.backupAndReportsSubtitle,
-        onTap: () => _navigateToBackupSettings(settings),
-      ),
-      _SettingsItem(
-        icon: Icons.notifications,
-        title: l10n.notifications,
-        subtitle: l10n.notificationsSubtitle,
-        onTap: () => _navigateToNotificationSettings(settings),
-      ),
-      _SettingsItem(
-        icon: Icons.security,
-        title: 'Sécurité locale',
-        subtitle: 'Verrouillage par code PIN et sécurité hors ligne',
-        onTap: () => _navigateToSecuritySettings(),
+      _SettingsSection(
+        title: l10n.appearanceAndDisplay,
+        items: [
+          _SettingsItem(
+            icon: Icons.palette,
+            title: l10n.appearanceAndDisplay,
+            subtitle: l10n.appearanceAndDisplaySubtitle,
+            onTap: () => _navigateToDisplaySettings(settings),
+          ),
+          _SettingsItem(
+            icon: Icons.notifications,
+            title: l10n.notifications,
+            subtitle: l10n.notificationsSubtitle,
+            onTap: () => _navigateToNotificationSettings(settings),
+          ),
+          _SettingsItem(
+            icon: Icons.backup,
+            title: l10n.backupAndReports,
+            subtitle: l10n.backupAndReportsSubtitle,
+            onTap: () => _navigateToBackupSettings(settings),
+          ),
+        ],
       ),
     ];
 
-    // Desktop: grille 3 colonnes, Tablet: 2 colonnes, Mobile: liste
-    if (isDesktop || isTablet) {
-      final crossAxisCount = isDesktop ? 3 : 2;
-      return Column(
+    // Colonne unique centrée, largeur confortable pour écran large.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 840),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: crossAxisCount,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: isDesktop ? 2.0 : 1.8,
+          for (final section in sections) ...[
+            _buildSectionHeader(section.title),
+            Card(
+              elevation: 1,
+              margin: const EdgeInsets.only(bottom: 8),
+              child: Column(
+                children: [
+                  for (var i = 0; i < section.items.length; i++) ...[
+                    if (i > 0) const Divider(height: 1, indent: 72),
+                    _buildSettingsTile(section.items[i]),
+                  ],
+                ],
+              ),
             ),
-            itemCount: settingsItems.length,
-            itemBuilder: (context, index) {
-              final item = settingsItems[index];
-              return _buildDesktopSettingsCard(
-                icon: item.icon,
-                title: item.title,
-                subtitle: item.subtitle,
-                onTap: item.onTap,
-              );
-            },
-          ),
-          const SizedBox(height: 24),
-          SizedBox(width: 300, child: _buildResetButton(l10n)),
+            const SizedBox(height: 16),
+          ],
+          const SizedBox(height: 8),
+          _buildResetButton(l10n),
         ],
-      );
-    }
+      ),
+    );
+  }
 
-    // Mobile: liste classique
-    return ListView(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      children: [
-        ...settingsItems.map(
-          (item) => _buildSettingsCard(
-            icon: item.icon,
-            title: item.title,
-            subtitle: item.subtitle,
-            onTap: item.onTap,
-          ),
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8, top: 4),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.4,
+          color: Theme.of(context).primaryColor,
         ),
-        const SizedBox(height: 16),
-        _buildResetButton(l10n),
-      ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsTile(_SettingsItem item) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      leading: Icon(
+        item.icon,
+        size: 28,
+        color: Theme.of(context).primaryColor,
+      ),
+      title: Text(
+        item.title,
+        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(item.subtitle),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: item.onTap,
     );
   }
 
@@ -276,6 +310,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ActivityMode.restaurant,
                   ActivityMode.atelier,
                   ActivityMode.atelierMaintenance,
+                  ActivityMode.salon,
                 ])
                   RadioListTile<ActivityMode>(
                     value: mode,
@@ -305,85 +340,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         );
       },
-    );
-  }
-
-  Widget _buildDesktopSettingsCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      elevation: 2,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).primaryColor.withAlpha((0.1 * 255).round()),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  icon,
-                  size: 32,
-                  color: Theme.of(context).primaryColor,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSettingsCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 2,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Icon(icon, size: 40, color: Theme.of(context).primaryColor),
-        title: Text(
-          title,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
-      ),
     );
   }
 
@@ -517,4 +473,12 @@ class _SettingsItem {
     required this.subtitle,
     required this.onTap,
   });
+}
+
+/// Helper class pour regrouper les items de settings en sections
+class _SettingsSection {
+  final String title;
+  final List<_SettingsItem> items;
+
+  const _SettingsSection({required this.title, required this.items});
 }

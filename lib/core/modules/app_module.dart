@@ -36,6 +36,12 @@ class AppModule {
   /// Séparateur visuel avant cet item (sidebar).
   final bool dividerBefore;
 
+  /// Groupe logique de la sidebar desktop (ex. « Finances », « Gestion »).
+  /// `null` = pas d'en-tête de section (cas du tableau de bord, tout en haut).
+  /// Le shell affiche un petit en-tête de section devant le PREMIER item d'une
+  /// section, ce qui remplace les séparateurs manuels par un regroupement clair.
+  final String? section;
+
   /// Ouvre le panneau Adha au lieu d'une route classique.
   final bool isAdhaPanel;
 
@@ -56,6 +62,7 @@ class AppModule {
     this.inSidebar = false,
     this.sidebarOrder = 0,
     this.dividerBefore = false,
+    this.section,
     this.isAdhaPanel = false,
     this.available = true,
   });

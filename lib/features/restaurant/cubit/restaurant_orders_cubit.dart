@@ -86,6 +86,16 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
     await _upsert(order.copyWith(lines: lines));
   }
 
+  /// Renomme le libellé d'une commande (« Table 4 », « Emporter », nom du
+  /// client…). Ignore un libellé vide (garde l'ancien).
+  Future<void> renameOrder(String orderId, String label) async {
+    final order = state.byId(orderId);
+    if (order == null) return;
+    final trimmed = label.trim();
+    if (trimmed.isEmpty || trimmed == order.label) return;
+    await _upsert(order.copyWith(label: trimmed));
+  }
+
   Future<void> setQuantity(
     String orderId,
     int lineIndex,

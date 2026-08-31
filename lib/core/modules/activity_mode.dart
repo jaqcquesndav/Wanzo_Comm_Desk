@@ -26,7 +26,12 @@ enum ActivityMode {
   /// Atelier de maintenance / réparation (électronique, électroménager, garage
   /// auto…) : même moteur de commandes que l'atelier, mais fiche APPAREIL/panne
   /// à la place des mensurations, et workflow diagnostic → réparation → test.
-  atelierMaintenance;
+  atelierMaintenance,
+
+  /// Salon de coiffure / beauté : carte de PRESTATIONS tarifées (distinctes du
+  /// stock), équipe de coiffeurs rémunérés à la commission (ou location de
+  /// fauteuil), ticket avec exécutant par ligne et suivi des commissions (paie).
+  salon;
 
   /// Vrai pour tout atelier (confection OU maintenance) — sert au gating des
   /// modules et écrans communs à l'atelier.
@@ -51,6 +56,8 @@ enum ActivityMode {
         return ActivityMode.atelier;
       case 'atelierMaintenance':
         return ActivityMode.atelierMaintenance;
+      case 'salon':
+        return ActivityMode.salon;
       case 'retail':
       default:
         return ActivityMode.retail;
@@ -72,6 +79,8 @@ enum ActivityMode {
         return 'Atelier (Couture / Cordonnerie)';
       case ActivityMode.atelierMaintenance:
         return 'Atelier de Maintenance / Réparation';
+      case ActivityMode.salon:
+        return 'Salon de coiffure / Beauté';
     }
   }
 
@@ -90,6 +99,8 @@ enum ActivityMode {
         return 'Atelier';
       case ActivityMode.atelierMaintenance:
         return 'Maintenance';
+      case ActivityMode.salon:
+        return 'Salon';
     }
   }
 
@@ -108,6 +119,8 @@ enum ActivityMode {
         return 'Confection sur mesure : commandes, mesures client, fabrication.';
       case ActivityMode.atelierMaintenance:
         return 'Réparation d\'appareils / garage : fiche appareil, panne, diagnostic, réparation.';
+      case ActivityMode.salon:
+        return 'Coiffure / beauté : carte de prestations, coiffeurs à la commission, ticket et paie.';
     }
   }
 }

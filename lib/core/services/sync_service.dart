@@ -284,62 +284,14 @@ class SyncService {
         await _updateLastFullSyncDate();
       }
 
-      // Récupérer toutes les opérations en attente (génériques)
-      final pendingOperations = await _databaseService.getPendingOperations();
-      debugPrint(
-        '${pendingOperations.length} opérations en attente de synchronisation',
-      );
-
-      // Synchroniser chaque opération générique
-      for (final operation in pendingOperations) {
-        if (!_connectivityService.isConnected) {
-          debugPrint('Synchronisation interrompue : connexion perdue');
-          _isSyncing = false;
-          _syncStatusController.add(SyncStatus.failed);
-          return false;
-        }
-
-        final id = operation['id'] as String;
-        try {
-          final endpoint = operation['endpoint'] as String;
-          final method = operation['method'] as String;
-          final body = operation['body'] as Map<String, dynamic>?;
-
-          // Exécuter l'opération sur l'API
-          await _executeApiOperation(method, endpoint, body);
-
-          // Marquer l'opération comme synchronisée
-          await _databaseService.markOperationAsSynchronized(id);
-
-          debugPrint('Opération $id synchronisée avec succès');
-        } catch (e) {
-          final msg = e.toString();
-          // Ressource supprimée côté serveur → retirer de la file
-          if (msg.contains("n'existe pas") ||
-              msg.contains('404') ||
-              msg.contains('Not Found')) {
-            debugPrint('⚠️ Op $id: ressource supprimée, retrait de la file');
-            await _databaseService.markOperationAsSynchronized(id);
-          }
-          // Conflit → version serveur prioritaire
-          else if (msg.contains('409') || msg.contains('Conflict')) {
-            debugPrint('⚠️ Op $id: conflit, retrait de la file');
-            await _databaseService.markOperationAsSynchronized(id);
-          }
-          // Session expirée → arrêter la sync
-          else if (msg.contains('Session expirée') || msg.contains('401')) {
-            debugPrint('🔒 Session expirée, arrêt sync');
-            break;
-          }
-          // Erreur transitoire → garder pour retry
-          else {
-            debugPrint('⏳ Op $id: échec transitoire (retry): $e');
-          }
-        }
+      // Rejouer la file d'opérations génériques en attente
+      final drained = await _drainPendingOperations();
+      if (!drained) {
+        // Connexion perdue en cours de route
+        _isSyncing = false;
+        _syncStatusController.add(SyncStatus.failed);
+        return false;
       }
-
-      // Nettoyer les opérations synchronisées anciennes
-      await _databaseService.cleanupSynchronizedOperations();
 
       _isSyncing = false;
       _syncStatusController.add(SyncStatus.completed);
@@ -383,6 +335,12 @@ class SyncService {
     required Set<String> backendIds,
     bool Function(T)? isPending,
   }) async {
+    // BUG #2 (data-loss) : ne JAMAIS vider un cache local non vide sur une
+    // réponse backend à 0 ligne. Un backend qui renvoie une liste VIDE (cas
+    // connu organizationId NULL / scope BU renvoyant 0) ne prouve pas que les
+    // entités ont été supprimées côté serveur : on saute la purge dans ce cas.
+    if (backendIds.isEmpty) return 0;
+
     int staleCount = 0;
     for (final key in box.keys.cast<String>().toList()) {
       if (!backendIds.contains(key)) {
@@ -1234,6 +1192,68 @@ class SyncService {
     }
   }
 
+  /// Rejoue la file générique des opérations en attente (POST/PUT/DELETE
+  /// enfilées par `_databaseService`). Idempotent : chaque opération réussie
+  /// est marquée synchronisée, les 404/409 sont retirés, les erreurs
+  /// transitoires restent en file pour un prochain passage.
+  /// Retourne `false` si la connexion a été perdue en cours de route
+  /// (l'appelant doit alors signaler l'échec).
+  Future<bool> _drainPendingOperations() async {
+    final pendingOperations = await _databaseService.getPendingOperations();
+    debugPrint(
+      '${pendingOperations.length} opérations en attente de synchronisation',
+    );
+
+    for (final operation in pendingOperations) {
+      if (!_connectivityService.isConnected) {
+        debugPrint('Synchronisation interrompue : connexion perdue');
+        return false;
+      }
+
+      final id = operation['id'] as String;
+      try {
+        final endpoint = operation['endpoint'] as String;
+        final method = operation['method'] as String;
+        final body = operation['body'] as Map<String, dynamic>?;
+
+        // Exécuter l'opération sur l'API
+        await _executeApiOperation(method, endpoint, body);
+
+        // Marquer l'opération comme synchronisée
+        await _databaseService.markOperationAsSynchronized(id);
+
+        debugPrint('Opération $id synchronisée avec succès');
+      } catch (e) {
+        final msg = e.toString();
+        // Ressource supprimée côté serveur → retirer de la file
+        if (msg.contains("n'existe pas") ||
+            msg.contains('404') ||
+            msg.contains('Not Found')) {
+          debugPrint('⚠️ Op $id: ressource supprimée, retrait de la file');
+          await _databaseService.markOperationAsSynchronized(id);
+        }
+        // Conflit → version serveur prioritaire
+        else if (msg.contains('409') || msg.contains('Conflict')) {
+          debugPrint('⚠️ Op $id: conflit, retrait de la file');
+          await _databaseService.markOperationAsSynchronized(id);
+        }
+        // Session expirée → arrêter la sync
+        else if (msg.contains('Session expirée') || msg.contains('401')) {
+          debugPrint('🔒 Session expirée, arrêt sync');
+          break;
+        }
+        // Erreur transitoire → garder pour retry
+        else {
+          debugPrint('⏳ Op $id: échec transitoire (retry): $e');
+        }
+      }
+    }
+
+    // Nettoyer les opérations synchronisées anciennes
+    await _databaseService.cleanupSynchronizedOperations();
+    return true;
+  }
+
   /// Exécute une opération API selon la méthode
   Future<void> _executeApiOperation(
     String method,
@@ -1301,6 +1321,11 @@ class SyncService {
       if (_operationJournalRepository != null) {
         await _syncOperationJournal();
       }
+
+      // BUG #7 : le full sync manuel doit AUSSI rejouer la file générique des
+      // opérations en attente (que `syncData` draine), sinon le bouton Sync
+      // laisse des POST/PUT/DELETE hors ligne non envoyés. Idempotent.
+      await _drainPendingOperations();
 
       await _updateLastFullSyncDate();
 

@@ -15,6 +15,8 @@ import '../../../core/widgets/desktop/row_actions_menu.dart';
 import '../../../services/export/table_export_service.dart';
 import '../bloc/sales_bloc.dart';
 import '../models/sale.dart';
+import '../../receivables/utils/receivables_utils.dart';
+import '../../receivables/widgets/overdue_chip.dart';
 
 /// Extension pour afficher le nom du statut
 extension SaleStatusDisplayExtension on SaleStatus {
@@ -499,31 +501,41 @@ class _SalesDataTable extends StatelessWidget {
                                   style: theme.textTheme.bodySmall,
                                 ),
                               ),
-                              // Statut
+                              // Statut (+ badge "En retard" si échéance dépassée)
                               DataCell(
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: sale.status.color.withValues(
-                                      alpha: 0.15,
-                                    ),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: sale.status.color.withValues(
-                                        alpha: 0.3,
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: sale.status.color.withValues(
+                                          alpha: 0.15,
+                                        ),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: sale.status.color.withValues(
+                                            alpha: 0.3,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        sale.status.displayName,
+                                        style: theme.textTheme.labelSmall
+                                            ?.copyWith(
+                                              color: sale.status.color,
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                       ),
                                     ),
-                                  ),
-                                  child: Text(
-                                    sale.status.displayName,
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      color: sale.status.color,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
+                                    if (isSaleOverdue(sale))
+                                      OverdueChip(days: overdueDays(sale)),
+                                  ],
                                 ),
                               ),
                               // Unité (si pas compact)
@@ -555,12 +567,6 @@ class _SalesDataTable extends StatelessWidget {
                                       label: 'Voir détails',
                                       icon: Icons.visibility,
                                       onSelected: () => onSaleTap(sale),
-                                    ),
-                                    RowAction(
-                                      label: 'Modifier',
-                                      icon: Icons.edit,
-                                      onSelected:
-                                          () => _editSale(context, sale),
                                     ),
                                     RowAction(
                                       label: 'Supprimer',
@@ -652,11 +658,6 @@ class _SalesDataTable extends StatelessWidget {
         ],
       ],
     );
-  }
-
-  /// Naviguer vers l'édition d'une vente
-  void _editSale(BuildContext context, Sale sale) {
-    context.push('/sales/edit', extra: sale);
   }
 
   /// Confirmer la suppression d'une vente

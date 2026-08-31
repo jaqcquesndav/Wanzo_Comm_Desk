@@ -26,6 +26,7 @@ import '../../features/settings/screens/settings_screen.dart';
 import '../../features/notifications/screens/notifications_screen.dart';
 import '../../features/notifications/screens/notification_settings_screen.dart';
 import '../../features/contacts/screens/contacts_screen.dart';
+import '../../features/receivables/screens/receivables_screen.dart';
 import '../../features/expenses/screens/add_expense_screen.dart';
 import '../../features/expenses/screens/expenses_list_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
@@ -40,6 +41,7 @@ import '../../features/restaurant/repositories/restaurant_order_repository.dart'
 import '../../features/restaurant/screens/restaurant_pos_screen.dart';
 import '../../features/restaurant/screens/restaurant_orders_board_screen.dart';
 import '../../features/restaurant/screens/restaurant_menu_config_screen.dart';
+import '../../features/restaurant/screens/restaurant_tables_screen.dart';
 import '../../features/restaurant/screens/restaurant_dashboard_screen.dart';
 import '../../features/restaurant/screens/restaurant_kitchen_screen.dart';
 import '../modules/activity_mode.dart';
@@ -47,6 +49,12 @@ import '../services/business_context_service.dart';
 import '../../features/atelier/cubit/atelier_orders_cubit.dart';
 import '../../features/atelier/services/atelier_api_service.dart';
 import '../../features/atelier/screens/atelier_orders_board_screen.dart';
+import '../../features/salon/cubit/salon_cubit.dart';
+import '../../features/salon/screens/salon_dashboard_screen.dart';
+import '../../features/salon/screens/salon_prestations_screen.dart';
+import '../../features/salon/screens/salon_stylists_screen.dart';
+import '../../features/salon/screens/salon_performance_screen.dart';
+import '../../features/salon/screens/salon_sale_screen.dart';
 
 /// Page SANS animation de transition : sur desktop, la navigation entre les
 /// écrans principaux doit être INSTANTANÉE (pas de fondu/glissement). On
@@ -68,6 +76,10 @@ class AppRouter {
   /// Cubit des commandes atelier (persistées backend), partagé via ShellRoute.
   late final AtelierOrdersCubit _atelierOrdersCubit =
       AtelierOrdersCubit(AtelierApiService())..load();
+
+  /// Cubit du mode salon (carte des prestations + coiffeurs), partagé par tous
+  /// les écrans `/salon/*` via un ShellRoute et par le tableau de bord salon.
+  late final SalonCubit _salonCubit = SalonCubit()..load();
 
   late final GoRouter router = GoRouter(
     debugLogDiagnostics: true,
@@ -155,8 +167,12 @@ class AppRouter {
         routes: [
           GoRoute(
             path: '/restaurant/orders',
-            pageBuilder: (context, state) =>
-                _noAnim(state, const RestaurantPosScreen()),
+            pageBuilder: (context, state) => _noAnim(
+              state,
+              RestaurantPosScreen(
+                initialOrderId: state.uri.queryParameters['orderId'],
+              ),
+            ),
           ),
           // Vue Board (Kanban) des commandes — complémentaire à la caisse.
           GoRoute(
@@ -187,11 +203,46 @@ class AppRouter {
           ),
         ],
       ),
+      // ── Mode salon : carte, coiffeurs, performances, ticket — cubit partagé.
+      ShellRoute(
+        builder: (context, state, child) => BlocProvider.value(
+          value: _salonCubit,
+          child: child,
+        ),
+        routes: [
+          GoRoute(
+            path: '/salon/prestations',
+            pageBuilder: (context, state) =>
+                _noAnim(state, const SalonPrestationsScreen()),
+          ),
+          GoRoute(
+            path: '/salon/stylists',
+            pageBuilder: (context, state) =>
+                _noAnim(state, const SalonStylistsScreen()),
+          ),
+          GoRoute(
+            path: '/salon/performance',
+            pageBuilder: (context, state) =>
+                _noAnim(state, const SalonPerformanceScreen()),
+          ),
+          GoRoute(
+            path: '/salon/sale',
+            pageBuilder: (context, state) =>
+                _noAnim(state, const SalonSaleScreen()),
+          ),
+        ],
+      ),
       // Composition de la carte (mode restaurant) — pas besoin du cubit.
       GoRoute(
         path: '/restaurant/menu',
         pageBuilder: (context, state) =>
             _noAnim(state, const RestaurantMenuConfigScreen()),
+      ),
+      // Tables & QR (mode restaurant) — un QR public signé par table.
+      GoRoute(
+        path: '/restaurant/tables',
+        pageBuilder: (context, state) =>
+            _noAnim(state, const RestaurantTablesScreen()),
       ),
       GoRoute(
         path: '/onboarding',
@@ -226,13 +277,23 @@ class AppRouter {
         // écran dédié (service/cuisine/plats), sinon le tableau de bord
         // boutique historique reste STRICTEMENT inchangé (aucun risque retail).
         pageBuilder: (context, state) {
-          if (BusinessContextService().activityMode ==
-              ActivityMode.restaurant) {
+          final mode = BusinessContextService().activityMode;
+          if (mode == ActivityMode.restaurant) {
             return _noAnim(
               state,
               BlocProvider.value(
                 value: _restaurantOrdersCubit,
                 child: const RestaurantDashboardScreen(),
+              ),
+            );
+          }
+          // Mode salon : tableau de bord dédié (carte/équipe), cubit partagé.
+          if (mode == ActivityMode.salon) {
+            return _noAnim(
+              state,
+              BlocProvider.value(
+                value: _salonCubit,
+                child: const SalonDashboardScreen(),
               ),
             );
           }
@@ -312,6 +373,12 @@ class AppRouter {
       GoRoute(
         path: '/adha',
         pageBuilder: (context, state) => _noAnim(state, const AdhaScreen()),
+      ),
+      // Créances clients (dette / recouvrement) — table desktop des débiteurs.
+      GoRoute(
+        path: '/receivables',
+        pageBuilder: (context, state) =>
+            _noAnim(state, const ReceivablesScreen()),
       ),
       GoRoute(
         path: '/customers',
