@@ -1,10 +1,59 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:wanzo/core/utils/currency_formatter.dart';
 
+import '../../sales/bloc/sales_bloc.dart';
+import '../../sales/models/sale_item.dart';
+import '../../sales/screens/add_sale_screen.dart';
 import '../cubit/restaurant_orders_cubit.dart';
 import '../models/restaurant_order.dart';
+
+/// Ouvre la facturation UNIFIÉE ([AddSaleScreen]) pré-remplie avec les lignes de
+/// la commande restaurant — MÊME page que la boutique et l'atelier (ticket de
+/// caisse, facture et journal des opérations en découlent) plutôt qu'une caisse
+/// « maison ». À la création de la vente, la commande est marquée réglée
+/// (mécanisme identique à l'ancienne caisse : [RestaurantOrdersCubit.markPaid]).
+Future<void> openRestaurantInvoice(
+  BuildContext context,
+  RestaurantOrdersCubit cubit,
+  RestaurantOrder order,
+) {
+  final salesBloc = context.read<SalesBloc>();
+  final items = [
+    for (final l in order.lines)
+      SaleItem.withCalculatedTotal(
+        // L'id est celui d'un plat de la carte (MenuItem), PAS d'un produit du
+        // stock → article de service : pas de décrément de stock côté backend.
+        productId: l.productId,
+        productName: l.productName,
+        quantity: l.quantity,
+        unitPrice: l.unitPriceCdf,
+        currencyCode: 'CDF',
+        exchangeRate: 1.0,
+        itemType: SaleItemType.service,
+        notes: l.note,
+      ),
+  ];
+  return Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (_) => BlocProvider.value(
+        value: salesBloc,
+        child: AddSaleScreen(
+          initialCustomerName: order.label,
+          initialItems: items,
+          // Défaut « espèces » : paiement intégral pré-rempli (la caisse le
+          // faisait aussi) ; l'utilisateur peut ajuster / changer la devise.
+          initialPaidAmount: order.totalCdf,
+          initialCurrencyCode: 'CDF',
+          initialNotes: 'Commande restaurant « ${order.label} »',
+          onSaleCreated: (_) => cubit.markPaid(order.id),
+        ),
+      ),
+    ),
+  );
+}
 
 /// Aperçu rapide d'une COMMANDE restaurant, en pull-up d'actions (façon atelier,
 /// cf. `AtelierOrdersBoardScreen._showActions`).
@@ -18,9 +67,9 @@ import '../models/restaurant_order.dart';
 ///  • « Ouvrir la commande » → caisse ([RestaurantPosScreen]) en prise de
 ///    commande (ajout de plats depuis la carte) ;
 ///  • « Envoyer en cuisine » (statut `open` uniquement) ;
-///  • « Encaisser » → ouvre DIRECTEMENT la caisse pré-sélectionnée sur cette
-///    commande (colonne de règlement de [RestaurantPosScreen]), sans passer par
-///    une liste intermédiaire ;
+///  • « Encaisser » → ouvre la facturation UNIFIÉE ([AddSaleScreen], même page
+///    que la boutique et l'atelier) pré-remplie avec les lignes de la commande,
+///    puis marque la commande réglée à la création de la vente ;
 ///  • « Modifier le libellé » (renomme la table / le client) ;
 ///  • « Annuler la commande ».
 /// Commande terminée (réglée / annulée) : « Supprimer de la liste ».
@@ -77,12 +126,12 @@ void showRestaurantOrderQuickView(
           ListTile(
             leading: Icon(Icons.point_of_sale, color: _accent[order.status]),
             title: const Text('Encaisser'),
-            subtitle: const Text('Ouvre la caisse (règlement) pour cette commande'),
+            subtitle: const Text('Facturation unifiée (ticket + facture)'),
             onTap: order.isEmpty
                 ? null
                 : () {
                     Navigator.pop(ctx);
-                    openPos();
+                    openRestaurantInvoice(context, cubit, order);
                   },
           ),
           ListTile(

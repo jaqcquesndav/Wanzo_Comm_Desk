@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import 'package:wanzo/core/modules/module_registry.dart';
+import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
+import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
 import 'package:wanzo/features/settings/repositories/settings_repository.dart';
@@ -162,31 +164,34 @@ class _RestaurantTablesScreenState extends State<RestaurantTablesScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () =>
-              context.canPop() ? context.pop() : context.go('/dashboard'),
+    // Conserve le shell de l'app (sidebar + header) : c'est un écran de nav
+    // principal (« Tables » dans la sidebar), pas une page poussée. Même
+    // approche que la cuisine / le board restaurant.
+    final ctx = BusinessContextService();
+    final index = ModuleRegistry.indexOfSidebarRoute(
+      ctx.activityMode,
+      ctx.currentContext?.userRole,
+      '/restaurant/tables',
+    );
+    return WanzoScaffold(
+      currentIndex: index < 0 ? 0 : index,
+      title: 'Tables & QR',
+      appBarActions: [
+        IconButton(
+          tooltip: 'Rafraîchir',
+          icon: const Icon(Icons.refresh),
+          onPressed: _loading ? null : _load,
         ),
-        title: const Text('Tables & QR'),
-        actions: [
-          IconButton(
-            tooltip: 'Rafraîchir',
-            icon: const Icon(Icons.refresh),
-            onPressed: _loading ? null : _load,
+        const SizedBox(width: 4),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: FilledButton.icon(
+            onPressed: _createTable,
+            icon: const Icon(Icons.add),
+            label: const Text('Nouvelle table'),
           ),
-          const SizedBox(width: 4),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: FilledButton.icon(
-              onPressed: _createTable,
-              icon: const Icon(Icons.add),
-              label: const Text('Nouvelle table'),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null

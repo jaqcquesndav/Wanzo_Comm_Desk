@@ -1,5 +1,21 @@
 import 'package:equatable/equatable.dart';
 
+/// Parse tolérant : TypeORM renvoie les colonnes Postgres `numeric` comme des
+/// CHAÎNES JSON (ex. "50.00"). Accepte donc un [num] OU une chaîne numérique.
+double _numToDouble(dynamic v) =>
+    v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
+
+int _numToInt(dynamic v) =>
+    v is num ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
+
+/// Variante nullable : `null` si la valeur est absente/illisible (ne force pas 0).
+double? _numToDoubleOrNull(dynamic v) =>
+    v == null ? null : (v is num ? v.toDouble() : double.tryParse(v.toString()));
+
+int? _numToIntOrNull(dynamic v) => v == null
+    ? null
+    : (v is num ? v.toInt() : int.tryParse(v.toString().split('.').first));
+
 /// Catégorie d'une PRESTATION de salon de coiffure.
 ///
 /// Deux familles se côtoient : le PUBLIC visé (Homme / Femme / Enfant) et le
@@ -187,13 +203,12 @@ class SalonService extends Equatable {
       id: (json['id'] ?? '').toString(),
       name: (json['name'] ?? '').toString(),
       category: SalonServiceCategoryX.fromValue(json['category'] as String?),
-      priceCdf: (json['priceCdf'] as num?)?.toDouble() ?? 0,
-      durationMinutes: (json['durationMinutes'] as num?)?.toInt(),
+      priceCdf: _numToDouble(json['priceCdf']),
+      durationMinutes: _numToIntOrNull(json['durationMinutes']),
       targetGender: json['targetGender'] as String?,
-      serviceCommissionPct:
-          (json['serviceCommissionPct'] as num?)?.toDouble(),
+      serviceCommissionPct: _numToDoubleOrNull(json['serviceCommissionPct']),
       active: json['active'] as bool? ?? true,
-      position: (json['position'] as num?)?.toInt() ?? 0,
+      position: _numToInt(json['position']),
     );
   }
 

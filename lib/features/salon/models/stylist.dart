@@ -1,5 +1,14 @@
 import 'package:equatable/equatable.dart';
 
+/// Parse tolérant : TypeORM renvoie les colonnes Postgres `numeric` comme des
+/// CHAÎNES JSON (ex. "50.00"). Accepte donc un [num] OU une chaîne numérique.
+double _numToDouble(dynamic v) =>
+    v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
+
+/// Variante nullable : `null` si la valeur est absente/illisible (ne force pas 0).
+double? _numToDoubleOrNull(dynamic v) =>
+    v == null ? null : (v is num ? v.toDouble() : double.tryParse(v.toString()));
+
 /// Modèle de rémunération d'un coiffeur/coiffeuse.
 ///
 /// - [commission] : payé au pourcentage du chiffre qu'il/elle réalise
@@ -124,11 +133,9 @@ class Stylist extends Equatable {
       name: (json['name'] ?? '').toString(),
       phone: json['phone'] as String?,
       payModel: StylistPayModelX.fromValue(json['payModel'] as String?),
-      serviceCommissionPct:
-          (json['serviceCommissionPct'] as num?)?.toDouble() ?? 0,
-      retailCommissionPct:
-          (json['retailCommissionPct'] as num?)?.toDouble() ?? 0,
-      boothRentAmount: (json['boothRentAmount'] as num?)?.toDouble(),
+      serviceCommissionPct: _numToDouble(json['serviceCommissionPct']),
+      retailCommissionPct: _numToDouble(json['retailCommissionPct']),
+      boothRentAmount: _numToDoubleOrNull(json['boothRentAmount']),
       active: json['active'] as bool? ?? true,
     );
   }

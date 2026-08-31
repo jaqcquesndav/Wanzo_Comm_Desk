@@ -11,6 +11,7 @@ import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/features/inventory/models/product.dart';
 import 'package:wanzo/features/inventory/repositories/inventory_repository.dart';
+import 'package:wanzo/features/sales/repositories/sales_repository.dart';
 
 import '../cubit/restaurant_orders_cubit.dart';
 import '../models/restaurant_order.dart';
@@ -54,15 +55,26 @@ class RestaurantDashboardScreen extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
           final m = _RestaurantMetrics.from(state.orders);
-          return LayoutBuilder(
-            builder: (context, c) {
-              final wide = c.maxWidth >= 900;
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _kpiRow(context, m),
+          // Chiffre du jour par DEVISE D'ENTRÉE : les commandes restaurant sont
+          // modélisées en CDF uniquement ; la seule source portant la devise de
+          // la transaction est la vente (`Sale`) créée à l'encaissement. On
+          // agrège donc les ventes du jour par `transactionCurrencyCode` (sans
+          // conversion : chaque devise affiche son propre total saisi), comme le
+          // tableau de bord boutique. Repli sur le total CDF des commandes
+          // réglées si la source ventes est indisponible.
+          return FutureBuilder<Map<String, double>>(
+            future: _salesTodayByCurrency(context),
+            builder: (context, snapshot) {
+              final salesToday = snapshot.data;
+              return LayoutBuilder(
+                builder: (context, c) {
+                  final wide = c.maxWidth >= 900;
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _kpiRow(context, m, salesToday),
                     const SizedBox(height: 28),
                     if (wide)
                       Row(
@@ -92,14 +104,40 @@ class RestaurantDashboardScreen extends StatelessWidget {
                       _section(context, 'Plats les plus vendus (aujourd\'hui)',
                           _topDishes(context, m.topDishes)),
                     ],
-                  ],
-                ),
+                      ],
+                    ),
+                  );
+                },
               );
             },
           );
         },
       ),
     );
+  }
+
+  /// Ventes du jour agrégées par devise de transaction (sans conversion).
+  /// Seule la vente (`Sale`) porte la devise saisie à l'encaissement, alors que
+  /// les commandes restaurant sont en CDF ; on lit donc directement le
+  /// `SalesRepository` (fourni au niveau application). En cas d'indisponibilité,
+  /// l'erreur remonte au `FutureBuilder` (repli sur le total CDF des commandes).
+  Future<Map<String, double>> _salesTodayByCurrency(BuildContext context) async {
+    final repo = context.read<SalesRepository>();
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    final sales = await repo.getSalesByDateRange(start, end);
+    double cdf = 0.0;
+    double usd = 0.0;
+    for (final s in sales) {
+      if (s.transactionCurrencyCode == 'USD') {
+        usd += s.totalAmountInTransactionCurrency ?? 0.0;
+      } else {
+        // CDF ou devise non renseignée : total en CDF.
+        cdf += s.totalAmountInCdf;
+      }
+    }
+    return {'CDF': cdf, 'USD': usd};
   }
 
   Widget _section(BuildContext context, String title, Widget child) {
@@ -171,7 +209,16 @@ class RestaurantDashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _kpiRow(BuildContext context, _RestaurantMetrics m) {
+  Widget _kpiRow(
+    BuildContext context,
+    _RestaurantMetrics m,
+    Map<String, double>? salesToday,
+  ) {
+    // Chiffre du jour par devise d'entrée : réutilise la répartition des ventes
+    // du jour par devise ; repli sur le total CDF des commandes réglées tant que
+    // la source ventes n'a pas répondu (ou est indisponible).
+    final double revenueCdf = salesToday?['CDF'] ?? m.revenueToday;
+    final double revenueUsd = salesToday?['USD'] ?? 0.0;
     final cards = [
       _KpiCard(
         icon: Icons.room_service,
@@ -185,11 +232,18 @@ class RestaurantDashboardScreen extends StatelessWidget {
         label: 'En cuisine',
         value: '${m.inKitchen}',
       ),
+      // Chiffre du jour en CDF et en USD (devise d'entrée de l'opération).
       _KpiCard(
         icon: Icons.payments,
         color: const Color(0xFF16A34A),
-        label: 'Chiffre du jour',
-        value: formatCurrency(m.revenueToday, 'CDF'),
+        label: 'Chiffre du jour (CDF)',
+        value: formatCurrency(revenueCdf, 'CDF'),
+      ),
+      _KpiCard(
+        icon: Icons.payments,
+        color: const Color(0xFF16A34A),
+        label: 'Chiffre du jour (USD)',
+        value: formatCurrency(revenueUsd, 'USD'),
       ),
       _KpiCard(
         icon: Icons.receipt_long,

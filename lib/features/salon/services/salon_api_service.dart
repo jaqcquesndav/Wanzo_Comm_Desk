@@ -41,13 +41,18 @@ class StylistCommission {
   });
 
   factory StylistCommission.fromJson(Map<String, dynamic> json) {
-    double d(dynamic v) => (v as num?)?.toDouble() ?? 0;
+    // TypeORM renvoie les colonnes Postgres `numeric` comme des CHAÎNES JSON
+    // (ex. "50.00") : accepter un num OU une chaîne numérique.
+    double d(dynamic v) =>
+        v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
+    int i(dynamic v) =>
+        v is num ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
     return StylistCommission(
       stylistId: (json['stylistId'] ?? '').toString(),
       stylistName: (json['stylistName'] ?? '').toString(),
       serviceRevenue: d(json['serviceRevenue']),
       retailRevenue: d(json['retailRevenue']),
-      servicesCount: (json['servicesCount'] as num?)?.toInt() ?? 0,
+      servicesCount: i(json['servicesCount']),
       serviceCommission: d(json['serviceCommission']),
       retailCommission: d(json['retailCommission']),
       totalCommission: d(json['totalCommission']),

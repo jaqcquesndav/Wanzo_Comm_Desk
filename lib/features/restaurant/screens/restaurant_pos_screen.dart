@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
@@ -13,33 +12,27 @@ import 'package:wanzo/features/customer/bloc/customer_bloc.dart';
 import 'package:wanzo/features/customer/bloc/customer_event.dart';
 import 'package:wanzo/features/customer/bloc/customer_state.dart';
 import 'package:wanzo/features/customer/models/customer.dart';
-import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
-import 'package:wanzo/features/sales/models/sale.dart';
-import 'package:wanzo/features/sales/models/sale_item.dart';
-import 'package:wanzo/services/receipt_printer_service.dart';
-import 'package:wanzo/features/settings/bloc/settings_bloc.dart'
-    as old_settings_bloc;
-import 'package:wanzo/features/settings/bloc/settings_state.dart'
-    as old_settings_state;
-import 'package:wanzo/features/settings/models/settings.dart'
-    as old_settings_model;
 
 import '../cubit/restaurant_orders_cubit.dart';
 import '../models/menu_course.dart';
 import '../models/menu_item.dart';
 import '../models/restaurant_order.dart';
 import '../repositories/menu_repository.dart';
+import '../widgets/restaurant_order_quick_view_dialog.dart';
 
 /// Point de vente restaurant — mise en page desktop dense en 3 colonnes :
-/// MENU (la CARTE) | TICKET (commande en cours) | CAISSE (règlement).
+/// MENU (la CARTE) | TICKET (commande en cours) | CAISSE (encaissement).
 /// Un bandeau supérieur sélectionne la commande active (table/emporter).
 ///
 /// La CARTE est un vrai catalogue de plats ([MenuItem]) authorés directement,
 /// PAS une surcouche du stock. La vente directe de produits stockables se fait
 /// via l'action « Vente directe » du tableau de bord (facturation boutique).
 ///
+/// L'encaissement passe par la facturation UNIFIÉE ([AddSaleScreen], via
+/// [openRestaurantInvoice]) — MÊME page que la boutique et l'atelier — et non
+/// une caisse « maison » : ticket de caisse, facture et journal en découlent.
+///
 /// Ce n'est PAS le mobile étiré : tout est visible d'un coup, adapté au comptoir.
-enum _PayMethod { cash, mobileMoney, credit }
 
 /// Petit badge de catégorie (« Plats », « Boissons »…) posé sur la photo.
 class _CourseBadge extends StatelessWidget {
@@ -66,24 +59,6 @@ class _CourseBadge extends StatelessWidget {
   }
 }
 
-extension _PayMethodX on _PayMethod {
-  String get label => switch (this) {
-        _PayMethod.cash => 'Espèces',
-        _PayMethod.mobileMoney => 'Mobile Money',
-        _PayMethod.credit => 'Crédit',
-      };
-  String get apiValue => switch (this) {
-        _PayMethod.cash => 'cash',
-        _PayMethod.mobileMoney => 'mobile_money',
-        _PayMethod.credit => 'credit',
-      };
-  IconData get icon => switch (this) {
-        _PayMethod.cash => Icons.payments,
-        _PayMethod.mobileMoney => Icons.smartphone,
-        _PayMethod.credit => Icons.schedule,
-      };
-}
-
 class RestaurantPosScreen extends StatefulWidget {
   /// Commande à pré-sélectionner à l'ouverture (ex. depuis le plan de salle),
   /// passée via le query param `orderId` de la route `/restaurant/orders`.
@@ -101,10 +76,6 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   bool _menuLoading = true;
   String? _selectedOrderId;
   String _search = '';
-
-  _PayMethod _method = _PayMethod.cash;
-  final _cashController = TextEditingController();
-  bool _submitting = false;
 
   @override
   void initState() {
@@ -140,12 +111,6 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   }
 
   @override
-  void dispose() {
-    _cashController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final ctx = BusinessContextService();
     final index = ModuleRegistry.indexOfSidebarRoute(
@@ -169,14 +134,12 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
               context.push('/restaurant/menu').then((_) => _loadMenu()),
         ),
       ],
-      body: BlocListener<SalesBloc, SalesState>(
-        listener: _onSalesState,
-        child: BlocBuilder<RestaurantOrdersCubit, RestaurantOrdersState>(
-          builder: (context, state) {
-            final orders = state.active;
-            // Auto-sélection cohérente si la commande courante disparaît.
-            final selected = state.byId(_selectedOrderId ?? '');
-            return Column(
+      body: BlocBuilder<RestaurantOrdersCubit, RestaurantOrdersState>(
+        builder: (context, state) {
+          final orders = state.active;
+          // Auto-sélection cohérente si la commande courante disparaît.
+          final selected = state.byId(_selectedOrderId ?? '');
+          return Column(
               children: [
                 _buildOrderStrip(orders, selected),
                 const Divider(height: 1),
@@ -234,38 +197,7 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
             );
           },
         ),
-      ),
-    );
-  }
-
-  void _onSalesState(BuildContext context, SalesState state) async {
-    if (!_submitting) return;
-    if (state is SalesOperationSuccess) {
-      final id = _selectedOrderId;
-      if (id != null) {
-        await context.read<RestaurantOrdersCubit>().markPaid(id);
-      }
-      if (!context.mounted) return;
-      setState(() {
-        _submitting = false;
-        _selectedOrderId = null;
-        _cashController.clear();
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Paiement enregistré'),
-          backgroundColor: Colors.green,
-        ),
       );
-    } else if (state is SalesError) {
-      setState(() => _submitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Échec : ${state.message}'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
-    }
   }
 
   // ── Bandeau des commandes actives ───────────────────────────────────────
@@ -617,13 +549,15 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     );
   }
 
-  // ── Colonne 3 : Caisse ─────────────────────────────────────────────────
+  // ── Colonne 3 : Caisse (encaissement) ──────────────────────────────────
+  // Le règlement lui-même (méthodes de paiement, montant reçu/monnaie, devise
+  // de transaction, ticket/facture) est délégué à la facturation UNIFIÉE
+  // [AddSaleScreen] — MÊME page que la boutique et l'atelier — via
+  // [openRestaurantInvoice]. Cette colonne n'affiche donc que le total et le
+  // bouton d'encaissement.
   Widget _buildCheckout(RestaurantOrder order) {
     final theme = Theme.of(context);
     final total = order.totalCdf;
-    final cashGiven =
-        double.tryParse(_cashController.text.replaceAll(' ', '')) ?? 0;
-    final change = cashGiven - total;
 
     return Container(
       color: theme.colorScheme.surfaceContainerLow,
@@ -647,64 +581,11 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Text('Règlement', style: theme.textTheme.labelLarge),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            children: [
-              for (final m in _PayMethod.values)
-                ChoiceChip(
-                  avatar: Icon(m.icon, size: 16),
-                  label: Text(m.label),
-                  selected: _method == m,
-                  onSelected: (_) => setState(() => _method = m),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (_method == _PayMethod.cash) ...[
-            TextField(
-              controller: _cashController,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: InputDecoration(
-                labelText: 'Montant reçu (CDF)',
-                isDense: true,
-                border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 8),
-            if (_cashController.text.isNotEmpty)
-              Text(
-                change >= 0
-                    ? 'Monnaie : ${formatCurrency(change, 'CDF')}'
-                    : 'Manque : ${formatCurrency(-change, 'CDF')}',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: change >= 0
-                      ? Colors.green.shade700
-                      : theme.colorScheme.error,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-          ],
           const SizedBox(height: 20),
           FilledButton.icon(
-            onPressed: order.isEmpty ||
-                    _submitting ||
-                    (_method == _PayMethod.cash && change < 0)
-                ? null
-                : () => _confirm(order),
-            icon: _submitting
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.check),
-            label: Text('Valider · ${formatCurrency(total, 'CDF')}'),
+            onPressed: order.isEmpty ? null : () => _settleViaInvoice(order),
+            icon: const Icon(Icons.point_of_sale),
+            label: Text('Encaisser · ${formatCurrency(total, 'CDF')}'),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
             ),
@@ -712,6 +593,19 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
         ],
       ),
     );
+  }
+
+  /// Encaissement via la facturation UNIFIÉE ([AddSaleScreen]) pré-remplie avec
+  /// le ticket. La commande est marquée réglée à la création de la vente
+  /// ([openRestaurantInvoice]) ; on désélectionne ensuite (elle quitte la liste
+  /// des commandes actives).
+  Future<void> _settleViaInvoice(RestaurantOrder order) async {
+    await openRestaurantInvoice(
+      context,
+      context.read<RestaurantOrdersCubit>(),
+      order,
+    );
+    if (mounted) setState(() => _selectedOrderId = null);
   }
 
   Future<void> _promptNewOrder() async {
@@ -813,92 +707,6 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     final order = await cubit.openOrder(label);
     if (!mounted) return;
     setState(() => _selectedOrderId = order.id);
-  }
-
-  void _confirm(RestaurantOrder order) {
-    final total = order.totalCdf;
-    final completed = _method == _PayMethod.cash;
-    final paid = completed ? total : 0.0;
-
-    final items = order.lines
-        .map(
-          (l) => SaleItem(
-            productId: l.productId,
-            productName: l.productName,
-            quantity: l.quantity,
-            unitPrice: l.unitPriceCdf,
-            totalPrice: l.totalCdf,
-            currencyCode: 'CDF',
-            exchangeRate: 1.0,
-            unitPriceInCdf: l.unitPriceCdf,
-            totalPriceInCdf: l.totalCdf,
-            // Plat préparé = revenu de prestation (service), pas un article de
-            // stock : évite un décrément de stock / « produit introuvable » sur
-            // un id qui est celui d'un MenuItem, pas d'un Product.
-            itemType: SaleItemType.service,
-          ),
-        )
-        .toList();
-
-    final sale = Sale(
-      id: '',
-      date: DateTime.now(),
-      customerId: 'resto_${order.id}',
-      customerName: order.label,
-      items: items,
-      totalAmountInCdf: total,
-      paidAmountInCdf: paid,
-      transactionCurrencyCode: 'CDF',
-      transactionExchangeRate: 1.0,
-      totalAmountInTransactionCurrency: total,
-      paidAmountInTransactionCurrency: paid,
-      discountPercentage: 0,
-      paymentMethod: _method.apiValue,
-      status: completed ? SaleStatus.completed : SaleStatus.pending,
-      notes: 'Commande restaurant ${order.label}',
-    );
-
-    setState(() => _submitting = true);
-    context.read<SalesBloc>().add(AddSale(sale));
-
-    // Auto-impression du ticket de caisse (ventes espèces) — même câblage que
-    // la boutique/atelier (AddSaleScreen). Fire-and-forget.
-    _autoPrintCashTicket(sale);
-  }
-
-  /// Imprime automatiquement le ticket de caisse pour un règlement espèces si
-  /// l'option est activée. Réutilise le même `ReceiptPrinterService` que les
-  /// autres modes (boutique, atelier).
-  Future<void> _autoPrintCashTicket(Sale sale) async {
-    // ROBUSTESSE : l'impression ne doit JAMAIS bloquer ni faire planter
-    // l'encaissement (imprimante absente/hors-ligne, service indisponible…).
-    try {
-      if (!ReceiptPrinterService.isCashPayment(sale.paymentMethod)) return;
-      // Capturer les paramètres AVANT tout await (pas d'accès à context ensuite).
-      old_settings_model.Settings? settings;
-      final st = context.read<old_settings_bloc.SettingsBloc>().state;
-      if (st is old_settings_state.SettingsLoaded) {
-        settings = st.settings;
-      } else if (st is old_settings_state.SettingsUpdated) {
-        settings = st.settings;
-      }
-      if (settings == null) return;
-      final printerService = ReceiptPrinterService();
-      if (!await printerService.getAutoPrintOnCashSale()) return;
-      final ok = await printerService.printCashReceipt(sale, settings);
-      if (!ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Impression automatique échouée. Vérifiez la connexion de l\'imprimante.',
-            ),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-    } catch (_) {
-      // Silencieux : la vente est déjà enregistrée, l'impression est accessoire.
-    }
   }
 }
 
