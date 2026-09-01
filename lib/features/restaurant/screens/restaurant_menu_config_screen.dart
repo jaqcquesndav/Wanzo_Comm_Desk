@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 
 import 'package:wanzo/core/platform/image_picker/image_picker_service_factory.dart';
 import 'package:wanzo/core/platform/image_picker/image_picker_service_interface.dart';
+import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
@@ -38,6 +39,7 @@ class _RestaurantMenuConfigScreenState
     extends State<RestaurantMenuConfigScreen> {
   final MenuRepository _repo = MenuRepository();
   final RestaurantApiService _api = RestaurantApiService();
+  final ImageUploadService _imageUpload = ImageUploadService();
   List<MenuItem> _items = [];
   bool _loading = true;
   bool _publishing = false;
@@ -66,6 +68,29 @@ class _RestaurantMenuConfigScreenState
     setState(() => _publishing = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
+      // Les photos ne sont d'abord enregistrées qu'en LOCAL (photoPath). Avant
+      // de publier, on héberge (Cloudinary) toute photo locale sans URL réseau,
+      // sinon la page publique (QR) n'affiche aucune image. Best-effort par
+      // plat : un upload en échec ne doit pas casser la publication complète.
+      for (var i = 0; i < _items.length; i++) {
+        final item = _items[i];
+        final localPath = item.photoPath?.trim() ?? '';
+        final hasUrl = (item.photoUrl?.trim().isNotEmpty) ?? false;
+        if (localPath.isEmpty || hasUrl) continue;
+        final file = File(localPath);
+        if (!await file.exists()) continue;
+        try {
+          final url = await _imageUpload.uploadImageWithRetry(file);
+          if (url == null || url.isEmpty) continue;
+          final updated = item.copyWith(photoUrl: url);
+          await _repo.upsert(updated);
+          if (!mounted) return;
+          _items[i] = updated;
+        } catch (_) {
+          // Upload de cette photo impossible : on garde le plat tel quel et on
+          // continue avec les suivants.
+        }
+      }
       await _api.bulkUpsertMenuItems(_items);
       if (!mounted) return;
       messenger.showSnackBar(
