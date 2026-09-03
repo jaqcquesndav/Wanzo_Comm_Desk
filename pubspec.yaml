@@ -121,6 +121,22 @@ dev_dependencies:
   mockito: ^5.4.4
   bloc_test: ^10.0.0
   msix: ^3.16.13
+  flutter_launcher_icons: ^0.14.1
+
+# Icônes d'app = logo métier BOUTIQUE/POS (store), pas le « W » générique.
+flutter_launcher_icons:
+  android: false
+  ios: false
+  web:
+    generate: true
+    image_path: "assets/icons/app_icon.png"
+    background_color: "#FFFFFF"
+    theme_color: "#F08C24"
+  windows:
+    generate: true
+    image_path: "assets/icons/app_icon.png"
+    icon_size: 48
+  image_path: "assets/icons/app_icon.png"
 
 flutter:
   uses-material-design: true
