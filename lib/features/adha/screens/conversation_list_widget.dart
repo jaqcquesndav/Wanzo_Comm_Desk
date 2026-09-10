@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/adha_message.dart';
+import '../../../core/shared_widgets/adha_logo.dart';
 
 /// Widget pour afficher la liste des conversations avec Adha
 class ConversationListWidget extends StatelessWidget {
@@ -37,11 +38,7 @@ class ConversationListWidget extends StatelessWidget {
               CircleAvatar(
                 backgroundColor: Colors.white,
                 radius: 24,
-                child: Icon(
-                  Icons.smart_toy,
-                  color: Colors.purple,
-                  size: 28,
-                ),
+                child: AdhaLogo(size: 32, dark: false),
               ),
               SizedBox(width: 16),
               Column(

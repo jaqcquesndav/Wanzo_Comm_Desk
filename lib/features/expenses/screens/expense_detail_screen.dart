@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import 'package:wanzo/core/models/operation_payment.dart';
 import 'package:wanzo/features/expenses/bloc/expense_bloc.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
+import 'package:wanzo/features/expenses/repositories/expense_repository.dart';
+import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/shared_widgets/payment_history_section.dart';
+import 'package:wanzo/core/shared_widgets/record_payment_dialog.dart';
+import 'package:wanzo/core/shared_widgets/responsive_action_bar.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_app_bar.dart';
 import 'package:wanzo/core/shared_widgets/smart_attachment.dart';
 import 'package:go_router/go_router.dart';
@@ -21,6 +27,18 @@ class ExpenseDetailScreen extends StatefulWidget {
 }
 
 class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
+  /// Dernière dépense connue. Le bloc est partagé avec les écrans de liste :
+  /// après une opération il émet `ExpensesLoaded`, que cet écran ne sait pas
+  /// afficher. On conserve donc la dépense pour continuer à l'afficher au lieu
+  /// de tomber sur « Veuillez charger une dépense » (écran blanc).
+  Expense? _expense;
+
+  /// Un règlement est en cours d'envoi (voile de chargement).
+  bool _submitting = false;
+
+  /// Change à chaque règlement pour recharger l'historique des tranches.
+  int _paymentsToken = 0;
+
   @override
   void initState() {
     super.initState();
@@ -43,90 +61,107 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     }
   }
 
-  // Afficher le dialogue pour enregistrer un paiement partiel
-  void _showPartialPaymentDialog(BuildContext context, Expense expense) {
-    final remainingAmount = expense.remainingAmount;
-    final TextEditingController amountController = TextEditingController();
-    final formKey = GlobalKey<FormState>();
+  /// Dialogue « Enregistrer un paiement » : montant (plafonné au reste à
+  /// payer), mode de règlement, date et référence.
+  ///
+  /// Le cumul n'est PLUS calculé côté client : la tranche part telle quelle
+  /// vers `POST expenses/:id/payments` et le serveur recalcule `paidAmount`
+  /// et `paymentStatus`.
+  Future<void> _showRecordPaymentDialog(Expense expense) async {
+    final draft = await showRecordPaymentDialog(
+      context,
+      remainingAmount: expense.remainingAmount,
+      currencyCode: expense.effectiveCurrencyCode,
+      exchangeRate: expense.exchangeRate,
+      defaultMethod: expense.paymentMethod,
+    );
+    if (draft == null || !mounted) return;
+    setState(() => _submitting = true);
+    context.read<ExpenseBloc>().add(
+      RecordExpensePayment(expense: expense, payment: draft),
+    );
+  }
 
-    showDialog(
+  /// Solde la dette d'un coup : une tranche égale au reste à payer.
+  Future<void> _settleInFull(Expense expense) async {
+    final remaining = expense.remainingAmount;
+    if (remaining <= 0) return;
+    final confirmed = await showDialog<bool>(
       context: context,
       builder:
           (dialogContext) => AlertDialog(
-            title: const Text('Enregistrer un paiement'),
-            content: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Montant restant: ${NumberFormat.currency(symbol: '${expense.effectiveCurrencyCode} ', decimalDigits: 2).format(remainingAmount)}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: amountController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: 'Montant payé',
-                      prefixText: '${expense.effectiveCurrencyCode} ',
-                      border: const OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Veuillez entrer un montant';
-                      }
-                      final amount = double.tryParse(value);
-                      if (amount == null || amount <= 0) {
-                        return 'Montant invalide';
-                      }
-                      if (amount > remainingAmount) {
-                        return 'Le montant dépasse le reste à payer';
-                      }
-                      return null;
-                    },
-                  ),
-                ],
-              ),
+            title: const Text('Solder la dette'),
+            content: Text(
+              'Enregistrer un règlement de '
+              '${formatCurrency(remaining, expense.effectiveCurrencyCode)} '
+              'et solder cette dépense ?',
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
+                onPressed: () => Navigator.pop(dialogContext, false),
                 child: const Text('Annuler'),
               ),
               ElevatedButton(
-                onPressed: () {
-                  if (formKey.currentState!.validate()) {
-                    final paidAmount = double.parse(amountController.text);
-                    final newTotalPaid =
-                        (expense.paidAmount ?? 0.0) + paidAmount;
-                    final newStatus =
-                        newTotalPaid >= expense.amount
-                            ? ExpensePaymentStatus.paid
-                            : ExpensePaymentStatus.partial;
-
-                    final updatedExpense = expense.copyWith(
-                      paidAmount: newTotalPaid,
-                      paymentStatus: newStatus,
-                    );
-
-                    context.read<ExpenseBloc>().add(
-                      UpdateExpense(updatedExpense),
-                    );
-                    Navigator.of(dialogContext).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Paiement enregistré')),
-                    );
-                  }
-                },
-                child: const Text('Enregistrer'),
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Confirmer'),
               ),
             ],
           ),
     );
+    if (confirmed != true || !mounted) return;
+    setState(() => _submitting = true);
+    context.read<ExpenseBloc>().add(
+      RecordExpensePayment(
+        expense: expense,
+        payment: PaymentDraft(
+          amount: remaining,
+          currencyCode: expense.effectiveCurrencyCode,
+          exchangeRate: expense.exchangeRate,
+          method: expense.paymentMethod ?? 'Espèces',
+          paidAt: DateTime.now(),
+        ),
+      ),
+    );
+  }
+
+  /// Réactions du bloc : on reste sur l'écran, on rafraîchit la dépense et on
+  /// informe l'utilisateur en cas d'échec.
+  void _onExpenseState(BuildContext context, ExpenseState state) {
+    if (!mounted) return;
+    if (state is ExpenseLoaded) {
+      setState(() => _expense = state.expense);
+    } else if (state is ExpensePaymentRecorded) {
+      setState(() {
+        _expense = state.expense;
+        _submitting = false;
+        _paymentsToken++;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(state.message),
+          backgroundColor: state.synced ? Colors.green : Colors.orange,
+        ),
+      );
+      // La liste des dépenses doit refléter le nouveau solde.
+      context.read<ExpenseBloc>().add(const LoadExpenses());
+    } else if (state is ExpenseOperationSuccess) {
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(state.message), backgroundColor: Colors.green),
+      );
+      // `ExpenseOperationSuccess` est suivi d'un `LoadExpenses` (état de
+      // liste) que cet écran ne sait pas afficher : on redemande la dépense.
+      context.read<ExpenseBloc>().add(LoadExpenseById(widget.expenseId));
+    } else if (state is ExpenseError) {
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(state.message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
   }
 
   // Vérifier et demander les permissions nécessaires au démarrage
@@ -141,11 +176,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currencyFormat = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'FCFA',
-    );
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final isDesktop =
@@ -164,23 +194,52 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
           ),
           body: Stack(
             children: [
-              BlocBuilder<ExpenseBloc, ExpenseState>(
+              BlocConsumer<ExpenseBloc, ExpenseState>(
+                listener: _onExpenseState,
                 builder: (context, state) {
-                  if (state is ExpenseLoading) {
+                  // Source d'affichage : l'état s'il porte bien une dépense
+                  // unitaire, sinon la dernière dépense connue (états de
+                  // liste, succès d'opération...). Évite l'écran blanc
+                  // « Veuillez charger une dépense » après un règlement.
+                  final expense =
+                      state is ExpenseLoaded
+                          ? state.expense
+                          : (state is ExpensePaymentRecorded
+                              ? state.expense
+                              : _expense);
+
+                  if (expense == null) {
+                    if (state is ExpenseError) {
+                      return Center(child: Text('Erreur: ${state.message}'));
+                    }
                     return const Center(child: CircularProgressIndicator());
-                  } else if (state is ExpenseLoaded) {
-                    final expense = state.expense;
-                    return isDesktop
-                        ? _buildDesktopLayout(context, expense, currencyFormat)
-                        : _buildMobileLayout(context, expense, currencyFormat);
-                  } else if (state is ExpenseError) {
-                    return Center(child: Text('Erreur: ${state.message}'));
                   }
-                  return const Center(
-                    child: Text('Veuillez charger une dépense.'),
-                  );
+
+                  // Devise propre a la depense (per-record), avec repli CDF.
+                  final currencyCode = expense.effectiveCurrencyCode;
+                  return isDesktop
+                      ? _buildDesktopLayout(context, expense, currencyCode)
+                      : _buildMobileLayout(context, expense, currencyCode);
                 },
               ),
+              // Voile de chargement pendant l'envoi d'un règlement.
+              if (_submitting)
+                Container(
+                  color: Colors.black.withAlpha(128),
+                  child: const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 10),
+                        Text(
+                          'Enregistrement du paiement...',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
         );
@@ -192,7 +251,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   Widget _buildDesktopLayout(
     BuildContext context,
     Expense expense,
-    NumberFormat currencyFormat,
+    String currencyCode,
   ) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
@@ -205,9 +264,11 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildMainCard(context, expense, currencyFormat),
+                _buildMainCard(context, expense, currencyCode),
                 const SizedBox(height: 24),
-                _buildPaymentStatusCard(context, expense, currencyFormat),
+                _buildPaymentStatusCard(context, expense, currencyCode),
+                const SizedBox(height: 24),
+                _buildPaymentHistory(expense),
               ],
             ),
           ),
@@ -234,16 +295,18 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   Widget _buildMobileLayout(
     BuildContext context,
     Expense expense,
-    NumberFormat currencyFormat,
+    String currencyCode,
   ) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          _buildMainCard(context, expense, currencyFormat),
+          _buildMainCard(context, expense, currencyCode),
           const SizedBox(height: 24),
-          _buildPaymentStatusCard(context, expense, currencyFormat),
+          _buildPaymentStatusCard(context, expense, currencyCode),
+          const SizedBox(height: 24),
+          _buildPaymentHistory(expense),
           const SizedBox(height: 24),
           _buildAttachmentsCard(context, expense),
         ],
@@ -255,7 +318,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   Widget _buildMainCard(
     BuildContext context,
     Expense expense,
-    NumberFormat currencyFormat,
+    String currencyCode,
   ) {
     return Card(
       elevation: 4,
@@ -306,7 +369,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                       const SizedBox(height: 8),
                       // Montant avec devise
                       Text(
-                        currencyFormat.format(expense.amount),
+                        formatCurrency(expense.amount, currencyCode),
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.bold,
                           color: Colors.red[700],
@@ -350,7 +413,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   Widget _buildPaymentStatusCard(
     BuildContext context,
     Expense expense,
-    NumberFormat currencyFormat,
+    String currencyCode,
   ) {
     return Card(
       elevation: 3,
@@ -419,7 +482,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                         style: TextStyle(fontSize: 14),
                       ),
                       Text(
-                        currencyFormat.format(expense.amount),
+                        formatCurrency(expense.amount, currencyCode),
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -436,7 +499,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                         style: TextStyle(fontSize: 14),
                       ),
                       Text(
-                        currencyFormat.format(expense.paidAmount ?? 0.0),
+                        formatCurrency(expense.paidAmount ?? 0.0, currencyCode),
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -458,7 +521,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                           ),
                         ),
                         Text(
-                          currencyFormat.format(expense.remainingAmount),
+                          formatCurrency(expense.remainingAmount, currencyCode),
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
@@ -471,36 +534,29 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                 ],
               ),
             ),
-            // Boutons d'action pour mobile
-            if (expense.paymentStatus != ExpensePaymentStatus.paid) ...[
+            // Boutons d'action de règlement.
+            // ResponsiveActionBar au lieu d'une Row d'Expanded : deux boutons
+            // libellés ne tiennent pas côte à côte sur un écran étroit.
+            if (expense.paymentStatus != ExpensePaymentStatus.paid &&
+                expense.remainingAmount > 0) ...[
               const SizedBox(height: 20),
-              Row(
-                children: [
-                  if (expense.remainingAmount > 0) ...[
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed:
-                            () => _showPartialPaymentDialog(context, expense),
-                        icon: const Icon(Icons.payments),
-                        label: const Text('Paiement partiel'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _markAsPaid(context, expense),
-                      icon: const Icon(Icons.check_circle),
-                      label: const Text('Marquer comme Payé'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
+              ResponsiveActionBar(
+                items: [
+                  ActionBarItem(
+                    icon: Icons.payments,
+                    label: 'Régler',
+                    background: Theme.of(context).primaryColor,
+                    onPressed:
+                        _submitting
+                            ? null
+                            : () => _showRecordPaymentDialog(expense),
+                  ),
+                  ActionBarItem(
+                    icon: Icons.check_circle,
+                    label: 'Solder',
+                    background: Colors.green,
+                    onPressed:
+                        _submitting ? null : () => _settleInFull(expense),
                   ),
                 ],
               ),
@@ -563,9 +619,12 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
             const SizedBox(height: 16),
             if (expense.remainingAmount > 0) ...[
               OutlinedButton.icon(
-                onPressed: () => _showPartialPaymentDialog(context, expense),
+                onPressed:
+                    _submitting
+                        ? null
+                        : () => _showRecordPaymentDialog(expense),
                 icon: const Icon(Icons.payments),
-                label: const Text('Enregistrer paiement partiel'),
+                label: const Text('Régler'),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   minimumSize: const Size(double.infinity, 44),
@@ -574,9 +633,9 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
               const SizedBox(height: 12),
             ],
             ElevatedButton.icon(
-              onPressed: () => _markAsPaid(context, expense),
+              onPressed: _submitting ? null : () => _settleInFull(expense),
               icon: const Icon(Icons.check_circle),
-              label: const Text('Marquer comme Payé'),
+              label: const Text('Solder'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
@@ -590,15 +649,16 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     );
   }
 
-  /// Marquer la dépense comme payée
-  void _markAsPaid(BuildContext context, Expense expense) {
-    final Expense updatedExpense = expense.copyWith(
-      paymentStatus: ExpensePaymentStatus.paid,
-      paidAmount: expense.amount,
-    );
-    context.read<ExpenseBloc>().add(UpdateExpense(updatedExpense));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Dépense marquée comme payée')),
+  /// Historique des tranches de règlement (`GET expenses/:id/payments`).
+  Widget _buildPaymentHistory(Expense expense) {
+    return PaymentHistorySection(
+      loader:
+          () => context.read<ExpenseRepository>().getExpensePayments(
+            expense.id,
+          ),
+      currencyCode: expense.effectiveCurrencyCode,
+      fallbackPaidAmount: expense.paidAmount ?? 0.0,
+      refreshToken: _paymentsToken,
     );
   }
 

@@ -111,17 +111,31 @@ class RestaurantApiService {
   // ── Carte (menu items) ───────────────────────────────────────────────────
 
   /// Publie la carte locale complète vers le backend (upsert en masse), afin
-  /// que la page publique (QR) affiche la carte à jour. Envoie un tableau
-  /// d'items ; l'ordre local est conservé via `position`.
-  Future<void> bulkUpsertMenuItems(List<MenuItem> items) async {
+  /// que la page publique (QR) ET les autres postes affichent la carte à jour.
+  /// Envoie un tableau d'items (id client CONSERVÉ côté backend → idempotent,
+  /// pas de doublon) ; l'ordre local est conservé via `position`. Renvoie les
+  /// items tels que persistés (avec leurs ids) pour permettre une réconciliation
+  /// locale éventuelle.
+  Future<List<MenuItem>> bulkUpsertMenuItems(List<MenuItem> items) async {
     final payload = <Map<String, dynamic>>[
       for (var i = 0; i < items.length; i++) _menuItemToApi(items[i], i),
     ];
-    await _apiClient.post(
+    final response = await _apiClient.post(
       'restaurant/menu-items/bulk-upsert',
       body: payload,
       requiresAuth: true,
     );
+    final saved = <MenuItem>[];
+    for (final raw in _asList(response)) {
+      if (raw is Map) {
+        try {
+          saved.add(MenuItem.fromJson(Map<String, dynamic>.from(raw)));
+        } catch (_) {
+          // Item malformé dans la réponse : ignoré (n'empêche pas la publication).
+        }
+      }
+    }
+    return saved;
   }
 
   /// Récupère la carte publiée côté backend.

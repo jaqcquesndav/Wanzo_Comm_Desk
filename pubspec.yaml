@@ -1,7 +1,7 @@
 name: wanzo
 description: "Une solution complète de gestion d'entreprise pour les PME africaines."
 publish_to: 'none'
-version: 1.0.2+3
+version: 1.0.5+6
 
 environment:
   sdk: ^3.7.0
@@ -145,6 +145,7 @@ flutter:
   # Actifs
   assets:
     - assets/images/
+    - assets/images/adha/
     - assets/icons/
     - assets/fonts/
     - assets/sounds/

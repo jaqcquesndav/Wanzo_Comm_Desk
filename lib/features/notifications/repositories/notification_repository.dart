@@ -428,6 +428,9 @@ class NotificationRepository {
 
   /// Ferme le repository et libère les ressources
   void dispose() {
+    _connectivityService.connectionStatus.removeListener(
+      _onConnectivityChanged,
+    );
     _notificationsController.close();
   }
 }

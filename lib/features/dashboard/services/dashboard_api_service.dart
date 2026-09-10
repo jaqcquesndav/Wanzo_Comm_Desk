@@ -1,5 +1,7 @@
 import 'package:hive/hive.dart';
+import '../../../core/enums/currency_enum.dart';
 import '../../../core/models/api_response.dart';
+import '../../../core/services/currency_service.dart';
 import '../../../core/services/logging_service.dart';
 import '../models/dashboard_data.dart';
 import '../models/operation_journal_entry.dart';
@@ -15,15 +17,21 @@ class DashboardApiService {
   final TransactionRepository _transactionRepository;
   final ExpenseRepository? _expenseRepository;
 
+  /// Service de devise (taux de change local/offline). Optionnel : quand il est
+  /// absent, on ne fabrique aucun taux et les montants restent séparés par devise.
+  final CurrencyService? _currencyService;
+
   DashboardApiService({
     required SalesRepository salesRepository,
     required CustomerRepository customerRepository,
     required TransactionRepository transactionRepository,
     ExpenseRepository? expenseRepository,
+    CurrencyService? currencyService,
   }) : _salesRepository = salesRepository,
        _customerRepository = customerRepository,
        _transactionRepository = transactionRepository,
-       _expenseRepository = expenseRepository;
+       _expenseRepository = expenseRepository,
+       _currencyService = currencyService;
 
   /// Récupère les données complètes du Dashboard pour une date spécifique
   Future<ApiResponse<DashboardData>> getDashboardData(DateTime date) async {
@@ -38,22 +46,16 @@ class DashboardApiService {
         todayEnd,
       );
 
-      // Calculer les montants en CDF et USD
+      // Ventilation des ventes par devise à partir du modèle générique
+      // (transactionCurrencyCode + totalAmountInTransactionCurrency) : USD si le
+      // code vaut 'USD', CDF sinon.
       double salesTodayCdf = 0.0;
       double salesTodayUsd = 0.0;
       for (final sale in sales) {
-        // Ventes en CDF
-        if (sale.transactionCurrencyCode == 'CDF' ||
-            sale.transactionCurrencyCode == null) {
-          salesTodayCdf += sale.totalAmountInCdf;
-        }
-
-        // Ventes en USD
         if (sale.transactionCurrencyCode == 'USD') {
           salesTodayUsd += sale.totalAmountInTransactionCurrency ?? 0.0;
-        } else if (sale.totalAmountInUsd != null &&
-            sale.transactionCurrencyCode == 'USD') {
-          salesTodayUsd += sale.totalAmountInUsd!;
+        } else {
+          salesTodayCdf += sale.totalAmountInCdf;
         }
       }
 
@@ -71,8 +73,14 @@ class DashboardApiService {
       );
       double expensesCdf = expensesByDevise['CDF'] ?? 0.0;
       double expensesUsd = expensesByDevise['USD'] ?? 0.0;
-      double expenses =
-          expensesCdf + (expensesUsd * 2800); // Total approximatif en CDF
+      // Total consolidé en CDF : la part USD est convertie au taux configuré
+      // localement (CurrencyService, offline). Sans service de devise, on ne
+      // fabrique aucun taux — le total se limite à la part CDF, les montants par
+      // devise restant exposés séparément (expensesCdf / expensesUsd).
+      double expenses = expensesCdf;
+      if (expensesUsd > 0 && _currencyService != null) {
+        expenses += _currencyService.convertToCdf(expensesUsd, Currency.USD);
+      }
 
       // Calculer les flux de trésorerie
       final cashFlowData = await _computeCashFlowData();
@@ -128,16 +136,10 @@ class DashboardApiService {
       double salesTodayCdf = 0.0;
       double salesTodayUsd = 0.0;
       for (final sale in sales) {
-        if (sale.transactionCurrencyCode == 'CDF' ||
-            sale.transactionCurrencyCode == null) {
-          salesTodayCdf += sale.totalAmountInCdf;
-        }
-
         if (sale.transactionCurrencyCode == 'USD') {
           salesTodayUsd += sale.totalAmountInTransactionCurrency ?? 0.0;
-        } else if (sale.totalAmountInUsd != null &&
-            sale.transactionCurrencyCode == 'USD') {
-          salesTodayUsd += sale.totalAmountInUsd!;
+        } else {
+          salesTodayCdf += sale.totalAmountInCdf;
         }
       }
 
@@ -362,9 +364,15 @@ class DashboardApiService {
             }
           }
 
-          // Flux par catégorie (en CDF)
-          final amountCdf =
-              isCdf ? amount : amount * 2800;
+          // Flux par catégorie (en CDF). La part non-CDF est convertie au taux
+          // configuré localement (CurrencyService, offline). Sans service de
+          // devise, on ne fabrique aucun taux : la part non-CDF est ignorée
+          // dans le total consolidé plutôt que fusionnée avec un faux taux.
+          final amountCdf = isCdf
+              ? amount
+              : (_currencyService != null
+                  ? _currencyService.convertToCdf(amount, Currency.USD)
+                  : 0.0);
           switch (entry.type.cashFlowCategory) {
             case CashFlowCategory.exploitation:
               result['exploitationFlowsCdf'] =

@@ -6,9 +6,12 @@ import '../../../core/modules/activity_mode.dart';
 import '../../../core/modules/module_registry.dart';
 import '../../../core/services/business_context_service.dart';
 import '../../../core/services/form_navigation_service.dart';
+import '../../../core/shared_widgets/empty_state_view.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/kanban/kanban_board.dart';
+import '../../../core/widgets/photo_gallery_viewer.dart';
+import '../../../core/widgets/smart_image.dart';
 import '../../sales/bloc/sales_bloc.dart';
 import '../../sales/models/sale_item.dart';
 import '../../sales/screens/add_sale_screen.dart';
@@ -28,9 +31,15 @@ import 'atelier_order_form_screen.dart';
 /// change son statut ; « Marquer réglée » déclenche la facturation automatique
 /// (création d'une vente côté backend). Réutilise le même `KanbanBoard` que le
 /// restaurant → cohérence et zéro duplication de logique board.
-class AtelierOrdersBoardScreen extends StatelessWidget {
+class AtelierOrdersBoardScreen extends StatefulWidget {
   const AtelierOrdersBoardScreen({super.key});
 
+  @override
+  State<AtelierOrdersBoardScreen> createState() =>
+      _AtelierOrdersBoardScreenState();
+}
+
+class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
   static const _accent = <AtelierOrderStatus, Color>{
     AtelierOrderStatus.draft: Color(0xFF64748B),
     AtelierOrderStatus.measured: Color(0xFF8B5CF6),
@@ -53,6 +62,32 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
     AtelierOrderStatus.cancelled,
   ];
 
+  /// Métier courant du board, dérivé du mode d'activité de l'entreprise
+  /// (atelier→couture, atelierMaintenance→maintenance, imprimerie→imprimerie).
+  /// C'est la clé d'ISOLATION : le board ne charge et n'affiche que ce métier.
+  AtelierMetier get _boardMetier {
+    final mode = BusinessContextService().activityMode;
+    if (mode == ActivityMode.atelierMaintenance) {
+      return AtelierMetier.maintenance;
+    }
+    if (mode == ActivityMode.imprimerie) return AtelierMetier.imprimerie;
+    return AtelierMetier.couture;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Le cubit atelier est un singleton partagé par le sous-arbre /atelier/* et
+    // il a pu être chargé SANS filtre de métier au démarrage. On (re)charge donc
+    // le board scopé au métier courant dès qu'il s'affiche → plus de fuite entre
+    // couture / maintenance / imprimerie.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<AtelierOrdersCubit>().load(metier: _boardMetier);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     // Conserve le shell de l'app (sidebar + header) : sinon écran nu sans
@@ -60,9 +95,7 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
     final ctx = BusinessContextService();
     // Métier courant → libellés d'étapes ADAPTÉS (un atelier de maintenance
     // n'affiche pas « Coupe/Couture » mais « Diagnostic/Réparation/Test »).
-    final boardMetier = ctx.activityMode == ActivityMode.atelierMaintenance
-        ? AtelierMetier.maintenance
-        : AtelierMetier.couture;
+    final boardMetier = _boardMetier;
     final index = ModuleRegistry.indexOfSidebarRoute(
       ctx.activityMode,
       ctx.currentContext?.userRole,
@@ -72,7 +105,9 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
       currentIndex: index < 0 ? 0 : index,
       title: boardMetier == AtelierMetier.maintenance
           ? 'Commandes — Maintenance'
-          : 'Commandes — Atelier',
+          : boardMetier == AtelierMetier.imprimerie
+              ? 'Commandes — Imprimerie'
+              : 'Commandes — Atelier',
       appBarActions: [
         IconButton(
           tooltip: 'Actualiser',
@@ -94,6 +129,17 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
             return _ErrorView(
               message: state.error!,
               onRetry: () => context.read<AtelierOrdersCubit>().load(),
+            );
+          }
+          // Aucune commande : état vide central avec CTA plutôt que des colonnes
+          // Kanban vides (qui n'invitent pas à créer une première commande).
+          if (state.orders.isEmpty) {
+            return EmptyStateView(
+              icon: Icons.assignment_outlined,
+              message: 'Aucune commande pour le moment.',
+              actionLabel: 'Nouvelle commande',
+              actionIcon: Icons.add,
+              onAction: () => _openForm(context),
             );
           }
           final cubit = context.read<AtelierOrdersCubit>();
@@ -199,7 +245,9 @@ class AtelierOrdersBoardScreen extends StatelessWidget {
             title: Text(
               order.metier == AtelierMetier.maintenance
                   ? 'Fiche de réparation / imprimer'
-                  : 'Bon de commande / imprimer',
+                  : order.metier == AtelierMetier.imprimerie
+                      ? 'Fiche travail d\'impression / imprimer'
+                      : 'Bon de commande / imprimer',
             ),
             subtitle: const Text('État de sortie imprimable (A4)'),
             onTap: () {
@@ -387,6 +435,12 @@ class _AtelierCard extends StatelessWidget {
   final AtelierOrder order;
   const _AtelierCard({required this.order});
 
+  /// Première photo du design / bon à tirer (imprimerie), si présente.
+  String? get _firstDesignPhoto {
+    final photos = order.printDetails?.designPhotos;
+    return (photos != null && photos.isNotEmpty) ? photos.first : null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -408,6 +462,26 @@ class _AtelierCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Imprimerie : la vignette du design / bon à tirer est visible sur
+          // CHAQUE carte pour reconnaître le travail d'un coup d'œil.
+          if (_firstDesignPhoto != null) ...[
+            GestureDetector(
+              onTap: () => PhotoGalleryViewer.open(
+                context,
+                photos: order.printDetails!.designPhotos,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: SmartImage(
+                  imageUrl: _firstDesignPhoto,
+                  width: double.infinity,
+                  height: 96,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           Text(
             order.label,
             style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),

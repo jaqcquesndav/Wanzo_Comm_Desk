@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/services/currency_service.dart';
 import 'package:intl/intl.dart';
+import '../../receivables/utils/receivables_utils.dart';
 import '../../expenses/models/expense.dart';
 import '../../expenses/repositories/expense_repository.dart';
+import '../../expenses/utils/expense_payment_flow.dart';
+import 'package:wanzo/core/shared_widgets/responsive_action_bar.dart';
 import '../bloc/supplier_bloc.dart';
 import '../bloc/supplier_event.dart';
 import '../bloc/supplier_state.dart';
@@ -30,7 +34,15 @@ class SupplierDetailsScreen extends StatelessWidget {
       context.read<SupplierBloc>().add(LoadSupplier(supplierId));
 
       return Scaffold(
-        appBar: AppBar(title: Text(localizations.supplierDetailsTitle)),
+        appBar: AppBar(
+          title: Text(localizations.supplierDetailsTitle),
+          // Retour SÛR : pile vide (deep link) → repli sur Contacts.
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () =>
+                context.canPop() ? context.pop() : context.go('/contacts'),
+          ),
+        ),
         body: BlocBuilder<SupplierBloc, SupplierState>(
           builder: (context, state) {
             if (state is SupplierLoading) {
@@ -62,6 +74,12 @@ class SupplierDetailsScreen extends StatelessWidget {
         return Scaffold(
           appBar: AppBar(
             title: Text(localizations.supplierDetailsTitle),
+            // Retour SÛR : pile vide (deep link) → repli sur Contacts.
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () =>
+                  context.canPop() ? context.pop() : context.go('/contacts'),
+            ),
             actions: [
               IconButton(
                 icon: const Icon(Icons.edit),
@@ -168,6 +186,9 @@ class SupplierDetailsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                // Actions de contact direct : Appeler / WhatsApp / Email.
+                _buildContactActions(context, supplier),
                 const SizedBox(height: 16),
                 // Carte informations commerciales
                 Card(
@@ -275,6 +296,34 @@ class SupplierDetailsScreen extends StatelessWidget {
                                   localizations.unpaidExpensesCount(
                                     unpaid.length,
                                   ),
+                                ),
+                                const SizedBox(height: 12),
+                                // Wrap : le bouton passe à la ligne au lieu
+                                // de déborder sur une fenêtre étroite.
+                                Wrap(
+                                  alignment: WrapAlignment.end,
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    ElevatedButton.icon(
+                                      icon: const Icon(
+                                        Icons.payments_outlined,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Régler'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green.shade700,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                      onPressed:
+                                          () => _settlePayable(
+                                            context,
+                                            unpaid.toList(),
+                                            currencyService,
+                                            supplier,
+                                          ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -545,6 +594,9 @@ class SupplierDetailsScreen extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          // Actions de contact direct : Appeler / WhatsApp / Email.
+          _buildContactActions(context, supplier),
           const SizedBox(height: 16),
 
           Card(
@@ -634,36 +686,30 @@ class SupplierDetailsScreen extends StatelessWidget {
             const SizedBox(height: 16),
           ],
 
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              Expanded(
-                child: _buildActionButton(
-                  context,
-                  Icons.shopping_cart,
-                  localizations.placeOrderButtonLabel,
-                  onPressed: () => _placeOrder(context),
-                ),
+          // ResponsiveActionBar : trois boutons libellés ne tenaient pas dans
+          // une Row d'Expanded sur une fenêtre étroite (débordement).
+          ResponsiveActionBar(
+            items: [
+              ActionBarItem(
+                icon: Icons.shopping_cart,
+                label: localizations.placeOrderButtonLabel,
+                background: Theme.of(context).colorScheme.primaryContainer,
+                foreground: Theme.of(context).colorScheme.onPrimaryContainer,
+                onPressed: () => _placeOrder(context),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildActionButton(
-                  context,
-                  Icons.phone,
-                  localizations.callButtonLabel,
-                  onPressed:
-                      () => _makePhoneCall(context, supplier.phoneNumber),
-                ),
+              ActionBarItem(
+                icon: Icons.phone,
+                label: localizations.callButtonLabel,
+                background: Theme.of(context).colorScheme.primaryContainer,
+                foreground: Theme.of(context).colorScheme.onPrimaryContainer,
+                onPressed: () => _makePhoneCall(context, supplier.phoneNumber),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildActionButton(
-                  context,
-                  Icons.delete,
-                  localizations.deleteButtonLabel,
-                  isDestructive: true,
-                  onPressed: () => _confirmDelete(context, supplier),
-                ),
+              ActionBarItem(
+                icon: Icons.delete,
+                label: localizations.deleteButtonLabel,
+                background: Colors.red.withValues(alpha: 0.1),
+                foreground: Colors.red,
+                onPressed: () => _confirmDelete(context, supplier),
               ),
             ],
           ),
@@ -703,35 +749,6 @@ class SupplierDetailsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButton(
-    BuildContext context,
-    IconData icon,
-    String label, {
-    required VoidCallback onPressed,
-    bool isDestructive = false,
-  }) {
-    final theme = Theme.of(context);
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 18),
-      label: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 12),
-      ), // Adjusted
-      style: ElevatedButton.styleFrom(
-        backgroundColor:
-            isDestructive
-                ? Colors.red.withOpacity(0.1)
-                : theme.colorScheme.primaryContainer,
-        foregroundColor:
-            isDestructive ? Colors.red : theme.colorScheme.onPrimaryContainer,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-        textStyle: const TextStyle(fontSize: 12),
-      ),
-    );
-  }
-
   void _navigateToEditSupplier(BuildContext context, Supplier supplier) {
     final BuildContext currentContext = context;
     Navigator.push(
@@ -753,19 +770,113 @@ class SupplierDetailsScreen extends StatelessWidget {
     ).showSnackBar(SnackBar(content: Text(localizations.featureToImplement)));
   }
 
-  void _makePhoneCall(BuildContext context, String phoneNumber) {
-    final localizations = AppLocalizations.of(context)!;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(localizations.callingNumber(phoneNumber)),
-      ), // Corrected
+  /// Règle une dette fournisseur : choix de la pièce puis dialogue de
+  /// paiement (montant, mode, date, référence). On attend la réponse de
+  /// l'API avant d'informer l'utilisateur.
+  Future<void> _settlePayable(
+    BuildContext context,
+    List<Expense> unpaidExpenses,
+    CurrencyService currencyService,
+    Supplier supplier,
+  ) async {
+    final expense = await pickExpenseToSettle(
+      context,
+      unpaidExpenses,
+      formatAmount: currencyService.formatAmount,
+    );
+    if (expense == null || !context.mounted) return;
+    final updated = await startExpensePaymentFlow(context, expense);
+    if (updated != null && context.mounted) {
+      // Recharge la fiche pour rafraîchir le solde impayé affiché.
+      context.read<SupplierBloc>().add(LoadSupplier(supplier.id));
+    }
+  }
+
+  /// Rangée d'actions de contact direct : Appeler / WhatsApp / Email.
+  ///
+  /// [ResponsiveActionBar] au lieu d'une `Row` de trois `Expanded` : les
+  /// libellés débordaient sur les fenêtres étroites.
+  Widget _buildContactActions(BuildContext context, Supplier supplier) {
+    return ResponsiveActionBar(
+      items: [
+        ActionBarItem(
+          icon: Icons.phone,
+          label: 'Appeler',
+          background: Theme.of(context).colorScheme.primaryContainer,
+          foreground: Theme.of(context).colorScheme.onPrimaryContainer,
+          onPressed: () => _makePhoneCall(context, supplier.phoneNumber),
+        ),
+        ActionBarItem(
+          icon: Icons.chat,
+          label: 'WhatsApp',
+          background: Theme.of(context).colorScheme.primaryContainer,
+          foreground: Theme.of(context).colorScheme.onPrimaryContainer,
+          onPressed: () => _contactViaWhatsApp(context, supplier),
+        ),
+        ActionBarItem(
+          icon: Icons.email,
+          label: 'Email',
+          background: Theme.of(context).colorScheme.primaryContainer,
+          foreground: Theme.of(context).colorScheme.onPrimaryContainer,
+          onPressed: () => _sendEmail(context, supplier.email),
+        ),
+      ],
     );
   }
 
-  void _sendEmail(BuildContext context, String email) {
-    final localizations = AppLocalizations.of(context)!;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(localizations.emailingTo(email))), // Corrected
+  /// Lance un appel téléphonique réel vers le fournisseur (lien `tel:`).
+  Future<void> _makePhoneCall(BuildContext context, String phoneNumber) async {
+    if (phoneNumber.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucun numéro de téléphone disponible.')),
+      );
+      return;
+    }
+    final ok = await launchPhoneCall(phoneNumber);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible de lancer l\'appel.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Ouvre le client mail réel avec l'adresse du fournisseur pré-remplie.
+  Future<void> _sendEmail(BuildContext context, String email) async {
+    if (email.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucune adresse email disponible.')),
+      );
+      return;
+    }
+    final ok = await launchEmail(email);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible d\'ouvrir la messagerie.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Contacte le fournisseur via WhatsApp (repli SMS) sur son numéro enregistré.
+  Future<void> _contactViaWhatsApp(
+    BuildContext context,
+    Supplier supplier,
+  ) async {
+    if (supplier.phoneNumber.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucun numéro de téléphone disponible.')),
+      );
+      return;
+    }
+    await launchWhatsAppOrSms(
+      context,
+      message: 'Bonjour ${supplier.name},',
+      phone: supplier.phoneNumber,
     );
   }
 

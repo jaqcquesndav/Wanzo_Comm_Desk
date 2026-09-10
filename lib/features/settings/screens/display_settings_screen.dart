@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/widgets/desktop/responsive_form_container.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
+import 'package:wanzo/core/services/currency_display_service.dart';
 import '../bloc/settings_bloc.dart';
 import '../bloc/settings_event.dart';
 import '../bloc/settings_state.dart';
@@ -25,6 +26,10 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
   String _dateFormat = 'DD/MM/YYYY';
   bool _hasChanges = false;
 
+  /// Affichage double devise (CDF + USD). Persisté indépendamment via
+  /// [CurrencyDisplayService] (application immédiate, hors flux _hasChanges).
+  bool _dualCurrency = false;
+
   @override
   void initState() {
     super.initState();
@@ -33,6 +38,20 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
     _themeMode = widget.settings.themeMode;
     _language = widget.settings.language;
     _dateFormat = widget.settings.dateFormat;
+
+    _dualCurrency = CurrencyDisplayService.instance.dualCurrency.value;
+    CurrencyDisplayService.instance.load().then((_) {
+      if (!mounted) return;
+      setState(() {
+        _dualCurrency = CurrencyDisplayService.instance.dualCurrency.value;
+      });
+    });
+  }
+
+  /// Active/désactive la double devise et persiste immédiatement.
+  Future<void> _onDualCurrencyChanged(bool value) async {
+    setState(() => _dualCurrency = value);
+    await CurrencyDisplayService.instance.setDualCurrency(value);
   }
 
   /// Vérifie si des changements ont été effectués
@@ -129,6 +148,10 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
 
         // Format de date (pleine largeur)
         _buildDateFormatSection(l10n),
+        const SizedBox(height: 24),
+
+        // Préférences d'affichage (double devise)
+        _buildCurrencyDisplaySection(l10n),
         const SizedBox(height: 32),
 
         // Bouton d'enregistrement
@@ -249,6 +272,32 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
                 },
               ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCurrencyDisplaySection(AppLocalizations l10n) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Préférences d\'affichage',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: SwitchListTile(
+            value: _dualCurrency,
+            onChanged: _onDualCurrencyChanged,
+            title: const Text('Afficher la double devise (CDF et USD)'),
+            subtitle: Text(
+              _dualCurrency
+                  ? 'Affiche aussi l\'USD réel des opérations, à côté du CDF.'
+                  : 'Vue officielle en CDF (OHADA). Activez pour voir aussi l\'USD.',
+            ),
+            secondary: const Icon(Icons.currency_exchange),
           ),
         ),
       ],

@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import 'package:get_it/get_it.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
 import 'package:wanzo/core/services/sync_service.dart';
+import 'package:wanzo/core/platform/platform_service.dart';
+import 'package:wanzo/core/utils/currency_formatter.dart';
 
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/navigation/app_router.dart';
@@ -103,9 +105,19 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
     super.dispose();
   }
 
+  void _openExpenseForm(BuildContext context) {
+    FormNavigationService.instance.openExpenseForm(
+      context,
+      onSuccess: () => context.read<ExpenseBloc>().add(const LoadExpenses()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('dd/MM/yyyy', 'fr_FR');
+    final bool isNarrow =
+        MediaQuery.sizeOf(context).width <
+        PlatformService.instance.tabletMinWidth;
 
     return BlocBuilder<ExpenseBloc, ExpenseState>(
       builder: (context, state) {
@@ -127,7 +139,7 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
                               dateFormat.format(e.date),
                               e.motif,
                               e.category.displayName,
-                              '${e.amount.toStringAsFixed(2)} ${e.currencyCode ?? "CDF"}',
+                              formatCurrency(e.amount, e.effectiveCurrencyCode),
                             ],
                           )
                           .toList(),
@@ -147,18 +159,34 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
               tooltip: 'Actualiser',
             ),
           ],
-          floatingActionButton: FloatingActionButton(
-            onPressed:
-                () => FormNavigationService.instance.openExpenseForm(
-                  context,
-                  onSuccess:
-                      () =>
-                          context.read<ExpenseBloc>().add(const LoadExpenses()),
-                ),
-            tooltip: 'Nouvelle dépense',
-            child: const Icon(Icons.add),
-          ),
-          body: _buildBody(context, state),
+          floatingActionButton:
+              isNarrow
+                  ? FloatingActionButton(
+                    onPressed: () => _openExpenseForm(context),
+                    tooltip: 'Nouvelle dépense',
+                    child: const Icon(Icons.add),
+                  )
+                  : null,
+          body:
+              isNarrow
+                  ? _buildBody(context, state)
+                  : Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: Row(
+                          children: [
+                            FilledButton.icon(
+                              onPressed: () => _openExpenseForm(context),
+                              icon: const Icon(Icons.add),
+                              label: const Text('Nouvelle dépense'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(child: _buildBody(context, state)),
+                    ],
+                  ),
         );
       },
     );
@@ -244,10 +272,6 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
     List<Expense> expenses,
     double totalAmount,
   ) {
-    final currencyFormat = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'CDF',
-    );
     final dateFormat = DateFormat('dd/MM/yyyy');
 
     return Column(
@@ -264,7 +288,7 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               Text(
-                'Total: ${currencyFormat.format(totalAmount)}',
+                'Total: ${formatCurrency(totalAmount, 'CDF')}',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: Colors.red[700],
@@ -278,7 +302,6 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
         Expanded(
           child: _ExpensesDataTable(
             expenses: expenses,
-            currencyFormat: currencyFormat,
             dateFormat: dateFormat,
             onExpenseTap: (expense) {
               final idForNavigation = expense.hiveKey;
@@ -413,13 +436,11 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
 /// Widget DataTable pour afficher les dépenses
 class _ExpensesDataTable extends StatelessWidget {
   final List<Expense> expenses;
-  final NumberFormat currencyFormat;
   final DateFormat dateFormat;
   final Function(Expense) onExpenseTap;
 
   const _ExpensesDataTable({
     required this.expenses,
-    required this.currencyFormat,
     required this.dateFormat,
     required this.onExpenseTap,
   });
@@ -557,7 +578,10 @@ class _ExpensesDataTable extends StatelessWidget {
                               // Montant
                               DataCell(
                                 Text(
-                                  currencyFormat.format(expense.amount),
+                                  formatCurrency(
+                                    expense.amount,
+                                    expense.effectiveCurrencyCode,
+                                  ),
                                   style: theme.textTheme.bodyMedium?.copyWith(
                                     fontWeight: FontWeight.bold,
                                     color: Colors.red[700],

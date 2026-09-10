@@ -1,6 +1,7 @@
 import 'dart:io'; // Added for File type
 import 'dart:convert'; // Added for jsonDecode
 import 'package:wanzo/core/services/api_client.dart';
+import 'package:wanzo/core/services/currency_display_service.dart';
 import 'package:wanzo/core/models/api_response.dart';
 import 'package:wanzo/core/exceptions/api_exceptions.dart';
 import 'package:wanzo/features/company/models/company_profile.dart'; // Assurez-vous que ce modèle existe
@@ -39,6 +40,61 @@ class CompanyApiService {
       throw ServerException(
         'Failed to fetch company profile: An unexpected error occurred. $e',
       );
+    }
+  }
+
+  /// Récupère le taux de change central de l'entreprise.
+  ///
+  /// Autorité = accounting, exposé par gestion via
+  /// `GET /companies/current/exchange-rates` (scopé à l'entreprise du JWT).
+  /// Parse `{ baseCurrency, exchangeRates }`. Retourne `null` en cas d'échec
+  /// réseau, d'erreur serveur ou de format inattendu: l'appelant conserve alors
+  /// le dernier taux connu (offline-first, rien n'est écrasé).
+  Future<({String baseCurrency, Map<String, double> exchangeRates})?>
+  getCompanyExchangeRates() async {
+    try {
+      final response = await _apiClient.get(
+        'companies/current/exchange-rates',
+        requiresAuth: true,
+      );
+
+      // La réponse gestion est enveloppée { success, data: {...} } par
+      // l'ApiResponseInterceptor ; on tolère aussi une charge non enveloppée.
+      final Map<String, dynamic>? payload =
+          response is Map<String, dynamic>
+              ? (response['data'] is Map<String, dynamic>
+                  ? response['data'] as Map<String, dynamic>
+                  : response)
+              : null;
+      if (payload == null) return null;
+
+      // Amorce la préférence globale d'affichage double devise (CDF + USD)
+      // pilotée depuis l'app compta (champ `dualCurrencyDisplay`). Best-effort :
+      // n'écrase jamais un choix local déjà persisté (voir seedDefault) et ne
+      // fait jamais planter le fetch même si le champ est absent.
+      await CurrencyDisplayService.instance
+          .seedDefault(payload['dualCurrencyDisplay'] == true);
+
+      final rawRates = payload['exchangeRates'];
+      if (rawRates is! Map) return null;
+
+      final rates = <String, double>{};
+      rawRates.forEach((key, value) {
+        final rate = (value as num?)?.toDouble();
+        if (key is String && rate != null) {
+          rates[key] = rate;
+        }
+      });
+      if (rates.isEmpty) return null;
+
+      final base = payload['baseCurrency'];
+      return (
+        baseCurrency: base is String ? base : 'CDF',
+        exchangeRates: rates,
+      );
+    } catch (_) {
+      // Offline / erreur serveur / format inattendu: ne rien écraser.
+      return null;
     }
   }
 

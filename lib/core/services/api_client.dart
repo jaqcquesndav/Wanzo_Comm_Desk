@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'offline_write_queue.dart';
 import '../config/env_config.dart'; // Import pour la configuration d'environnement
 import '../../features/auth/services/auth0_service.dart'; // Import pour le service Auth0
 import '../exceptions/api_exceptions.dart'; // Import des exceptions personnalisées
@@ -240,6 +241,82 @@ class ApiClient {
     return '$deviceCompatibleBaseUrl/$cleanedEndpoint';
   }
 
+  // ── Écritures hors ligne ───────────────────────────────────────────────────
+  // Les modules récents passent tous par ce client, qui n'avait aucune gestion
+  // du hors ligne : leurs écritures levaient une erreur réseau et la saisie de
+  // l'utilisateur était perdue. Toute écriture qui échoue pour une raison
+  // RÉSEAU est désormais conservée et rejouée dans l'ordre au retour de la
+  // connexion. On ne renvoie jamais un faux succès : l'appelant reçoit une
+  // OfflineQueuedException explicite.
+  static const Set<String> _queueableMethods = {
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+  };
+
+  /// Met l'écriture en file puis lève l'exception adaptée. Si la mise en file
+  /// échoue (stockage indisponible), on relaie l'erreur réseau d'origine pour
+  /// ne rien masquer.
+  Future<Never> _queueWriteOrThrow(
+    String method,
+    String endpoint,
+    dynamic body,
+    bool requiresAuth,
+    ApiException networkError,
+  ) async {
+    if (!_queueableMethods.contains(method.toUpperCase())) {
+      throw networkError;
+    }
+    final queued = await OfflineWriteQueue.instance.enqueue(
+      method: method,
+      endpoint: endpoint,
+      body: body,
+      requiresAuth: requiresAuth,
+    );
+    if (!queued) throw networkError;
+    throw OfflineQueuedException(endpoint: endpoint);
+  }
+
+  /// Rejoue les écritures conservées hors ligne. À appeler au retour du
+  /// réseau. Retourne le bilan pour permettre un rafraîchissement des écrans.
+  Future<OfflineReplayReport> replayPendingWrites() {
+    return OfflineWriteQueue.instance.replay(
+      send: (method, endpoint, body, requiresAuth) async {
+        switch (method.toUpperCase()) {
+          case 'POST':
+            await post(endpoint, body: body, requiresAuth: requiresAuth);
+            break;
+          case 'PUT':
+            await put(endpoint, body: body, requiresAuth: requiresAuth);
+            break;
+          case 'PATCH':
+            await patch(endpoint, body: body, requiresAuth: requiresAuth);
+            break;
+          case 'DELETE':
+            await delete(endpoint, requiresAuth: requiresAuth);
+            break;
+          default:
+            throw ArgumentError('Méthode non rejouable : $method');
+        }
+      },
+      // Refus DÉFINITIF du serveur : validation, droits, entité disparue. Les
+      // rejouer indéfiniment ne ferait qu'empiler des échecs. 408 et 429 sont
+      // au contraire temporaires.
+      isPermanentFailure: (error) {
+        if (error is OfflineQueuedException) return false;
+        if (error is NetworkException) return false;
+        if (error is ApiException) {
+          final code = error.statusCode;
+          if (code == null) return false;
+          if (code == 408 || code == 429) return false;
+          return code >= 400 && code < 500;
+        }
+        return false;
+      },
+    );
+  }
+
   Future<dynamic> get(
     String endpoint, {
     Map<String, String>? queryParameters,
@@ -364,13 +441,25 @@ class ApiClient {
       return result;
     } on SocketException {
       _circuitBreaker.recordFailure(reason: 'SocketException');
-      throw NetworkException(
-        'Could not connect to the server',
-        endpoint: endpoint,
+      return _queueWriteOrThrow(
+        'POST',
+        endpoint,
+        body,
+        requiresAuth,
+        NetworkException(
+          'Could not connect to the server',
+          endpoint: endpoint,
+        ),
       );
     } on HttpException {
       _circuitBreaker.recordFailure(reason: 'HttpException');
-      throw NetworkException('Could not find the server', endpoint: endpoint);
+      return _queueWriteOrThrow(
+        'POST',
+        endpoint,
+        body,
+        requiresAuth,
+        NetworkException('Could not find the server', endpoint: endpoint),
+      );
     } on FormatException {
       throw ResponseFormatException('Bad response format', endpoint: endpoint);
     } catch (e) {
@@ -438,13 +527,25 @@ class ApiClient {
       return result;
     } on SocketException {
       _circuitBreaker.recordFailure(reason: 'SocketException');
-      throw NetworkException(
-        'Could not connect to the server',
-        endpoint: endpoint,
+      return _queueWriteOrThrow(
+        'PUT',
+        endpoint,
+        body,
+        requiresAuth,
+        NetworkException(
+          'Could not connect to the server',
+          endpoint: endpoint,
+        ),
       );
     } on HttpException {
       _circuitBreaker.recordFailure(reason: 'HttpException');
-      throw NetworkException('Could not find the server', endpoint: endpoint);
+      return _queueWriteOrThrow(
+        'PUT',
+        endpoint,
+        body,
+        requiresAuth,
+        NetworkException('Could not find the server', endpoint: endpoint),
+      );
     } on FormatException {
       throw ResponseFormatException('Bad response format', endpoint: endpoint);
     } catch (e) {
@@ -505,13 +606,25 @@ class ApiClient {
       return result;
     } on SocketException {
       _circuitBreaker.recordFailure(reason: 'SocketException');
-      throw NetworkException(
-        'Could not connect to the server',
-        endpoint: endpoint,
+      return _queueWriteOrThrow(
+        'PATCH',
+        endpoint,
+        body,
+        requiresAuth,
+        NetworkException(
+          'Could not connect to the server',
+          endpoint: endpoint,
+        ),
       );
     } on HttpException {
       _circuitBreaker.recordFailure(reason: 'HttpException');
-      throw NetworkException('Could not find the server', endpoint: endpoint);
+      return _queueWriteOrThrow(
+        'PATCH',
+        endpoint,
+        body,
+        requiresAuth,
+        NetworkException('Could not find the server', endpoint: endpoint),
+      );
     } on FormatException {
       throw ResponseFormatException('Bad response format', endpoint: endpoint);
     } catch (e) {
@@ -567,13 +680,25 @@ class ApiClient {
       return result;
     } on SocketException {
       _circuitBreaker.recordFailure(reason: 'SocketException');
-      throw NetworkException(
-        'Could not connect to the server',
-        endpoint: endpoint,
+      return _queueWriteOrThrow(
+        'DELETE',
+        endpoint,
+        null,
+        requiresAuth,
+        NetworkException(
+          'Could not connect to the server',
+          endpoint: endpoint,
+        ),
       );
     } on HttpException {
       _circuitBreaker.recordFailure(reason: 'HttpException');
-      throw NetworkException('Could not find the server', endpoint: endpoint);
+      return _queueWriteOrThrow(
+        'DELETE',
+        endpoint,
+        null,
+        requiresAuth,
+        NetworkException('Could not find the server', endpoint: endpoint),
+      );
     } on FormatException {
       throw ResponseFormatException('Bad response format', endpoint: endpoint);
     } catch (e) {

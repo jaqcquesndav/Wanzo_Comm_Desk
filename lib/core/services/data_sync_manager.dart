@@ -30,16 +30,19 @@ class DataSyncManager {
        _databaseService = databaseService,
        _apiService = apiService {
     // S'abonner aux changements de connectivité
-    _connectivityService.connectionStatus.addListener(() {
-      final isConnected = _connectivityService.isConnected;
-      if (isConnected) {
-        // Si la connexion est rétablie, lancer une synchronisation
-        Logger.info('Connexion rétablie, démarrage de la synchronisation...');
-        syncData();
-      } else {
-        Logger.info('Connexion perdue, synchronisation interrompue');
-      }
-    });
+    _connectivityService.connectionStatus.addListener(_onConnectivityChanged);
+  }
+
+  /// Handler nommé pour les changements de connectivité (permet removeListener)
+  void _onConnectivityChanged() {
+    final isConnected = _connectivityService.isConnected;
+    if (isConnected) {
+      // Si la connexion est rétablie, lancer une synchronisation
+      Logger.info('Connexion rétablie, démarrage de la synchronisation...');
+      syncData();
+    } else {
+      Logger.info('Connexion perdue, synchronisation interrompue');
+    }
   }
 
   /// Commence à surveiller la connectivité et à synchroniser les données périodiquement
@@ -64,6 +67,15 @@ class DataSyncManager {
     _syncTimer?.cancel();
     _syncTimer = null;
     debugPrint('Surveillance de la synchronisation arrêtée');
+  }
+
+  /// Libère les ressources (retire le listener de connectivité + annule le timer)
+  void dispose() {
+    _connectivityService.connectionStatus.removeListener(
+      _onConnectivityChanged,
+    );
+    _syncTimer?.cancel();
+    _syncTimer = null;
   }
 
   /// Synchronise les données avec l'API

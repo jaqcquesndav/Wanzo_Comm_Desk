@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/services/form_navigation_service.dart';
+import 'package:wanzo/core/platform/platform_service.dart';
 import 'package:wanzo/features/customer/bloc/customer_bloc.dart';
 import 'package:wanzo/features/customer/bloc/customer_event.dart';
 import 'package:wanzo/features/customer/screens/customers_screen.dart';
@@ -48,10 +49,43 @@ class _ContactsScreenState extends State<ContactsScreen>
     super.dispose();
   }
 
+  /// Ouvre le formulaire de création selon l'onglet actif (client / fournisseur).
+  void _openCreateForm() {
+    if (_tabController.index == 0) {
+      FormNavigationService.instance.openCustomerForm(
+        context,
+        onSuccess: () {
+          if (mounted) {
+            context.read<CustomerBloc>().add(const LoadCustomers());
+          }
+        },
+      );
+    } else {
+      FormNavigationService.instance.openSupplierForm(
+        context,
+        onSuccess: () {
+          if (mounted) {
+            context.read<SupplierBloc>().add(const LoadSuppliers());
+          }
+        },
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const int contactsPageIndex = 3;
     final localizations = AppLocalizations.of(context)!;
+
+    // Sur desktop/tablette la barre latérale est affichée : la création passe
+    // par un bouton de barre d'outils. Le FAB reste réservé au mobile étroit.
+    final bool isNarrow =
+        MediaQuery.sizeOf(context).width <
+        PlatformService.instance.tabletMinWidth;
+    final String createLabel =
+        _tabController.index == 0
+            ? localizations.contactsScreenAddClientTooltip
+            : localizations.contactsScreenAddSupplierTooltip;
 
     return WanzoScaffold(
       currentIndex: contactsPageIndex,
@@ -65,6 +99,19 @@ class _ContactsScreenState extends State<ContactsScreen>
       ],
       body: Column(
         children: [
+          if (!isNarrow)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Row(
+                children: [
+                  FilledButton.icon(
+                    onPressed: _openCreateForm,
+                    icon: const Icon(Icons.add),
+                    label: Text(createLabel),
+                  ),
+                ],
+              ),
+            ),
           TabBar(
             controller: _tabController,
             tabs: [
@@ -85,34 +132,14 @@ class _ContactsScreenState extends State<ContactsScreen>
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          if (_tabController.index == 0) {
-            FormNavigationService.instance.openCustomerForm(
-              context,
-              onSuccess: () {
-                if (mounted) {
-                  context.read<CustomerBloc>().add(const LoadCustomers());
-                }
-              },
-            );
-          } else {
-            FormNavigationService.instance.openSupplierForm(
-              context,
-              onSuccess: () {
-                if (mounted) {
-                  context.read<SupplierBloc>().add(const LoadSuppliers());
-                }
-              },
-            );
-          }
-        },
-        tooltip:
-            _tabController.index == 0
-                ? localizations.contactsScreenAddClientTooltip
-                : localizations.contactsScreenAddSupplierTooltip,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton:
+          isNarrow
+              ? FloatingActionButton(
+                onPressed: _openCreateForm,
+                tooltip: createLabel,
+                child: const Icon(Icons.add),
+              )
+              : null,
     );
   }
 }

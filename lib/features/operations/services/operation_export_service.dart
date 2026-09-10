@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/features/operations/models/operation.dart';
 
 /// Service pour l'export des opérations en différents formats
@@ -21,10 +22,6 @@ class OperationExportService {
       final boldFont = await PdfGoogleFonts.robotoBold();
 
       final dateFormat = DateFormat('dd/MM/yyyy');
-      final currencyFormat = NumberFormat.currency(
-        symbol: 'FC',
-        decimalDigits: 0,
-      );
 
       pdf.addPage(
         pw.MultiPage(
@@ -91,9 +88,9 @@ class OperationExportService {
                           dateFormat.format(op.date),
                           op.type.displayName,
                           op.description,
-                          currencyFormat.format(op.amountCdf),
+                          formatCurrency(op.amountCdf, 'CDF'),
                           op.amountUsd != null
-                              ? '\$${op.amountUsd!.toStringAsFixed(2)}'
+                              ? formatCurrency(op.amountUsd!, 'USD')
                               : '-',
                           op.status,
                         ];
@@ -108,7 +105,7 @@ class OperationExportService {
                       style: pw.TextStyle(font: boldFont, fontSize: 12),
                     ),
                     pw.Text(
-                      'Total CDF: ${currencyFormat.format(operations.fold<double>(0, (sum, op) => sum + op.amountCdf))}',
+                      'Total CDF: ${formatCurrency(operations.fold<double>(0, (sum, op) => sum + op.amountCdf), 'CDF')}',
                       style: pw.TextStyle(font: boldFont, fontSize: 12),
                     ),
                   ],

@@ -109,9 +109,26 @@ class AtelierSheetPdf {
     }
 
     final isMaintenance = order.metier == AtelierMetier.maintenance;
+    final isImprimerie = order.metier == AtelierMetier.imprimerie;
     final title = isMaintenance
         ? 'FICHE DE RÉCEPTION ET DE RÉPARATION'
-        : 'FICHE DE COMMANDE / BON DE LIVRAISON';
+        : isImprimerie
+            ? 'FICHE TRAVAIL D\'IMPRESSION'
+            : 'FICHE DE COMMANDE / BON DE LIVRAISON';
+
+    // Imprimerie : première image du design / BAT embarquée (optionnelle).
+    pw.Widget? designImage;
+    if (isImprimerie) {
+      final photos = order.printDetails?.designPhotos ?? const [];
+      if (photos.isNotEmpty) {
+        try {
+          designImage = pw.Image(await networkImage(photos.first),
+              height: 120, fit: pw.BoxFit.contain);
+        } catch (_) {
+          // Image optionnelle : on ignore toute erreur de chargement.
+        }
+      }
+    }
 
     doc.addPage(
       pw.Page(
@@ -129,6 +146,8 @@ class AtelierSheetPdf {
               pw.SizedBox(height: 12),
               if (isMaintenance)
                 ..._maintenanceBody(order, regular, bold, italic)
+              else if (isImprimerie)
+                ..._printBody(order, regular, bold, italic, designImage)
               else
                 ..._confectionBody(order, regular, bold, italic),
               pw.SizedBox(height: 12),
@@ -407,6 +426,89 @@ class AtelierSheetPdf {
       if (order.fabricProvidedBy != null)
         _inlineField('Tissu fourni par', order.fabricProvidedBy!.label,
             regular, bold),
+    ];
+  }
+
+  // ── Corps IMPRIMERIE ────────────────────────────────────────────────────
+  static List<pw.Widget> _printBody(
+    AtelierOrder order,
+    pw.Font regular,
+    pw.Font bold,
+    pw.Font italic,
+    pw.Widget? designImage,
+  ) {
+    final d = order.printDetails;
+    String sides(String? v) => v == 'recto-verso' ? 'Recto-verso' : 'Recto';
+    final dims = [
+      if (d?.width != null && d!.width!.isNotEmpty) d.width!,
+      if (d?.height != null && d!.height!.isNotEmpty) d.height!,
+    ].join(' x ');
+    final rows = <List<String>>[
+      ['Format', d?.format ?? '—'],
+      ['Support / matière', d?.support ?? '—'],
+      ['Quantité (tirage)', d?.quantity?.toString() ?? '—'],
+      ['Impression', sides(d?.printSides)],
+      ['Couleurs', d?.colorMode ?? '—'],
+      ['Finition / façonnage', d?.finishing ?? '—'],
+      if (dims.isNotEmpty) ['Dimensions', dims],
+      ['Bon à tirer (BAT)', (d?.batValidated ?? false) ? 'Validé' : 'En attente'],
+    ];
+
+    return [
+      _sectionTitle('TRAVAIL D\'IMPRESSION', bold),
+      pw.Table(
+        border: pw.TableBorder.all(color: PdfColors.grey300),
+        columnWidths: const {
+          0: pw.FlexColumnWidth(2),
+          1: pw.FlexColumnWidth(3),
+        },
+        children: [
+          for (final r in rows)
+            pw.TableRow(children: [
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(4),
+                child: pw.Text(r[0],
+                    style: pw.TextStyle(font: bold, fontSize: 9)),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(4),
+                child: pw.Text(r[1],
+                    style: pw.TextStyle(font: regular, fontSize: 9)),
+              ),
+            ]),
+        ],
+      ),
+      if (d?.operatorName != null || d?.machine != null) ...[
+        pw.SizedBox(height: 10),
+        pw.Row(
+          children: [
+            pw.Expanded(
+                child: _inlineField(
+                    'Opérateur', d?.operatorName ?? '—', regular, bold)),
+            pw.Expanded(
+                child: _inlineField(
+                    'Machine', d?.machine ?? '—', regular, bold)),
+          ],
+        ),
+      ],
+      if (d?.instructions != null && d!.instructions!.trim().isNotEmpty) ...[
+        pw.SizedBox(height: 10),
+        _sectionTitle('CONSIGNES', bold),
+        _paragraph(d.instructions!, regular),
+      ],
+      if (designImage != null) ...[
+        pw.SizedBox(height: 10),
+        _sectionTitle('DESIGN / BON À TIRER', bold),
+        pw.Container(
+          alignment: pw.Alignment.center,
+          padding: const pw.EdgeInsets.all(6),
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(color: PdfColors.grey300),
+            borderRadius: pw.BorderRadius.circular(3),
+          ),
+          child: designImage,
+        ),
+      ],
     ];
   }
 

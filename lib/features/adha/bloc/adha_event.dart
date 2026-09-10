@@ -305,6 +305,22 @@ class StreamError extends AdhaEvent {
   ];
 }
 
+/// Événement interne: étape agentique (tool_call / tool_result) reçue
+/// pendant le streaming. Sert à afficher un indicateur compact
+/// (« Lecture de la base de connaissance… », « Génération du document… »).
+class StreamToolStatus extends AdhaEvent {
+  final String conversationId;
+  final String status;
+
+  const StreamToolStatus({
+    required this.conversationId,
+    required this.status,
+  });
+
+  @override
+  List<Object?> get props => [conversationId, status];
+}
+
 /// Annule le streaming en cours
 class CancelStreaming extends AdhaEvent {
   final String? conversationId;

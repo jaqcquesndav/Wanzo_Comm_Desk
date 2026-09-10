@@ -1,13 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
-/// Widget affichant un message en cours de streaming avec effet typewriter
-/// Style inspiré de Claude/ChatGPT avec affichage progressif du texte
-class StreamingMessageWidget extends StatefulWidget {
+/// Widget affichant un message en cours de streaming.
+///
+/// Depuis l'optimisation desktop : PLUS d'effet typewriter local. Le texte
+/// affiché est directement le `partialContent` déjà batché par le BLoC
+/// (fenêtre de 60 ms). L'ancienne double animation (batch bloc + typewriter
+/// widget) faisait apparaître le texte en retard et provoquait un effet de
+/// saccade. On garde uniquement le curseur clignotant et le point pulsant.
+///
+/// Le contenu est rendu en markdown léger (MarkdownBody) — le MÊME rendu que
+/// le message final pour le cas texte courant — afin d'éliminer le flash de
+/// reformatage au moment où le streaming se fige en message définitif.
+class StreamingMessageWidget extends StatelessWidget {
   /// Contenu partiel reçu jusqu'à présent
   final String partialContent;
 
   /// Indique si le streaming est terminé
   final bool isComplete;
+
+  /// Étape agentique compacte en cours (« Lecture de la base de
+  /// connaissance… », « Génération du document… »). Null = aucune étape.
+  final String? toolStatus;
 
   /// Callback appelé quand l'utilisateur clique sur "Annuler"
   final VoidCallback? onCancel;
@@ -16,89 +30,9 @@ class StreamingMessageWidget extends StatefulWidget {
     super.key,
     required this.partialContent,
     this.isComplete = false,
+    this.toolStatus,
     this.onCancel,
   });
-
-  @override
-  State<StreamingMessageWidget> createState() => _StreamingMessageWidgetState();
-}
-
-class _StreamingMessageWidgetState extends State<StreamingMessageWidget> {
-  /// Texte actuellement affiché (peut être en retard par rapport à partialContent)
-  String _displayedText = '';
-
-  /// Index du dernier caractère affiché
-  int _currentIndex = 0;
-
-  /// Contrôleur pour l'animation typewriter
-  bool _isAnimating = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _startTypewriterEffect();
-  }
-
-  @override
-  void didUpdateWidget(StreamingMessageWidget oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Si nouveau contenu arrive, continuer l'animation
-    if (widget.partialContent.length > _displayedText.length) {
-      _startTypewriterEffect();
-    }
-  }
-
-  void _startTypewriterEffect() {
-    if (_isAnimating) return;
-    _isAnimating = true;
-    _animateNextCharacters();
-  }
-
-  void _animateNextCharacters() async {
-    while (mounted && _currentIndex < widget.partialContent.length) {
-      // Calculer combien de caractères ajouter
-      // Vitesse adaptative : plus rapide pour rattraper, plus lent pour l'effet
-      final remaining = widget.partialContent.length - _currentIndex;
-      final charsToAdd = remaining > 50 ? 5 : (remaining > 20 ? 3 : 1);
-
-      final endIndex = (_currentIndex + charsToAdd).clamp(
-        0,
-        widget.partialContent.length,
-      );
-
-      setState(() {
-        _displayedText = widget.partialContent.substring(0, endIndex);
-        _currentIndex = endIndex;
-      });
-
-      // Délai entre les caractères (effet typewriter)
-      // Plus rapide si beaucoup de texte en attente, plus lent sinon
-      var delay = remaining > 50 ? 5 : (remaining > 20 ? 15 : 25);
-
-      // ────────────────────────────────────────────────────────────────
-      // Rythme à la Gemini : micro-pause aux frontières de phrase pour
-      // donner une cadence naturelle de lecture. Ne s'applique qu'en
-      // mode "lent" (peu de texte restant).
-      // ────────────────────────────────────────────────────────────────
-      if (remaining < 50 && endIndex > 0) {
-        final lastChar = widget.partialContent[endIndex - 1];
-        if (lastChar == '\n') {
-          delay += 60;
-        } else if (lastChar == '.' || lastChar == '!' || lastChar == '?') {
-          if (endIndex == widget.partialContent.length ||
-              widget.partialContent[endIndex] == ' ' ||
-              widget.partialContent[endIndex] == '\n') {
-            delay += 40;
-          }
-        } else if (lastChar == ',' || lastChar == ';' || lastChar == ':') {
-          delay += 15;
-        }
-      }
-
-      await Future.delayed(Duration(milliseconds: delay));
-    }
-    _isAnimating = false;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -106,6 +40,10 @@ class _StreamingMessageWidgetState extends State<StreamingMessageWidget> {
     final bgColor = isDark ? const Color(0xFF2D2D2D) : const Color(0xFFF7F7F8);
     final textColor =
         Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black;
+
+    final hasContent = partialContent.isNotEmpty;
+    final showToolStatus =
+        !isComplete && toolStatus != null && toolStatus!.isNotEmpty;
 
     return Container(
       width: double.infinity,
@@ -131,25 +69,29 @@ class _StreamingMessageWidgetState extends State<StreamingMessageWidget> {
                         color: textColor,
                       ),
                     ),
-                    if (!widget.isComplete) ...[
+                    if (!isComplete) ...[
                       const SizedBox(width: 8),
                       const _PulsingDot(),
                     ],
                   ],
                 ),
                 const SizedBox(height: 6),
-                // Contenu du message avec effet typewriter
-                if (_displayedText.isNotEmpty)
-                  Text(
-                    _displayedText,
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: 15,
-                      height: 1.6,
-                    ),
+                // Étape agentique compacte (workflow tool_call / tool_result)
+                if (showToolStatus) ...[
+                  _buildToolStatus(context, textColor, isDark),
+                  if (hasContent) const SizedBox(height: 8),
+                ],
+                // Contenu du message rendu en markdown léger, sans animation
+                // locale : on affiche directement ce que le bloc a batché.
+                if (hasContent)
+                  MarkdownBody(
+                    data: partialContent,
+                    selectable: false,
+                    shrinkWrap: true,
+                    styleSheet: _streamingStyleSheet(context, textColor),
                   ),
-                // Indicateur de saisie si le streaming n'est pas complet
-                if (!widget.isComplete) ...[
+                // Curseur clignotant tant que le streaming n'est pas terminé.
+                if (!isComplete) ...[
                   const SizedBox(height: 8),
                   const _StreamingCursor(),
                 ],
@@ -158,6 +100,48 @@ class _StreamingMessageWidgetState extends State<StreamingMessageWidget> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Ligne d'étape agentique compacte (icône + libellé), style discret.
+  Widget _buildToolStatus(BuildContext context, Color textColor, bool isDark) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 12,
+          height: 12,
+          child: CircularProgressIndicator(
+            strokeWidth: 1.6,
+            color: Theme.of(context).primaryColor,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            toolStatus!,
+            style: TextStyle(
+              fontSize: 13,
+              fontStyle: FontStyle.italic,
+              color: textColor.withAlpha((0.7 * 255).round()),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Feuille de style markdown légère alignée sur le rendu texte final
+  /// (mêmes tailles/interlignes que ChatMessageWidget pour éviter le flash).
+  MarkdownStyleSheet _streamingStyleSheet(
+    BuildContext context,
+    Color textColor,
+  ) {
+    return MarkdownStyleSheet(
+      p: TextStyle(color: textColor, fontSize: 15, height: 1.6),
+      strong: TextStyle(color: textColor, fontWeight: FontWeight.w600),
+      em: TextStyle(color: textColor, fontStyle: FontStyle.italic),
+      listBullet: TextStyle(color: textColor, fontSize: 15),
     );
   }
 

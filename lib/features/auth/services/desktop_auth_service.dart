@@ -426,9 +426,25 @@ class DesktopAuthService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
 
+        // Auth0 renvoie parfois le claim `name` égal au `sub` (auth0|...)
+        // quand le profil n'a pas de nom d'affichage. Ne jamais retomber sur le
+        // sub : préférer un vrai `name`, sinon composer given+family, sinon email.
+        final rawName = data['name'] as String?;
+        final composed = [data['given_name'], data['family_name']]
+            .whereType<String>()
+            .join(' ')
+            .trim();
+        final resolvedName = (rawName != null &&
+                rawName.isNotEmpty &&
+                rawName != data['sub'])
+            ? rawName
+            : (composed.isNotEmpty
+                ? composed
+                : (data['email'] as String? ?? 'N/A'));
+
         User auth0User = User(
           id: data['sub'] as String,
-          name: data['name'] ?? data['nickname'] ?? 'N/A',
+          name: resolvedName,
           email: data['email'] ?? 'N/A',
           emailVerified: data['email_verified'] ?? false,
           picture: data['picture'],

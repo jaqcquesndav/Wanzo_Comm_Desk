@@ -7,6 +7,7 @@ import 'desktop_sidebar.dart';
 import 'desktop_layout_state.dart';
 import '../../../features/adha/widgets/adha_chat_panel.dart';
 import '../../../features/adha/bloc/adha_bloc.dart';
+import '../../shared_widgets/adha_logo.dart';
 
 /// Item de navigation pour le sidebar desktop
 class SidebarNavItem {
@@ -216,14 +217,7 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
                       : Colors.transparent,
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Icon(
-              Icons.chat_bubble_outline,
-              size: 20,
-              color:
-                  isOpen
-                      ? Theme.of(context).colorScheme.primary
-                      : (isDark ? Colors.grey[400] : Colors.grey[600]),
-            ),
+            child: const AdhaLogo(size: 22),
           ),
         ),
       ),

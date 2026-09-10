@@ -124,10 +124,12 @@ class AdhaStreamService {
     debugPrint('[AdhaStreamService] 🔄 Reconnexion nécessaire...');
     await connect(tokenToUse);
 
-    // Attendre un peu pour que la connexion soit établie
+    // Attendre que la connexion soit établie. Granularité fine (50 ms) pour
+    // rendre la main dès que le socket est prêt au lieu d'attendre un pas de
+    // 200 ms — réduit la latence perçue sur le 1er message.
     int attempts = 0;
-    while (!isConnected && attempts < 10) {
-      await Future.delayed(const Duration(milliseconds: 200));
+    while (!isConnected && attempts < 20) {
+      await Future.delayed(const Duration(milliseconds: 50));
       attempts++;
     }
 
@@ -178,9 +180,6 @@ class AdhaStreamService {
       );
       debugPrint('[AdhaStreamService] Connexion Socket.IO à: $socketUrl');
       debugPrint('[AdhaStreamService] Base URL: $baseUrl');
-      debugPrint(
-        '[AdhaStreamService] Token (premiers 20 chars): ${authToken.length > 20 ? authToken.substring(0, 20) : authToken}...',
-      );
       debugPrint(
         '[AdhaStreamService] ==========================================',
       );
@@ -560,6 +559,23 @@ class AdhaStreamService {
     );
   }
 
+  /// Signale au backend l'arrêt du stream en cours (bouton STOP).
+  ///
+  /// On émet un `cancel_stream` dédié (si le backend le gère) puis on se
+  /// désabonne de la conversation courante : le serveur cesse alors de
+  /// pousser des chunks vers ce client. Best-effort — no-op si aucune
+  /// conversation active ou socket non connecté.
+  void cancelStream() {
+    final conversationId = _currentConversationId;
+    if (conversationId == null) return;
+
+    if (_socket != null && isConnected) {
+      _socket!.emit('cancel_stream', {'conversationId': conversationId});
+    }
+    unsubscribeFromConversation(conversationId);
+    debugPrint('[AdhaStreamService] ⛔ cancelStream: $conversationId');
+  }
+
   /// Se désabonner d'une conversation
   ///
   /// Événement client→serveur: unsubscribe_conversation
@@ -615,6 +631,7 @@ class AdhaStreamService {
 
     _currentConversationId = null;
     _reconnectAttempts = 0;
+    _authToken = null;
 
     _updateConnectionState(AdhaStreamConnectionState.disconnected);
   }
@@ -625,6 +642,7 @@ class AdhaStreamService {
 
     _stopHeartbeatMonitor();
     _circuitResetTimer?.cancel();
+    _authToken = null;
 
     disconnect();
 
@@ -644,9 +662,6 @@ class AdhaStreamService {
 
   /// Retourne l'ID de la conversation actuellement abonnée
   String? get currentConversationId => _currentConversationId;
-
-  /// Retourne le token d'authentification
-  String? get authToken => _authToken;
 }
 
 /// Représente un chunk audio TTS reçu via Socket.IO (adha.stream.audio_chunk).

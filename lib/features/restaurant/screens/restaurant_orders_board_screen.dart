@@ -12,7 +12,11 @@ import '../../customer/bloc/customer_event.dart';
 import '../../customer/bloc/customer_state.dart';
 import '../../customer/models/customer.dart';
 import '../cubit/restaurant_orders_cubit.dart';
+import '../models/menu_item.dart';
 import '../models/restaurant_order.dart';
+import '../repositories/menu_repository.dart';
+import '../widgets/order_dish_thumbs.dart';
+import '../widgets/order_type_badge.dart';
 import '../widgets/restaurant_order_quick_view_dialog.dart';
 import 'restaurant_floor_plan_view.dart';
 
@@ -38,6 +42,22 @@ class _RestaurantOrdersBoardScreenState
     extends State<RestaurantOrdersBoardScreen> {
   // Plan de salle par défaut (prise de commande table-first).
   _OrdersView _view = _OrdersView.plan;
+
+  /// Carte indexée par id de plat (résolution des photos sur les cartes de
+  /// commande). Chargée une fois au montage — lecture locale, sûre hors-ligne.
+  Map<String, MenuItem> _menuById = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMenu();
+  }
+
+  Future<void> _loadMenu() async {
+    final map = await MenuRepository().loadMap();
+    if (!mounted) return;
+    setState(() => _menuById = map);
+  }
 
   static const _accent = <RestaurantOrderStatus, Color>{
     RestaurantOrderStatus.open: Color(0xFF64748B), // slate
@@ -142,7 +162,8 @@ class _RestaurantOrdersBoardScreenState
           return KanbanBoard<RestaurantOrder>(
             columns: columns,
             itemId: (o) => o.id,
-            cardBuilder: (context, o) => _OrderCard(order: o),
+            cardBuilder: (context, o) =>
+                _OrderCard(order: o, menuById: _menuById),
             onMoveItem: (order, toColumnId) {
               final target = RestaurantOrderStatusX.fromApiValue(toColumnId);
               if (target == order.status) return;
@@ -163,94 +184,127 @@ class _RestaurantOrdersBoardScreenState
     // « Libellé », tout en laissant saisir librement une table (« Table 4 »…).
     final customerBloc = context.read<CustomerBloc>()..add(const LoadCustomers());
     String typed = '';
+    // Nature du service choisie à la création : une commande à emporter
+    // n'occupera pas le plan de salle.
+    RestaurantOrderType type = RestaurantOrderType.dineIn;
     final label = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Nouvelle commande'),
-        content: SizedBox(
-          width: 360,
-          child: BlocBuilder<CustomerBloc, CustomerState>(
-            bloc: customerBloc,
-            builder: (context, state) {
-              final customers = <Customer>[
-                if (state is CustomersLoaded)
-                  ...state.customers
-                else if (state is CustomerSearchResults)
-                  ...state.customers,
-              ];
-              return Autocomplete<Customer>(
-                optionsBuilder: (value) {
-                  final q = value.text.trim().toLowerCase();
-                  if (q.isEmpty) return const Iterable<Customer>.empty();
-                  return customers.where(
-                    (c) =>
-                        c.name.toLowerCase().contains(q) ||
-                        c.phoneNumber.toLowerCase().contains(q),
-                  );
-                },
-                displayStringForOption: (c) => c.name,
-                onSelected: (c) => typed = c.name,
-                fieldViewBuilder:
-                    (context, textController, focusNode, onFieldSubmitted) {
-                  return TextField(
-                    controller: textController,
-                    focusNode: focusNode,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Libellé (Table 4, Emporter, nom du client…)',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Nouvelle commande'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SegmentedButton<RestaurantOrderType>(
+                  segments: const [
+                    ButtonSegment(
+                      value: RestaurantOrderType.dineIn,
+                      icon: Icon(Icons.restaurant),
+                      label: Text('Sur place'),
                     ),
-                    onChanged: (v) => typed = v,
-                    onSubmitted: (v) => Navigator.pop(ctx, v),
-                  );
-                },
-                optionsViewBuilder: (context, onSelected, options) {
-                  return Align(
-                    alignment: Alignment.topLeft,
-                    child: Material(
-                      elevation: 4.0,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxHeight: 240,
-                          maxWidth: 360,
-                        ),
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(8.0),
-                          shrinkWrap: true,
-                          itemCount: options.length,
-                          itemBuilder: (context, index) {
-                            final option = options.elementAt(index);
-                            return ListTile(
-                              leading: const Icon(Icons.person, size: 20),
-                              title: Text(option.name),
-                              subtitle: option.phoneNumber.isNotEmpty
-                                  ? Text(option.phoneNumber)
-                                  : null,
-                              onTap: () => onSelected(option),
-                            );
-                          },
-                        ),
-                      ),
+                    ButtonSegment(
+                      value: RestaurantOrderType.takeaway,
+                      icon: Icon(Icons.takeout_dining),
+                      label: Text('À emporter'),
                     ),
-                  );
-                },
-              );
-            },
+                  ],
+                  selected: {type},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (s) => setLocal(() => type = s.first),
+                ),
+                const SizedBox(height: 12),
+                BlocBuilder<CustomerBloc, CustomerState>(
+                  bloc: customerBloc,
+                  builder: (context, state) {
+                    final customers = <Customer>[
+                      if (state is CustomersLoaded)
+                        ...state.customers
+                      else if (state is CustomerSearchResults)
+                        ...state.customers,
+                    ];
+                    return Autocomplete<Customer>(
+                      optionsBuilder: (value) {
+                        final q = value.text.trim().toLowerCase();
+                        if (q.isEmpty) {
+                          return const Iterable<Customer>.empty();
+                        }
+                        return customers.where(
+                          (c) =>
+                              c.name.toLowerCase().contains(q) ||
+                              c.phoneNumber.toLowerCase().contains(q),
+                        );
+                      },
+                      displayStringForOption: (c) => c.name,
+                      onSelected: (c) => typed = c.name,
+                      fieldViewBuilder: (context, textController, focusNode,
+                          onFieldSubmitted) {
+                        return TextField(
+                          controller: textController,
+                          focusNode: focusNode,
+                          autofocus: true,
+                          decoration: InputDecoration(
+                            labelText: type == RestaurantOrderType.takeaway
+                                ? 'Libellé (nom du client, Emporter…)'
+                                : 'Libellé (Table 4, nom du client…)',
+                          ),
+                          onChanged: (v) => typed = v,
+                          onSubmitted: (v) => Navigator.pop(ctx, v),
+                        );
+                      },
+                      optionsViewBuilder: (context, onSelected, options) {
+                        return Align(
+                          alignment: Alignment.topLeft,
+                          child: Material(
+                            elevation: 4.0,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxHeight: 240,
+                                maxWidth: 360,
+                              ),
+                              child: ListView.builder(
+                                padding: const EdgeInsets.all(8.0),
+                                shrinkWrap: true,
+                                itemCount: options.length,
+                                itemBuilder: (context, index) {
+                                  final option = options.elementAt(index);
+                                  return ListTile(
+                                    leading: const Icon(Icons.person, size: 20),
+                                    title: Text(option.name),
+                                    subtitle: option.phoneNumber.isNotEmpty
+                                        ? Text(option.phoneNumber)
+                                        : null,
+                                    onTap: () => onSelected(option),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, typed),
+              child: const Text('Créer'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, typed),
-            child: const Text('Créer'),
-          ),
-        ],
       ),
     );
     if (label != null && label.trim().isNotEmpty) {
-      await cubit.openOrder(label);
+      await cubit.openOrder(label, type: type);
     }
   }
 }
@@ -258,7 +312,8 @@ class _RestaurantOrdersBoardScreenState
 /// Carte d'une commande sur le board.
 class _OrderCard extends StatelessWidget {
   final RestaurantOrder order;
-  const _OrderCard({required this.order});
+  final Map<String, MenuItem> menuById;
+  const _OrderCard({required this.order, required this.menuById});
 
   @override
   Widget build(BuildContext context) {
@@ -277,49 +332,69 @@ class _OrderCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  order.label,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Text(
-                _timeAgo(order.createdAt),
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
+          // Aperçu photo du contenu (plats de la commande) : miniature/grille.
+          OrderDishThumbs(
+            order: order,
+            menuById: menuById,
+            size: 46,
+            radius: 8,
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Icon(
-                Icons.shopping_bag_outlined,
-                size: 14,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '${order.itemCount} article(s)',
-                style: theme.textTheme.bodySmall,
-              ),
-              const Spacer(),
-              Text(
-                formatCurrency(order.totalCdf, 'CDF'),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        order.label,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      _timeAgo(order.createdAt),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OrderTypeBadge(type: order.type, compact: true),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.shopping_bag_outlined,
+                      size: 14,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${order.itemCount} article(s)',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const Spacer(),
+                    Text(
+                      formatCurrency(order.totalCdf, 'CDF'),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),

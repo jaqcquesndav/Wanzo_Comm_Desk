@@ -483,9 +483,15 @@ class BackendUserProfile {
     final effectiveLocation = company?.address ?? companyLocation;
     final effectiveSector = company?.sector ?? businessSector;
 
+    // Nom composé ; si vide (pas de fullName ni de prénom/nom), retomber sur
+    // l'email plutôt que de laisser un libellé vide dans l'en-tête.
+    final composedName =
+        (fullName ?? '${firstName ?? ''} ${lastName ?? ''}'.trim()).trim();
+    final resolvedName = composedName.isNotEmpty ? composedName : email;
+
     return User(
       id: id,
-      name: fullName ?? '$firstName $lastName'.trim(),
+      name: resolvedName,
       email: email,
       phone: phone ?? '',
       role: role,

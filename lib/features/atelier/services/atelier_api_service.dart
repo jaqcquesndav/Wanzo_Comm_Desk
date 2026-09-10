@@ -14,11 +14,18 @@ class AtelierApiService {
   // ── Commandes ──────────────────────────────────────────────────────────────
 
   Future<List<AtelierOrder>> getOrders(
-      {String? businessUnitId, String? status, String? customerId}) async {
+      {String? businessUnitId,
+      String? status,
+      String? customerId,
+      String? metier}) async {
     final qp = <String, String>{};
     if (businessUnitId != null) qp['businessUnitId'] = businessUnitId;
     if (status != null) qp['status'] = status;
     if (customerId != null) qp['customerId'] = customerId;
+    // Isolation par métier : le board d'un atelier de couture ne demande que les
+    // commandes de couture (idem maintenance / imprimerie). Filtre appliqué côté
+    // backend ; on refiltre aussi côté client par sécurité.
+    if (metier != null) qp['metier'] = metier;
     final res = await _apiClient.get('atelier/orders',
         queryParameters: qp.isEmpty ? null : qp, requiresAuth: true);
     final data = res?['data'];

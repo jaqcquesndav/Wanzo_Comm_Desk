@@ -1,5 +1,4 @@
 import 'dart:io'; // Import for File
-import 'package:collection/collection.dart'; // Import for firstWhereOrNull
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -16,10 +15,8 @@ import '../../../core/platform/image_picker/image_picker_service_interface.dart'
 import '../../../core/widgets/desktop/responsive_form_container.dart';
 import '../../../core/widgets/desktop/modal_form_shell.dart';
 import '../../../features/settings/presentation/cubit/currency_settings_cubit.dart';
-import '../../../features/supplier/bloc/supplier_bloc.dart';
-import '../../../features/supplier/bloc/supplier_event.dart';
-import '../../../features/supplier/bloc/supplier_state.dart';
 import '../../../features/supplier/models/supplier.dart';
+import '../../../features/supplier/widgets/supplier_picker_field.dart';
 import '../bloc/expense_bloc.dart';
 import '../models/expense.dart';
 
@@ -116,17 +113,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     });
   }
 
-  Future<void> _searchSupplierByPhone(String phoneNumber) async {
-    if (phoneNumber.isEmpty) {
-      setState(() {
-        _foundSupplier = null;
-        _linkedSupplierId = null;
-        _supplierNameController.clear();
-      });
-      return;
-    }
-    context.read<SupplierBloc>().add(SearchSuppliers(phoneNumber));
-  }
 
   double _calculateTotalInTransactionCurrency() {
     return double.tryParse(_amountController.text) ?? 0.0;
@@ -326,59 +312,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
           listener: (context, state) {
             if (state.status == CurrencySettingsStatus.loaded) {
               _initializeCurrencySettings(state.settings);
-            }
-          },
-        ),
-        BlocListener<SupplierBloc, SupplierState>(
-          listener: (context, state) {
-            if (state is SupplierSearchResults) {
-              // Handle empty suppliers list
-              if (state.suppliers.isEmpty) {
-                setState(() {
-                  _foundSupplier = null;
-                  _linkedSupplierId = null;
-                });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Aucun fournisseur trouvé'),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-                return;
-              }
-
-              final searchText = _supplierPhoneController.text.trim();
-              // Use firstWhereOrNull to safely handle no match
-              final matchedSupplier =
-                  state.suppliers.firstWhereOrNull(
-                    (s) => s.phoneNumber == searchText,
-                  ) ??
-                  state.suppliers.first;
-
-              setState(() {
-                _foundSupplier = matchedSupplier;
-                _linkedSupplierId = matchedSupplier.id;
-                _supplierNameController.text = matchedSupplier.name;
-              });
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Fournisseur trouvé: ${matchedSupplier.name}'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            } else if (state is SupplierError) {
-              setState(() {
-                _foundSupplier = null;
-                _linkedSupplierId = null;
-              });
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Aucun fournisseur trouvé'),
-                  backgroundColor: Colors.orange,
-                ),
-              );
             }
           },
         ),
@@ -703,7 +636,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           decoration: InputDecoration(
                             labelText: 'Montant total',
                             prefixText:
-                                '${_selectedTransactionCurrency?.symbol ?? "FC"} ',
+                                '${_selectedTransactionCurrency?.symbol ?? "CDF"} ',
                             filled: true,
                             fillColor: Theme.of(
                               context,
@@ -740,7 +673,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           decoration: InputDecoration(
                             labelText: 'Montant payé',
                             prefixText:
-                                '${_selectedTransactionCurrency?.symbol ?? "FC"} ',
+                                '${_selectedTransactionCurrency?.symbol ?? "CDF"} ',
                             filled: true,
                             fillColor: Theme.of(
                               context,
@@ -780,7 +713,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                     ?.copyWith(fontWeight: FontWeight.bold),
                               ),
                               Text(
-                                '${_selectedTransactionCurrency?.symbol ?? "FC"} ${_calculateRemainingAmount().toStringAsFixed(2)}',
+                                formatCurrency(_calculateRemainingAmount(), _selectedTransactionCurrency?.code ?? "CDF"),
                                 style: Theme.of(
                                   context,
                                 ).textTheme.bodyLarge?.copyWith(
@@ -822,7 +755,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                 ),
                                 const SizedBox(width: WanzoSpacing.xs),
                                 Text(
-                                  'Équivalent: ${_defaultCurrency.symbol} ${(_calculateTotalInTransactionCurrency() * _transactionExchangeRate).toStringAsFixed(2)}',
+                                  'Équivalent: ${formatCurrency(_calculateTotalInTransactionCurrency() * _transactionExchangeRate, _defaultCurrency.code)}',
                                   style: Theme.of(
                                     context,
                                   ).textTheme.bodySmall?.copyWith(
@@ -976,159 +909,34 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           ],
                         ),
                         const SizedBox(height: WanzoSpacing.md),
-                        BlocBuilder<SupplierBloc, SupplierState>(
-                          builder: (context, supplierState) {
-                            final allSuppliers =
-                                supplierState is SupplierSearchResults
-                                    ? supplierState.suppliers
-                                    : (supplierState is SuppliersLoaded
-                                        ? supplierState.suppliers
-                                        : <Supplier>[]);
-
-                            return Autocomplete<Supplier>(
-                              optionsBuilder: (
-                                TextEditingValue textEditingValue,
-                              ) {
-                                if (textEditingValue.text.isEmpty) {
-                                  return const Iterable<Supplier>.empty();
-                                }
-
-                                // Rechercher en temps réel
-                                _searchSupplierByPhone(textEditingValue.text);
-
-                                return allSuppliers.where((Supplier supplier) {
-                                  return supplier.phoneNumber
-                                          .toLowerCase()
-                                          .contains(
-                                            textEditingValue.text.toLowerCase(),
-                                          ) ||
-                                      supplier.name.toLowerCase().contains(
-                                        textEditingValue.text.toLowerCase(),
-                                      );
-                                });
-                              },
-                              displayStringForOption:
-                                  (Supplier option) => option.phoneNumber,
-                              onSelected: (Supplier selection) {
-                                setState(() {
-                                  _foundSupplier = selection;
-                                  _linkedSupplierId = selection.id;
-                                  _supplierPhoneController.text =
-                                      selection.phoneNumber;
-                                  _supplierNameController.text = selection.name;
-                                });
-                              },
-                              fieldViewBuilder: (
-                                context,
-                                textEditingController,
-                                focusNode,
-                                onFieldSubmitted,
-                              ) {
-                                // Synchroniser avec notre controller
-                                if (_supplierPhoneController.text !=
-                                    textEditingController.text) {
-                                  textEditingController.text =
-                                      _supplierPhoneController.text;
-                                }
-
-                                textEditingController.addListener(() {
-                                  if (_supplierPhoneController.text !=
-                                      textEditingController.text) {
-                                    _supplierPhoneController.text =
-                                        textEditingController.text;
-
-                                    // Réinitialiser si le texte change
-                                    if (_foundSupplier != null &&
-                                        _foundSupplier!.phoneNumber !=
-                                            textEditingController.text) {
-                                      setState(() {
-                                        _foundSupplier = null;
-                                        _linkedSupplierId = null;
-                                        _supplierNameController.clear();
-                                      });
-                                    }
-                                  }
-                                });
-
-                                return TextFormField(
-                                  controller: textEditingController,
-                                  focusNode: focusNode,
-                                  decoration: InputDecoration(
-                                    labelText: 'Numéro de téléphone',
-                                    hintText:
-                                        'Rechercher un fournisseur (optionnel)',
-                                    filled: true,
-                                    fillColor: Theme.of(context)
-                                        .colorScheme
-                                        .surfaceContainerHighest
-                                        .withAlpha(76),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(
-                                        WanzoRadius.sm,
-                                      ),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: WanzoSpacing.md,
-                                      vertical: WanzoSpacing.md,
-                                    ),
-                                  ),
-                                  keyboardType: TextInputType.phone,
-                                );
-                              },
-                              optionsViewBuilder: (
-                                context,
-                                onSelected,
-                                options,
-                              ) {
-                                return Align(
-                                  alignment: Alignment.topLeft,
-                                  child: Material(
-                                    elevation: 4.0,
-                                    child: ConstrainedBox(
-                                      constraints: const BoxConstraints(
-                                        maxHeight: 200,
-                                        maxWidth: 400,
-                                      ),
-                                      child: ListView.builder(
-                                        padding: const EdgeInsets.all(8.0),
-                                        itemCount: options.length,
-                                        itemBuilder: (context, index) {
-                                          final Supplier option = options
-                                              .elementAt(index);
-                                          return ListTile(
-                                            leading: const Icon(
-                                              Icons.business,
-                                              size: 20,
-                                            ),
-                                            title: Text(option.name),
-                                            subtitle: Text(option.phoneNumber),
-                                            onTap: () {
-                                              onSelected(option);
-                                            },
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            );
+                        // Picker fournisseur partagé : cache Hive complet
+                        // (online et offline), recherche serveur en complément,
+                        // et création inline sans quitter le formulaire.
+                        SupplierPickerField(
+                          controller: _supplierNameController,
+                          phoneController: _supplierPhoneController,
+                          label: 'Nom du fournisseur',
+                          hint: 'Rechercher ou creer un fournisseur',
+                          initialSupplier: _foundSupplier,
+                          onSelected: (supplier) {
+                            setState(() {
+                              _foundSupplier = supplier;
+                              _linkedSupplierId = supplier?.id;
+                            });
                           },
                         ),
                         const SizedBox(height: WanzoSpacing.md),
                         TextFormField(
-                          controller: _supplierNameController,
+                          controller: _supplierPhoneController,
+                          keyboardType: TextInputType.phone,
                           decoration: InputDecoration(
-                            labelText: 'Nom du fournisseur',
+                            labelText: 'Numéro de téléphone',
+                            hintText: 'Téléphone du fournisseur (optionnel)',
                             filled: true,
-                            fillColor:
-                                _foundSupplier != null
-                                    ? Colors.green.withAlpha(51)
-                                    : Theme.of(context)
-                                        .colorScheme
-                                        .surfaceContainerHighest
-                                        .withAlpha(76),
+                            fillColor: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest
+                                .withAlpha(76),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(
                                 WanzoRadius.sm,
@@ -1139,13 +947,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                               horizontal: WanzoSpacing.md,
                               vertical: WanzoSpacing.md,
                             ),
-                            suffixIcon:
-                                _foundSupplier != null
-                                    ? const Icon(
-                                      Icons.check_circle,
-                                      color: Colors.green,
-                                    )
-                                    : null,
                           ),
                         ),
                       ],

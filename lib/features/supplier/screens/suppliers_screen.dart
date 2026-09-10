@@ -9,6 +9,7 @@ import 'package:wanzo/core/utils/currency_formatter.dart'; // Added import
 import 'package:wanzo/core/enums/currency_enum.dart'; // Added import for Currency enum and extension
 import 'package:wanzo/core/services/form_navigation_service.dart';
 import 'package:wanzo/core/services/sync_service.dart';
+import 'package:wanzo/core/platform/platform_service.dart';
 import '../bloc/supplier_bloc.dart';
 import '../bloc/supplier_event.dart';
 import '../bloc/supplier_state.dart';
@@ -177,11 +178,17 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
         ],
       ),
       body: screenContent, // Use the defined screenContent
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _navigateToAddSupplier(context),
-        tooltip: localizations.addSupplierTooltip, // Localized
-        child: const Icon(Icons.add),
-      ),
+      // FAB réservé au mobile étroit ; sur desktop la création passe par la
+      // barre d'outils (écran Contacts en mode intégré).
+      floatingActionButton:
+          MediaQuery.sizeOf(context).width <
+                  PlatformService.instance.tabletMinWidth
+              ? FloatingActionButton(
+                onPressed: () => _navigateToAddSupplier(context),
+                tooltip: localizations.addSupplierTooltip, // Localized
+                child: const Icon(Icons.add),
+              )
+              : null,
     );
   }
 

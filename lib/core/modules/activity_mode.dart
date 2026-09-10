@@ -31,12 +31,25 @@ enum ActivityMode {
   /// Salon de coiffure / beauté : carte de PRESTATIONS tarifées (distinctes du
   /// stock), équipe de coiffeurs rémunérés à la commission (ou location de
   /// fauteuil), ticket avec exécutant par ligne et suivi des commissions (paie).
-  salon;
+  salon,
+
+  /// Imprimerie : prise de commande d'impression (cartes, flyers, banderoles,
+  /// reliures…) puis fabrication suivie sur un Kanban. Fonctionne comme un
+  /// atelier — même moteur commande + fabrication + tableau Kanban — mais plus
+  /// simple : à la place des mensurations, une fiche travail d'impression
+  /// (format, support, quantité, finition, bon à tirer).
+  imprimerie;
 
   /// Vrai pour tout atelier (confection OU maintenance) — sert au gating des
-  /// modules et écrans communs à l'atelier.
+  /// écrans à fiche métier spécifique (mesures / appareil).
   bool get isAtelier =>
       this == ActivityMode.atelier || this == ActivityMode.atelierMaintenance;
+
+  /// Vrai pour tout mode piloté par un tableau Kanban de fabrication
+  /// (ateliers + imprimerie). Sert au gating du moteur commande → fabrication
+  /// et de l'écran Kanban, indépendamment de la fiche métier (mesures, appareil
+  /// ou travail d'impression).
+  bool get isWorkshop => isAtelier || this == ActivityMode.imprimerie;
 
   /// Valeur stable persistée/échangée avec le backend.
   String get apiValue => name;
@@ -58,6 +71,8 @@ enum ActivityMode {
         return ActivityMode.atelierMaintenance;
       case 'salon':
         return ActivityMode.salon;
+      case 'imprimerie':
+        return ActivityMode.imprimerie;
       case 'retail':
       default:
         return ActivityMode.retail;
@@ -68,7 +83,7 @@ enum ActivityMode {
   String get label {
     switch (this) {
       case ActivityMode.retail:
-        return 'Boutique / Point de vente';
+        return 'Général (Point de vente)';
       case ActivityMode.restaurant:
         return 'Restaurant / Fast-food';
       case ActivityMode.hotel:
@@ -81,6 +96,8 @@ enum ActivityMode {
         return 'Atelier de Maintenance / Réparation';
       case ActivityMode.salon:
         return 'Salon de coiffure / Beauté';
+      case ActivityMode.imprimerie:
+        return 'Imprimerie';
     }
   }
 
@@ -88,7 +105,7 @@ enum ActivityMode {
   String get shortLabel {
     switch (this) {
       case ActivityMode.retail:
-        return 'Boutique';
+        return 'Général';
       case ActivityMode.restaurant:
         return 'Resto';
       case ActivityMode.hotel:
@@ -101,6 +118,8 @@ enum ActivityMode {
         return 'Maintenance';
       case ActivityMode.salon:
         return 'Salon';
+      case ActivityMode.imprimerie:
+        return 'Imprimerie';
     }
   }
 
@@ -108,7 +127,7 @@ enum ActivityMode {
   String get description {
     switch (this) {
       case ActivityMode.retail:
-        return 'Ventes, stock et caisse pour un commerce de détail.';
+        return 'Ventes, stock et caisse pour un point de vente polyvalent.';
       case ActivityMode.restaurant:
         return 'Commandes par table, service en salle et cuisine.';
       case ActivityMode.hotel:
@@ -121,6 +140,8 @@ enum ActivityMode {
         return 'Réparation d\'appareils / garage : fiche appareil, panne, diagnostic, réparation.';
       case ActivityMode.salon:
         return 'Coiffure / beauté : carte de prestations, coiffeurs à la commission, ticket et paie.';
+      case ActivityMode.imprimerie:
+        return 'Travaux d\'impression : commande, bon à tirer, fabrication suivie au Kanban.';
     }
   }
 }

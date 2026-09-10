@@ -234,9 +234,20 @@ class Auth0Service {
         // L'utilisateur est déjà enrichi par getUserInfoFromSdk()
         // et déjà sauvegardé pour offline login
         return user;
-      } else {
-        throw Exception('Failed to get user info after login.');
       }
+
+      // Le login Auth0 a RÉUSSI (les credentials sont stockés juste au-dessus).
+      // getUserInfoFromSdk() peut malgré tout rendre null : /userinfo en
+      // erreur, backend /auth/me injoignable, ET aucun utilisateur en cache
+      // (cas typique d'une PREMIÈRE connexion sur un appareil neuf). On levait
+      // alors une exception et l'app repartait sur l'écran de connexion alors
+      // que la session était valide. On reconstruit donc l'utilisateur à
+      // partir des claims de l'ID token déjà en main.
+      debugPrint(
+        "Auth0Service: userinfo indisponible après login — reconstruction "
+        "depuis les claims de l'ID token",
+      );
+      return await _userFromCredentials(credentials);
     } on WebAuthenticationException catch (e) {
       final String eMessage = e.message.toLowerCase();
       // Ensure details is converted to string before toLowerCase()
@@ -656,6 +667,50 @@ class Auth0Service {
       );
       return await offlineAuthService.getLastLoggedInUser();
     }
+  }
+
+  /// Construit un `User` à partir des credentials Auth0 (claims de l'ID
+  /// token), sans aucun appel réseau supplémentaire.
+  ///
+  /// Sert de filet de sécurité juste après un login réussi : la session est
+  /// valide, donc l'utilisateur doit entrer dans l'app même si /userinfo ou
+  /// le backend n'ont pas répondu. L'enrichissement backend est tenté en
+  /// best-effort et son échec n'empêche pas l'entrée.
+  Future<User> _userFromCredentials(Credentials credentials) async {
+    final profile = credentials.user;
+    var user = User(
+      id: profile.sub,
+      name: profile.name ?? profile.nickname ?? 'N/A',
+      email: profile.email ?? 'N/A',
+      emailVerified: profile.isEmailVerified ?? false,
+      picture: profile.pictureUrl?.toString(),
+      phone:
+          profile.customClaims?['https://wanzo.app/phone_number'] as String? ??
+          profile.phoneNumber ??
+          '',
+      phoneVerified: profile.isPhoneNumberVerified ?? false,
+      role: _extractRole(profile.customClaims?['https://wanzo.app/roles']),
+      companyId:
+          profile.customClaims?['https://wanzo.app/company_id'] as String?,
+      companyName:
+          profile.customClaims?['https://wanzo.app/company_name'] as String?,
+      idCardStatus: _parseIdStatus(
+        profile.customClaims?['https://wanzo.app/id_card_status'] as String?,
+      ),
+      token: credentials.accessToken,
+    );
+
+    try {
+      user = await _enrichUserWithBackendData(user);
+    } catch (e) {
+      debugPrint(
+        'Auth0Service: enrichissement backend indisponible ($e) — '
+        'poursuite avec les claims Auth0',
+      );
+    }
+
+    await offlineAuthService.saveUserForOfflineLogin(user);
+    return user;
   }
 
   // Add compatibility method for old code still using getUserInfo

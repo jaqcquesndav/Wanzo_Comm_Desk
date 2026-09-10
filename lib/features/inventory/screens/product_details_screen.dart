@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../constants/colors.dart';
 import '../../../constants/spacing.dart';
 import '../../../constants/typography.dart';
+import '../../../core/services/catalog_enhancer.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../bloc/inventory_bloc.dart';
 import '../bloc/inventory_event.dart';
@@ -41,6 +44,14 @@ class ProductDetailsScreen extends StatefulWidget {
 class _ProductDetailsScreenState extends State<ProductDetailsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+
+  final CatalogEnhancer _enhancer = CatalogEnhancer();
+  bool _enhancing = false;
+  bool _enhancePending = false;
+
+  /// Version locale du produit apres amelioration (rafraichit l'UI meme quand
+  /// le produit vient de `widget.product` et non du bloc).
+  Product? _localProduct;
 
   @override
   void initState() {
@@ -88,7 +99,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
         }
 
         final product =
-            widget.product ?? (state is ProductLoaded ? state.product : null);
+            _localProduct ??
+            widget.product ??
+            (state is ProductLoaded ? state.product : null);
 
         if (product == null) {
           return WanzoScaffold(
@@ -191,6 +204,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Photo du produit (avec bouton d'amelioration si non amelioree)
+        _buildProductImage(context, product),
+
         // En-tête avec statut et quantité
         _buildStockStatusCard(context, product),
         const SizedBox(height: WanzoSpacing.lg),
@@ -417,6 +433,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Photo du produit (avec bouton d'amelioration si non amelioree)
+                _buildProductImage(context, product),
+
                 // En-tête avec statut stock
                 _buildStockStatusCard(context, product),
                 const SizedBox(height: WanzoSpacing.lg),
@@ -682,6 +701,245 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
         ],
       ),
     );
+  }
+
+  /// Vrai si l'image principale du produit est deja amelioree (dans le
+  /// catalogue public). Critere « non amelioree » = negation de ceci.
+  bool _isPrimaryEnhanced(Product product) =>
+      product.images.isNotEmpty && product.images.first.enhanced;
+
+  /// Image affichee (URL publique en priorite, sinon fichier local).
+  Widget? _productThumb(Product product) {
+    final url = product.primaryImageUrl;
+    if (url != null && url.startsWith('http')) {
+      return CachedNetworkImage(
+        imageUrl: url,
+        width: double.infinity,
+        height: 200,
+        fit: BoxFit.contain,
+        placeholder: (_, __) => const Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+        errorWidget: (_, __, ___) => const SizedBox.shrink(),
+      );
+    }
+    final local = product.imagePath;
+    if (local != null && local.isNotEmpty && !local.startsWith('http')) {
+      final file = File(local);
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          width: double.infinity,
+          height: 200,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+        );
+      }
+    }
+    return null;
+  }
+
+  /// Photo du produit avec un bouton « Améliorer » clairement visible tant que
+  /// l'image n'est pas encore amelioree. Une fois amelioree, etat discret.
+  Widget _buildProductImage(BuildContext context, Product product) {
+    final theme = Theme.of(context);
+    final thumb = _productThumb(product);
+    if (thumb == null) return const SizedBox.shrink();
+
+    final enhanced = _isPrimaryEnhanced(product);
+    final url = product.primaryImageUrl;
+    // L'amelioration s'applique a une image publique (URL http).
+    final canEnhance =
+        !enhanced && url != null && url.startsWith('http') && !_enhancing;
+
+    Widget? overlay;
+    if (_enhancing) {
+      overlay = _enhanceStatusChip(
+        theme,
+        label: 'Amélioration...',
+        loading: true,
+        background: theme.colorScheme.primary,
+        foreground: theme.colorScheme.onPrimary,
+      );
+    } else if (canEnhance) {
+      overlay = _enhanceActionButton(theme, product);
+    } else if (_enhancePending) {
+      overlay = _enhanceStatusChip(
+        theme,
+        label: 'Amélioration en attente',
+        icon: Icons.hourglass_empty,
+        background: theme.colorScheme.surface.withValues(alpha: 0.92),
+        foreground: theme.colorScheme.onSurfaceVariant,
+      );
+    } else if (enhanced) {
+      overlay = _enhanceStatusChip(
+        theme,
+        label: 'Amélioré',
+        icon: Icons.auto_awesome,
+        background: theme.colorScheme.surface.withValues(alpha: 0.92),
+        foreground: theme.colorScheme.primary,
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      height: 200,
+      margin: const EdgeInsets.only(bottom: WanzoSpacing.lg),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: thumb,
+            ),
+          ),
+          if (overlay != null)
+            Positioned(right: 12, bottom: 12, child: overlay),
+        ],
+      ),
+    );
+  }
+
+  /// Bouton d'action « Améliorer » (icone + texte), bien visible.
+  Widget _enhanceActionButton(ThemeData theme, Product product) {
+    return Material(
+      color: theme.colorScheme.primary,
+      borderRadius: BorderRadius.circular(24),
+      elevation: 2,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: () => _enhanceProductImage(product),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.auto_fix_high,
+                  size: 18, color: theme.colorScheme.onPrimary),
+              const SizedBox(width: 6),
+              Text(
+                'Améliorer',
+                style: TextStyle(
+                  color: theme.colorScheme.onPrimary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Indicateur d'etat discret (chargement / en attente / deja amelioree).
+  Widget _enhanceStatusChip(
+    ThemeData theme, {
+    required String label,
+    IconData? icon,
+    bool loading = false,
+    required Color background,
+    required Color foreground,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (loading)
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: foreground),
+            )
+          else if (icon != null)
+            Icon(icon, size: 16, color: foreground),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: foreground,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Ameliore l'image du produit puis persiste via le repository (UpdateProduct).
+  /// `ok` => remplace l'image + remplit la description si vide ; `pending` =>
+  /// indicateur discret « en attente » (aucune erreur ni message de credit).
+  Future<void> _enhanceProductImage(Product product) async {
+    if (_enhancing) return;
+    final url = product.primaryImageUrl;
+    if (url == null || !url.startsWith('http')) return;
+    setState(() {
+      _enhancing = true;
+      _enhancePending = false;
+    });
+    try {
+      final r = await _enhancer.enhance(
+        imageUrl: url,
+        barcode: product.barcode.trim().isEmpty ? null : product.barcode.trim(),
+        name: product.name.trim().isEmpty ? null : product.name.trim(),
+      );
+      if (!mounted) return;
+      if (r.ok && r.imageUrl != null && r.imageUrl!.isNotEmpty) {
+        final newUrl = r.imageUrl!;
+        final List<ProductImage> newImages = product.images.isNotEmpty
+            ? [
+                ProductImage(
+                  url: newUrl,
+                  publicId: r.publicId ?? product.images.first.publicId,
+                  enhanced: true,
+                ),
+                ...product.images.skip(1),
+              ]
+            : [ProductImage(url: newUrl, publicId: r.publicId, enhanced: true)];
+        final desc = (product.description.trim().isEmpty &&
+                r.description != null &&
+                r.description!.trim().isNotEmpty)
+            ? r.description!.trim()
+            : product.description;
+        final updated = product.copyWith(
+          imageUrl: newUrl,
+          images: newImages,
+          description: desc,
+          updatedAt: DateTime.now(),
+        );
+        setState(() {
+          _localProduct = updated;
+          _enhancing = false;
+          _enhancePending = false;
+        });
+        context.read<InventoryBloc>().add(UpdateProduct(updated));
+      } else {
+        // pending : on garde l'image d'origine, indicateur discret.
+        setState(() {
+          _enhancing = false;
+          _enhancePending = true;
+        });
+      }
+    } catch (_) {
+      // Hors-ligne / erreur reseau : silencieux, on garde l'image telle quelle.
+      if (mounted) setState(() => _enhancing = false);
+    }
   }
 
   /// Construire la carte de statut de stock

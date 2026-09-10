@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/utils/theme.dart';
 import '../models/operation_journal_entry.dart';
 import '../bloc/operation_journal_bloc.dart';
@@ -147,7 +148,6 @@ class _GroupedOperationsDataTable extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final dayFormat = DateFormat('EEEE d MMMM yyyy', 'fr_FR');
-    final currencyFormat = NumberFormat.currency(locale: 'fr_FR', symbol: '');
     final sortedDays = groupedOperations.keys.toList()..sort();
 
     return SingleChildScrollView(
@@ -156,14 +156,14 @@ class _GroupedOperationsDataTable extends StatelessWidget {
         children: [
           for (final day in sortedDays) ...[
             // En-tête de journée avec soldes d'ouverture
-            _buildDayHeader(context, day, dayFormat, currencyFormat, theme),
+            _buildDayHeader(context, day, dayFormat, theme),
             // Tableau des opérations du jour
             _OperationsDataTable(
               operations: groupedOperations[day] ?? [],
               onOperationTap: onOperationTap,
             ),
             // Pied de journée avec soldes de fermeture
-            _buildDayFooter(context, day, currencyFormat, theme),
+            _buildDayFooter(context, day, theme),
             const SizedBox(height: 8),
           ],
         ],
@@ -175,7 +175,6 @@ class _GroupedOperationsDataTable extends StatelessWidget {
     BuildContext context,
     DateTime day,
     DateFormat dayFormat,
-    NumberFormat currencyFormat,
     ThemeData theme,
   ) {
     final balance = dailyBalances[day];
@@ -212,7 +211,7 @@ class _GroupedOperationsDataTable extends StatelessWidget {
               (e) => Padding(
                 padding: const EdgeInsets.only(left: 16),
                 child: Text(
-                  'Ouv. ${e.key}: ${currencyFormat.format(e.value)} ${e.key}',
+                  'Ouv. ${e.key}: ${formatCurrency(e.value, e.key)}',
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     fontWeight: FontWeight.w500,
@@ -228,7 +227,6 @@ class _GroupedOperationsDataTable extends StatelessWidget {
   Widget _buildDayFooter(
     BuildContext context,
     DateTime day,
-    NumberFormat currencyFormat,
     ThemeData theme,
   ) {
     final balance = dailyBalances[day];
@@ -248,7 +246,7 @@ class _GroupedOperationsDataTable extends StatelessWidget {
             (e) => Padding(
               padding: const EdgeInsets.only(left: 16),
               child: Text(
-                'Ferm. ${e.key}: ${currencyFormat.format(e.value)} ${e.key}',
+                'Ferm. ${e.key}: ${formatCurrency(e.value, e.key)}',
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: theme.colorScheme.primary,
                   fontWeight: FontWeight.w700,
@@ -273,7 +271,6 @@ class _OperationsDataTable extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final dateFormat = DateFormat('dd/MM HH:mm');
-    final currencyFormat = NumberFormat.currency(locale: 'fr_FR', symbol: '');
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -400,7 +397,7 @@ class _OperationsDataTable extends StatelessWidget {
                               // Montant
                               DataCell(
                                 Text(
-                                  '${isPositive ? '+' : ''}${currencyFormat.format(operation.amount)} ${operation.currencyCode}',
+                                  '${isPositive ? '+' : ''}${formatCurrency(operation.amount, operation.currencyCode ?? 'CDF')}',
                                   style: theme.textTheme.bodyMedium?.copyWith(
                                     color: amountColor,
                                     fontWeight: FontWeight.bold,
@@ -411,7 +408,7 @@ class _OperationsDataTable extends StatelessWidget {
                               if (!isCompact)
                                 DataCell(
                                   Text(
-                                    '${currencyFormat.format(operation.getRelevantBalance() ?? 0)} ${operation.currencyCode}',
+                                    formatCurrency(operation.getRelevantBalance() ?? 0, operation.currencyCode ?? 'CDF'),
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       color: theme.colorScheme.onSurface
                                           .withValues(alpha: 0.7),

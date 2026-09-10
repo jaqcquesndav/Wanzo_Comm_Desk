@@ -83,6 +83,37 @@ class SubscriptionStatusService {
       );
     }
 
+    // Jetons Adha épuisés : les opérations restent enregistrées, mais les
+    // écritures et les réponses Adha attendent le renouvellement de la dotation.
+    // Un constat et une action, pas d'alarme.
+    final tokens = status['tokens'];
+    if (tokens is Map) {
+      final exhausted = tokens['exhausted'] == true;
+      final unlimited = tokens['unlimited'] == true;
+      final included = (tokens['included'] as num?)?.toInt() ?? 0;
+      final remaining = (tokens['remaining'] as num?)?.toInt() ?? 0;
+      final perMessage = (tokens['tokensPerMessage'] as num?)?.toInt() ?? 1000;
+      if (exhausted) {
+        return const SubscriptionBannerState(
+          severity: SubscriptionBannerSeverity.warning,
+          message:
+              'Vos messages Adha inclus sont épuisés pour ce mois. Vos opérations sont enregistrées ; les écritures et réponses Adha reprendront avec un plan supérieur ou des jetons supplémentaires.',
+          signature: 'tokens:exhausted',
+        );
+      }
+      if (!unlimited && included > 0) {
+        final remainingMessages = remaining ~/ (perMessage > 0 ? perMessage : 1000);
+        if (remainingMessages <= 10) {
+          final plural = remainingMessages > 1 ? 's' : '';
+          return SubscriptionBannerState(
+            severity: SubscriptionBannerSeverity.warning,
+            message: 'Il vous reste environ $remainingMessages message$plural Adha ce mois-ci.',
+            signature: 'tokens:low:$remainingMessages',
+          );
+        }
+      }
+    }
+
     // Avertissement proactif « proche de la limite ».
     final usage = await _getJson('/subscription/usage');
     final features = usage?['features'];

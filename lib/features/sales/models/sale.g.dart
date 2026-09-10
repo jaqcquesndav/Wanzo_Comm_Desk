@@ -172,8 +172,6 @@ Sale _$SaleFromJson(Map<String, dynamic> json) => Sale(
       amountHT: (json['amountHT'] as num?)?.toDouble(),
       taxAmount: (json['taxAmount'] as num?)?.toDouble(),
       paidAmountInCdf: (json['paidAmountInCdf'] as num?)?.toDouble() ?? 0.0,
-      totalAmountInUsd: (json['totalAmountInUsd'] as num?)?.toDouble(),
-      paidAmountInUsd: (json['paidAmountInUsd'] as num?)?.toDouble(),
       paymentMethod: json['paymentMethod'] as String?,
       status: $enumDecode(_$SaleStatusEnumMap, json['status']),
       invoiceNumber: json['invoiceNumber'] as String?,
@@ -217,9 +215,6 @@ Map<String, dynamic> _$SaleToJson(Sale instance) => <String, dynamic>{
       if (instance.amountHT case final value?) 'amountHT': value,
       if (instance.taxAmount case final value?) 'taxAmount': value,
       'paidAmountInCdf': instance.paidAmountInCdf,
-      if (instance.totalAmountInUsd case final value?)
-        'totalAmountInUsd': value,
-      if (instance.paidAmountInUsd case final value?) 'paidAmountInUsd': value,
       if (instance.paymentMethod case final value?) 'paymentMethod': value,
       'status': _$SaleStatusEnumMap[instance.status]!,
       if (instance.invoiceNumber case final value?) 'invoiceNumber': value,

@@ -6,6 +6,7 @@ import '../../sales/repositories/sales_repository.dart';
 import '../../customer/repositories/customer_repository.dart';
 import '../../transactions/repositories/transaction_repository.dart';
 import '../../expenses/repositories/expense_repository.dart';
+import '../../../core/services/currency_service.dart';
 import '../services/dashboard_api_service.dart';
 import '../models/dashboard_data.dart';
 
@@ -24,11 +25,13 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
     required CustomerRepository customerRepository,
     required TransactionRepository transactionRepository,
     ExpenseRepository? expenseRepository,
+    CurrencyService? currencyService,
   }) : _dashboardApiService = DashboardApiService(
          salesRepository: salesRepository,
          customerRepository: customerRepository,
          transactionRepository: transactionRepository,
          expenseRepository: expenseRepository,
+         currencyService: currencyService,
        ),
        super(DashboardInitial()) {
     on<LoadDashboardData>(_onLoadDashboardData);

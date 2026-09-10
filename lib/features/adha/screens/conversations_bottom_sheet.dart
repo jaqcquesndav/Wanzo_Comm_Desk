@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/adha_message.dart';
+import '../../../core/shared_widgets/adha_logo.dart';
 
 /// Widget bottom sheet discret pour afficher l'historique des conversations ADHA
 /// S'affiche via un DraggableScrollableSheet pour une expérience similaire
@@ -254,11 +255,7 @@ class ConversationsBottomSheet extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: CircleAvatar(
           backgroundColor: theme.primaryColor.withOpacity(0.1),
-          child: Icon(
-            Icons.smart_toy_outlined,
-            color: theme.primaryColor,
-            size: 22,
-          ),
+          child: const AdhaLogo(size: 24),
         ),
         title: Text(
           conversation.title.isNotEmpty ? conversation.title : 'Conversation',

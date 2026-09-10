@@ -1,9 +1,9 @@
 // filepath: c:\\Users\\DevSpace\\Flutter\\wanzo\\lib\\core\\services\\currency_service.dart
 import 'package:flutter/foundation.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../enums/currency_enum.dart';
 import '../models/currency_settings_model.dart';
+import '../utils/currency_formatter.dart';
 import 'dart:convert';
 
 class CurrencyService {
@@ -95,42 +95,12 @@ class CurrencyService {
   String formatAmount(double amount, {Currency? displayCurrency}) {
     final targetCurrency = displayCurrency ?? _currentSettings.activeCurrency;
 
-    // Assuming 'amount' is passed in CDF. Convert to targetCurrency for display.
-    double displayAmount = convertFromCdf(
-      amount,
-      targetCurrency,
-    ); // Use the new method
-
-    NumberFormat formatter;
-    switch (targetCurrency) {
-      case Currency.USD:
-        // Example: \$1,234.56
-        formatter = NumberFormat.currency(
-          locale: 'en_US',
-          symbol: targetCurrency.symbol,
-          decimalDigits: 2,
-        );
-        break;
-      case Currency.FCFA:
-        // Example: 1.234,56 FCFA (Locale might need adjustment for specific FCFA formatting)
-        // Using a generic approach, customize as needed. 'fr_FR' for comma decimal separator.
-        formatter = NumberFormat.currency(
-          locale: 'fr_FR',
-          symbol: targetCurrency.symbol,
-          decimalDigits: 2,
-        );
-        break;
-      case Currency.CDF:
-        // Example: 1.234,56 FC
-        formatter = NumberFormat.currency(
-          locale: 'fr_CD',
-          symbol: targetCurrency.symbol,
-          decimalDigits: 2,
-        ); // fr_CD for Congo
-        break;
-      // No default needed as all enum values are covered.
-    }
-    return formatter.format(displayAmount);
+    // 'amount' est exprimé en CDF : on le convertit dans la devise d'affichage,
+    // puis on délègue le formatage (décimales/locale/symbole) à la règle unique
+    // de currency_formatter.dart (CDF = 0 décimale suffixe « CDF », USD = 2
+    // décimales symbole « $ »).
+    final displayAmount = convertFromCdf(amount, targetCurrency);
+    return formatCurrency(displayAmount, targetCurrency.code);
   }
 
   // Helper to get a specific exchange rate to CDF

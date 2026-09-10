@@ -48,6 +48,18 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
   final StringBuffer _accumulatedStreamContent = StringBuffer();
   String? _currentStreamingRequestId;
 
+  // ──────────────────────────────────────────────────────────────────────
+  // Cache du contexte métier (Phase latence 1er message)
+  // ──────────────────────────────────────────────────────────────────────
+  // La partie coûteuse de _buildContextInfo (profil entreprise via
+  // authRepository.getCurrentUser + 5 dernières écritures du journal) est
+  // stable d'un message à l'autre. On la met en cache un court instant pour
+  // éviter de rebloquer l'envoi à chaque message. L'interactionContext (léger,
+  // variable) est reconstruit à chaque appel.
+  AdhaBaseContext? _cachedBaseContext;
+  DateTime? _cachedBaseContextAt;
+  static const Duration _baseContextTtl = Duration(minutes: 2);
+
   // Flag de session audio active (mirroir du mobile). Permet aux callbacks
   // VAD/silence d'éviter de relancer l'écoute après EndAudioSession.
   bool _isAudioSessionActive = false;
@@ -106,6 +118,7 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     on<StreamChunkReceived>(_onStreamChunkReceived);
     on<StreamCompleted>(_onStreamCompleted);
     on<StreamError>(_onStreamError);
+    on<StreamToolStatus>(_onStreamToolStatus);
     on<CancelStreaming>(_onCancelStreaming);
 
     // Événements de gestion de session
@@ -152,6 +165,49 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       '[AdhaBloc] _buildContextInfo: sourceIdentifier=$sourceIdentifier',
     );
     debugPrint('[AdhaBloc] _buildContextInfo: conversationId=$conversationId');
+
+    // Base context (profil + journal) mis en cache pour réduire la latence
+    // des messages suivants. Reconstruit si le cache est expiré/absent.
+    final baseContext = await _buildBaseContext();
+
+    // Déterminer le type d'interaction final
+    AdhaInteractionType finalInteractionType = interactionType;
+    if (conversationId != null &&
+        interactionType != AdhaInteractionType.genericCardAnalysis) {
+      finalInteractionType = AdhaInteractionType.followUp;
+    }
+
+    debugPrint(
+      '[AdhaBloc] _buildContextInfo: finalInteractionType=$finalInteractionType',
+    );
+
+    final interactionContext = AdhaInteractionContext(
+      interactionType: finalInteractionType,
+      sourceIdentifier: sourceIdentifier,
+      interactionData: interactionData,
+    );
+
+    final contextInfo = AdhaContextInfo(
+      baseContext: baseContext,
+      interactionContext: interactionContext,
+    );
+
+    return contextInfo;
+  }
+
+  /// Construit (ou réutilise depuis le cache) le contexte métier de base :
+  /// profil entreprise + résumé du journal d'opérations. Ces données sont
+  /// stables d'un message à l'autre pendant une courte fenêtre, donc on les
+  /// met en cache ([_baseContextTtl]) pour ne pas rebloquer l'envoi.
+  Future<AdhaBaseContext> _buildBaseContext() async {
+    final cached = _cachedBaseContext;
+    final cachedAt = _cachedBaseContextAt;
+    if (cached != null &&
+        cachedAt != null &&
+        DateTime.now().difference(cachedAt) < _baseContextTtl) {
+      debugPrint('[AdhaBloc] _buildBaseContext: cache réutilisé');
+      return cached;
+    }
 
     // 1. Fetch Business Profile
     AdhaBusinessProfile businessProfile;
@@ -233,39 +289,16 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     );
 
     debugPrint(
-      '[AdhaBloc] _buildContextInfo: businessProfile.name=${businessProfile.name}',
+      '[AdhaBloc] _buildBaseContext: businessProfile.name=${businessProfile.name}',
     );
     debugPrint(
-      '[AdhaBloc] _buildContextInfo: operationJournalSummary.recentEntries.length=${operationJournalSummary.recentEntries.length}',
+      '[AdhaBloc] _buildBaseContext: operationJournalSummary.recentEntries.length=${operationJournalSummary.recentEntries.length}',
     );
 
-    // Déterminer le type d'interaction final
-    AdhaInteractionType finalInteractionType = interactionType;
-    if (conversationId != null &&
-        interactionType != AdhaInteractionType.genericCardAnalysis) {
-      finalInteractionType = AdhaInteractionType.followUp;
-    }
+    _cachedBaseContext = baseContext;
+    _cachedBaseContextAt = DateTime.now();
 
-    debugPrint(
-      '[AdhaBloc] _buildContextInfo: finalInteractionType=$finalInteractionType',
-    );
-
-    final interactionContext = AdhaInteractionContext(
-      interactionType: finalInteractionType,
-      sourceIdentifier: sourceIdentifier,
-      interactionData: interactionData,
-    );
-
-    final contextInfo = AdhaContextInfo(
-      baseContext: baseContext,
-      interactionContext: interactionContext,
-    );
-
-    // Log the final context JSON
-    debugPrint('[AdhaBloc] _buildContextInfo: FINAL CONTEXT JSON:');
-    debugPrint('[AdhaBloc] ${contextInfo.toJson()}');
-
-    return contextInfo;
+    return baseContext;
   }
 
   /// Gère l'envoi d'un message à Adha
@@ -1282,31 +1315,34 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         break;
 
       case AdhaStreamType.end:
-        // Flush IMMÉDIAT du buffer batching pour ne perdre aucun chunk
-        // resté en attente du prochain tick de fenêtre (60ms).
-        _flushChunkBatch();
-        // Fin du streaming - utiliser le contenu accumulé
-        // IMPORTANT: Attendre un court instant pour que les chunks en queue soient traités
-        // avant de finaliser le streaming. Les événements arrivent de manière asynchrone
-        // et le 'end' peut arriver avant que tous les 'chunk' events ne soient traités.
-        Future.delayed(const Duration(milliseconds: 100), () {
-          final accumulatedContent = _accumulatedStreamContent.toString();
-          debugPrint(
-            '[AdhaBloc] 📝 StreamEnd traité - contenu accumulé: ${accumulatedContent.length} caractères',
-          );
-          add(
-            StreamCompleted(
-              conversationId: chunk.conversationId,
-              fullContent:
-                  accumulatedContent.isNotEmpty
-                      ? accumulatedContent
-                      : chunk.content,
-              requestMessageId: chunk.requestMessageId,
-              totalChunks: chunk.totalChunks ?? chunk.chunkId,
-              processingDetails: chunk.processingDetails,
-            ),
-          );
-        });
+        // Fin du streaming. On incorpore SYNCHRONEMENT tout texte batché
+        // encore en attente (résidu de la fenêtre 60 ms) directement dans le
+        // buffer accumulé, plutôt que de repasser par un événement + un
+        // Future.delayed(100 ms) arbitraire. Résultat : finalisation immédiate
+        // et sans perte de chunk.
+        _chunkBatchTimer?.cancel();
+        _chunkBatchTimer = null;
+        final residual = _chunkBatchBuffer.toString();
+        _chunkBatchBuffer.clear();
+        if (residual.isNotEmpty) {
+          _accumulatedStreamContent.write(residual);
+        }
+        final accumulatedContent = _accumulatedStreamContent.toString();
+        debugPrint(
+          '[AdhaBloc] 📝 StreamEnd traité - contenu accumulé: ${accumulatedContent.length} caractères',
+        );
+        add(
+          StreamCompleted(
+            conversationId: chunk.conversationId,
+            fullContent:
+                accumulatedContent.isNotEmpty
+                    ? accumulatedContent
+                    : chunk.content,
+            requestMessageId: chunk.requestMessageId,
+            totalChunks: chunk.totalChunks ?? chunk.chunkId,
+            processingDetails: chunk.processingDetails,
+          ),
+        );
         break;
 
       case AdhaStreamType.error:
@@ -1333,8 +1369,15 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
 
       case AdhaStreamType.toolCall:
       case AdhaStreamType.toolResult:
-        // Appels de fonctions IA - optionnel: afficher un indicateur
-        // Pour l'instant, on les ignore silencieusement
+        // Workflow agentique : on affiche une étape compacte dans la zone de
+        // streaming (« Lecture de la base de connaissance… », « Génération du
+        // document… », « Analyse… ») au lieu d'ignorer l'événement.
+        add(
+          StreamToolStatus(
+            conversationId: chunk.conversationId,
+            status: _friendlyToolLabel(chunk),
+          ),
+        );
         break;
 
       case AdhaStreamType.cancelled:
@@ -1348,6 +1391,47 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         debugPrint('[AdhaBloc] 💓 Heartbeat reçu');
         break;
     }
+  }
+
+  /// Traduit un chunk tool_call / tool_result en libellé compact et lisible.
+  /// On reste volontairement générique et sans surcharge : quelques étapes
+  /// clés reconnues par mots-clés, sinon un « Analyse… » neutre.
+  String _friendlyToolLabel(AdhaStreamChunkEvent chunk) {
+    final raw = chunk.content.toLowerCase();
+    if (raw.contains('knowledge') ||
+        raw.contains('rag') ||
+        raw.contains('base de conn') ||
+        raw.contains('retrieval')) {
+      return 'Lecture de la base de connaissance...';
+    }
+    if (raw.contains('document') ||
+        raw.contains('pdf') ||
+        raw.contains('report') ||
+        raw.contains('génér') ||
+        raw.contains('generate')) {
+      return 'Génération du document...';
+    }
+    if (raw.contains('search') ||
+        raw.contains('recherche') ||
+        raw.contains('query') ||
+        raw.contains('lookup')) {
+      return 'Recherche en cours...';
+    }
+    if (chunk.type == AdhaStreamType.toolResult) {
+      return 'Analyse des résultats...';
+    }
+    return 'Analyse...';
+  }
+
+  /// Met à jour l'étape agentique compacte affichée pendant le streaming.
+  Future<void> _onStreamToolStatus(
+    StreamToolStatus event,
+    Emitter<AdhaState> emit,
+  ) async {
+    if (state is! AdhaStreaming) return;
+    final currentState = state as AdhaStreaming;
+    if (currentState.conversationId != event.conversationId) return;
+    emit(currentState.withToolStatus(event.status));
   }
 
   /// Connecte au service de streaming
@@ -1455,6 +1539,14 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     bool isNewConversation = false;
     String? conversationIdForApi;
 
+    // Paramètres pour construire le contexte APRÈS avoir émis la bulle
+    // utilisateur + l'état AdhaStreaming (latence 1er message : on ne bloque
+    // plus l'affichage sur _buildContextInfo).
+    AdhaInteractionType ctxInteractionType;
+    String? ctxSourceIdentifier;
+    Map<String, dynamic>? ctxInteractionData;
+    String? ctxConversationId;
+
     // Réinitialiser le buffer de streaming
     _accumulatedStreamContent.clear();
 
@@ -1477,14 +1569,14 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       final currentState = state as AdhaConversationActive;
       currentConversation = currentState.conversation;
       conversationIdForApi = currentConversation.id; // Conversation existante
-      contextInfoForApi = await _buildContextInfo(
-        event.contextInfo?.interactionContext.interactionType ??
-            AdhaInteractionType.followUp,
-        sourceIdentifier:
-            event.contextInfo?.interactionContext.sourceIdentifier,
-        interactionData: event.contextInfo?.interactionContext.interactionData,
-        conversationId: currentConversation.id,
-      );
+      ctxInteractionType =
+          event.contextInfo?.interactionContext.interactionType ??
+          AdhaInteractionType.followUp;
+      ctxSourceIdentifier =
+          event.contextInfo?.interactionContext.sourceIdentifier;
+      ctxInteractionData =
+          event.contextInfo?.interactionContext.interactionData;
+      ctxConversationId = currentConversation.id;
     } else if (state is AdhaStreaming) {
       // Déjà en streaming, ignorer
       return;
@@ -1512,14 +1604,12 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         updatedAt: DateTime.now(),
         messages: [],
       );
-      contextInfoForApi = await _buildContextInfo(
-        event.contextInfo!.interactionContext.interactionType,
-        sourceIdentifier:
-            event.contextInfo!.interactionContext.sourceIdentifier,
-        interactionData: event.contextInfo!.interactionContext.interactionData,
-        conversationId:
-            clientGeneratedConversationId, // Inclure l'ID dans le contexte
-      );
+      ctxInteractionType = event.contextInfo!.interactionContext.interactionType;
+      ctxSourceIdentifier =
+          event.contextInfo!.interactionContext.sourceIdentifier;
+      ctxInteractionData =
+          event.contextInfo!.interactionContext.interactionData;
+      ctxConversationId = clientGeneratedConversationId;
     }
 
     // Créer le message utilisateur
@@ -1553,6 +1643,16 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         isStreaming: true,
         isPendingConversationId: false, // ID généré côté client, pas en attente
       ),
+    );
+
+    // Construire le contexte APRÈS l'affichage de la bulle + l'état streaming.
+    // La bulle utilisateur et l'indicateur « ADHA écrit » apparaissent donc
+    // immédiatement, sans attendre le fetch profil/journal (mis en cache).
+    contextInfoForApi = await _buildContextInfo(
+      ctxInteractionType,
+      sourceIdentifier: ctxSourceIdentifier,
+      interactionData: ctxInteractionData,
+      conversationId: ctxConversationId,
     );
 
     // S'assurer que la connexion WebSocket est active avant d'envoyer
@@ -1643,9 +1743,6 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       '[AdhaBloc] 📝 Souscription WebSocket à ${currentConversation.id} AVANT envoi du message',
     );
     _streamService.subscribeToConversation(currentConversation.id);
-
-    // Petit délai pour s'assurer que la souscription est bien enregistrée côté serveur
-    await Future.delayed(const Duration(milliseconds: 100));
 
     try {
       // NOUVEAU (Janvier 2026): Streaming activé pour TOUTES les conversations
@@ -2030,22 +2127,69 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     }
   }
 
-  /// Annule le streaming en cours
+  /// Annule le streaming en cours (bouton STOP).
+  ///
+  /// STOP propre :
+  ///  1. On récupère le texte partiel déjà reçu (état + résidu batché non
+  ///     encore émis) et on le CONSERVE sous forme de message assistant.
+  ///  2. On signale l'arrêt au backend via le service de streaming
+  ///     (unsubscribe → le serveur cesse de pousser des chunks).
+  ///  3. On nettoie buffers/timers/état.
   Future<void> _onCancelStreaming(
     CancelStreaming event,
     Emitter<AdhaState> emit,
   ) async {
-    _accumulatedStreamContent.clear();
-    _currentStreamingRequestId = null;
+    // Signaler l'arrêt au backend (best-effort, ne doit jamais throw).
+    try {
+      _streamService.cancelStream();
+    } catch (e) {
+      debugPrint('[AdhaBloc] cancelStream: $e');
+    }
+
+    // Récupérer le résidu de texte batché non encore émis pour ne rien perdre.
+    _chunkBatchTimer?.cancel();
+    _chunkBatchTimer = null;
+    final residual = _chunkBatchBuffer.toString();
+    _chunkBatchBuffer.clear();
 
     if (state is AdhaStreaming) {
       final streamingState = state as AdhaStreaming;
+
+      final partial = (streamingState.partialContent + residual).trim();
+
+      var conversation = streamingState.conversation;
+
+      // Conserver le texte partiel comme message assistant (interrompu).
+      if (partial.isNotEmpty) {
+        final adhaMessage = AdhaMessage(
+          id: _uuid.v4(),
+          content: partial,
+          timestamp: DateTime.now(),
+          sender: AdhaMessageSender.ai,
+          type: _detectMessageType(partial),
+        );
+        final finalMessages = List<AdhaMessage>.from(conversation.messages)
+          ..add(adhaMessage);
+        conversation = conversation.copyWith(
+          messages: finalMessages,
+          updatedAt: DateTime.now(),
+        );
+        await adhaRepository.saveConversation(conversation);
+        _currentlyActiveConversationId = conversation.id;
+      }
+
+      _accumulatedStreamContent.clear();
+      _currentStreamingRequestId = null;
+
       emit(
         AdhaConversationActive(
-          conversation: streamingState.conversation,
+          conversation: conversation,
           isProcessing: false,
         ),
       );
+    } else {
+      _accumulatedStreamContent.clear();
+      _currentStreamingRequestId = null;
     }
   }
 

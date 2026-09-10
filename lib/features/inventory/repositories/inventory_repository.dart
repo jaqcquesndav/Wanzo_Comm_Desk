@@ -123,6 +123,8 @@ class InventoryRepository {
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
       imagePath: product.imagePath,
+      imageUrl: product.imageUrl,
+      images: product.images,
       inputCurrencyCode: product.inputCurrencyCode,
       inputExchangeRate: product.inputExchangeRate,
       costPriceInInputCurrency: product.costPriceInInputCurrency,
@@ -197,6 +199,16 @@ class InventoryRepository {
     return getProductById(newProduct.id) ?? newProduct;
   }
 
+  /// Statut de synchronisation a poser lors d'une modification LOCALE.
+  ///
+  /// Le service de synchronisation traite `pending` comme « entite a CREER » et
+  /// `pending_update` comme « entite a METTRE A JOUR ». Remettre en `pending`
+  /// une entite deja transmise au backend provoquait donc la creation d'un
+  /// DOUBLON a la prochaine synchronisation. Seule une entite jamais transmise
+  /// reste en `pending`.
+  String _pendingStatusFor(String? currentStatus) =>
+      currentStatus == 'pending' ? 'pending' : 'pending_update';
+
   /// Mettre à jour un produit existant
   Future<Product> updateProduct(Product product) async {
     final existingProduct = getProductById(product.id);
@@ -207,7 +219,9 @@ class InventoryRepository {
 
     final updatedProduct = product.copyWith(
       updatedAt: DateTime.now(),
-      syncStatus: 'pending',
+      // Un produit deja synchronise repart en `pending_update`, jamais en
+      // `pending` : sinon la synchronisation le RECREE cote backend.
+      syncStatus: _pendingStatusFor(existingProduct.syncStatus),
     );
 
     // 1. Update locally first

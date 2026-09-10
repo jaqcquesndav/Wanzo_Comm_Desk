@@ -13,6 +13,9 @@ import '../screens/audio_chat_widget.dart';
 import '../models/adha_context_info.dart';
 import '../screens/conversations_bottom_sheet.dart';
 import '../../auth/bloc/auth_bloc.dart';
+import '../../../core/shared_widgets/adha_logo.dart';
+import '../../../core/services/business_context_service.dart';
+import '../adha_suggestions.dart';
 import '../../../constants/colors.dart';
 
 /// Widget du panneau chat Adha pour affichage dans le layout split
@@ -184,12 +187,14 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
                     state.conversation.messages,
                     false,
                     null,
+                    null,
                   );
                 } else if (state is AdhaStreaming) {
                   return _buildMessagesList(
                     state.conversation.messages,
                     true,
                     state.partialContent,
+                    state.toolStatus,
                   );
                 } else if (state is AdhaError) {
                   return AdhaErrorWidget(
@@ -325,28 +330,9 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final suggestions = [
-      {
-        'icon': Icons.analytics_outlined,
-        'title': 'Analyser mes ventes',
-        'prompt': 'Analyse mes ventes de cette semaine',
-      },
-      {
-        'icon': Icons.inventory_2_outlined,
-        'title': 'État du stock',
-        'prompt': 'Montre-moi les produits en rupture de stock',
-      },
-      {
-        'icon': Icons.trending_up_outlined,
-        'title': 'Performance',
-        'prompt': 'Comment se porte mon entreprise ce mois-ci ?',
-      },
-      {
-        'icon': Icons.receipt_long_outlined,
-        'title': 'Dépenses récentes',
-        'prompt': 'Résume mes dépenses du mois',
-      },
-    ];
+    // Suggestions DÉRIVÉES du métier actif (boutique, restaurant, salon,
+    // atelier…) plutôt que codées en dur pour la boutique.
+    final suggestions = suggestionsFor(BusinessContextService().activityMode);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -364,11 +350,7 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
                     color: WanzoColors.primary.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
-                    Icons.smart_toy_outlined,
-                    size: 30,
-                    color: WanzoColors.primary,
-                  ),
+                  child: const AdhaLogo(size: 44),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -403,8 +385,7 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
               children:
                   suggestions.map((suggestion) {
                     return InkWell(
-                      onTap:
-                          () => _sendSuggestion(suggestion['prompt'] as String),
+                      onTap: () => _sendSuggestion(suggestion.prompt),
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -428,13 +409,13 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              suggestion['icon'] as IconData,
+                              suggestion.icon,
                               size: 16,
                               color: WanzoColors.primary,
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              suggestion['title'] as String,
+                              suggestion.title,
                               style: TextStyle(
                                 fontSize: 13,
                                 color: theme.colorScheme.onSurface,
@@ -461,30 +442,46 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
     List<AdhaMessage> messages,
     bool isStreaming,
     String? streamedContent,
+    String? toolStatus,
   ) {
     return ListView.builder(
       controller: _scrollController,
+      // Une clé stable par contenu de liste aide Flutter à réutiliser les
+      // sous-arbres des messages terminés entre deux rebuilds de streaming.
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       itemCount: messages.length + (isStreaming ? 1 : 0),
       itemBuilder: (context, index) {
         if (isStreaming && index == messages.length) {
-          return StreamingMessageWidget(partialContent: streamedContent ?? '');
+          // SEUL cet item change à chaque chunk. Les items terminés
+          // au-dessus sont isolés par RepaintBoundary + ValueKey ci-dessous
+          // et ne sont donc pas repeints pendant le streaming.
+          return StreamingMessageWidget(
+            key: const ValueKey('adha_streaming_bubble'),
+            partialContent: streamedContent ?? '',
+            toolStatus: toolStatus,
+          );
         }
 
         final message = messages[index];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: ChatMessageWidget(
-            message: message,
-            onEditMessage:
-                message.isUserMessage
-                    ? (msg) {
-                      setState(() {
-                        _editingMessage = msg;
-                        _messageController.text = msg.content;
-                      });
-                    }
-                    : null,
+        // ValueKey(message.id) : identité stable → Flutter réutilise l'élément.
+        // RepaintBoundary : isole le repaint des messages déjà finalisés
+        // pendant que la bulle de streaming se met à jour à 60 ms.
+        return RepaintBoundary(
+          key: ValueKey(message.id),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: ChatMessageWidget(
+              message: message,
+              onEditMessage:
+                  message.isUserMessage
+                      ? (msg) {
+                        setState(() {
+                          _editingMessage = msg;
+                          _messageController.text = msg.content;
+                        });
+                      }
+                      : null,
+            ),
           ),
         );
       },
@@ -660,13 +657,24 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
               // 4. Sinon → Bouton Microphone (mode audio)
 
               if (isStreaming) {
-                // Bouton STOP pendant le streaming
+                // Bouton STOP pendant le streaming.
+                // CORRECTIF DESK : on dispatche CancelStreaming (comme le
+                // mobile) pour réellement arrêter un stream TEXTE. L'ancien
+                // InterruptAdha est un handler AUDIO qui retourne tôt quand
+                // l'état n'est pas AdhaConversationActive : pendant un stream
+                // l'état est AdhaStreaming, donc le stop était inopérant.
+                // InterruptAdha reste réservé au mode audio.
+                final streamingState = state;
                 return _buildDynamicButton(
                   icon: Icons.stop_rounded,
                   color: Colors.red,
                   tooltip: 'Arrêter la réponse',
                   onPressed: () {
-                    context.read<AdhaBloc>().add(const InterruptAdha());
+                    context.read<AdhaBloc>().add(
+                      CancelStreaming(
+                        conversationId: streamingState.conversationId,
+                      ),
+                    );
                   },
                 );
               } else if (isEditing) {

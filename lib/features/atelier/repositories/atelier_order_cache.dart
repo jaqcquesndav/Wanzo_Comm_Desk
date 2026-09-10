@@ -17,14 +17,20 @@ class AtelierOrderCache {
     return Hive.openBox<String>(_boxName);
   }
 
-  String _key(String? businessUnitId) =>
-      (businessUnitId == null || businessUnitId.isEmpty) ? 'all' : businessUnitId;
+  // Clé scindée par BU ET par métier : sans le métier, un atelier multi-métiers
+  // (couture + imprimerie sur la même BU) mélangerait ses commandes hors-ligne.
+  String _key(String? businessUnitId, String? metier) {
+    final bu =
+        (businessUnitId == null || businessUnitId.isEmpty) ? 'all' : businessUnitId;
+    return (metier == null || metier.isEmpty) ? bu : '$bu::$metier';
+  }
 
-  Future<void> save(String? businessUnitId, List<AtelierOrder> orders) async {
+  Future<void> save(String? businessUnitId, List<AtelierOrder> orders,
+      {String? metier}) async {
     try {
       final box = await _box();
       await box.put(
-        _key(businessUnitId),
+        _key(businessUnitId, metier),
         jsonEncode(orders.map((o) => o.toJson()).toList()),
       );
     } catch (e) {
@@ -32,10 +38,11 @@ class AtelierOrderCache {
     }
   }
 
-  Future<List<AtelierOrder>> load(String? businessUnitId) async {
+  Future<List<AtelierOrder>> load(String? businessUnitId,
+      {String? metier}) async {
     try {
       final box = await _box();
-      final raw = box.get(_key(businessUnitId));
+      final raw = box.get(_key(businessUnitId, metier));
       if (raw == null || raw.isEmpty) return const [];
       final list = jsonDecode(raw) as List<dynamic>;
       return list

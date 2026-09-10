@@ -8,13 +8,13 @@ import 'package:wanzo/core/services/form_navigation_service.dart';
 import 'package:wanzo/core/shared_widgets/quick_actions_sheet.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
-import 'package:wanzo/core/widgets/smart_image.dart';
-import 'package:wanzo/features/inventory/models/product.dart';
-import 'package:wanzo/features/inventory/repositories/inventory_repository.dart';
+import 'package:wanzo/core/widgets/dish_thumb_grid.dart';
 import 'package:wanzo/features/sales/repositories/sales_repository.dart';
 
 import '../cubit/restaurant_orders_cubit.dart';
+import '../models/menu_item.dart';
 import '../models/restaurant_order.dart';
+import '../repositories/menu_repository.dart';
 import '../widgets/restaurant_order_quick_view_dialog.dart';
 
 /// Tableau de bord du mode RESTAURANT (desktop / comptoir).
@@ -335,54 +335,63 @@ class RestaurantDashboardScreen extends StatelessWidget {
         'Les plats les plus vendus s\'afficheront après les premiers règlements.',
       );
     }
-    // Résolution de la photo du plat par productId (même source que le POS /
-    // la carte : le catalogue produits). Repli sur l'icône de catégorie.
-    final products = <String, Product>{
-      for (final p in _allProducts(context)) p.id: p,
-    };
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Column(
-        children: [
-          for (var i = 0; i < dishes.length; i++) ...[
-            if (i > 0) const Divider(height: 1),
-            ListTile(
-              leading: _dishLeading(context, products[dishes[i].productId], i),
-              title: Text(
-                dishes[i].name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: Text(
-                '${dishes[i].quantity} vendu(s)',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ],
-      ),
+    // Résolution de la photo du plat par productId via la CARTE (MenuItem) : le
+    // `productId` d'une ligne restaurant est l'id d'un plat de la carte, pas d'un
+    // produit du stock. Repli propre sur une icône si aucune photo.
+    return FutureBuilder<Map<String, MenuItem>>(
+      future: MenuRepository().loadMap(),
+      builder: (context, snap) {
+        final menu = snap.data ?? const <String, MenuItem>{};
+        // Repli par nom normalisé : selon la source, `productId` peut être l'id
+        // d'un MenuItem OU un nom de plat. On résout d'abord par id, sinon par
+        // nom, pour toujours retrouver la photo du plat.
+        final byName = <String, MenuItem>{
+          for (final it in menu.values) _normalizeDishKey(it.name): it,
+        };
+        MenuItem? resolve(_DishCount d) =>
+            menu[d.productId] ?? byName[_normalizeDishKey(d.name)];
+        return Card(
+          margin: EdgeInsets.zero,
+          child: Column(
+            children: [
+              for (var i = 0; i < dishes.length; i++) ...[
+                if (i > 0) const Divider(height: 1),
+                ListTile(
+                  leading: _dishLeading(context, resolve(dishes[i]), i),
+                  title: Text(
+                    dishes[i].name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: Text(
+                    '${dishes[i].quantity} vendu(s)',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 
-  /// Vignette du plat : photo produit (réseau/local) avec un badge de rang, ou
-  /// l'icône de catégorie en repli lorsque le produit n'a pas d'image.
-  Widget _dishLeading(BuildContext context, Product? product, int index) {
+  /// Vignette du plat : photo du plat de la carte avec un badge de rang, ou
+  /// l'icône de repli lorsque le plat n'a pas d'image.
+  Widget _dishLeading(BuildContext context, MenuItem? item, int index) {
     final theme = Theme.of(context);
     return SizedBox(
       width: 44,
       height: 44,
       child: Stack(
         children: [
-          SmartImage(
-            imageUrl: product?.imageUrl,
-            imagePath: product?.imagePath,
-            width: 44,
-            height: 44,
-            fit: BoxFit.cover,
-            borderRadius: BorderRadius.circular(8),
-            placeholderIcon: product?.category.icon ?? Icons.restaurant,
-            placeholderColor: theme.colorScheme.surfaceContainerHighest,
-            placeholderIconSize: 20,
+          DishThumbGrid(
+            thumbs: [
+              if (item != null)
+                DishThumb(photoUrl: item.photoUrl, photoPath: item.photoPath),
+            ],
+            size: 44,
+            radius: 8,
           ),
           Positioned(
             left: 0,
@@ -409,16 +418,6 @@ class RestaurantDashboardScreen extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  /// Catalogue produits (source des photos). Lecture directe du repository —
-  /// même mécanisme que le POS restaurant. Repli silencieux si indisponible.
-  List<Product> _allProducts(BuildContext context) {
-    try {
-      return context.read<InventoryRepository>().getAllProducts();
-    } catch (_) {
-      return const [];
-    }
   }
 
   Widget _hint(BuildContext context, String text) {
@@ -503,6 +502,12 @@ class _KpiCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Clé de résolution d'un plat par NOM (repli quand `productId` ne matche aucun
+/// id de la carte) : minuscule, espaces normalisés, accents ignorés grossièrement.
+String _normalizeDishKey(String name) {
+  return name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 }
 
 class _DishCount {

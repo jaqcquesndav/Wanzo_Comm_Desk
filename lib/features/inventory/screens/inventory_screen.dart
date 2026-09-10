@@ -19,6 +19,7 @@ import '../models/stock_transaction.dart'; // Added import
 import 'package:wanzo/core/utils/currency_formatter.dart'; // Added
 import 'package:wanzo/core/enums/currency_enum.dart'; // Added
 import 'package:wanzo/core/services/form_navigation_service.dart';
+import 'package:wanzo/core/platform/platform_service.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart'; // For BusinessUnitTypeExtension
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart'; // Changed
 import 'package:wanzo/core/services/currency_service.dart'; // Added
@@ -85,6 +86,10 @@ class _InventoryScreenState extends State<InventoryScreen>
     // Listen to currency setting changes
     context.watch<CurrencySettingsCubit>();
 
+    final bool isNarrow =
+        MediaQuery.sizeOf(context).width <
+        PlatformService.instance.tabletMinWidth;
+
     return BlocBuilder<InventoryBloc, InventoryState>(
       builder: (context, state) {
         return WanzoScaffold(
@@ -112,9 +117,9 @@ class _InventoryScreenState extends State<InventoryScreen>
                               p.name,
                               p.category.displayName,
                               p.stockQuantity.toString(),
-                              '${p.costPriceInCdf.toStringAsFixed(2)} ${p.inputCurrencyCode}',
-                              '${p.sellingPriceInCdf.toStringAsFixed(2)} ${p.inputCurrencyCode}',
-                              '${(p.stockQuantity * p.costPriceInCdf).toStringAsFixed(2)} ${p.inputCurrencyCode}',
+                              formatCurrency(p.costPriceInCdf, 'CDF'),
+                              formatCurrency(p.sellingPriceInCdf, 'CDF'),
+                              formatCurrency(p.stockQuantity * p.costPriceInCdf, 'CDF'),
                             ],
                           )
                           .toList(),
@@ -135,6 +140,22 @@ class _InventoryScreenState extends State<InventoryScreen>
           ],
           body: Column(
             children: [
+              // Sur desktop/tablette : bouton de création en barre d'outils
+              // (le FAB reste réservé au mobile étroit). Masqué sur l'onglet
+              // Transactions (index 2) où il n'y a rien à créer.
+              if (!isNarrow && _tabController.index != 2)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: Row(
+                    children: [
+                      FilledButton.icon(
+                        onPressed: () => _openProductForm(context),
+                        icon: const Icon(Icons.add),
+                        label: Text(l10n.addProductButton),
+                      ),
+                    ],
+                  ),
+                ),
               // TabBar avec style uniforme comme la page Opérations
               TabBar(
                 controller: _tabController,
@@ -245,20 +266,9 @@ class _InventoryScreenState extends State<InventoryScreen>
             ],
           ),
           floatingActionButton:
-              _tabController.index != 2
+              (isNarrow && _tabController.index != 2)
                   ? FloatingActionButton(
-                    onPressed: () {
-                      FormNavigationService.instance.openProductForm(
-                        context,
-                        onSuccess: () {
-                          if (mounted) {
-                            context.read<InventoryBloc>().add(
-                              const LoadProducts(),
-                            );
-                          }
-                        },
-                      );
-                    },
+                    onPressed: () => _openProductForm(context),
                     backgroundColor:
                         Theme.of(
                           context,
@@ -270,6 +280,17 @@ class _InventoryScreenState extends State<InventoryScreen>
                   )
                   : null,
         );
+      },
+    );
+  }
+
+  void _openProductForm(BuildContext context) {
+    FormNavigationService.instance.openProductForm(
+      context,
+      onSuccess: () {
+        if (mounted) {
+          context.read<InventoryBloc>().add(const LoadProducts());
+        }
       },
     );
   }

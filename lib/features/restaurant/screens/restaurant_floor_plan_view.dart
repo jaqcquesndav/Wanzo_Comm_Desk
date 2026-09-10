@@ -4,31 +4,34 @@ import 'package:go_router/go_router.dart';
 
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import '../cubit/restaurant_orders_cubit.dart';
+import '../models/menu_item.dart';
 import '../models/restaurant_order.dart';
+import '../repositories/menu_repository.dart';
 import '../services/restaurant_api_service.dart';
+import '../widgets/order_dish_thumbs.dart';
 import '../widgets/restaurant_order_quick_view_dialog.dart';
 
 /// Vue « Plan de salle » : une grille de tables (module restaurant, backend) où
 /// chaque table affiche son état de service en direct.
 ///
 /// L'état est DÉRIVÉ localement des commandes du [RestaurantOrdersCubit] :
-///  - LIBRE  → aucune commande active dont le `label` correspond à la table ;
-///  - OCCUPÉE → une commande active correspond (on montre articles + total).
+///  - LIBRE  → aucune commande active liée à la table ;
+///  - OCCUPÉE → une commande active y est liée (on montre articles + total).
 ///
-/// Le rapprochement table ↔ commande se fait par libellé (insensible à la casse
-/// et aux espaces), car le modèle de commande n'est PAS modifié : une commande
-/// ouverte pour « Table 4 » porte exactement ce libellé. Taper une table libre
-/// ouvre une nouvelle commande pré-remplie avec son libellé et l'ouvre à la
-/// caisse ; taper une table occupée rouvre sa commande existante.
+/// Rapprochement table ↔ commande : par `tableId` EN PRIORITÉ (lien fort, posé à
+/// l'ouverture d'une commande depuis une table), avec repli sur le libellé
+/// normalisé pour les commandes antérieures (rétro-compatibilité). Les commandes
+/// à EMPORTER n'occupent jamais une table.
 ///
 /// Adaptation desktop : cette app n'a PAS de route `/restaurant/orders/:id` ;
 /// la caisse ([RestaurantPosScreen], route `/restaurant/orders`) sélectionne la
-/// commande via son état interne. On lui passe donc l'id via le query param
-/// `orderId` (la caisse le lit pour pré-sélectionner la commande).
+/// commande via le query param `orderId`.
 ///
-/// Tout est tolérant au hors-ligne : les tables viennent du backend, mais si
-/// elles ne se chargent pas on affiche un message + un repli vers le flux de
-/// commande libre existant (le board Kanban reste disponible en parallèle).
+/// Robustesse hors-ligne : on conserve le DERNIER état connu (cache mémoire)
+/// pour ne pas afficher un plan vide qui clignote ; un échec de rafraîchissement
+/// affiche un bandeau discret sans effacer les tables déjà chargées. Le plan est
+/// aussi rafraîchi (silencieusement) quand le cubit change, pas seulement au
+/// premier montage.
 class RestaurantFloorPlanView extends StatefulWidget {
   const RestaurantFloorPlanView({super.key});
 
@@ -39,57 +42,93 @@ class RestaurantFloorPlanView extends StatefulWidget {
 
 class _RestaurantFloorPlanViewState extends State<RestaurantFloorPlanView> {
   final RestaurantApiService _api = RestaurantApiService();
+
+  /// Cache mémoire du dernier plan connu (partagé entre instances/onglets) :
+  /// évite un plan vide clignotant au retour sur l'écran ou hors-ligne.
+  static List<RestaurantTable> _cachedTables = [];
+
   List<RestaurantTable> _tables = [];
+  Map<String, MenuItem> _menuById = const {};
   bool _loading = true;
-  String? _error;
+  bool _offline = false; // rafraîchissement échoué mais tables encore connues
+  String? _error; // erreur bloquante seulement quand aucune table connue
+  int _lastActiveCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _tables = List<RestaurantTable>.from(_cachedTables);
+    _loading = _tables.isEmpty;
+    _loadMenu();
+    _load(silent: _tables.isNotEmpty);
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _loadMenu() async {
+    final map = await MenuRepository().loadMap();
+    if (!mounted) return;
+    setState(() => _menuById = map);
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final tables = await _api.getTables();
       if (!mounted) return;
+      final active = tables.where((t) => t.active).toList();
+      _cachedTables = active;
       setState(() {
-        // On n'affiche que les tables actives sur le plan de salle.
-        _tables = tables.where((t) => t.active).toList();
+        _tables = active;
         _loading = false;
+        _offline = false;
+        _error = null;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error =
-            'Impossible de charger les tables. Vérifiez votre connexion, ou '
-            'utilisez une commande libre.';
         _loading = false;
+        if (_tables.isEmpty) {
+          _error =
+              'Impossible de charger les tables. Vérifiez votre connexion, ou '
+              'utilisez une commande libre.';
+        } else {
+          _offline = true;
+        }
       });
     }
   }
 
-  /// Normalise un libellé pour le rapprochement table ↔ commande.
+  void _onCubitChanged(RestaurantOrdersState state) {
+    final count = state.active.length;
+    if (count == _lastActiveCount) return;
+    _lastActiveCount = count;
+    if (!_loading) _load(silent: true);
+  }
+
   String _norm(String s) => s.trim().toLowerCase();
 
-  /// Retrouve la commande active correspondant à une table (la plus récente
-  /// si plusieurs), ou `null` si la table est libre.
+  /// Retrouve la commande active liée à une table : par `tableId` d'abord (lien
+  /// fort), puis par libellé (rétro-compat). Ignore les commandes à emporter.
   RestaurantOrder? _orderFor(
       RestaurantTable table, List<RestaurantOrder> active) {
+    RestaurantOrder? byId;
+    RestaurantOrder? byLabel;
     final key = _norm(table.label);
-    RestaurantOrder? match;
     for (final o in active) {
-      if (_norm(o.label) == key) {
-        if (match == null || o.createdAt.isAfter(match.createdAt)) {
-          match = o;
+      if (o.type == RestaurantOrderType.takeaway) continue;
+      if (o.tableId != null && o.tableId == table.id) {
+        if (byId == null || o.createdAt.isAfter(byId.createdAt)) byId = o;
+      } else if (o.tableId == null && _norm(o.label) == key) {
+        if (byLabel == null || o.createdAt.isAfter(byLabel.createdAt)) {
+          byLabel = o;
         }
       }
     }
-    return match;
+    return byId ?? byLabel;
   }
 
   /// Ouvre la caisse sur une commande donnée (pré-sélection via query param).
@@ -111,54 +150,95 @@ class _RestaurantFloorPlanViewState extends State<RestaurantFloorPlanView> {
       );
       return;
     }
-    // Table libre → ouvrir une nouvelle commande pré-remplie avec le libellé.
+    // Table libre → nouvelle commande SUR PLACE liée fortement à la table.
     final cubit = context.read<RestaurantOrdersCubit>();
-    final order = await cubit.openOrder(table.label);
+    final order = await cubit.openOrder(
+      table.label,
+      tableId: table.id,
+      type: RestaurantOrderType.dineIn,
+    );
     if (!mounted) return;
     _openPos(order.id);
   }
 
   /// Repli hors-ligne / sans tables : ouvrir une commande libre (même flux que
-  /// le board), afin que le service ne soit jamais bloqué.
+  /// le board), afin que le service ne soit jamais bloqué. Choix sur place / à
+  /// emporter.
   Future<void> _createFreeOrder() async {
     final cubit = context.read<RestaurantOrdersCubit>();
     final controller = TextEditingController();
+    RestaurantOrderType type = RestaurantOrderType.dineIn;
     final label = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Nouvelle commande'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Libellé (Table 4, Emporter, nom…)',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Nouvelle commande'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SegmentedButton<RestaurantOrderType>(
+                segments: const [
+                  ButtonSegment(
+                    value: RestaurantOrderType.dineIn,
+                    icon: Icon(Icons.restaurant),
+                    label: Text('Sur place'),
+                  ),
+                  ButtonSegment(
+                    value: RestaurantOrderType.takeaway,
+                    icon: Icon(Icons.takeout_dining),
+                    label: Text('À emporter'),
+                  ),
+                ],
+                selected: {type},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) => setLocal(() => type = s.first),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: type == RestaurantOrderType.takeaway
+                      ? 'Libellé (nom du client, Emporter…)'
+                      : 'Libellé (Table 4, nom…)',
+                ),
+                onSubmitted: (v) => Navigator.pop(ctx, v),
+              ),
+            ],
           ),
-          onSubmitted: (v) => Navigator.pop(ctx, v),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text),
+              child: const Text('Créer'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Créer'),
-          ),
-        ],
       ),
     );
     if (label != null && label.trim().isNotEmpty) {
-      final order = await cubit.openOrder(label);
+      final order = await cubit.openOrder(label, type: type);
       if (mounted) _openPos(order.id);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    return BlocListener<RestaurantOrdersCubit, RestaurantOrdersState>(
+      listener: (context, state) => _onCubitChanged(state),
+      child: _buildBody(context),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    if (_loading && _tables.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_error != null) {
+    if (_tables.isEmpty && _error != null) {
       return _FloorPlanError(
         message: _error!,
         onRetry: _load,
@@ -172,55 +252,90 @@ class _RestaurantFloorPlanViewState extends State<RestaurantFloorPlanView> {
         onRefresh: _load,
       );
     }
-    // Re-dérive l'état à chaque changement de commande (BlocBuilder).
     return BlocBuilder<RestaurantOrdersCubit, RestaurantOrdersState>(
       builder: (context, state) {
         final active = state.active;
-        return RefreshIndicator(
-          onRefresh: _load,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              // Grille responsive desktop : colonnes calées sur la largeur
-              // (~190px par carte), min 2, jusqu'à 8 sur les grands écrans.
-              final crossAxisCount =
-                  (constraints.maxWidth / 190).floor().clamp(2, 8);
-              return GridView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossAxisCount,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.15,
+        return Column(
+          children: [
+            if (_offline) _offlineBanner(context),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () => _load(silent: true),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Grille responsive desktop : ~190px par carte, min 2,
+                    // jusqu'à 8 sur les grands écrans.
+                    final crossAxisCount =
+                        (constraints.maxWidth / 190).floor().clamp(2, 8);
+                    return GridView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossAxisCount,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        childAspectRatio: 1.15,
+                      ),
+                      itemCount: _tables.length,
+                      itemBuilder: (context, index) {
+                        final table = _tables[index];
+                        final order = _orderFor(table, active);
+                        return _TableCard(
+                          table: table,
+                          order: order,
+                          menuById: _menuById,
+                          onTap: () => _onTapTable(table, order),
+                        );
+                      },
+                    );
+                  },
                 ),
-                itemCount: _tables.length,
-                itemBuilder: (context, index) {
-                  final table = _tables[index];
-                  final order = _orderFor(table, active);
-                  return _TableCard(
-                    table: table,
-                    order: order,
-                    onTap: () => _onTapTable(table, order),
-                  );
-                },
-              );
-            },
-          ),
+              ),
+            ),
+          ],
         );
       },
+    );
+  }
+
+  Widget _offlineBanner(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: InkWell(
+        onTap: () => _load(silent: true),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Row(
+            children: [
+              Icon(Icons.cloud_off,
+                  size: 16, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Plan hors-ligne (dernier état connu). Cliquer pour réessayer.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
 
 /// Carte d'une table sur le plan de salle. Verte = libre, ambre = occupée.
-/// Occupée : affiche le nombre d'articles et le total de la commande.
+/// Occupée : aperçu photo des plats + nombre d'articles + total de la commande.
 class _TableCard extends StatelessWidget {
   final RestaurantTable table;
   final RestaurantOrder? order;
+  final Map<String, MenuItem> menuById;
   final VoidCallback onTap;
 
   const _TableCard({
     required this.table,
     required this.order,
+    required this.menuById,
     required this.onTap,
   });
 
@@ -228,7 +343,6 @@ class _TableCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final occupied = order != null;
-    // Vert = libre ; ambre = occupée (cohérent avec les accents du board).
     const freeColor = Color(0xFF16A34A);
     const busyColor = Color(0xFFF59E0B);
     final accent = occupied ? busyColor : freeColor;
@@ -250,7 +364,15 @@ class _TableCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(Icons.table_restaurant, size: 20, color: accent),
+                  if (occupied)
+                    OrderDishThumbs(
+                      order: order!,
+                      menuById: menuById,
+                      size: 36,
+                      radius: 8,
+                    )
+                  else
+                    Icon(Icons.table_restaurant, size: 20, color: accent),
                   const Spacer(),
                   Container(
                     width: 10,

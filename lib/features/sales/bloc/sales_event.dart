@@ -79,6 +79,20 @@ class UpdateSaleStatus extends SalesEvent {
   List<Object?> get props => [id, status];
 }
 
+/// Événement d'enregistrement d'UNE tranche de règlement sur une vente.
+///
+/// Le cumul et le statut sont recalculés par le serveur (endpoint
+/// `sales/:id/payments`) : aucun cumul côté client.
+class RecordSalePayment extends SalesEvent {
+  final Sale sale;
+  final PaymentDraft payment;
+
+  const RecordSalePayment({required this.sale, required this.payment});
+
+  @override
+  List<Object?> get props => [sale.id, payment.amount, payment.paidAt];
+}
+
 /// Événement pour supprimer une vente
 class DeleteSale extends SalesEvent {
   final String id;

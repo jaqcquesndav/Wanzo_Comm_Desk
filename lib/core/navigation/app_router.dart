@@ -74,8 +74,11 @@ class AppRouter {
       RestaurantOrdersCubit(RestaurantOrderRepository())..load();
 
   /// Cubit des commandes atelier (persistées backend), partagé via ShellRoute.
+  /// Le chargement initial est déclenché par le board lui-même, scopé au métier
+  /// courant (couture / maintenance / imprimerie) — un chargement ici serait non
+  /// filtré et mélangerait les métiers.
   late final AtelierOrdersCubit _atelierOrdersCubit =
-      AtelierOrdersCubit(AtelierApiService())..load();
+      AtelierOrdersCubit(AtelierApiService());
 
   /// Cubit du mode salon (carte des prestations + coiffeurs), partagé par tous
   /// les écrans `/salon/*` via un ShellRoute et par le tableau de bord salon.

@@ -11,6 +11,7 @@ import '../../customer/models/customer.dart';
 import '../../customer/repositories/customer_repository.dart';
 import '../../sales/models/sale.dart';
 import '../../sales/repositories/sales_repository.dart';
+import '../../sales/utils/sale_payment_flow.dart';
 import '../utils/receivables_utils.dart';
 
 /// Ligne agrégée de créance : un client et le détail de son solde impayé.
@@ -26,6 +27,11 @@ class _ReceivableRow {
   final int invoicesCount;
   final int overdueCount;
 
+  /// Ventes impayées du groupe. Conservées pour pouvoir régler la créance et
+  /// consulter les pièces même quand aucune fiche client n'existe (client de
+  /// passage) : la ligne reste alors cliquable au lieu d'être un cul-de-sac.
+  final List<Sale> sales;
+
   const _ReceivableRow({
     required this.customerKey,
     required this.customerName,
@@ -35,6 +41,7 @@ class _ReceivableRow {
     required this.buckets,
     required this.invoicesCount,
     required this.overdueCount,
+    required this.sales,
   });
 }
 
@@ -112,6 +119,7 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
           buckets: buckets,
           invoicesCount: custSales.length,
           overdueCount: overdueCount,
+          sales: List<Sale>.unmodifiable(custSales),
         ),
       );
     });
@@ -245,7 +253,7 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
             searchHint: 'Rechercher un client...',
             searchFilter: (row, query) =>
                 row.customerName.toLowerCase().contains(query),
-            onRowTap: (row) => _openCustomer(context, row),
+            onRowTap: (row) => _openRow(context, row, currencyService),
             actions: [_buildSortControls(context)],
             exportConfig: DataTableExportConfig(
               title: 'Créances clients',
@@ -359,7 +367,7 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
     Widget bucketCell(int i) {
       final amount = row.buckets[i];
       if (amount <= 0) {
-        return Text('—', style: theme.textTheme.bodySmall);
+        return Text('-', style: theme.textTheme.bodySmall);
       }
       // La tranche 90j+ est mise en évidence (créance à risque).
       final isRisk = i == 3;
@@ -429,6 +437,11 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
           RowActionsMenu(
             actions: [
               RowAction(
+                label: 'Régler',
+                icon: Icons.payments_outlined,
+                onSelected: () => _settle(context, row, currencyService),
+              ),
+              RowAction(
                 label: 'Relancer',
                 icon: Icons.notifications_active_outlined,
                 onSelected: () => _remind(context, row, currencyService),
@@ -471,6 +484,24 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
     );
   }
 
+  /// Ouverture d'une ligne de créance.
+  ///
+  /// Le clic reste utile MÊME sans fiche client (vente à un client de
+  /// passage) : on donne alors accès aux pièces impayées du groupe, et le
+  /// règlement enchaîne directement. Auparavant la ligne se contentait d'un
+  /// message « Fiche client indisponible », donc la créance était inatteignable.
+  Future<void> _openRow(
+    BuildContext context,
+    _ReceivableRow row,
+    CurrencyService currencyService,
+  ) async {
+    if (row.customer != null) {
+      _openCustomer(context, row);
+      return;
+    }
+    await _settle(context, row, currencyService);
+  }
+
   void _openCustomer(BuildContext context, _ReceivableRow row) {
     if (row.customer == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -481,6 +512,31 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
       return;
     }
     context.push('/customers/detail/${row.customer!.id}', extra: row.customer);
+  }
+
+  /// Règle une créance : choix de la pièce puis dialogue de paiement
+  /// (montant plafonné au reste à payer, mode, date, référence).
+  Future<void> _settle(
+    BuildContext context,
+    _ReceivableRow row,
+    CurrencyService currencyService,
+  ) async {
+    if (row.sales.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucune pièce impayée pour ce client.')),
+      );
+      return;
+    }
+    final sale = await pickSaleToSettle(
+      context,
+      row.sales,
+      formatAmount: currencyService.formatAmount,
+    );
+    if (sale == null || !context.mounted) return;
+    final updated = await startSalePaymentFlow(context, sale);
+    if (updated != null && mounted) {
+      _reload();
+    }
   }
 
   Future<void> _remind(

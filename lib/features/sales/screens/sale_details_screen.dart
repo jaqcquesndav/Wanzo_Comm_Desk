@@ -1,8 +1,12 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:wanzo/core/enums/currency_enum.dart';
+import 'package:wanzo/core/models/operation_payment.dart';
+import 'package:wanzo/core/shared_widgets/payment_history_section.dart';
+import 'package:wanzo/core/shared_widgets/record_payment_dialog.dart';
+import 'package:wanzo/core/shared_widgets/responsive_action_bar.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/services/platform_share_service.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
@@ -10,6 +14,7 @@ import 'package:wanzo/features/customer/repositories/customer_repository.dart';
 import 'package:wanzo/constants/spacing.dart';
 import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
+import 'package:wanzo/features/sales/repositories/sales_repository.dart';
 import 'package:wanzo/features/settings/bloc/settings_bloc.dart'
     as old_settings_bloc;
 import 'package:wanzo/features/settings/bloc/settings_state.dart'
@@ -21,15 +26,39 @@ import 'package:wanzo/features/invoice/services/invoice_service.dart';
 import 'package:wanzo/features/receivables/utils/receivables_utils.dart';
 import 'package:wanzo/features/receivables/widgets/overdue_chip.dart';
 import 'package:wanzo/services/receipt_printer_service.dart';
+import 'package:wanzo/core/shared_widgets/accounting_sync_status.dart';
 
 /// Écran de détails d'une vente
-class SaleDetailsScreen extends StatelessWidget {
+class SaleDetailsScreen extends StatefulWidget {
   final Sale sale;
 
   const SaleDetailsScreen({super.key, required this.sale});
 
+  @override
+  State<SaleDetailsScreen> createState() => _SaleDetailsScreenState();
+}
+
+class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
   // Constantes pour le layout responsive
   static const double _desktopBreakpoint = 900.0;
+
+  /// Vente affichée : remplacée par la version à jour après chaque règlement,
+  /// pour que le reste à payer et l'historique se rafraîchissent sur place.
+  late Sale _sale;
+
+  /// Change à chaque règlement pour forcer le rechargement de l'historique.
+  int _paymentsToken = 0;
+
+  /// Un règlement est en cours d'envoi.
+  bool _submitting = false;
+
+  Sale get sale => _sale;
+
+  @override
+  void initState() {
+    super.initState();
+    _sale = widget.sale;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,12 +100,27 @@ class SaleDetailsScreen extends StatelessWidget {
         break;
     }
 
-    return LayoutBuilder(
+    // On ne quitte JAMAIS l'écran avant la réponse de l'API : le résultat du
+    // règlement arrive par le bloc, on reste sur place et on rafraîchit.
+    return BlocListener<SalesBloc, SalesState>(
+      listenWhen:
+          (previous, current) =>
+              current is SalePaymentRecorded ||
+              current is SalesError ||
+              current is SalesOperationSuccess,
+      listener: _onSalesState,
+      child: LayoutBuilder(
       builder: (context, constraints) {
         final isDesktop = constraints.maxWidth >= _desktopBreakpoint;
 
         return Scaffold(
           appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              tooltip: 'Retour',
+              onPressed: () =>
+                  context.canPop() ? context.pop() : context.go('/operations'),
+            ),
             title: const Text("Détails de la vente"),
             actions: [
               // Actions directes sur desktop
@@ -184,6 +228,124 @@ class SaleDetailsScreen extends StatelessWidget {
               isDesktop ? null : _buildMobileBottomBar(context),
         );
       },
+      ),
+    );
+  }
+
+  /// `true` si la vente porte encore un reste à payer.
+  bool get _isOutstanding =>
+      (sale.status == SaleStatus.pending ||
+          sale.status == SaleStatus.partiallyPaid) &&
+      sale.remainingAmountInCdf > 0.01;
+
+  /// Reste à payer exprimé dans la devise de la transaction.
+  double get _remainingInTransactionCurrency {
+    final total =
+        sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
+    final paid = sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf;
+    final remaining = total - paid;
+    return remaining > 0 ? remaining : 0;
+  }
+
+  /// Réactions du bloc : on reste sur l'écran et on informe l'utilisateur.
+  /// Auparavant l'écran se fermait AVANT la réponse de l'API, donc un échec
+  /// passait totalement inaperçu.
+  void _onSalesState(BuildContext context, SalesState state) {
+    if (!mounted) return;
+    if (state is SalePaymentRecorded && state.sale.id == sale.id) {
+      setState(() {
+        _sale = state.sale;
+        _submitting = false;
+        _paymentsToken++;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(state.message),
+          backgroundColor: state.synced ? Colors.green : Colors.orange,
+        ),
+      );
+    } else if (state is SalesError) {
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(state.message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } else if (state is SalesOperationSuccess && _submitting) {
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(state.message), backgroundColor: Colors.green),
+      );
+    }
+  }
+
+  /// Dialogue « Enregistrer un paiement » (règlement d'une créance client).
+  Future<void> _showRecordPaymentDialog() async {
+    final currencyCode = sale.transactionCurrencyCode ?? 'CDF';
+    final draft = await showRecordPaymentDialog(
+      context,
+      remainingAmount: _remainingInTransactionCurrency,
+      currencyCode: currencyCode,
+      exchangeRate: sale.transactionExchangeRate,
+      defaultMethod: sale.paymentMethod,
+    );
+    if (draft == null || !mounted) return;
+    setState(() => _submitting = true);
+    context.read<SalesBloc>().add(RecordSalePayment(sale: sale, payment: draft));
+  }
+
+  /// Solde la vente d'un coup : une tranche égale au reste à payer.
+  Future<void> _settleInFull() async {
+    final remaining = _remainingInTransactionCurrency;
+    if (remaining <= 0) return;
+    final currencyCode = sale.transactionCurrencyCode ?? 'CDF';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('Solder la vente'),
+            content: Text(
+              'Enregistrer un règlement de '
+              '${formatCurrency(remaining, currencyCode)} et solder la vente ?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Confirmer'),
+              ),
+            ],
+          ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _submitting = true);
+    context.read<SalesBloc>().add(
+      RecordSalePayment(
+        sale: sale,
+        payment: PaymentDraft(
+          amount: remaining,
+          currencyCode: currencyCode,
+          exchangeRate: sale.transactionExchangeRate,
+          method: sale.paymentMethod ?? 'Espèces',
+          paidAt: DateTime.now(),
+        ),
+      ),
+    );
+  }
+
+  /// Historique des tranches de règlement (`GET sales/:id/payments`).
+  Widget _buildPaymentHistory(String transactionCurrencyCode) {
+    return PaymentHistorySection(
+      loader: () => context.read<SalesRepository>().getSalePayments(sale.id),
+      currencyCode: transactionCurrencyCode,
+      fallbackPaidAmount:
+          sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf,
+      refreshToken: _paymentsToken,
     );
   }
 
@@ -207,6 +369,8 @@ class SaleDetailsScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Devenir comptable de la vente (boîte d'envoi backend)
+                AccountingSyncStatusCard(sourceId: sale.id),
                 // En-tête avec statut
                 Card(
                   margin: EdgeInsets.zero,
@@ -303,6 +467,9 @@ class SaleDetailsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                const SizedBox(height: WanzoSpacing.md),
+                // Historique des tranches de règlement
+                _buildPaymentHistory(transactionCurrencyCode),
                 const SizedBox(height: WanzoSpacing.lg),
                 // Boutons d'action pour desktop
                 _buildDesktopActions(context),
@@ -480,6 +647,8 @@ class SaleDetailsScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // En-tête avec information générale
+          // Devenir comptable de la vente (boîte d'envoi backend)
+          AccountingSyncStatusCard(sourceId: sale.id),
           Card(
             margin: EdgeInsets.zero,
             child: Padding(
@@ -698,12 +867,21 @@ class SaleDetailsScreen extends StatelessWidget {
               },
             ),
           ),
+          const SizedBox(height: WanzoSpacing.base),
+          // Historique des tranches de règlement
+          _buildPaymentHistory(transactionCurrencyCode),
         ],
       ),
     );
   }
 
   /// Barre d'actions pour mobile
+  ///
+  /// Auparavant une `Row` de trois `Expanded` d'`ElevatedButton.icon` : sur un
+  /// écran de moins de 400 dp, trois boutons libellés ne tiennent pas et la
+  /// barre débordait (RenderFlex overflow, libellés tronqués).
+  /// [ResponsiveActionBar] passe en icônes seules sous 360 dp et enveloppe les
+  /// boutons au-delà.
   Widget _buildMobileBottomBar(BuildContext context) {
     return BottomAppBar(
       child: Padding(
@@ -711,59 +889,49 @@ class SaleDetailsScreen extends StatelessWidget {
           horizontal: WanzoSpacing.base,
           vertical: WanzoSpacing.sm,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed:
-                    () => _showDocumentTypeSelectionDialog(
-                      context,
-                      isPrintAction: true,
-                    ),
-                icon: const Icon(Icons.print),
-                label: const Text("Imprimer"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ),
-            const SizedBox(width: WanzoSpacing.sm),
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed:
-                    () => _showDocumentTypeSelectionDialog(
-                      context,
-                      isPrintAction: false,
-                    ),
-                icon: const Icon(Icons.share),
-                label: const Text("Partager"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).primaryColor,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ),
-            if (sale.status == SaleStatus.pending ||
-                sale.status == SaleStatus.partiallyPaid) ...[
-              const SizedBox(width: WanzoSpacing.sm),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => _markSaleAsCompleted(context),
-                  icon: const Icon(Icons.check),
-                  label: const Text("Terminer"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
+        child: ResponsiveActionBar(items: _actionItems(context)),
       ),
     );
+  }
+
+  /// Actions communes aux deux layouts (mobile et desktop).
+  List<ActionBarItem> _actionItems(BuildContext context) {
+    return [
+      if (_isOutstanding)
+        ActionBarItem(
+          icon: Icons.payments,
+          label: 'Régler',
+          background: Colors.green.shade700,
+          onPressed: _submitting ? null : _showRecordPaymentDialog,
+        ),
+      ActionBarItem(
+        icon: Icons.print,
+        label: 'Imprimer',
+        background: Colors.blue,
+        onPressed:
+            () => _showDocumentTypeSelectionDialog(
+              context,
+              isPrintAction: true,
+            ),
+      ),
+      ActionBarItem(
+        icon: Icons.share,
+        label: 'Partager',
+        background: Theme.of(context).primaryColor,
+        onPressed:
+            () => _showDocumentTypeSelectionDialog(
+              context,
+              isPrintAction: false,
+            ),
+      ),
+      if (_isOutstanding)
+        ActionBarItem(
+          icon: Icons.check,
+          label: 'Solder',
+          background: Colors.teal,
+          onPressed: _submitting ? null : _settleInFull,
+        ),
+    ];
   }
 
   /// Actions desktop sous forme de boutons
@@ -806,14 +974,29 @@ class SaleDetailsScreen extends StatelessWidget {
             ),
           ),
         ),
-        if (sale.status == SaleStatus.pending ||
-            sale.status == SaleStatus.partiallyPaid)
+        // Nouvelles actions de règlement : « Régler » ouvre le dialogue de
+        // tranche, « Solder » enregistre le reste à payer en une fois.
+        if (_isOutstanding)
           ElevatedButton.icon(
-            onPressed: () => _markSaleAsCompleted(context),
-            icon: const Icon(Icons.check),
-            label: const Text("Marquer comme terminée"),
+            onPressed: _submitting ? null : _showRecordPaymentDialog,
+            icon: const Icon(Icons.payments),
+            label: const Text("Régler"),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
+              backgroundColor: Colors.green.shade700,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(
+                horizontal: WanzoSpacing.md,
+                vertical: WanzoSpacing.sm,
+              ),
+            ),
+          ),
+        if (_isOutstanding)
+          ElevatedButton.icon(
+            onPressed: _submitting ? null : _settleInFull,
+            icon: const Icon(Icons.check),
+            label: const Text("Solder"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.teal,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(
                 horizontal: WanzoSpacing.md,
@@ -913,17 +1096,6 @@ class SaleDetailsScreen extends StatelessWidget {
       return amountInCdf;
     }
     return amountInCdf / rate;
-  }
-
-  /// Marquer la vente comme terminée
-  void _markSaleAsCompleted(BuildContext context) {
-    final Sale updatedSale = sale.copyWith(
-      status: SaleStatus.completed,
-      paidAmountInTransactionCurrency: sale.totalAmountInTransactionCurrency,
-      paidAmountInCdf: sale.totalAmountInCdf,
-    );
-    context.read<SalesBloc>().add(UpdateSale(updatedSale));
-    GoRouter.of(context).pop();
   }
 
   /// Affiche une boîte de dialogue de confirmation pour supprimer la vente

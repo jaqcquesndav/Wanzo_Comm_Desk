@@ -5,6 +5,8 @@ import 'package:wanzo/core/navigation/app_router.dart';
 import 'package:intl/intl.dart';
 
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
+import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/platform/platform_service.dart';
 import 'package:wanzo/core/widgets/table_export_button.dart';
 import 'package:wanzo/services/export/table_export_service.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
@@ -78,10 +80,30 @@ class _OperationsViewState extends State<_OperationsView>
     super.dispose();
   }
 
+  Future<void> _openCreateFromOperations(BuildContext context) async {
+    final operationsBloc = context.read<OperationsBloc>();
+
+    if (_tabController.index == 0 || _tabController.index == 1) {
+      await context.pushNamed('add_sale_from_operations');
+    } else if (_tabController.index == 2) {
+      await context.pushNamed('add_expense_from_operations');
+    }
+
+    // Toujours recharger après retour de la navigation
+    if (mounted) {
+      operationsBloc.add(const LoadOperations());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const int operationsPageIndex = 1; // Index for Operations in BottomNavBar
     final dateFormat = DateFormat('dd/MM/yyyy', 'fr_FR');
+    final bool isNarrow =
+        MediaQuery.sizeOf(context).width <
+        PlatformService.instance.tabletMinWidth;
+    final String createLabel =
+        _tabController.index <= 1 ? 'Ajouter une vente' : 'Ajouter une dépense';
 
     return BlocBuilder<OperationsBloc, OperationsState>(
       builder: (context, state) {
@@ -102,6 +124,19 @@ class _OperationsViewState extends State<_OperationsView>
           ],
           body: Column(
             children: [
+              if (!isNarrow)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: Row(
+                    children: [
+                      FilledButton.icon(
+                        onPressed: () => _openCreateFromOperations(context),
+                        icon: const Icon(Icons.add),
+                        label: Text(createLabel),
+                      ),
+                    ],
+                  ),
+                ),
               TabBar(
                 controller: _tabController,
                 tabs: const [
@@ -115,27 +150,14 @@ class _OperationsViewState extends State<_OperationsView>
               Expanded(child: _buildTabContent(context, state)),
             ],
           ),
-          floatingActionButton: FloatingActionButton(
-            onPressed: () async {
-              final operationsBloc = context.read<OperationsBloc>();
-
-              if (_tabController.index == 0 || _tabController.index == 1) {
-                await context.pushNamed('add_sale_from_operations');
-              } else if (_tabController.index == 2) {
-                await context.pushNamed('add_expense_from_operations');
-              }
-
-              // Toujours recharger après retour de la navigation
-              if (mounted) {
-                operationsBloc.add(const LoadOperations());
-              }
-            },
-            tooltip:
-                _tabController.index <= 1
-                    ? 'Ajouter une vente'
-                    : 'Ajouter une dépense',
-            child: const Icon(Icons.add),
-          ),
+          floatingActionButton:
+              isNarrow
+                  ? FloatingActionButton(
+                    onPressed: () => _openCreateFromOperations(context),
+                    tooltip: createLabel,
+                    child: const Icon(Icons.add),
+                  )
+                  : null,
         );
       },
     );
@@ -165,7 +187,7 @@ class _OperationsViewState extends State<_OperationsView>
               'Vente',
               dateFormat.format(s.date),
               s.customerName,
-              '${s.totalAmountInCdf.toStringAsFixed(2)} ${s.transactionCurrencyCode ?? "CDF"}',
+              formatCurrency(s.totalAmountInCdf, 'CDF'),
               s.status.displayName,
             ],
           ),
@@ -174,7 +196,7 @@ class _OperationsViewState extends State<_OperationsView>
               'Dépense',
               dateFormat.format(e.date),
               e.motif,
-              '${e.amount.toStringAsFixed(2)} ${e.currencyCode ?? "CDF"}',
+              formatCurrency(e.amount, e.effectiveCurrencyCode),
               e.category.displayName,
             ],
           ),
@@ -190,7 +212,7 @@ class _OperationsViewState extends State<_OperationsView>
                   (s) => [
                     dateFormat.format(s.date),
                     s.customerName,
-                    '${s.totalAmountInCdf.toStringAsFixed(2)} ${s.transactionCurrencyCode ?? "CDF"}',
+                    formatCurrency(s.totalAmountInCdf, 'CDF'),
                     s.status.displayName,
                     s.paymentMethod ?? '',
                   ],
@@ -208,7 +230,7 @@ class _OperationsViewState extends State<_OperationsView>
                     dateFormat.format(e.date),
                     e.motif,
                     e.category.displayName,
-                    '${e.amount.toStringAsFixed(2)} ${e.currencyCode ?? "CDF"}',
+                    formatCurrency(e.amount, e.effectiveCurrencyCode),
                   ],
                 )
                 .toList();
@@ -514,6 +536,7 @@ class _AllOperationsDataTable extends StatelessWidget {
           type: 'Vente',
           description: s.customerName,
           amount: s.totalAmountInCdf,
+          currencyCode: 'CDF',
           date: s.date,
           icon: Icons.shopping_cart,
           color: Colors.green,
@@ -527,6 +550,7 @@ class _AllOperationsDataTable extends StatelessWidget {
           type: 'Dépense',
           description: e.motif,
           amount: -e.amount,
+          currencyCode: e.effectiveCurrencyCode,
           date: e.date,
           icon: Icons.money_off,
           color: Colors.red,
@@ -610,10 +634,7 @@ class _AllOperationsDataTable extends StatelessWidget {
                         DataCell(Text(DateFormat('dd/MM/yy').format(op.date))),
                         DataCell(
                           Text(
-                            NumberFormat.currency(
-                              locale: 'fr_FR',
-                              symbol: 'FC',
-                            ).format(op.amount),
+                            formatCurrency(op.amount, op.currencyCode),
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: op.amount >= 0 ? Colors.green : Colors.red,
@@ -649,6 +670,7 @@ class _OperationItem {
   final String type;
   final String description;
   final double amount;
+  final String currencyCode;
   final DateTime date;
   final IconData icon;
   final Color color;
@@ -660,6 +682,7 @@ class _OperationItem {
     required this.type,
     required this.description,
     required this.amount,
+    required this.currencyCode,
     required this.date,
     required this.icon,
     required this.color,
@@ -765,19 +788,13 @@ class _SalesDataTable extends StatelessWidget {
                         if (!isCompact)
                           DataCell(
                             Text(
-                              NumberFormat.currency(
-                                locale: 'fr_FR',
-                                symbol: 'FC',
-                              ).format(sale.paidAmountInCdf),
+                              formatCurrency(sale.paidAmountInCdf, 'CDF'),
                               style: const TextStyle(fontSize: 12),
                             ),
                           ),
                         DataCell(
                           Text(
-                            NumberFormat.currency(
-                              locale: 'fr_FR',
-                              symbol: 'FC',
-                            ).format(sale.totalAmountInCdf),
+                            formatCurrency(sale.totalAmountInCdf, 'CDF'),
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
@@ -886,10 +903,10 @@ class _ExpensesDataTable extends StatelessWidget {
                           DataCell(Text(expense.paymentMethod ?? '-')),
                         DataCell(
                           Text(
-                            NumberFormat.currency(
-                              locale: 'fr_FR',
-                              symbol: 'FC',
-                            ).format(expense.amount),
+                            formatCurrency(
+                              expense.amount,
+                              expense.effectiveCurrencyCode,
+                            ),
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               color: Colors.red,

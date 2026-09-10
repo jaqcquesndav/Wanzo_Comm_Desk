@@ -42,6 +42,25 @@ class ExpenseOperationSuccess extends ExpenseState {
   List<Object?> get props => [message];
 }
 
+/// Règlement enregistré sur une dette fournisseur (une tranche).
+///
+/// Porte la dépense à jour pour un rafraîchissement sur place, et [synced]
+/// pour distinguer un décaissement confirmé d'un décaissement mis en file.
+class ExpensePaymentRecorded extends ExpenseState {
+  final Expense expense;
+  final bool synced;
+  final String message;
+
+  const ExpensePaymentRecorded({
+    required this.expense,
+    required this.synced,
+    required this.message,
+  });
+
+  @override
+  List<Object?> get props => [expense, synced, message];
+}
+
 class ExpenseError extends ExpenseState {
   final String message;
 

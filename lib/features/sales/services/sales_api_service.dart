@@ -4,6 +4,7 @@ import 'package:wanzo/core/services/api_client.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/core/models/api_response.dart';
+import 'package:wanzo/core/models/operation_payment.dart';
 import 'package:wanzo/core/exceptions/api_exceptions.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 
@@ -20,7 +21,12 @@ class SalesApiService {
 
   /// Convertit un Sale en DTO optimisé pour l'API
   /// Envoie seulement les champs nécessaires, réduisant le payload de ~90%
-  Map<String, dynamic> _saleToCreateDto(Sale sale) {
+  ///
+  /// [includeItems] à `false` pour un PATCH qui ne touche pas aux lignes
+  /// (règlement, changement de statut) : le backend ne recalcule alors pas le
+  /// stock et il n'y a aucun risque de rejet sur un identifiant de ligne
+  /// (« SaleItem with ID not found in this sale »).
+  Map<String, dynamic> _saleToCreateDto(Sale sale, {bool includeItems = true}) {
     return {
       if (sale.localId != null) 'localId': sale.localId,
       // Mode métier ayant produit la vente (colonne mode du journal comptable).
@@ -28,13 +34,33 @@ class SalesApiService {
       'date': sale.date.toIso8601String(),
       if (sale.dueDate != null) 'dueDate': sale.dueDate!.toIso8601String(),
       if (sale.customerId != null) 'customerId': sale.customerId,
+      // Client de passage : si aucun customerId reel, le backend fait un
+      // find-or-create du Customer via ce numero (base fidelite).
+      if (sale.customerPhoneNumber != null &&
+          sale.customerPhoneNumber!.isNotEmpty)
+        'customerPhoneNumber': sale.customerPhoneNumber,
       'customerName': sale.customerName,
       'paymentMethod': sale.paymentMethod,
       if (sale.paymentReference != null)
         'paymentReference': sale.paymentReference,
       'exchangeRate': sale.transactionExchangeRate ?? 1.0,
       if (sale.notes != null) 'notes': sale.notes,
+      // Montant payé : les deux DTO backend NE portent PAS le même nom.
+      //   CreateSaleDto -> amountPaidInCdf
+      //   UpdateSaleDto -> paidAmountInCdf
+      // Le ValidationPipe est en `whitelist: true` : la clé inconnue est
+      // silencieusement supprimée (le serveur répondait 200 sans rien changer,
+      // le règlement était perdu). On émet donc les deux noms, chaque DTO ne
+      // retient que le sien.
       'amountPaidInCdf': sale.paidAmountInCdf,
+      'paidAmountInCdf': sale.paidAmountInCdf,
+      if (sale.paidAmountInTransactionCurrency != null &&
+          sale.paidAmountInTransactionCurrency! > 0)
+        'paidAmountInTransactionCurrency': sale.paidAmountInTransactionCurrency,
+      // Statut : accepté par les DTO de création et de mise à jour. Sans lui,
+      // un passage en « partiellement payée » / « terminée » n'était jamais
+      // transmis au serveur.
+      'status': sale.status.name,
       if (sale.transactionCurrencyCode != null)
         'currencyCode': sale.transactionCurrencyCode,
       if (sale.discountPercentage > 0)
@@ -50,10 +76,17 @@ class SalesApiService {
       if (sale.businessUnitCode != null)
         'businessUnitCode': sale.businessUnitCode,
       // Items optimisés (sans les champs recalculés par le backend)
-      'items':
+      if (includeItems)
+        'items':
           sale.items
               .map(
                 (item) => {
+                  // L'identifiant de ligne DOIT être renvoyé sur un PATCH :
+                  // sans lui, le backend recrée les lignes et re-décrémente le
+                  // stock à chaque mise à jour. Il n'est émis que s'il est
+                  // réellement connu du serveur (non vide), sinon le backend
+                  // rejette la requête (« SaleItem with ID not found »).
+                  if (item.id != null && item.id!.isNotEmpty) 'id': item.id,
                   if (item.productId != null) 'productId': item.productId,
                   'productName': item.productName,
                   'quantity': item.quantity,
@@ -276,7 +309,15 @@ class SalesApiService {
   }
 
   /// Met à jour une vente
-  Future<ApiResponse<Sale>> updateSale(String id, Sale sale) async {
+  ///
+  /// [includeItems] à `false` quand seule l'entête change (règlement, statut) :
+  /// les lignes ne sont pas renvoyées, donc le backend ne retouche pas le stock
+  /// et ne peut pas rejeter un identifiant de ligne inconnu.
+  Future<ApiResponse<Sale>> updateSale(
+    String id,
+    Sale sale, {
+    bool includeItems = true,
+  }) async {
     try {
       // Upload local attachments to Cloudinary first
       List<String>? uploadedUrls;
@@ -305,7 +346,7 @@ class SalesApiService {
       }
 
       // Utiliser DTO optimisé
-      final body = _saleToCreateDto(sale);
+      final body = _saleToCreateDto(sale, includeItems: includeItems);
 
       // TOUJOURS supprimer localAttachmentPaths du payload
       body.remove('localAttachmentPaths');
@@ -318,7 +359,10 @@ class SalesApiService {
         ];
       }
 
-      final response = await _apiClient.put(
+      // PATCH et non PUT : le backend n'expose que `PATCH sales/:id`
+      // (`UpdateSaleDto`). Le PUT retournait un 404/405 avalé plus haut, donc
+      // le règlement n'était jamais appliqué côté serveur.
+      final response = await _apiClient.patch(
         'sales/$id',
         body: body,
         requiresAuth: true,
@@ -347,6 +391,68 @@ class SalesApiService {
       rethrow;
     } catch (e) {
       throw ServerException('Échec de la mise à jour de la vente: $e');
+    }
+  }
+
+  /// Enregistre UNE tranche de règlement sur une vente.
+  ///
+  /// `POST sales/:id/payments` avec `{ amount, currencyCode?, exchangeRate?,
+  /// method, reference?, paidAt? }`. Le serveur recalcule lui-même le cumul
+  /// payé et le statut, puis renvoie la vente à jour : aucun cumul côté client,
+  /// donc pas de tranche perdue en cas de saisie concurrente.
+  ///
+  /// Lève une exception si l'endpoint n'est pas (encore) déployé, ce qui permet
+  /// au repository de se replier sur le PATCH classique.
+  Future<ApiResponse<Sale>> recordSalePayment(
+    String id,
+    PaymentDraft payment,
+  ) async {
+    try {
+      final response = await _apiClient.post(
+        'sales/$id/payments',
+        body: payment.toRequestBody(),
+        requiresAuth: true,
+      );
+
+      if (response is Map<String, dynamic>) {
+        final saleData =
+            (response['data'] is Map<String, dynamic>)
+                ? response['data'] as Map<String, dynamic>
+                : response;
+        return ApiResponse<Sale>(
+          success: true,
+          data: Sale.fromJson(saleData),
+          message: response['message'] as String? ?? 'Paiement enregistré',
+          statusCode: response['statusCode'] as int? ?? 201,
+        );
+      }
+      throw ApiExceptionFactory.fromStatusCode(
+        500,
+        'Format de réponse invalide du serveur',
+        responseBody: response,
+      );
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ServerException('Échec de l\'enregistrement du paiement: $e');
+    }
+  }
+
+  /// Liste les tranches de règlement d'une vente (`GET sales/:id/payments`).
+  ///
+  /// Retourne une liste vide plutôt qu'une erreur si l'historique détaillé
+  /// n'est pas disponible : l'historique est un confort d'affichage, il ne doit
+  /// jamais empêcher la consultation de la vente.
+  Future<List<OperationPayment>> getSalePayments(String id) async {
+    try {
+      final response = await _apiClient.get(
+        'sales/$id/payments',
+        requiresAuth: true,
+      );
+      return OperationPayment.listFrom(response);
+    } catch (e) {
+      debugPrint('[SalesAPI] ⚠️ Historique des règlements indisponible: $e');
+      return const <OperationPayment>[];
     }
   }
 

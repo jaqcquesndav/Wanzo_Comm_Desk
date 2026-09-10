@@ -155,12 +155,15 @@ class SyncService {
     // Planifier une synchronisation régulière
     _setupPeriodicSync();
     // Écouter les changements de connectivité via le service de connectivité
-    _connectivityService.connectionStatus.addListener(() {
-      if (_connectivityService.isConnected && !_isSyncing) {
-        // Utiliser un debounce pour éviter les syncs multiples lors de connexions instables
-        _debouncedSync();
-      }
-    });
+    _connectivityService.connectionStatus.addListener(_onConnectivityChanged);
+  }
+
+  /// Handler nommé pour les changements de connectivité (permet removeListener)
+  void _onConnectivityChanged() {
+    if (_connectivityService.isConnected && !_isSyncing) {
+      // Utiliser un debounce pour éviter les syncs multiples lors de connexions instables
+      _debouncedSync();
+    }
   }
 
   /// Synchronisation avec debounce pour éviter les appels multiples
@@ -574,21 +577,48 @@ class SyncService {
         }
       }
 
-      // ========== ÉTAPE 2: DOWNLOAD depuis le backend ==========
+      // ========== ÉTAPE 2: DOWNLOAD depuis le backend (paginé) ==========
       final String lastSyncKey = 'customer_last_sync';
-      Map<String, String> queryParams = {};
+      final Map<String, String> baseParams = {};
 
       if (!forceFullSync && _syncStatusBox.containsKey(lastSyncKey)) {
         final lastSyncDate = _syncStatusBox.get(lastSyncKey)!;
-        queryParams['updated_after'] = lastSyncDate;
+        baseParams['updated_after'] = lastSyncDate;
       }
 
-      final apiResponse = await _customerApiService.getCustomers(
-        queryParams: queryParams.isNotEmpty ? queryParams : null,
-      );
-      if (apiResponse.success && apiResponse.data != null) {
-        debugPrint('✅ ${apiResponse.data!.length} clients reçus de l\'API');
-        for (var apiCustomer in apiResponse.data!) {
+      // Le référentiel clients est partagé entre tous les modes. Le backend
+      // plafonne la liste à 10 par défaut : on télécharge donc page par page
+      // jusqu'à la fin pour peupler entièrement la box Hive, sinon les pickers
+      // de contacts ne voient qu'une poignée de clients.
+      const int pageSize = 200;
+      const int maxPages = 100;
+      final List<Customer> allCustomers = [];
+      bool downloadOk = false;
+      bool completed = false;
+      for (int page = 1; page <= maxPages; page++) {
+        final queryParams = <String, String>{
+          ...baseParams,
+          'page': '$page',
+          'limit': '$pageSize',
+        };
+        final apiResponse = await _customerApiService.getCustomers(
+          queryParams: queryParams,
+        );
+        if (!apiResponse.success || apiResponse.data == null) {
+          debugPrint('Failed to sync customers: ${apiResponse.message}');
+          break;
+        }
+        downloadOk = true;
+        allCustomers.addAll(apiResponse.data!);
+        if (apiResponse.data!.length < pageSize) {
+          completed = true; // dernière page atteinte
+          break;
+        }
+      }
+
+      if (downloadOk) {
+        debugPrint('✅ ${allCustomers.length} clients reçus de l\'API');
+        for (var apiCustomer in allCustomers) {
           // Préserver les clients locaux en attente de sync
           final localCustomer = customerBox.get(apiCustomer.id);
           if (localCustomer != null && localCustomer.syncStatus == 'pending') {
@@ -605,10 +635,12 @@ class SyncService {
           );
         }
         // ====== NETTOYAGE données obsolètes (full sync) ======
-        if (forceFullSync) {
+        // Uniquement si la pagination est allée jusqu'au bout : sinon on
+        // risquerait de supprimer des contacts valides sur un download partiel.
+        if (forceFullSync && completed) {
           final stale = await _removeStaleEntries(
             box: customerBox,
-            backendIds: apiResponse.data!.map((c) => c.id).toSet(),
+            backendIds: allCustomers.map((c) => c.id).toSet(),
             isPending:
                 (c) =>
                     c.syncStatus == 'pending' ||
@@ -619,8 +651,6 @@ class SyncService {
 
         await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
         debugPrint('✅ Clients synchronisés avec succès');
-      } else {
-        debugPrint('Failed to sync customers: ${apiResponse.message}');
       }
     } catch (e) {
       if (e is ApiException) {
@@ -980,9 +1010,9 @@ class SyncService {
         }
       }
 
-      // ========== ÉTAPE 2: DOWNLOAD depuis le backend ==========
+      // ========== ÉTAPE 2: DOWNLOAD depuis le backend (paginé) ==========
       final String lastSyncKey = 'supplier_last_sync';
-      Map<String, String> queryParams = {};
+      final Map<String, String> queryParams = {};
 
       if (!forceFullSync && _syncStatusBox.containsKey(lastSyncKey)) {
         final lastSyncDate = _syncStatusBox.get(lastSyncKey)!;
@@ -993,15 +1023,38 @@ class SyncService {
       if (queryParams.containsKey('updated_after')) {
         searchQuery = "updated_after:${queryParams['updated_after']!}";
       }
-      final apiResponse = await _supplierApiService.getSuppliers(
-        searchQuery: searchQuery,
-      );
 
-      if (apiResponse.success && apiResponse.data != null) {
-        debugPrint(
-          '✅ ${apiResponse.data!.length} fournisseurs reçus de l\'API',
+      // Référentiel fournisseurs partagé entre tous les modes. Le backend
+      // plafonne la liste à 10 par défaut : on pagine jusqu'à la fin pour
+      // peupler entièrement la box Hive.
+      const int pageSize = 200;
+      const int maxPages = 100;
+      final List<Supplier> allSuppliers = [];
+      bool downloadOk = false;
+      bool completed = false;
+      for (int page = 1; page <= maxPages; page++) {
+        final apiResponse = await _supplierApiService.getSuppliers(
+          page: page,
+          limit: pageSize,
+          searchQuery: searchQuery,
         );
-        for (var apiSupplier in apiResponse.data!) {
+        if (!apiResponse.success || apiResponse.data == null) {
+          debugPrint('Failed to sync suppliers: ${apiResponse.message}');
+          break;
+        }
+        downloadOk = true;
+        allSuppliers.addAll(apiResponse.data!);
+        if (apiResponse.data!.length < pageSize) {
+          completed = true; // dernière page atteinte
+          break;
+        }
+      }
+
+      if (downloadOk) {
+        debugPrint(
+          '✅ ${allSuppliers.length} fournisseurs reçus de l\'API',
+        );
+        for (var apiSupplier in allSuppliers) {
           // Préserver les fournisseurs locaux en attente de sync
           final localSupplier = supplierBox.get(apiSupplier.id);
           if (localSupplier != null && localSupplier.syncStatus == 'pending') {
@@ -1017,10 +1070,11 @@ class SyncService {
           );
         }
         // ====== NETTOYAGE données obsolètes (full sync) ======
-        if (forceFullSync) {
+        // Uniquement si la pagination est allée jusqu'au bout.
+        if (forceFullSync && completed) {
           final stale = await _removeStaleEntries(
             box: supplierBox,
-            backendIds: apiResponse.data!.map((s) => s.id).toSet(),
+            backendIds: allSuppliers.map((s) => s.id).toSet(),
             isPending:
                 (s) =>
                     s.syncStatus == 'pending' ||
@@ -1033,8 +1087,6 @@ class SyncService {
 
         await _syncStatusBox.put(lastSyncKey, DateTime.now().toIso8601String());
         debugPrint('✅ Fournisseurs synchronisés avec succès');
-      } else {
-        debugPrint('Failed to sync suppliers: ${apiResponse.message}');
       }
     } catch (e) {
       if (e is ApiException) {
@@ -1411,7 +1463,11 @@ class SyncService {
 
   /// Arrête le service de synchronisation
   void dispose() {
+    _connectivityService.connectionStatus.removeListener(
+      _onConnectivityChanged,
+    );
     _syncTimer?.cancel();
+    _connectivityDebounceTimer?.cancel();
     _syncStatusController.close();
   }
 }

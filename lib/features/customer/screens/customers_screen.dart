@@ -6,6 +6,9 @@ import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/services/currency_service.dart';
 import 'package:wanzo/core/services/form_navigation_service.dart';
 import 'package:wanzo/core/services/sync_service.dart';
+import 'package:wanzo/core/platform/platform_service.dart';
+import 'package:wanzo/core/widgets/desktop/desktop_data_table.dart';
+import 'package:wanzo/core/widgets/desktop/row_actions_menu.dart';
 import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
 import '../bloc/customer_state.dart';
@@ -62,7 +65,57 @@ class _CustomersScreenState extends State<CustomersScreen> {
   @override
   Widget build(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
-    final Widget screenContent = Column(
+
+    // Présentation adaptative : tableau desktop sur les écrans larges,
+    // liste mobile en dessous. La logique bloc/recherche/filtre est identique.
+    final Widget screenContent = LayoutBuilder(
+      builder: (context, constraints) {
+        final bool useTable =
+            constraints.maxWidth >= PlatformService.instance.tabletMinWidth;
+        return useTable
+            ? _buildDesktopContent(context, localizations)
+            : _buildMobileContent(context, localizations);
+      },
+    );
+
+    if (widget.isEmbedded) {
+      return screenContent; // Return only the content for embedding
+    }
+
+    // FAB uniquement en largeur étroite/mobile : sur desktop la création se
+    // fait via le bouton "Nouveau client" de la barre d'outils du tableau.
+    final bool isNarrow =
+        MediaQuery.sizeOf(context).width < PlatformService.instance.tabletMinWidth;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(localizations.customersTitle),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            tooltip: localizations.filterCustomersTooltip,
+            onPressed: _showFilterOptions,
+          ),
+        ],
+      ),
+      body: screenContent,
+      floatingActionButton:
+          isNarrow
+              ? FloatingActionButton(
+                onPressed: () => _navigateToAddCustomer(context),
+                tooltip: localizations.addCustomerTooltip,
+                child: const Icon(Icons.add),
+              )
+              : null,
+    );
+  }
+
+  /// Contenu mobile : barre de recherche (server-side via bloc) + liste de cartes.
+  Widget _buildMobileContent(
+    BuildContext context,
+    AppLocalizations localizations,
+  ) {
+    return Column(
       children: [
         // Barre de recherche
         Padding(
@@ -96,17 +149,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         // Liste des clients
         Expanded(
           child: BlocConsumer<CustomerBloc, CustomerState>(
-            listener: (context, state) {
-              if (state is CustomerError) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(state.message)));
-              } else if (state is CustomerOperationSuccess) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(state.message)));
-              }
-            },
+            listener: _customerStateListener,
             builder: (context, state) {
               if (state is CustomerLoading) {
                 return const Center(child: CircularProgressIndicator());
@@ -146,28 +189,259 @@ class _CustomersScreenState extends State<CustomersScreen> {
         ),
       ],
     );
+  }
 
-    if (widget.isEmbedded) {
-      return screenContent; // Return only the content for embedding
+  /// Contenu desktop : tableau de données avec barre d'outils (créer, filtrer,
+  /// rechercher). La recherche filtre côté client la liste déjà chargée.
+  Widget _buildDesktopContent(
+    BuildContext context,
+    AppLocalizations localizations,
+  ) {
+    return BlocConsumer<CustomerBloc, CustomerState>(
+      listener: _customerStateListener,
+      builder: (context, state) {
+        if (state is CustomerLoading) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (state is CustomerError) {
+          return Center(
+            child: Text(
+              localizations.customerError(state.message),
+              style: const TextStyle(color: Colors.red),
+            ),
+          );
+        }
+
+        List<Customer>? customers;
+        if (state is CustomersLoaded) {
+          customers = state.customers;
+        } else if (state is CustomerSearchResults) {
+          customers = state.customers;
+        } else if (state is TopCustomersLoaded) {
+          customers = state.customers;
+        } else if (state is RecentCustomersLoaded) {
+          customers = state.customers;
+        }
+
+        if (customers == null) {
+          return Center(child: Text(localizations.noCustomersToShow));
+        }
+
+        return _buildCustomersTable(context, localizations, customers);
+      },
+    );
+  }
+
+  /// Écouteur partagé (snackbars) pour les états du bloc client.
+  void _customerStateListener(BuildContext context, CustomerState state) {
+    if (state is CustomerError) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(state.message)));
+    } else if (state is CustomerOperationSuccess) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(state.message)));
     }
+  }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(localizations.customersTitle),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            tooltip: localizations.filterCustomersTooltip,
-            onPressed: _showFilterOptions,
-          ),
-        ],
-      ),
-      body: screenContent,
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _navigateToAddCustomer(context),
-        tooltip: localizations.addCustomerTooltip,
-        child: const Icon(Icons.add),
-      ),
+  /// Tableau desktop des clients.
+  Widget _buildCustomersTable(
+    BuildContext context,
+    AppLocalizations localizations,
+    List<Customer> customers,
+  ) {
+    final theme = Theme.of(context);
+    return DesktopDataTable<Customer>(
+      data: customers,
+      searchHint: localizations.searchCustomerHint,
+      addButtonLabel: localizations.addCustomerTooltip,
+      // En mode intégré (onglet Contacts), la création est fournie par l'écran
+      // parent (bouton de barre d'outils desktop / FAB mobile) : pas de doublon.
+      onAdd:
+          widget.isEmbedded
+              ? null
+              : () => _navigateToAddCustomer(context),
+      searchFilter: (customer, query) {
+        final email = customer.email?.toLowerCase() ?? '';
+        return customer.name.toLowerCase().contains(query) ||
+            customer.phoneNumber.toLowerCase().contains(query) ||
+            email.contains(query);
+      },
+      actions: [
+        // Filtre (Tous / Top / Récents / Par catégorie) en menu déroulant,
+        // remplace la feuille inférieure mobile par un idiome desktop.
+        PopupMenuButton<String>(
+          tooltip: localizations.filterCustomersTooltip,
+          icon: const Icon(Icons.filter_list),
+          onSelected: (value) {
+            switch (value) {
+              case 'all':
+                context.read<CustomerBloc>().add(const LoadCustomers());
+                break;
+              case 'top':
+                context.read<CustomerBloc>().add(const LoadTopCustomers());
+                break;
+              case 'recent':
+                context.read<CustomerBloc>().add(const LoadRecentCustomers());
+                break;
+              case 'category':
+                _showCategoriesFilter();
+                break;
+            }
+          },
+          itemBuilder:
+              (context) => [
+                PopupMenuItem(
+                  value: 'all',
+                  child: Text(localizations.allCustomers),
+                ),
+                PopupMenuItem(
+                  value: 'top',
+                  child: Text(localizations.topCustomers),
+                ),
+                PopupMenuItem(
+                  value: 'recent',
+                  child: Text(localizations.recentCustomers),
+                ),
+                PopupMenuItem(
+                  value: 'category',
+                  child: Text(localizations.byCategory),
+                ),
+              ],
+        ),
+      ],
+      onRowTap: (customer) => _navigateToCustomerDetails(context, customer),
+      columns: const [
+        DataColumn(label: Text('Nom')),
+        DataColumn(label: Text('Contact')),
+        DataColumn(label: Text('Catégorie')),
+        DataColumn(label: Text('Total achats'), numeric: true),
+        DataColumn(label: Text('Actions')),
+      ],
+      rowBuilder: (customer) {
+        final categoryColor = _getCategoryColor(context, customer.category);
+        return DataRow(
+          cells: [
+            // Nom
+            DataCell(
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 220),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 14,
+                      backgroundColor: categoryColor,
+                      child: Text(
+                        customer.name.isNotEmpty
+                            ? customer.name[0].toUpperCase()
+                            : '?',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        customer.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Contact (téléphone + email)
+            DataCell(
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 220),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      customer.phoneNumber,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    if ((customer.email ?? '').isNotEmpty)
+                      Text(
+                        customer.email!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.6,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            // Catégorie
+            DataCell(
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: categoryColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _getCategoryName(context, customer.category),
+                  style: theme.textTheme.labelSmall,
+                ),
+              ),
+            ),
+            // Total achats
+            DataCell(
+              Text(
+                _formatCurrency(customer.totalPurchases),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            // Actions
+            DataCell(
+              RowActionsMenu(
+                actions: [
+                  RowAction(
+                    label: localizations.viewDetails,
+                    icon: Icons.visibility,
+                    onSelected:
+                        () => _navigateToCustomerDetails(context, customer),
+                  ),
+                  RowAction(
+                    label: localizations.edit,
+                    icon: Icons.edit,
+                    onSelected:
+                        () => _navigateToEditCustomer(context, customer),
+                  ),
+                  RowAction(
+                    label: localizations.delete,
+                    icon: Icons.delete_outline,
+                    destructive: true,
+                    onSelected:
+                        () => _showDeleteConfirmation(context, customer),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

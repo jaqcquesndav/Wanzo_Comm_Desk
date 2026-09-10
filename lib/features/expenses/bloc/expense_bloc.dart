@@ -6,6 +6,7 @@ import 'package:equatable/equatable.dart';
 import 'package:uuid/uuid.dart';
 import '../models/expense.dart';
 import '../repositories/expense_repository.dart';
+import '../../../core/models/operation_payment.dart';
 import '../../dashboard/models/operation_journal_entry.dart';
 import '../../dashboard/bloc/operation_journal_bloc.dart';
 
@@ -31,6 +32,7 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
     on<LoadExpensesByCategory>(_onLoadExpensesByCategory);
     on<AddExpense>(_onAddExpense);
     on<UpdateExpense>(_onUpdateExpense);
+    on<RecordExpensePayment>(_onRecordExpensePayment);
     on<DeleteExpense>(_onDeleteExpense);
     on<LoadExpenseById>(_onLoadExpenseById);
     on<LoadExpenseCategories>(_onLoadExpenseCategories);
@@ -279,6 +281,58 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
       emit(
         ExpenseError(
           "Erreur lors de la mise à jour de la dépense: ${e.toString()}",
+        ),
+      );
+    }
+  }
+
+  /// Enregistrer une tranche de règlement sur une dette fournisseur.
+  Future<void> _onRecordExpensePayment(
+    RecordExpensePayment event,
+    Emitter<ExpenseState> emit,
+  ) async {
+    emit(const ExpenseLoading());
+    try {
+      final outcome = await _expenseRepository.recordPayment(
+        event.expense,
+        event.payment,
+      );
+
+      // Décaissement au journal : seule la tranche réellement payée impacte la
+      // trésorerie (la charge a déjà été enregistrée à la création).
+      try {
+        await _operationJournalBloc.repository.addOperation(
+          OperationJournalEntry(
+            id: _uuid.v4(),
+            date: event.payment.paidAt,
+            type: OperationType.cashOut,
+            description: 'Règlement fournisseur: ${event.expense.motif}',
+            amount: -event.payment.amountInCdf.abs(),
+            paymentMethod: event.payment.method,
+            relatedDocumentId: event.expense.id,
+            currencyCode: event.payment.currencyCode,
+            isDebit: true,
+            isCredit: false,
+            balanceAfter: 0.0,
+          ),
+        );
+        _operationJournalBloc.add(const RefreshJournal());
+      } catch (journalError) {
+        debugPrint("⚠️ Erreur journal (règlement fournisseur): $journalError");
+      }
+
+      emit(
+        ExpensePaymentRecorded(
+          expense: outcome.expense,
+          synced: outcome.synced,
+          message: outcome.message,
+        ),
+      );
+    } catch (e) {
+      emit(
+        ExpenseError(
+          "Le paiement n'a pas pu être enregistré: "
+          "${e is StateError ? e.message : e.toString()}",
         ),
       );
     }

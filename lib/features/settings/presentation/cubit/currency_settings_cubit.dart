@@ -3,13 +3,19 @@ import 'package:equatable/equatable.dart';
 import '../../../../core/models/currency_settings_model.dart';
 import '../../../../core/enums/currency_enum.dart';
 import '../../../../core/services/currency_service.dart';
+import '../../../company/services/company_api_service.dart';
 
 part 'currency_settings_state.dart';
 
 class CurrencySettingsCubit extends Cubit<CurrencySettingsState> {
   final CurrencyService _currencyService;
+  final CompanyApiService _companyApiService;
 
-  CurrencySettingsCubit(this._currencyService) : super(CurrencySettingsState.initial());
+  CurrencySettingsCubit(
+    this._currencyService, {
+    CompanyApiService? companyApiService,
+  })  : _companyApiService = companyApiService ?? CompanyApiService(),
+        super(CurrencySettingsState.initial());
 
   Future<void> loadSettings() async {
     emit(state.copyWith(status: CurrencySettingsStatus.loading));
@@ -55,6 +61,32 @@ class CurrencySettingsCubit extends Cubit<CurrencySettingsState> {
   }
   
   Future<void> updateSettings(CurrencySettings newSettings) async {
+    await _saveSettings(newSettings);
+  }
+
+  /// Amorce le taux de change depuis le backend (autorité = accounting, exposé
+  /// par gestion) au démarrage / à la synchro.
+  ///
+  /// Le taux central fait référence: on met à jour `usdToCdfRate` (et, si
+  /// présent, `fcfaToCdfRate` via XAF/XOF) puis on persiste via le mécanisme
+  /// existant. L'utilisateur peut toujours l'ajuster ensuite dans les
+  /// paramètres (override local conservé hors ligne). En cas d'échec réseau,
+  /// on garde le dernier taux connu et rien n'est écrasé. Un seul appel, pas de
+  /// polling.
+  Future<void> seedCentralExchangeRates() async {
+    final central = await _companyApiService.getCompanyExchangeRates();
+    if (central == null) return;
+
+    final rates = central.exchangeRates;
+    final usd = rates['USD'];
+    final fcfa = rates['XAF'] ?? rates['XOF'];
+    if ((usd == null || usd <= 0) && (fcfa == null || fcfa <= 0)) return;
+
+    final current = state.settings;
+    final newSettings = current.copyWith(
+      usdToCdfRate: (usd != null && usd > 0) ? usd : current.usdToCdfRate,
+      fcfaToCdfRate: (fcfa != null && fcfa > 0) ? fcfa : current.fcfaToCdfRate,
+    );
     await _saveSettings(newSettings);
   }
 

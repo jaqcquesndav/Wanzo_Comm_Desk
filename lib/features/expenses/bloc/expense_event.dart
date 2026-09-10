@@ -49,6 +49,20 @@ class UpdateExpense extends ExpenseEvent {
   List<Object> get props => [expense];
 }
 
+/// Enregistrement d'UNE tranche de règlement fournisseur.
+///
+/// Passe par `POST expenses/:id/payments` : le cumul et le statut sont
+/// recalculés par le serveur, plus de cumul côté client.
+class RecordExpensePayment extends ExpenseEvent {
+  final Expense expense;
+  final PaymentDraft payment;
+
+  const RecordExpensePayment({required this.expense, required this.payment});
+
+  @override
+  List<Object?> get props => [expense.id, payment.amount, payment.paidAt];
+}
+
 class DeleteExpense extends ExpenseEvent {
   final String expenseId;
 

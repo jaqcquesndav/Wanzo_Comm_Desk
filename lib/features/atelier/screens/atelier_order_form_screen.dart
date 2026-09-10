@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:wanzo/core/modules/activity_mode.dart';
+import 'package:wanzo/core/platform/image_picker/image_picker_service_factory.dart';
+import 'package:wanzo/core/platform/image_picker/image_picker_service_interface.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
-import 'package:wanzo/features/customer/models/customer.dart';
-import 'package:wanzo/features/customer/services/customer_api_service.dart';
+import 'package:wanzo/core/services/image_upload_service.dart';
+import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/widgets/photo_gallery_viewer.dart';
+import 'package:wanzo/core/widgets/smart_image.dart';
+import 'package:wanzo/features/customer/widgets/customer_picker_field.dart';
 import 'package:wanzo/features/atelier/cubit/atelier_orders_cubit.dart';
 import 'package:wanzo/features/atelier/models/atelier_order.dart';
 import 'package:wanzo/features/atelier/screens/atelier_client_profile_screen.dart';
@@ -25,8 +30,8 @@ class AtelierOrderFormScreen extends StatefulWidget {
 
 class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _customerApi = CustomerApiService();
   final _atelierApi = AtelierApiService();
+  final _customerNameController = TextEditingController();
 
   /// Dernier métier choisi dans la session : un atelier ne fait en général qu'un
   /// seul métier, on évite de reforcer « couture » à chaque commande.
@@ -59,6 +64,24 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   final _technicianCtrl = TextEditingController();
   String? _exitState;
   String? _testResult;
+  // ── Fiche travail d'impression (atelier d'imprimerie) ──
+  String? _printFormat;
+  final _supportCtrl = TextEditingController();
+  final _quantityCtrl = TextEditingController();
+  String _printSides = 'recto'; // recto | recto-verso
+  String? _colorMode; // Quadrichromie | Noir et blanc | Pantone
+  String? _finishing;
+  final _widthCtrl = TextEditingController();
+  final _heightCtrl = TextEditingController();
+  bool _batValidated = false;
+  final _operatorCtrl = TextEditingController();
+  final _machineCtrl = TextEditingController();
+  final _printInstructionsCtrl = TextEditingController();
+  List<String> _designPhotos = [];
+  final ImagePickerServiceInterface _imagePicker =
+      ImagePickerServiceFactory.getInstance();
+  final _imageUpload = ImageUploadService();
+  bool _uploadingPhotos = false;
   DateTime? _entryDate;
   DateTime? _exitDate;
   String _currency = 'CDF';
@@ -103,13 +126,31 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
         _exitState = m.exitState;
         _testResult = m.testResult;
       }
+      final p = o.printDetails;
+      if (p != null) {
+        _printFormat = p.format;
+        _supportCtrl.text = p.support ?? '';
+        _quantityCtrl.text = p.quantity?.toString() ?? '';
+        _printSides = p.printSides ?? 'recto';
+        _colorMode = p.colorMode;
+        _finishing = p.finishing;
+        _widthCtrl.text = p.width ?? '';
+        _heightCtrl.text = p.height ?? '';
+        _batValidated = p.batValidated ?? false;
+        _operatorCtrl.text = p.operatorName ?? '';
+        _machineCtrl.text = p.machine ?? '';
+        _printInstructionsCtrl.text = p.instructions ?? '';
+        _designPhotos = List<String>.from(p.designPhotos);
+      }
       if (o.metier.usesMeasurements) _checkMeasurements(o.customerId);
     } else {
       _entryDate = DateTime.now();
       // Défaut du métier selon le mode d'activité de l'entreprise.
-      if (BusinessContextService().activityMode ==
-          ActivityMode.atelierMaintenance) {
+      final mode = BusinessContextService().activityMode;
+      if (mode == ActivityMode.atelierMaintenance) {
         _metier = AtelierMetier.maintenance;
+      } else if (mode == ActivityMode.imprimerie) {
+        _metier = AtelierMetier.imprimerie;
       }
     }
   }
@@ -149,6 +190,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
 
   @override
   void dispose() {
+    _customerNameController.dispose();
     _labelCtrl.dispose();
     _modelCtrl.dispose();
     _totalCtrl.dispose();
@@ -167,10 +209,18 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     _repairCtrl.dispose();
     _warrantyCtrl.dispose();
     _technicianCtrl.dispose();
+    _supportCtrl.dispose();
+    _quantityCtrl.dispose();
+    _widthCtrl.dispose();
+    _heightCtrl.dispose();
+    _operatorCtrl.dispose();
+    _machineCtrl.dispose();
+    _printInstructionsCtrl.dispose();
     super.dispose();
   }
 
   bool get _isMaintenance => _metier == AtelierMetier.maintenance;
+  bool get _isImprimerie => _metier == AtelierMetier.imprimerie;
 
   double get _remaining {
     final t = double.tryParse(_totalCtrl.text) ?? 0;
@@ -209,7 +259,9 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                     labelText: 'Libellé *',
                     hintText: _isMaintenance
                         ? 'Ex. Réparation TV Samsung, Vidange moteur…'
-                        : 'Ex. Robe wax, Costume 3 pièces…',
+                        : _isImprimerie
+                            ? 'Ex. 500 cartes de visite, Banderole 3m…'
+                            : 'Ex. Robe wax, Costume 3 pièces…',
                     border: const OutlineInputBorder(),
                   ),
                   validator: (v) => (v == null || v.trim().isEmpty) ? 'Requis' : null,
@@ -217,6 +269,8 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                 const SizedBox(height: 16),
                 if (_isMaintenance)
                   _maintenanceSection()
+                else if (_isImprimerie)
+                  _printSection()
                 else
                   TextFormField(
                     controller: _modelCtrl,
@@ -270,7 +324,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                       child: InputDecorator(
                         decoration: const InputDecoration(labelText: 'Reste', border: OutlineInputBorder()),
                         child: Text(
-                          '${_remaining.toStringAsFixed(_currency == 'CDF' ? 0 : 2)} $_currency',
+                          formatCurrency(_remaining, _currency),
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
@@ -288,7 +342,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                     ),
                   ),
                 ],
-                if (!_isMaintenance) ...[
+                if (!_isMaintenance && !_isImprimerie) ...[
                   const SizedBox(height: 16),
                   // ── Tissu (couture) ──
                   _fabricDropdown(),
@@ -359,37 +413,20 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
         child: Text(_customerName ?? _customerId ?? '—'),
       );
     }
-    return Autocomplete<Customer>(
-      displayStringForOption: (c) => c.name,
-      optionsBuilder: (value) async {
-        final q = value.text.trim();
-        if (q.length < 2) return const Iterable<Customer>.empty();
-        try {
-          final res = await _customerApi.getCustomers(search: q, limit: 10);
-          return res.data ?? const [];
-        } catch (_) {
-          return const Iterable<Customer>.empty();
-        }
-      },
+    // Picker client partagé : suggestions depuis le cache Hive (online et
+    // offline) et création inline. L'atelier n'est plus bloqué quand le client
+    // n'est pas encore synchronisé : on peut toujours le retrouver ou le créer.
+    return CustomerPickerField(
+      controller: _customerNameController,
+      label: 'Client *',
+      hint: 'Rechercher ou creer un client',
+      validator: (_) => _customerId == null ? 'Sélectionnez un client' : null,
       onSelected: (c) {
         setState(() {
-          _customerId = c.id;
-          _customerName = c.name;
+          _customerId = c?.id;
+          _customerName = c?.name;
         });
-        _checkMeasurements(c.id);
-      },
-      fieldViewBuilder: (context, controller, focusNode, onSubmit) {
-        return TextFormField(
-          controller: controller,
-          focusNode: focusNode,
-          decoration: InputDecoration(
-            labelText: 'Client *',
-            hintText: 'Rechercher un client (min. 2 lettres)…',
-            border: const OutlineInputBorder(),
-            suffixIcon: _customerId != null ? const Icon(Icons.check, color: Colors.green) : null,
-          ),
-          validator: (_) => _customerId == null ? 'Sélectionnez un client' : null,
-        );
+        if (c != null) _checkMeasurements(c.id);
       },
     );
   }
@@ -446,6 +483,9 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   /// En couture, on choisit couture vs cordonnerie (le mode « atelier » regroupe
   /// les deux). Plus de sélecteur de métier redondant.
   Widget _metierSelector() {
+    // Imprimerie : le métier est fixé par le mode, la fiche travail d'impression
+    // porte toute la config → pas de sélecteur métier redondant.
+    if (_isImprimerie) return const SizedBox.shrink();
     if (_isMaintenance) {
       return DropdownButtonFormField<String>(
         value: _specialty,
@@ -504,6 +544,57 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       keyboardType: keyboard,
       decoration: InputDecoration(
           labelText: label, hintText: hint, border: const OutlineInputBorder()),
+    );
+  }
+
+  /// Noms de responsables déjà saisis sur des commandes du même métier
+  /// (opérateurs pour l'imprimerie, techniciens pour la maintenance). Sert de
+  /// suggestions à l'autocomplétion → saisie rapide des intervenants récurrents.
+  List<String> _priorStaffNames({required bool imprimerie}) {
+    final orders = context.read<AtelierOrdersCubit>().state.orders;
+    final names = <String>{};
+    for (final o in orders) {
+      final n = imprimerie
+          ? o.printDetails?.operatorName
+          : o.maintenanceDetails?.technicianName;
+      if (n != null && n.trim().isNotEmpty) names.add(n.trim());
+    }
+    final list = names.toList()..sort();
+    return list;
+  }
+
+  /// Champ « responsable » (technicien / opérateur) : autocomplétion sur les
+  /// intervenants déjà utilisés (réutilise le même motif que le sélecteur de
+  /// client), tout en gardant la saisie libre pour un nouvel intervenant. Évite
+  /// de retaper le même nom à chaque commande.
+  Widget _staffAutocomplete(
+    TextEditingController target,
+    String label,
+    List<String> suggestions, {
+    String? hint,
+  }) {
+    return Autocomplete<String>(
+      initialValue: TextEditingValue(text: target.text),
+      optionsBuilder: (value) {
+        final q = value.text.trim().toLowerCase();
+        if (q.isEmpty) return suggestions;
+        return suggestions.where((s) => s.toLowerCase().contains(q));
+      },
+      onSelected: (v) => target.text = v,
+      fieldViewBuilder: (context, controller, focusNode, onSubmit) {
+        return TextFormField(
+          controller: controller,
+          focusNode: focusNode,
+          // Saisie libre reflétée dans le contrôleur cible (nouvel intervenant).
+          onChanged: (v) => target.text = v,
+          decoration: InputDecoration(
+            labelText: label,
+            hintText: hint,
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.badge_outlined, size: 18),
+          ),
+        );
+      },
     );
   }
 
@@ -610,7 +701,10 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                   keyboard: TextInputType.number),
             ),
             const SizedBox(width: 12),
-            Expanded(child: _tf(_technicianCtrl, 'Technicien')),
+            Expanded(
+              child: _staffAutocomplete(_technicianCtrl, 'Technicien',
+                  _priorStaffNames(imprimerie: false)),
+            ),
           ],
         ),
       ],
@@ -645,6 +739,257 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     return (d.isEmpty && !hasSpecialty) ? null : d;
   }
 
+  /// Fiche « travail d'impression » d'un atelier d'IMPRIMERIE. Aucun vocabulaire
+  /// couture/maintenance : format, support, tirage, finition, BAT, design.
+  Widget _printSection() {
+    final isLargeFormat = _printFormat == 'Bâche' ||
+        _printFormat == 'Banderole' ||
+        _printFormat == 'Roll-up' ||
+        _printFormat == 'Personnalisé';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle('Fiche travail d\'impression'),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _printFormat,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                    labelText: 'Format', border: OutlineInputBorder()),
+                items: [
+                  for (final f in kPrintFormats)
+                    DropdownMenuItem(value: f, child: Text(f)),
+                ],
+                onChanged: (v) => setState(() => _printFormat = v),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _tf(_quantityCtrl, 'Quantité (tirage)',
+                  keyboard: TextInputType.number),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _tf(_supportCtrl, 'Support / matière',
+            hint: 'Couché 300g, adhésif, bâche 510g…'),
+        if (isLargeFormat) ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                  child: _tf(_widthCtrl, 'Largeur',
+                      hint: 'cm / m', keyboard: TextInputType.number)),
+              const SizedBox(width: 12),
+              Expanded(
+                  child: _tf(_heightCtrl, 'Hauteur',
+                      hint: 'cm / m', keyboard: TextInputType.number)),
+            ],
+          ),
+        ],
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _colorMode,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                    labelText: 'Couleurs', border: OutlineInputBorder()),
+                items: const [
+                  DropdownMenuItem(
+                      value: 'Quadrichromie', child: Text('Quadrichromie')),
+                  DropdownMenuItem(
+                      value: 'Noir et blanc', child: Text('Noir et blanc')),
+                  DropdownMenuItem(value: 'Pantone', child: Text('Pantone')),
+                ],
+                onChanged: (v) => setState(() => _colorMode = v),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _printSides,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                    labelText: 'Impression', border: OutlineInputBorder()),
+                items: const [
+                  DropdownMenuItem(value: 'recto', child: Text('Recto')),
+                  DropdownMenuItem(
+                      value: 'recto-verso', child: Text('Recto-verso')),
+                ],
+                onChanged: (v) =>
+                    setState(() => _printSides = v ?? 'recto'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          value: _finishing,
+          isExpanded: true,
+          decoration: const InputDecoration(
+              labelText: 'Finition / façonnage', border: OutlineInputBorder()),
+          items: [
+            for (final f in kPrintFinishings)
+              DropdownMenuItem(value: f, child: Text(f)),
+          ],
+          onChanged: (v) => setState(() => _finishing = v),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _staffAutocomplete(_operatorCtrl,
+                  'Opérateur / infographiste', _priorStaffNames(imprimerie: true)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: _tf(_machineCtrl, 'Machine / presse')),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _tf(_printInstructionsCtrl, 'Consignes',
+            hint: 'Détails, couleurs de charte, délais…', min: 2, max: 3),
+        const SizedBox(height: 12),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: _batValidated,
+          onChanged: (v) => setState(() => _batValidated = v),
+          title: const Text('Bon à tirer (BAT) validé par le client'),
+          dense: true,
+        ),
+        const SizedBox(height: 8),
+        _designPhotosField(),
+      ],
+    );
+  }
+
+  /// Sélecteur multi-photos du design / bon à tirer : upload Cloudinary via le
+  /// service partagé, miniatures et suppression. Les URLs sont persistées dans
+  /// `printDetails.designPhotos` (affichées sur la carte Kanban).
+  Widget _designPhotosField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle('Design / Bon à tirer'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (var i = 0; i < _designPhotos.length; i++)
+              Stack(
+                children: [
+                  GestureDetector(
+                    onTap: () => PhotoGalleryViewer.open(
+                      context,
+                      photos: _designPhotos,
+                      initialIndex: i,
+                    ),
+                    child: SmartImage(
+                      imageUrl: _designPhotos[i],
+                      width: 72,
+                      height: 72,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  Positioned(
+                    top: -6,
+                    right: -6,
+                    child: IconButton(
+                      icon: const Icon(Icons.cancel, size: 20),
+                      color: Colors.red,
+                      onPressed: () =>
+                          setState(() => _designPhotos.removeAt(i)),
+                    ),
+                  ),
+                ],
+              ),
+            InkWell(
+              onTap: _uploadingPhotos ? null : _pickDesignPhotos,
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: _uploadingPhotos
+                    ? const Center(
+                        child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child:
+                                CircularProgressIndicator(strokeWidth: 2)))
+                    : const Icon(Icons.add_a_photo_outlined),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickDesignPhotos() async {
+    try {
+      final files = await _imagePicker.pickMultipleImages(
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: 85,
+      );
+      if (files.isEmpty) return;
+      setState(() => _uploadingPhotos = true);
+      final urls = await _imageUpload.uploadImages(files);
+      if (!mounted) return;
+      setState(() {
+        _designPhotos = [..._designPhotos, ...urls];
+        _uploadingPhotos = false;
+      });
+      if (urls.length < files.length) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Certaines photos n\'ont pas pu être envoyées')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _uploadingPhotos = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossible d\'ajouter les photos : $e')),
+      );
+    }
+  }
+
+  PrintJobDetails? _buildPrintDetails() {
+    if (!_isImprimerie) return null;
+    String? t(TextEditingController c) =>
+        c.text.trim().isEmpty ? null : c.text.trim();
+    final isLargeFormat = _printFormat == 'Bâche' ||
+        _printFormat == 'Banderole' ||
+        _printFormat == 'Roll-up' ||
+        _printFormat == 'Personnalisé';
+    final d = PrintJobDetails(
+      format: _printFormat,
+      support: t(_supportCtrl),
+      quantity: _quantityCtrl.text.trim().isEmpty
+          ? null
+          : int.tryParse(_quantityCtrl.text.trim()),
+      printSides: _printSides,
+      colorMode: _colorMode,
+      finishing: _finishing,
+      width: isLargeFormat ? t(_widthCtrl) : null,
+      height: isLargeFormat ? t(_heightCtrl) : null,
+      batValidated: _batValidated,
+      designPhotos: _designPhotos,
+      operatorName: t(_operatorCtrl),
+      machine: t(_machineCtrl),
+      instructions: t(_printInstructionsCtrl),
+    );
+    return d.isEmpty ? null : d;
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
@@ -657,7 +1002,8 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       label: _labelCtrl.text.trim(),
       metier: _metier,
       maintenanceDetails: _buildMaintenanceDetails(),
-      modelDetails: _isMaintenance
+      printDetails: _buildPrintDetails(),
+      modelDetails: (_isMaintenance || _isImprimerie)
           ? null
           : (_modelCtrl.text.trim().isEmpty ? null : _modelCtrl.text.trim()),
       entryDate: _entryDate,
@@ -666,7 +1012,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       advanceAmount: double.tryParse(_advanceCtrl.text) ?? 0,
       currencyCode: _currency,
       exchangeRate: _currency == 'CDF' ? 1 : (double.tryParse(_rateCtrl.text) ?? 1),
-      fabricProvidedBy: _isMaintenance ? null : _fabric,
+      fabricProvidedBy: (_isMaintenance || _isImprimerie) ? null : _fabric,
     );
 
     final result = _isEdit

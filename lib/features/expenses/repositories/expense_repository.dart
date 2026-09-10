@@ -4,10 +4,28 @@ import 'package:hive/hive.dart'; // Added for Hive
 import 'package:uuid/uuid.dart'; // Added for generating local IDs
 import '../models/expense.dart';
 import '../services/expense_api_service.dart';
+import '../../../core/models/operation_payment.dart';
+
+/// Résultat d'un règlement enregistré sur une dette fournisseur.
+class ExpensePaymentOutcome {
+  final Expense expense;
+  final bool synced;
+  final String message;
+
+  const ExpensePaymentOutcome({
+    required this.expense,
+    required this.synced,
+    required this.message,
+  });
+}
 
 class ExpenseRepository {
   final ExpenseApiService _expenseApiService;
   static const _expensesBoxName = 'expenses'; // Added Hive box name
+
+  /// File d'attente des règlements fournisseurs saisis hors ligne.
+  static const _pendingPaymentsBoxName = 'pendingExpensePayments';
+
   late final Box<Expense> _expensesBox; // Added Hive box instance
   final _uuid = const Uuid(); // Added Uuid instance
 
@@ -22,6 +40,11 @@ class ExpenseRepository {
   }
 
   Future<List<Expense>> getAllExpenses() async {
+    // Les règlements saisis hors ligne repartent à chaque relecture de la
+    // liste : `expenses/sync` n'existe pas, sans cette file la tranche serait
+    // perdue au prochain rafraîchissement depuis le serveur.
+    await flushPendingPayments();
+
     // First, return local expenses
     final localExpenses = _expensesBox.values.toList();
     if (localExpenses.isNotEmpty) {
@@ -243,6 +266,164 @@ class ExpenseRepository {
         "[ExpenseRepository] Failed to sync updated expense with API: ${apiResponse.message}. It remains local with key $hiveKey. Attachment URLs on expenseToUpdate: ${expenseToUpdate.attachmentUrls}",
       );
       return expenseToUpdate; // Return local version with pending_update status
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // RÈGLEMENT EN PLUSIEURS TRANCHES (dettes fournisseurs)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Future<Box> _pendingPaymentsBox() => Hive.openBox(_pendingPaymentsBoxName);
+
+  /// Enregistre une tranche de règlement sur une dépense.
+  ///
+  /// Chemin nominal : `POST expenses/:id/payments` (le serveur recalcule le
+  /// cumul et le statut, aucun cumul côté client). Repli si l'endpoint n'est
+  /// pas disponible : PATCH avec le cumul. Repli hors ligne : application
+  /// locale + mise en file de synchronisation.
+  Future<ExpensePaymentOutcome> recordPayment(
+    Expense expense,
+    PaymentDraft payment,
+  ) async {
+    final newPaid = (expense.paidAmount ?? 0.0) + payment.amount;
+    final capped = newPaid > expense.amount ? expense.amount : newPaid;
+    final fullyPaid = newPaid + 0.01 >= expense.amount;
+
+    // 1. Application optimiste locale (offline-first).
+    final optimistic = expense.copyWith(
+      paidAmount: capped,
+      paymentStatus:
+          fullyPaid ? ExpensePaymentStatus.paid : ExpensePaymentStatus.partial,
+      paymentMethod: payment.method,
+      syncStatus: 'pending_update',
+    );
+    final hiveKey =
+        _expensesBox.get(expense.id) != null
+            ? expense.id
+            : (expense.localId ?? expense.id);
+    await _expensesBox.put(hiveKey, optimistic);
+
+    // 2. Endpoint dédié aux tranches.
+    final response = await _expenseApiService.recordExpensePayment(
+      expense.id,
+      payment,
+    );
+
+    if (response.success && response.data != null) {
+      final serverExpense = response.data!;
+      // GARDE ANTI-ÉCRASEMENT : on ne remplace le cache optimiste que si le
+      // serveur a réellement pris la tranche en compte.
+      if ((serverExpense.paidAmount ?? 0.0) + 0.01 < capped) {
+        throw StateError(
+          'Le serveur n\'a pas enregistré la tranche de paiement.',
+        );
+      }
+      final synced = serverExpense.copyWith(syncStatus: 'synced');
+      await _expensesBox.put(synced.id, synced);
+      return ExpensePaymentOutcome(
+        expense: synced,
+        synced: true,
+        message: 'Paiement enregistré.',
+      );
+    }
+
+    debugPrint(
+      "[ExpenseRepository] Endpoint expenses/:id/payments indisponible "
+      "(${response.message}) - repli sur PATCH",
+    );
+
+    // 3. Repli : PATCH classique avec le cumul.
+    final patched = await updateExpense(optimistic);
+    if (patched.syncStatus == 'synced') {
+      if ((patched.paidAmount ?? 0.0) + 0.01 < capped) {
+        throw StateError('Le serveur n\'a pas enregistré le montant payé.');
+      }
+      return ExpensePaymentOutcome(
+        expense: patched,
+        synced: true,
+        message: 'Paiement enregistré.',
+      );
+    }
+
+    await _enqueuePayment(expense.id, payment);
+    return ExpensePaymentOutcome(
+      expense: optimistic,
+      synced: false,
+      message: 'Paiement enregistré hors ligne, il sera synchronisé.',
+    );
+  }
+
+  /// Liste les tranches de règlement d'une dépense (vide si indisponible).
+  Future<List<OperationPayment>> getExpensePayments(String expenseId) async {
+    try {
+      return await _expenseApiService
+          .getExpensePayments(expenseId)
+          .timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint("Historique des règlements indisponible: $e");
+      return const <OperationPayment>[];
+    }
+  }
+
+  Future<void> _enqueuePayment(String expenseId, PaymentDraft payment) async {
+    try {
+      final box = await _pendingPaymentsBox();
+      await box.put(_uuid.v4(), <String, dynamic>{
+        'expenseId': expenseId,
+        ...payment.toRequestBody(),
+      });
+      debugPrint("Règlement mis en file pour la dépense $expenseId");
+    } catch (e) {
+      debugPrint("Impossible de mettre le règlement en file: $e");
+    }
+  }
+
+  /// Rejoue les règlements fournisseurs saisis hors ligne.
+  Future<void> flushPendingPayments() async {
+    Box box;
+    try {
+      box = await _pendingPaymentsBox();
+    } catch (e) {
+      debugPrint("File des règlements inaccessible: $e");
+      return;
+    }
+    if (box.isEmpty) return;
+
+    for (final key in box.keys.toList()) {
+      final raw = box.get(key);
+      if (raw is! Map) {
+        await box.delete(key);
+        continue;
+      }
+      final expenseId = raw['expenseId'] as String?;
+      final amount = (raw['amount'] as num?)?.toDouble();
+      if (expenseId == null || amount == null || amount <= 0) {
+        await box.delete(key);
+        continue;
+      }
+      final draft = PaymentDraft(
+        amount: amount,
+        currencyCode: raw['currencyCode'] as String? ?? 'CDF',
+        exchangeRate: (raw['exchangeRate'] as num?)?.toDouble(),
+        method: raw['method'] as String? ?? 'Espèces',
+        paidAt:
+            DateTime.tryParse(raw['paidAt'] as String? ?? '') ?? DateTime.now(),
+        reference: raw['reference'] as String?,
+      );
+      final response = await _expenseApiService.recordExpensePayment(
+        expenseId,
+        draft,
+      );
+      if (response.success && response.data != null) {
+        final synced = response.data!.copyWith(syncStatus: 'synced');
+        await _expensesBox.put(synced.id, synced);
+        await box.delete(key);
+        debugPrint("Règlement en file synchronisé (dépense $expenseId)");
+      } else {
+        debugPrint(
+          "Règlement en file non synchronisé (dépense $expenseId): ${response.message}",
+        );
+      }
     }
   }
 

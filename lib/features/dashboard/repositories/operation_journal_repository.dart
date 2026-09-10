@@ -95,12 +95,7 @@ class OperationJournalRepository {
       _isOfflineMode = !_connectivityService.isConnected;
 
       // Écouter les changements de connectivité
-      _connectivityService.connectionStatus.addListener(() {
-        _isOfflineMode = !_connectivityService.isConnected;
-        debugPrint(
-          '🔄 Mode offline mis à jour: $_isOfflineMode (connecté: ${_connectivityService.isConnected})',
-        );
-      });
+      _connectivityService.connectionStatus.addListener(_onConnectivityChanged);
 
       debugPrint(
         "✅ OperationJournalRepository initialized with ${_entriesBox?.length ?? 0} local entries.",
@@ -766,6 +761,14 @@ class OperationJournalRepository {
     }
   }
 
+  /// Handler nommé pour les changements de connectivité (permet removeListener)
+  void _onConnectivityChanged() {
+    _isOfflineMode = !_connectivityService.isConnected;
+    debugPrint(
+      '🔄 Mode offline mis à jour: $_isOfflineMode (connecté: ${_connectivityService.isConnected})',
+    );
+  }
+
   /// Active ou désactive le mode hors ligne
   void setOfflineMode(bool isOffline) {
     _isOfflineMode = isOffline;
@@ -1323,5 +1326,12 @@ class OperationJournalRepository {
     } catch (e) {
       debugPrint('Erreur lors du vidage du cache du journal: $e');
     }
+  }
+
+  /// Libère les ressources (retire le listener de connectivité)
+  void dispose() {
+    _connectivityService.connectionStatus.removeListener(
+      _onConnectivityChanged,
+    );
   }
 }

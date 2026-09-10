@@ -1,24 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:wanzo/core/modules/module_registry.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:wanzo/core/services/currency_display_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/widgets/dish_thumb_grid.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
+import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
 import 'package:wanzo/features/customer/bloc/customer_bloc.dart';
 import 'package:wanzo/features/customer/bloc/customer_event.dart';
 import 'package:wanzo/features/customer/bloc/customer_state.dart';
 import 'package:wanzo/features/customer/models/customer.dart';
+import 'package:wanzo/features/invoice/widgets/post_sale_document_sheet.dart';
+import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
+import 'package:wanzo/features/sales/models/sale.dart';
+import 'package:wanzo/features/sales/models/sale_item.dart';
+import 'package:wanzo/services/receipt_printer_service.dart';
+import 'package:wanzo/features/settings/bloc/settings_bloc.dart'
+    as old_settings_bloc;
+import 'package:wanzo/features/settings/bloc/settings_state.dart'
+    as old_settings_state;
+import 'package:wanzo/features/settings/models/settings.dart'
+    as old_settings_model;
 
 import '../cubit/restaurant_orders_cubit.dart';
 import '../models/menu_course.dart';
 import '../models/menu_item.dart';
 import '../models/restaurant_order.dart';
 import '../repositories/menu_repository.dart';
-import '../widgets/restaurant_order_quick_view_dialog.dart';
 
 /// Point de vente restaurant — mise en page desktop dense en 3 colonnes :
 /// MENU (la CARTE) | TICKET (commande en cours) | CAISSE (encaissement).
@@ -28,11 +42,32 @@ import '../widgets/restaurant_order_quick_view_dialog.dart';
 /// PAS une surcouche du stock. La vente directe de produits stockables se fait
 /// via l'action « Vente directe » du tableau de bord (facturation boutique).
 ///
-/// L'encaissement passe par la facturation UNIFIÉE ([AddSaleScreen], via
-/// [openRestaurantInvoice]) — MÊME page que la boutique et l'atelier — et non
-/// une caisse « maison » : ticket de caisse, facture et journal en découlent.
+/// L'encaissement se fait dans la 3e colonne (caisse restaurant dédiée :
+/// règlement, monnaie, validation), qui crée une `Sale` (même chaîne
+/// vente/synchro que la boutique), auto-imprime le ticket espèces puis ouvre la
+/// feuille d'options post-vente PARTAGÉE ([showPostSaleDocumentSheet]) — MÊMES
+/// widgets de facturation que la boutique, le salon et l'app Assets.
 ///
 /// Ce n'est PAS le mobile étiré : tout est visible d'un coup, adapté au comptoir.
+enum _PayMethod { cash, mobileMoney, credit }
+
+extension _PayMethodX on _PayMethod {
+  String get label => switch (this) {
+        _PayMethod.cash => 'Espèces',
+        _PayMethod.mobileMoney => 'Mobile Money',
+        _PayMethod.credit => 'Crédit',
+      };
+  String get apiValue => switch (this) {
+        _PayMethod.cash => 'cash',
+        _PayMethod.mobileMoney => 'mobile_money',
+        _PayMethod.credit => 'credit',
+      };
+  IconData get icon => switch (this) {
+        _PayMethod.cash => Icons.payments,
+        _PayMethod.mobileMoney => Icons.smartphone,
+        _PayMethod.credit => Icons.schedule,
+      };
+}
 
 /// Petit badge de catégorie (« Plats », « Boissons »…) posé sur la photo.
 class _CourseBadge extends StatelessWidget {
@@ -77,16 +112,72 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   String? _selectedOrderId;
   String _search = '';
 
+  _PayMethod _method = _PayMethod.cash;
+  final _cashController = TextEditingController();
+  bool _submitting = false;
+
+  /// Affichage double devise (CDF + USD) : préférence utilisateur partagée avec
+  /// les tableaux de bord. Le primaire reste CDF (devise système) ; l'USD est un
+  /// simple repère converti au taux central (jamais inventé).
+  bool _dualCurrency = CurrencyDisplayService.instance.dualCurrency.value;
+
+  /// Vente soumise au SalesBloc, conservée pour générer la pièce post-vente
+  /// (reçu / facture) une fois l'enregistrement confirmé.
+  Sale? _pendingSale;
+
   @override
   void initState() {
     super.initState();
     // Pré-sélection depuis le plan de salle (query param `orderId`).
     _selectedOrderId = widget.initialOrderId;
     _loadMenu();
+    CurrencyDisplayService.instance.dualCurrency.addListener(_onDualChanged);
+    final cubit = context.read<CurrencySettingsCubit>();
+    if (cubit.state.status != CurrencySettingsStatus.loaded) {
+      cubit.loadSettings();
+    }
+  }
+
+  void _onDualChanged() {
+    if (!mounted) return;
+    setState(() =>
+        _dualCurrency = CurrencyDisplayService.instance.dualCurrency.value);
+  }
+
+  @override
+  void dispose() {
+    CurrencyDisplayService.instance.dualCurrency.removeListener(_onDualChanged);
+    _cashController.dispose();
+    super.dispose();
+  }
+
+  /// Taux central USD→CDF (autorité comptable, exposée via `CurrencySettings`),
+  /// `null` si indisponible : on n'affiche alors AUCUNE conversion.
+  double? _usdRate() {
+    try {
+      final st = context.read<CurrencySettingsCubit>().state;
+      if (st.status == CurrencySettingsStatus.loaded ||
+          st.status == CurrencySettingsStatus.saved) {
+        final r = st.settings.usdToCdfRate;
+        if (r > 0) return r;
+      }
+    } catch (_) {
+      // Cubit indisponible : pas de conversion.
+    }
+    return null;
+  }
+
+  /// Équivalent USD subtil d'un montant CDF, ou `null` si l'affichage double
+  /// devise est désactivé ou qu'aucun taux réel n'existe.
+  String? _usdHint(double cdf) {
+    if (!_dualCurrency) return null;
+    final rate = _usdRate();
+    if (rate == null) return null;
+    return '≈ ${formatCurrency(cdf / rate, 'USD')}';
   }
 
   Future<void> _loadMenu() async {
-    final dishes = await _menuRepo.loadAll();
+    final dishes = await _menuRepo.loadAllSynced();
     if (!mounted) return;
     setState(() {
       _dishes = dishes;
@@ -134,7 +225,9 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
               context.push('/restaurant/menu').then((_) => _loadMenu()),
         ),
       ],
-      body: BlocBuilder<RestaurantOrdersCubit, RestaurantOrdersState>(
+      body: BlocListener<SalesBloc, SalesState>(
+        listener: _onSalesState,
+        child: BlocBuilder<RestaurantOrdersCubit, RestaurantOrdersState>(
         builder: (context, state) {
           final orders = state.active;
           // Auto-sélection cohérente si la commande courante disparaît.
@@ -197,6 +290,7 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
             );
           },
         ),
+      ),
       );
   }
 
@@ -463,7 +557,23 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     );
   }
 
-  // ── Colonne 2 : Ticket ───────────────────────────────────────────────────
+  /// Résout le plat de la carte correspondant à une ligne de commande pour en
+  /// afficher la PHOTO côté client : `productId` d'abord (id du MenuItem), repli
+  /// par nom normalisé si l'id ne matche pas (même logique que la caisse mobile).
+  MenuItem? _dishFor(RestaurantOrderLine line) {
+    for (final d in _dishes) {
+      if (d.id == line.productId) return d;
+    }
+    final key = line.productName.trim().toLowerCase();
+    for (final d in _dishes) {
+      if (d.name.trim().toLowerCase() == key) return d;
+    }
+    return null;
+  }
+
+  // ── Colonne 2 : Ticket (récapitulatif client, avec photos) ───────────────
+  // Chaque ligne porte la PHOTO du plat (résolue via la carte) — le ticket sert
+  // aussi de récapitulatif visuel tourné vers le client, comme la caisse mobile.
   Widget _buildTicket(RestaurantOrder order) {
     final cubit = context.read<RestaurantOrdersCubit>();
     return Column(
@@ -505,9 +615,21 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (context, i) {
                     final line = order.lines[i];
+                    final dish = _dishFor(line);
                     return ListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
+                      leading: DishThumbGrid(
+                        thumbs: [
+                          if (dish != null)
+                            DishThumb(
+                              photoUrl: dish.photoUrl,
+                              photoPath: dish.photoPath,
+                            ),
+                        ],
+                        size: 44,
+                        radius: 8,
+                      ),
                       title: Text(line.productName),
                       subtitle: Text(
                         (line.note != null && line.note!.isNotEmpty)
@@ -550,14 +672,19 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   }
 
   // ── Colonne 3 : Caisse (encaissement) ──────────────────────────────────
-  // Le règlement lui-même (méthodes de paiement, montant reçu/monnaie, devise
-  // de transaction, ticket/facture) est délégué à la facturation UNIFIÉE
-  // [AddSaleScreen] — MÊME page que la boutique et l'atelier — via
-  // [openRestaurantInvoice]. Cette colonne n'affiche donc que le total et le
-  // bouton d'encaissement.
+  // Caisse « maison » restaurant : choix du règlement, montant reçu / monnaie
+  // rendue, validation. Le règlement crée une `Sale` (réutilise toute la chaîne
+  // vente/synchro), auto-imprime le ticket espèces, puis ouvre la feuille
+  // d'options post-vente PARTAGÉE ([showPostSaleDocumentSheet]) — MÊMES widgets
+  // de facturation que la boutique et le salon. Montants en CDF (base monétaire).
   Widget _buildCheckout(RestaurantOrder order) {
     final theme = Theme.of(context);
     final total = order.totalCdf;
+    final cashGiven =
+        double.tryParse(_cashController.text.replaceAll(' ', '')) ?? 0;
+    final change = cashGiven - total;
+    final totalUsd = _usdHint(total);
+    final changeUsd = _usdHint(change.abs());
 
     return Container(
       color: theme.colorScheme.surfaceContainerLow,
@@ -570,22 +697,98 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text('Total', style: theme.textTheme.titleMedium),
-              Text(
-                formatCurrency(total, 'CDF'),
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    formatCurrency(total, 'CDF'),
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  // Équivalent USD subtil (double devise + taux central).
+                  if (totalUsd != null)
+                    Text(
+                      totalUsd,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                ],
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          Text('Règlement', style: theme.textTheme.labelLarge),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            children: [
+              for (final m in _PayMethod.values)
+                ChoiceChip(
+                  avatar: Icon(m.icon, size: 16),
+                  label: Text(m.label),
+                  selected: _method == m,
+                  onSelected: (_) => setState(() => _method = m),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_method == _PayMethod.cash) ...[
+            TextField(
+              controller: _cashController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: InputDecoration(
+                labelText: 'Montant reçu (CDF)',
+                isDense: true,
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 8),
+            if (_cashController.text.isNotEmpty) ...[
+              Text(
+                change >= 0
+                    ? 'Monnaie : ${formatCurrency(change, 'CDF')}'
+                    : 'Manque : ${formatCurrency(-change, 'CDF')}',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: change >= 0
+                      ? Colors.green.shade700
+                      : theme.colorScheme.error,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              // Équivalent USD subtil (double devise + taux central).
+              if (changeUsd != null)
+                Text(
+                  changeUsd,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ],
           const SizedBox(height: 20),
           FilledButton.icon(
-            onPressed: order.isEmpty ? null : () => _settleViaInvoice(order),
-            icon: const Icon(Icons.point_of_sale),
-            label: Text('Encaisser · ${formatCurrency(total, 'CDF')}'),
+            onPressed: order.isEmpty ||
+                    _submitting ||
+                    (_method == _PayMethod.cash && change < 0)
+                ? null
+                : () => _confirm(order),
+            icon: _submitting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.check),
+            label: Text('Valider · ${formatCurrency(total, 'CDF')}'),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
             ),
@@ -595,17 +798,161 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     );
   }
 
-  /// Encaissement via la facturation UNIFIÉE ([AddSaleScreen]) pré-remplie avec
-  /// le ticket. La commande est marquée réglée à la création de la vente
-  /// ([openRestaurantInvoice]) ; on désélectionne ensuite (elle quitte la liste
-  /// des commandes actives).
-  Future<void> _settleViaInvoice(RestaurantOrder order) async {
-    await openRestaurantInvoice(
-      context,
-      context.read<RestaurantOrdersCubit>(),
-      order,
+  void _confirm(RestaurantOrder order) {
+    final total = order.totalCdf;
+    final completed = _method == _PayMethod.cash;
+    final paid = completed ? total : 0.0;
+
+    final items = order.lines
+        .map(
+          (l) => SaleItem(
+            productId: l.productId,
+            productName: l.productName,
+            quantity: l.quantity,
+            unitPrice: l.unitPriceCdf,
+            totalPrice: l.totalCdf,
+            currencyCode: 'CDF',
+            exchangeRate: 1.0,
+            unitPriceInCdf: l.unitPriceCdf,
+            totalPriceInCdf: l.totalCdf,
+            // Un plat de la carte est une PRESTATION (service), pas un article
+            // de stock : la carte est une entité propre, distincte du stock.
+            itemType: SaleItemType.service,
+          ),
+        )
+        .toList();
+
+    final sale = Sale(
+      id: '',
+      date: DateTime.now(),
+      customerId: 'resto_${order.id}',
+      customerName: order.label,
+      items: items,
+      totalAmountInCdf: total,
+      paidAmountInCdf: paid,
+      transactionCurrencyCode: 'CDF',
+      transactionExchangeRate: 1.0,
+      totalAmountInTransactionCurrency: total,
+      paidAmountInTransactionCurrency: paid,
+      discountPercentage: 0,
+      paymentMethod: _method.apiValue,
+      status: completed ? SaleStatus.completed : SaleStatus.pending,
+      notes: 'Commande restaurant ${order.label}',
     );
-    if (mounted) setState(() => _selectedOrderId = null);
+
+    _pendingSale = sale;
+    setState(() => _submitting = true);
+    context.read<SalesBloc>().add(AddSale(sale));
+
+    // Auto-impression du ticket de caisse (ventes espèces) — même câblage que
+    // la boutique/atelier (AddSaleScreen). Fire-and-forget.
+    _autoPrintCashTicket(sale);
+  }
+
+  /// Imprime automatiquement le ticket de caisse pour un règlement espèces si
+  /// l'option est activée. Réutilise le même `ReceiptPrinterService` que les
+  /// autres modes (boutique, atelier).
+  Future<void> _autoPrintCashTicket(Sale sale) async {
+    // ROBUSTESSE : l'impression ne doit JAMAIS bloquer ni faire planter
+    // l'encaissement (imprimante absente/hors-ligne, service indisponible…).
+    try {
+      if (!ReceiptPrinterService.isCashPayment(sale.paymentMethod)) return;
+      final settings = _currentSettings();
+      if (settings == null) return;
+      final printerService = ReceiptPrinterService();
+      if (!await printerService.getAutoPrintOnCashSale()) return;
+      final ok = await printerService.printCashReceipt(sale, settings);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Impression automatique échouée. Vérifiez la connexion de l\'imprimante.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (_) {
+      // Silencieux : la vente est déjà enregistrée, l'impression est accessoire.
+    }
+  }
+
+  void _onSalesState(BuildContext context, SalesState state) async {
+    if (!_submitting) return;
+    if (state is SalesOperationSuccess) {
+      final id = _selectedOrderId;
+      if (id != null) {
+        await context.read<RestaurantOrdersCubit>().markPaid(id);
+      }
+      if (!mounted) return;
+      await _showPostSaleActions();
+    } else if (state is SalesError) {
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Échec : ${state.message}'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
+  }
+
+  /// Paramètres de facturation courants (source unique pour la génération des
+  /// pièces). `null` si le bloc n'est pas encore chargé.
+  old_settings_model.Settings? _currentSettings() {
+    final st = context.read<old_settings_bloc.SettingsBloc>().state;
+    if (st is old_settings_state.SettingsLoaded) return st.settings;
+    if (st is old_settings_state.SettingsUpdated) return st.settings;
+    return null;
+  }
+
+  /// Ouvre la feuille d'options post-vente PARTAGÉE une fois la vente
+  /// enregistrée (aperçu / impression / ticket thermique / partage PDF) —
+  /// exactement la même que la boutique et le salon. Repli silencieux vers la
+  /// clôture si les paramètres ou la pièce ne sont pas disponibles.
+  Future<void> _showPostSaleActions() async {
+    final sale = _pendingSale;
+    final settings = _currentSettings();
+    if (sale == null || settings == null) {
+      _finishSale();
+      return;
+    }
+    PostSaleDocument? doc;
+    try {
+      doc = await generatePostSaleDocument(sale, settings);
+    } catch (_) {
+      doc = null;
+    }
+    if (!mounted) return;
+    if (doc == null) {
+      _finishSale();
+      return;
+    }
+    showPostSaleDocumentSheet(
+      context: context,
+      pdfPath: doc.pdfPath,
+      documentType: doc.documentType,
+      sale: sale,
+      settings: settings,
+      onClose: _finishSale,
+    );
+  }
+
+  /// Clôt l'encaissement : réinitialise la caisse et désélectionne la commande
+  /// réglée (elle quitte la liste des commandes actives).
+  void _finishSale() {
+    if (!mounted) return;
+    setState(() {
+      _submitting = false;
+      _selectedOrderId = null;
+      _cashController.clear();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Paiement enregistré'),
+        backgroundColor: Colors.green,
+      ),
+    );
   }
 
   Future<void> _promptNewOrder() async {
@@ -616,15 +963,41 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     final customerBloc = context.read<CustomerBloc>()..add(const LoadCustomers());
     // Valeur courante saisie (suggestion sélectionnée OU texte libre).
     String typed = '';
+    // Nature du service choisie à la création : une commande à emporter
+    // n'occupera pas le plan de salle.
+    RestaurantOrderType type = RestaurantOrderType.dineIn;
     final label = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setLocal) => AlertDialog(
         title: const Text('Nouvelle commande'),
         content: SizedBox(
           width: 360,
-          child: BlocBuilder<CustomerBloc, CustomerState>(
-            bloc: customerBloc,
-            builder: (context, state) {
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SegmentedButton<RestaurantOrderType>(
+                segments: const [
+                  ButtonSegment(
+                    value: RestaurantOrderType.dineIn,
+                    icon: Icon(Icons.restaurant),
+                    label: Text('Sur place'),
+                  ),
+                  ButtonSegment(
+                    value: RestaurantOrderType.takeaway,
+                    icon: Icon(Icons.takeout_dining),
+                    label: Text('À emporter'),
+                  ),
+                ],
+                selected: {type},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) => setLocal(() => type = s.first),
+              ),
+              const SizedBox(height: 12),
+              BlocBuilder<CustomerBloc, CustomerState>(
+                bloc: customerBloc,
+                builder: (context, state) {
               final customers = <Customer>[
                 if (state is CustomersLoaded)
                   ...state.customers
@@ -689,6 +1062,8 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
                 },
               );
             },
+              ),
+            ],
           ),
         ),
         actions: [
@@ -701,10 +1076,11 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
             child: const Text('Ouvrir'),
           ),
         ],
+        ),
       ),
     );
     if (label == null) return;
-    final order = await cubit.openOrder(label);
+    final order = await cubit.openOrder(label, type: type);
     if (!mounted) return;
     setState(() => _selectedOrderId = order.id);
   }

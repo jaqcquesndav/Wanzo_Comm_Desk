@@ -197,6 +197,48 @@ Future<bool> launchSmsMessage(
   return false;
 }
 
+/// Lance un appel téléphonique vers [phone] via un lien `tel:`.
+///
+/// Le numéro est assaini (chiffres et « + » conservés) ; renvoie `false` si
+/// aucun numéro exploitable n'est fourni ou si le lancement échoue.
+Future<bool> launchPhoneCall(String phone) async {
+  final sanitized = phone.replaceAll(RegExp(r'[^0-9+]'), '');
+  if (sanitized.isEmpty) return false;
+  final uri = Uri(scheme: 'tel', path: sanitized);
+  try {
+    return await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Ouvre le client mail (lien `mailto:`) avec [email] en destinataire et un
+/// [subject] / [body] optionnels pré-remplis.
+///
+/// Renvoie `false` si aucune adresse exploitable n'est fournie ou si le
+/// lancement échoue.
+Future<bool> launchEmail(String email, {String? subject, String? body}) async {
+  final target = email.trim();
+  if (target.isEmpty) return false;
+  final params = <String>[];
+  if (subject != null && subject.isNotEmpty) {
+    params.add('subject=${Uri.encodeComponent(subject)}');
+  }
+  if (body != null && body.isNotEmpty) {
+    params.add('body=${Uri.encodeComponent(body)}');
+  }
+  final uri = Uri(
+    scheme: 'mailto',
+    path: target,
+    query: params.isEmpty ? null : params.join('&'),
+  );
+  try {
+    return await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {
+    return false;
+  }
+}
+
 /// Construit le message de relance (FR) : nom de l'entreprise + montant dû.
 String buildReminderMessage({
   required String businessName,

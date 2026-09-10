@@ -253,22 +253,9 @@ class _RestaurantTablesScreenState extends State<RestaurantTablesScreen> {
                             _StatusChip(active: table.active),
                           ),
                           DataCell(
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                TextButton.icon(
-                                  onPressed: () => _openQr(table),
-                                  icon: const Icon(Icons.qr_code_2, size: 20),
-                                  label: const Text('Voir le QR'),
-                                ),
-                                const SizedBox(width: 4),
-                                IconButton(
-                                  tooltip: 'Supprimer',
-                                  icon: Icon(Icons.delete_outline,
-                                      color: theme.colorScheme.error),
-                                  onPressed: () => _deleteTable(table),
-                                ),
-                              ],
+                            _TableActionsMenu(
+                              onQr: () => _openQr(table),
+                              onDelete: () => _deleteTable(table),
                             ),
                           ),
                         ],
@@ -608,6 +595,51 @@ class _TableQrDialogState extends State<_TableQrDialog> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Menu d'actions (kebab) d'une table : regroupe les actions dans un menu à
+/// trois points pour garder la ligne épurée (nom + statut visibles seulement).
+class _TableActionsMenu extends StatelessWidget {
+  final VoidCallback onQr;
+  final VoidCallback onDelete;
+  const _TableActionsMenu({required this.onQr, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return PopupMenuButton<String>(
+      tooltip: 'Actions',
+      icon: const Icon(Icons.more_vert),
+      onSelected: (value) {
+        switch (value) {
+          case 'qr':
+            onQr();
+            break;
+          case 'delete':
+            onDelete();
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem<String>(
+          value: 'qr',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.qr_code_2),
+            title: Text('Voir le QR'),
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'delete',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.delete_outline, color: theme.colorScheme.error),
+            title: const Text('Supprimer'),
+          ),
+        ),
+      ],
     );
   }
 }

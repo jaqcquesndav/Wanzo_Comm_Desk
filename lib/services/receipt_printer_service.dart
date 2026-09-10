@@ -10,8 +10,10 @@ import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
+import '../features/invoice/utils/invoice_money.dart';
 
 /// Types de connexion pris en charge pour l'imprimante.
 enum ThermalConnectionType {
@@ -154,7 +156,11 @@ class ReceiptPrinterService {
   /// - Corps   : date+réf sur la même ligne, articles compacts
   /// - Pied    : "Merci", wanzzo.com, QR code → https://wanzzo.com/
   List<int> buildCashReceiptBytes(Sale sale, Settings settings) {
-    final currency = sale.transactionCurrencyCode ?? 'CDF';
+    // Devise de présentation + conversion de tous les montants depuis leur
+    // base CDF (voir InvoiceMoney) : un prix unitaire ne peut plus sortir
+    // sous le symbole d'une autre devise que la sienne.
+    final money = InvoiceMoney.forSale(sale);
+    final currency = money.currencyCode;
     final totalInTx =
         sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
     final paidInTx =
@@ -273,12 +279,12 @@ class ReceiptPrinterService {
 
     // ── Articles ─────────────────────────────────────────────────────────
     for (final item in sale.items) {
-      final itemTotal = item.quantity * item.unitPrice;
+      final itemTotal = money.lineTotal(item);
       final amtStr = _fmt(itemTotal, currency);
       // Nom du produit tronqué dynamiquement selon la largeur du montant
       bytes.addAll(_escLine(_rowText(item.productName, amtStr)));
       bytes.addAll(
-        _escLine('  ${item.quantity} x ${_fmt(item.unitPrice, currency)}'),
+        _escLine('  ${item.quantity} x ${_fmt(money.lineUnit(item), currency)}'),
       );
     }
     bytes.addAll(_escSeparator());
@@ -307,7 +313,7 @@ class ReceiptPrinterService {
       for (final item in sale.items) {
         final itemRate = item.taxRate ?? rate;
         if (itemRate > 0) {
-          final itemTotal = item.quantity * item.unitPrice;
+          final itemTotal = money.lineTotal(item);
           totalTVA += itemTotal * itemRate / (100 + itemRate);
           rate = itemRate;
         }
@@ -527,7 +533,11 @@ class ReceiptPrinterService {
 
   /// Construit le document ePOS-Print (enveloppe SOAP + epos-print) du ticket.
   String _buildEposXml(Sale sale, Settings settings) {
-    final currency = sale.transactionCurrencyCode ?? 'CDF';
+    // Devise de présentation + conversion de tous les montants depuis leur
+    // base CDF (voir InvoiceMoney) : un prix unitaire ne peut plus sortir
+    // sous le symbole d'une autre devise que la sienne.
+    final money = InvoiceMoney.forSale(sale);
+    final currency = money.currencyCode;
     final totalInTx =
         sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
     final paidInTx =
@@ -585,8 +595,8 @@ class ReceiptPrinterService {
     }
     line('-' * _colWidth);
     for (final item in sale.items) {
-      line(_rowText(item.productName, _fmt(item.quantity * item.unitPrice, currency)));
-      line('  ${item.quantity} x ${_fmt(item.unitPrice, currency)}');
+      line(_rowText(item.productName, _fmt(money.lineTotal(item), currency)));
+      line('  ${item.quantity} x ${_fmt(money.lineUnit(item), currency)}');
     }
     line('-' * _colWidth);
     bold(true);
@@ -682,7 +692,11 @@ class ReceiptPrinterService {
   }
 
   pw.Document _buildReceiptPdf(Sale sale, Settings settings) {
-    final currency = sale.transactionCurrencyCode ?? 'CDF';
+    // Devise de présentation + conversion de tous les montants depuis leur
+    // base CDF (voir InvoiceMoney) : un prix unitaire ne peut plus sortir
+    // sous le symbole d'une autre devise que la sienne.
+    final money = InvoiceMoney.forSale(sale);
+    final currency = money.currencyCode;
     final totalInTx =
         sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
     final paidInTx =
@@ -775,8 +789,8 @@ class ReceiptPrinterService {
                 crossAxisAlignment: pw.CrossAxisAlignment.stretch,
                 children: [
                   rowLR(item.productName,
-                      _fmt(item.quantity * item.unitPrice, currency)),
-                  pw.Text('  ${item.quantity} x ${_fmt(item.unitPrice, currency)}',
+                      _fmt(money.lineTotal(item), currency)),
+                  pw.Text('  ${item.quantity} x ${_fmt(money.lineUnit(item), currency)}',
                       style: pw.TextStyle(font: mono, fontSize: 8)),
                 ],
               ),
@@ -917,12 +931,11 @@ class ReceiptPrinterService {
   /// est > 0xFF → remplacé par '?' dans `_encodeWpc1252`. On le normalise
   /// en espace ordinaire avant encodage.
   String _fmt(double amount, String currency) {
-    final formatter = NumberFormat('#,##0', 'fr_FR');
-    final formatted = formatter
-        .format(amount)
+    // Règle unique de formatage déléguée à currency_formatter.dart.
+    final formatted = formatCurrency(amount, currency)
         .replaceAll('\u202F', ' ') // espace fine insécable → espace
         .replaceAll('\u00A0', ' '); // espace insécable → espace
-    return '$formatted $currency';
+    return formatted;
   }
 
   /// Tronque un texte à maxLen caractères.

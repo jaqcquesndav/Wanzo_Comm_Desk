@@ -132,10 +132,19 @@ class _DesktopDataTableState<T> extends State<DesktopDataTable<T>> {
           child:
               _filteredData.isEmpty
                   ? _buildEmptyState(theme)
-                  : SingleChildScrollView(
-                    child: Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                  : LayoutBuilder(
+                    builder: (context, constraints) {
+                      // Défilement vertical + horizontal : une table large scrolle
+                      // dans SA zone au lieu de déborder la page (zéro overflow).
+                      final double minTableWidth =
+                          (constraints.maxWidth - 32).clamp(0, double.infinity);
+                      return SingleChildScrollView(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(minWidth: minTableWidth),
+                            child: Container(
                       decoration: BoxDecoration(
                         border: Border.all(color: theme.dividerColor, width: 1),
                         borderRadius: BorderRadius.circular(8),
@@ -206,7 +215,11 @@ class _DesktopDataTableState<T> extends State<DesktopDataTable<T>> {
                               }).toList(),
                         ),
                       ),
-                    ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
         ),
 

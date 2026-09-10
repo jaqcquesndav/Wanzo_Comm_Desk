@@ -4,9 +4,9 @@
 /// la CARTE (plats servis) — et à les regrouper lors de la prise de commande —
 /// du stock ordinaire (ingrédients, consommables) qui n'apparaît PAS au menu.
 ///
-/// L'affectation produit → catégorie est stockée localement (voir
-/// `MenuConfigRepository`) : aucune modification de l'entité `Product` ni du
-/// backend.
+/// La catégorie d'un plat est portée par l'entité [MenuItem] de la carte
+/// (stockée localement, cf. `MenuRepository`) : aucune modification de l'entité
+/// `Product` ni du backend au-delà du module restaurant.
 enum MenuCourse {
   entree,
   plat,

@@ -325,6 +325,7 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
                                       // Dernier élément: message en cours de streaming
                                       return StreamingMessageWidget(
                                         partialContent: state.partialContent,
+                                        toolStatus: state.toolStatus,
                                         isComplete: !state.isStreaming,
                                         onCancel: () {
                                           // Ne pas envoyer l'ID temporaire local au serveur

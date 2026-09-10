@@ -21,6 +21,7 @@ class ModuleRegistry {
     ActivityMode.atelier,
     ActivityMode.atelierMaintenance,
     ActivityMode.salon,
+    ActivityMode.imprimerie,
   };
 
   static const List<AppModule> all = [
@@ -193,6 +194,21 @@ class ModuleRegistry {
       section: 'Atelier',
       available: true,
     ),
+    // Imprimerie : même moteur/board que l'atelier, icône dédiée impression.
+    AppModule(
+      id: 'imprimerie_orders',
+      label: 'Commandes',
+      icon: Icons.print_outlined,
+      activeIcon: Icons.print,
+      route: '/atelier/board',
+      modes: {ActivityMode.imprimerie},
+      primary: true,
+      order: 1,
+      inSidebar: true,
+      sidebarOrder: 10,
+      section: 'Atelier',
+      available: true,
+    ),
     // Tables & QR — chaque table porte un QR public (menu + commande en ligne).
     AppModule(
       id: 'restaurant_tables',
@@ -252,6 +268,13 @@ class ModuleRegistry {
       section: 'Salon',
       available: true,
     ),
+    // ── Mode hôtel (à implémenter) ─────────────────────────────────────────
+    // Le module hôtel (feature `features/hotel`, routes `/hotel/rooms` et
+    // `/hotel/reservations`) n'est PAS encore livré. On garde les items déclarés
+    // pour l'architecture mais `available:false` les masque de la navigation
+    // (bottom-nav ET sidebar) : sans écran ni route, les afficher mènerait à une
+    // navigation morte (écran d'erreur). Passer à `available:true` une fois la
+    // feature livrée.
     AppModule(
       id: 'hotel_rooms',
       label: 'Chambres',

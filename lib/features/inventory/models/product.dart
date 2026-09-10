@@ -159,6 +159,61 @@ extension ProductCategoryExtension on ProductCategory {
   }
 }
 
+/// Une image de la galerie produit (catalogue partagé Wanzo + amélioration IA).
+///
+/// Volontairement légère et NON persistée en Hive : la galerie est gérée
+/// manuellement dans [Product.fromJson] / [Product.toJson] pour éviter de
+/// régénérer les fichiers .g.dart. L'image principale reste [Product.imageUrl].
+class ProductImage extends Equatable {
+  /// URL publique de l'image (Cloudinary).
+  final String url;
+
+  /// publicId Cloudinary (optionnel).
+  final String? publicId;
+
+  /// L'image a-t-elle été améliorée par l'IA.
+  final bool enhanced;
+
+  const ProductImage({
+    required this.url,
+    this.publicId,
+    this.enhanced = false,
+  });
+
+  /// Lecture défensive : accepte `url` ou `imageUrl`, tolère les champs manquants.
+  factory ProductImage.fromJson(Map<String, dynamic> json) => ProductImage(
+        url: (json['url'] ?? json['imageUrl'] ?? '').toString(),
+        publicId: json['publicId']?.toString(),
+        enhanced: json['enhanced'] == true,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'url': url,
+        if (publicId != null) 'publicId': publicId,
+        'enhanced': enhanced,
+      };
+
+  /// Parse défensif d'une liste JSON hétérogène (objets ou simples URLs).
+  static List<ProductImage> listFromJson(dynamic raw) {
+    if (raw is! List) return const [];
+    final out = <ProductImage>[];
+    for (final item in raw) {
+      if (item is Map) {
+        final img = ProductImage.fromJson(
+          item.map((k, v) => MapEntry(k.toString(), v)),
+        );
+        if (img.url.isNotEmpty) out.add(img);
+      } else if (item is String && item.isNotEmpty) {
+        out.add(ProductImage(url: item));
+      }
+    }
+    return out;
+  }
+
+  @override
+  List<Object?> get props => [url, publicId, enhanced];
+}
+
 /// Modèle représentant un produit dans l'inventaire
 @HiveType(typeId: 22)
 @JsonSerializable(explicitToJson: true)
@@ -221,6 +276,13 @@ class Product extends Equatable {
   /// URL de l'image du produit sur le serveur (Cloudinary) après synchronisation
   @HiveField(21)
   final String? imageUrl;
+
+  /// Galerie d'images du produit (catalogue partagé + images enrichies IA).
+  /// Non persistée en Hive et non gérée par json_serializable : sérialisation
+  /// manuelle dans [fromJson] / [toJson] pour éviter de régénérer les .g.dart.
+  /// [imageUrl] reste l'image principale (rétro-compat).
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final List<ProductImage> images;
 
   /// Devise dans laquelle les prix ont été saisis
   @HiveField(13)
@@ -318,6 +380,7 @@ class Product extends Equatable {
     required this.updatedAt,
     this.imagePath,
     this.imageUrl,
+    this.images = const [],
     required this.inputCurrencyCode,
     required this.inputExchangeRate,
     required this.costPriceInInputCurrency,
@@ -339,9 +402,24 @@ class Product extends Equatable {
     this.subCategory,
   });
 
-  factory Product.fromJson(Map<String, dynamic> json) =>
-      _$ProductFromJson(json);
-  Map<String, dynamic> toJson() => _$ProductToJson(this);
+  factory Product.fromJson(Map<String, dynamic> json) {
+    final base = _$ProductFromJson(json);
+    final parsedImages = ProductImage.listFromJson(json['images']);
+    // Rétro-compat : sans galerie, on retombe sur imageUrl via primaryImageUrl.
+    return parsedImages.isEmpty ? base : base.copyWith(images: parsedImages);
+  }
+
+  Map<String, dynamic> toJson() {
+    final map = _$ProductToJson(this);
+    if (images.isNotEmpty) {
+      map['images'] = images.map((e) => e.toJson()).toList();
+    }
+    return map;
+  }
+
+  /// URL de l'image principale (1re de la galerie, sinon [imageUrl]).
+  String? get primaryImageUrl =>
+      images.isNotEmpty ? images.first.url : imageUrl;
 
   // Helpers pour la sérialisation des enums
   static BusinessUnitType? _businessUnitTypeFromJson(String? value) =>
@@ -406,6 +484,7 @@ class Product extends Equatable {
     DateTime? updatedAt,
     String? imagePath,
     String? imageUrl,
+    List<ProductImage>? images,
     String? inputCurrencyCode,
     double? inputExchangeRate,
     double? costPriceInInputCurrency,
@@ -439,6 +518,7 @@ class Product extends Equatable {
       updatedAt: updatedAt ?? this.updatedAt,
       imagePath: imagePath ?? this.imagePath,
       imageUrl: imageUrl ?? this.imageUrl,
+      images: images ?? this.images,
       inputCurrencyCode: inputCurrencyCode ?? this.inputCurrencyCode,
       inputExchangeRate: inputExchangeRate ?? this.inputExchangeRate,
       costPriceInInputCurrency:
@@ -477,6 +557,7 @@ class Product extends Equatable {
     updatedAt,
     imagePath,
     imageUrl,
+    images,
     inputCurrencyCode,
     inputExchangeRate,
     costPriceInInputCurrency,

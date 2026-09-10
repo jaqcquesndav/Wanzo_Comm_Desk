@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:wanzo/core/services/api_client.dart';
+import 'package:wanzo/core/services/business_context_service.dart';
 import '../models/adha_message.dart';
 import '../models/adha_context_info.dart';
 import '../models/adha_attachment.dart';
@@ -55,6 +56,12 @@ class AdhaApiService {
         'conversationId': conversationId,
       'timestamp': DateTime.now().toIso8601String(),
       'contextInfo': contextInfo.toJson(),
+      // appContext (advisory only) : déclare l'app + le métier actif pour
+      // l'isolation des données côté backend. companyId/role restent JWT-dérivés.
+      'appContext': {
+        'app': 'commerce',
+        'metier': BusinessContextService().activityMode.apiValue,
+      },
       if (attachment != null) 'attachment': attachment.toJson(),
       // companyId et userId sont requis par ADHA AI pour accéder aux données
       if (companyId != null) 'companyId': companyId,
@@ -142,6 +149,12 @@ class AdhaApiService {
       if (conversationId != null) 'conversationId': conversationId,
       'timestamp': DateTime.now().toIso8601String(),
       'contextInfo': contextInfo.toJson(),
+      // appContext (advisory only) : déclare l'app + le métier actif pour
+      // l'isolation des données côté backend. companyId/role restent JWT-dérivés.
+      'appContext': {
+        'app': 'commerce',
+        'metier': BusinessContextService().activityMode.apiValue,
+      },
       if (attachment != null) 'attachment': attachment.toJson(),
       // companyId et userId sont requis par ADHA AI pour accéder aux données
       if (companyId != null) 'companyId': companyId,
@@ -191,6 +204,13 @@ class AdhaApiService {
       if (chatModel != null) 'chat_model': chatModel,
       'timestamp': DateTime.now().toIso8601String(),
       if (contextInfo != null) 'contextInfo': contextInfo.toJson(),
+      // appContext (advisory only) : déclare l'app + le métier actif pour
+      // l'isolation des données côté backend — même objet que les chemins
+      // texte/stream, désormais aussi sur le chemin audio.
+      'appContext': {
+        'app': 'commerce',
+        'metier': BusinessContextService().activityMode.apiValue,
+      },
       if (companyId != null) 'companyId': companyId,
       if (userId != null) 'userId': userId,
     };

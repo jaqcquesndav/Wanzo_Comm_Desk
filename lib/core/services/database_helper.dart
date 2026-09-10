@@ -96,9 +96,7 @@ CREATE TABLE local_expenses (
       'date': sale.date.toIso8601String(),
       'due_date': sale.dueDate?.toIso8601String(),
       'total_amount_cdf': sale.totalAmountInCdf,
-      'total_amount_usd': sale.totalAmountInUsd,
       'amount_paid_cdf': sale.paidAmountInCdf, // Assuming this field exists on Sale model
-      'amount_paid_usd': sale.paidAmountInUsd, // Assuming this field exists on Sale model
       'payment_method': sale.paymentMethod,
       'status': sale.status.toString().split('.').last,
       'invoice_number': sale.invoiceNumber,
@@ -136,8 +134,6 @@ CREATE TABLE local_expenses (
       items: items,
       totalAmountInCdf: dbMap['total_amount_cdf'] ?? 0.0,
       paidAmountInCdf: dbMap['amount_paid_cdf'] ?? 0.0, // Corrected key from DB
-      totalAmountInUsd: dbMap['total_amount_usd'],
-      paidAmountInUsd: dbMap['amount_paid_usd'], // Corrected key from DB
       paymentMethod: dbMap['payment_method'],
       status: SaleStatus.values.firstWhere((e) => e.toString().split('.').last == dbMap['status'], orElse: () => SaleStatus.pending),
       invoiceNumber: dbMap['invoice_number'],

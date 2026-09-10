@@ -50,11 +50,23 @@ extension AtelierOrderStatusX on AtelierOrderStatus {
       this != AtelierOrderStatus.paid && this != AtelierOrderStatus.cancelled;
 
   /// Libellé du statut ADAPTÉ AU MÉTIER : un atelier de maintenance ne parle pas
-  /// de « coupe/couture » mais de « diagnostic/réparation/test ». Les valeurs
-  /// internes restent les mêmes (le board Kanban ne change pas), seul le
-  /// vocabulaire affiché change — pour ne pas dérouter l'utilisateur.
+  /// de « coupe/couture » mais de « diagnostic/réparation/test » ; une imprimerie
+  /// parle de « bon à tirer / impression / façonnage ». Les valeurs internes
+  /// restent les mêmes (le board Kanban ne change pas), seul le vocabulaire
+  /// affiché change — pour ne pas dérouter l'utilisateur.
   String labelFor(AtelierMetier metier) {
-    if (metier != AtelierMetier.maintenance) return label;
+    switch (metier) {
+      case AtelierMetier.maintenance:
+        return _maintenanceLabel;
+      case AtelierMetier.imprimerie:
+        return _imprimerieLabel;
+      case AtelierMetier.couture:
+      case AtelierMetier.cordonnerie:
+        return label;
+    }
+  }
+
+  String get _maintenanceLabel {
     switch (this) {
       case AtelierOrderStatus.draft:
         return 'Reçu';
@@ -74,11 +86,32 @@ extension AtelierOrderStatusX on AtelierOrderStatus {
         return 'Annulé';
     }
   }
+
+  String get _imprimerieLabel {
+    switch (this) {
+      case AtelierOrderStatus.draft:
+        return 'Reçu';
+      case AtelierOrderStatus.measured:
+        return 'Bon à tirer';
+      case AtelierOrderStatus.cutting:
+        return 'Impression';
+      case AtelierOrderStatus.sewing:
+        return 'Façonnage';
+      case AtelierOrderStatus.ready:
+        return 'Prêt';
+      case AtelierOrderStatus.delivered:
+        return 'Livré';
+      case AtelierOrderStatus.paid:
+        return 'Réglé';
+      case AtelierOrderStatus.cancelled:
+        return 'Annulé';
+    }
+  }
 }
 
 /// Métier de l'atelier (miroir du backend `AtelierMetier`). Rend le mode
 /// Atelier EXPLICITE : chaque métier n'expose que son vocabulaire et ses champs.
-enum AtelierMetier { couture, cordonnerie, maintenance }
+enum AtelierMetier { couture, cordonnerie, maintenance, imprimerie }
 
 extension AtelierMetierX on AtelierMetier {
   String get apiValue => name;
@@ -91,12 +124,16 @@ extension AtelierMetierX on AtelierMetier {
         return 'Cordonnerie';
       case AtelierMetier.maintenance:
         return 'Maintenance / réparation';
+      case AtelierMetier.imprimerie:
+        return 'Imprimerie';
     }
   }
 
   /// Vrai si ce métier prend des mesures corporelles/pied (profil client
-  /// réutilisable). La maintenance travaille sur une fiche appareil par commande.
-  bool get usesMeasurements => this != AtelierMetier.maintenance;
+  /// réutilisable). La maintenance travaille sur une fiche appareil par commande ;
+  /// l'imprimerie sur une fiche travail d'impression par commande.
+  bool get usesMeasurements =>
+      this == AtelierMetier.couture || this == AtelierMetier.cordonnerie;
 
   static AtelierMetier fromApiValue(String? value) {
     return AtelierMetier.values.firstWhere(
@@ -231,6 +268,128 @@ class MaintenanceDetails extends Equatable {
       ];
 }
 
+/// Formats d'impression proposés (dropdown). Le dernier ouvre une saisie libre.
+const List<String> kPrintFormats = [
+  'A6',
+  'A5',
+  'A4',
+  'A3',
+  'A2',
+  'A1',
+  'A0',
+  'Bâche',
+  'Banderole',
+  'Roll-up',
+  'Personnalisé',
+];
+
+/// Finitions/façonnage courants (dropdown, saisie libre possible).
+const List<String> kPrintFinishings = [
+  'Pelliculage',
+  'Vernis',
+  'Découpe',
+  'Pliage',
+  'Reliure',
+  'Plastification',
+  'Œillets',
+  'Ourlet',
+];
+
+/// Fiche « travail d'impression » d'un atelier d'IMPRIMERIE (miroir du jsonb
+/// backend `printDetails`). Propre à chaque commande — l'équivalent de la fiche
+/// appareil de la maintenance, mais pour un travail d'impression.
+class PrintJobDetails extends Equatable {
+  final String? format; // A6/A5/A4/A3/A2/A1/A0/Bâche/Banderole/Roll-up/Perso.
+  final String? support; // Matière / grammage (couché 300g, adhésif…)
+  final int? quantity; // Tirage
+  final String? printSides; // recto | recto-verso
+  final String? colorMode; // Quadrichromie | Noir et blanc | Pantone
+  final String? finishing; // Pelliculage, vernis, découpe, pliage, reliure…
+  final String? width; // Grand format : largeur
+  final String? height; // Grand format : hauteur
+  final bool? batValidated; // Bon à tirer validé par le client
+  final List<String> designPhotos; // URLs Cloudinary du design / BAT
+  final String? operatorName; // Opérateur / infographiste
+  final String? machine; // Machine / presse
+  final String? instructions; // Consignes libres
+
+  const PrintJobDetails({
+    this.format,
+    this.support,
+    this.quantity,
+    this.printSides,
+    this.colorMode,
+    this.finishing,
+    this.width,
+    this.height,
+    this.batValidated,
+    this.designPhotos = const [],
+    this.operatorName,
+    this.machine,
+    this.instructions,
+  });
+
+  bool get isEmpty =>
+      (format == null || format!.isEmpty) &&
+      (support == null || support!.isEmpty) &&
+      quantity == null &&
+      (printSides == null || printSides!.isEmpty) &&
+      (colorMode == null || colorMode!.isEmpty) &&
+      (finishing == null || finishing!.isEmpty) &&
+      (width == null || width!.isEmpty) &&
+      (height == null || height!.isEmpty) &&
+      (batValidated == null || batValidated == false) &&
+      designPhotos.isEmpty &&
+      (operatorName == null || operatorName!.isEmpty) &&
+      (machine == null || machine!.isEmpty) &&
+      (instructions == null || instructions!.isEmpty);
+
+  factory PrintJobDetails.fromJson(Map<String, dynamic> json) => PrintJobDetails(
+        format: json['format'] as String?,
+        support: json['support'] as String?,
+        quantity: json['quantity'] == null
+            ? null
+            : int.tryParse('${json['quantity']}'),
+        printSides: json['printSides'] as String?,
+        colorMode: json['colorMode'] as String?,
+        finishing: json['finishing'] as String?,
+        width: json['width'] as String?,
+        height: json['height'] as String?,
+        batValidated: json['batValidated'] as bool?,
+        designPhotos: (json['designPhotos'] is List)
+            ? (json['designPhotos'] as List)
+                .whereType<String>()
+                .toList()
+            : const [],
+        operatorName: json['operatorName'] as String?,
+        machine: json['machine'] as String?,
+        instructions: json['instructions'] as String?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (format != null) 'format': format,
+        if (support != null) 'support': support,
+        if (quantity != null) 'quantity': quantity,
+        if (printSides != null) 'printSides': printSides,
+        if (colorMode != null) 'colorMode': colorMode,
+        if (finishing != null) 'finishing': finishing,
+        if (width != null) 'width': width,
+        if (height != null) 'height': height,
+        if (batValidated != null) 'batValidated': batValidated,
+        if (designPhotos.isNotEmpty) 'designPhotos': designPhotos,
+        if (operatorName != null) 'operatorName': operatorName,
+        if (machine != null) 'machine': machine,
+        if (instructions != null) 'instructions': instructions,
+      };
+
+  @override
+  List<Object?> get props => [
+        format, support, quantity, printSides, colorMode, finishing,
+        width, height, batValidated, designPhotos, operatorName, machine,
+        instructions,
+      ];
+}
+
 /// Événement d'étape horodaté (miroir du backend `StageEvent`). Base des KPI de
 /// performance de prestation (durée par étape, cycle) → future cote crédit.
 class StageEvent {
@@ -273,6 +432,7 @@ class AtelierOrder extends Equatable {
   final String? modelDetails;
   final AtelierMetier metier;
   final MaintenanceDetails? maintenanceDetails;
+  final PrintJobDetails? printDetails;
   /// Historique horodaté des étapes (KPI de performance de prestation).
   final List<StageEvent> stageHistory;
   final DateTime? entryDate;
@@ -302,6 +462,7 @@ class AtelierOrder extends Equatable {
     this.modelDetails,
     this.metier = AtelierMetier.couture,
     this.maintenanceDetails,
+    this.printDetails,
     this.stageHistory = const [],
     this.entryDate,
     this.exitDate,
@@ -343,6 +504,10 @@ class AtelierOrder extends Equatable {
           ? MaintenanceDetails.fromJson(
               json['maintenanceDetails'] as Map<String, dynamic>)
           : null,
+      printDetails: json['printDetails'] is Map<String, dynamic>
+          ? PrintJobDetails.fromJson(
+              json['printDetails'] as Map<String, dynamic>)
+          : null,
       stageHistory: (json['stageHistory'] is List)
           ? (json['stageHistory'] as List)
               .whereType<Map<String, dynamic>>()
@@ -380,6 +545,7 @@ class AtelierOrder extends Equatable {
     'metier': metier.apiValue,
     if (maintenanceDetails != null)
       'maintenanceDetails': maintenanceDetails!.toJson(),
+    if (printDetails != null) 'printDetails': printDetails!.toJson(),
     if (entryDate != null) 'entryDate': entryDate!.toIso8601String(),
     if (exitDate != null) 'exitDate': exitDate!.toIso8601String(),
     'totalAmount': totalAmount,
@@ -409,6 +575,7 @@ class AtelierOrder extends Equatable {
     'metier': metier.apiValue,
     if (maintenanceDetails != null)
       'maintenanceDetails': maintenanceDetails!.toJson(),
+    if (printDetails != null) 'printDetails': printDetails!.toJson(),
     if (entryDate != null) 'entryDate': entryDate!.toIso8601String(),
     if (exitDate != null) 'exitDate': exitDate!.toIso8601String(),
     'totalAmount': totalAmount,
@@ -426,6 +593,7 @@ class AtelierOrder extends Equatable {
     String? saleId,
     AtelierMetier? metier,
     MaintenanceDetails? maintenanceDetails,
+    PrintJobDetails? printDetails,
   }) {
     return AtelierOrder(
       id: id,
@@ -435,6 +603,7 @@ class AtelierOrder extends Equatable {
       modelDetails: modelDetails,
       metier: metier ?? this.metier,
       maintenanceDetails: maintenanceDetails ?? this.maintenanceDetails,
+      printDetails: printDetails ?? this.printDetails,
       stageHistory: stageHistory,
       entryDate: entryDate,
       exitDate: exitDate,

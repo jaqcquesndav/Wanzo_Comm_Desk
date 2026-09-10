@@ -51,6 +51,13 @@ class Sale extends Equatable {
   @HiveField(3)
   final String customerName;
 
+  /// Numero de telephone du client. Declenche l'auto-creation du client de
+  /// passage cote backend (find-or-create scope societe = base fidelite).
+  /// Local uniquement : envoye au backend via le DTO de creation, jamais
+  /// (de)serialise par le code genere (evite de regenerer sale.g.dart).
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? customerPhoneNumber;
+
   /// Liste des produits vendus
   @HiveField(4)
   final List<SaleItem> items;
@@ -71,14 +78,6 @@ class Sale extends Equatable {
   @HiveField(6)
   @JsonKey(name: 'paidAmountInCdf', defaultValue: 0.0)
   final double paidAmountInCdf;
-
-  /// Montant total de la vente en USD (si applicable)
-  @JsonKey(includeIfNull: false)
-  final double? totalAmountInUsd;
-
-  /// Montant payé en USD (si applicable)
-  @JsonKey(includeIfNull: false)
-  final double? paidAmountInUsd;
 
   /// Mode de paiement
   @HiveField(7)
@@ -195,13 +194,12 @@ class Sale extends Equatable {
     this.dueDate,
     this.customerId,
     required this.customerName,
+    this.customerPhoneNumber,
     required this.items,
     required this.totalAmountInCdf,
     this.amountHT,
     this.taxAmount,
     required this.paidAmountInCdf,
-    this.totalAmountInUsd,
-    this.paidAmountInUsd,
     this.paymentMethod,
     required this.status,
     this.invoiceNumber,
@@ -250,8 +248,6 @@ class Sale extends Equatable {
     double? amountHT,
     double? taxAmount,
     double? paidAmountInCdf,
-    double? totalAmountInUsd,
-    double? paidAmountInUsd,
     String? paymentMethod,
     SaleStatus? status,
     String? invoiceNumber,
@@ -288,8 +284,6 @@ class Sale extends Equatable {
       amountHT: amountHT ?? this.amountHT,
       taxAmount: taxAmount ?? this.taxAmount,
       paidAmountInCdf: paidAmountInCdf ?? this.paidAmountInCdf,
-      totalAmountInUsd: totalAmountInUsd ?? this.totalAmountInUsd,
-      paidAmountInUsd: paidAmountInUsd ?? this.paidAmountInUsd,
       paymentMethod: paymentMethod ?? this.paymentMethod,
       status: status ?? this.status,
       invoiceNumber: invoiceNumber ?? this.invoiceNumber,
@@ -334,8 +328,6 @@ class Sale extends Equatable {
     amountHT,
     taxAmount,
     paidAmountInCdf,
-    totalAmountInUsd,
-    paidAmountInUsd,
     paymentMethod,
     status,
     invoiceNumber,

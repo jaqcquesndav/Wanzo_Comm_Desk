@@ -55,13 +55,28 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
   }
 
   /// Ouvre une nouvelle commande (table / emporter) et la retourne.
-  Future<RestaurantOrder> openOrder(String label) async {
+  /// Ouvre une nouvelle commande (table / emporter) et la retourne.
+  ///
+  /// [tableId] lie fortement la commande à une table du plan de salle (source de
+  /// vérité du rapprochement, plus fiable que le libellé). [type] force la nature
+  /// du service ; sans précision on la dérive du tableId puis du libellé.
+  Future<RestaurantOrder> openOrder(
+    String label, {
+    String? tableId,
+    RestaurantOrderType? type,
+  }) async {
+    final cleanTableId =
+        (tableId != null && tableId.trim().isNotEmpty) ? tableId.trim() : null;
+    final resolvedType = type ??
+        RestaurantOrderTypeX.resolve(tableId: cleanTableId, label: label);
     final order = RestaurantOrder(
       id: _uuid.v4(),
       label: label.trim().isEmpty ? 'Sans nom' : label.trim(),
       lines: const [],
       status: RestaurantOrderStatus.open,
       createdAt: DateTime.now(),
+      tableId: cleanTableId,
+      type: resolvedType,
     );
     await _upsert(order);
     return order;

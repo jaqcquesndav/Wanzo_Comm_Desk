@@ -142,6 +142,11 @@ class AdhaStreaming extends AdhaState {
   /// pour des opérations côté serveur (ex: annulation, subscription).
   final bool isPendingConversationId;
 
+  /// Étape agentique compacte en cours (tool_call / tool_result), ex.
+  /// « Lecture de la base de connaissance… ». Null quand du texte arrive
+  /// ou qu'aucun outil n'est actif.
+  final String? toolStatus;
+
   const AdhaStreaming({
     required this.conversation,
     required this.partialContent,
@@ -150,9 +155,12 @@ class AdhaStreaming extends AdhaState {
     required this.conversationId,
     this.isStreaming = true,
     this.isPendingConversationId = false,
+    this.toolStatus,
   });
 
-  /// Crée une copie avec du contenu ajouté
+  /// Crée une copie avec du contenu ajouté.
+  /// L'arrivée de texte efface l'étape agentique (toolStatus = null) :
+  /// dès qu'Adha répond, on masque l'indicateur « Analyse… ».
   AdhaStreaming appendContent(String additionalContent, int newChunkId) {
     return AdhaStreaming(
       conversation: conversation,
@@ -162,6 +170,21 @@ class AdhaStreaming extends AdhaState {
       conversationId: conversationId,
       isStreaming: isStreaming,
       isPendingConversationId: isPendingConversationId,
+      toolStatus: null,
+    );
+  }
+
+  /// Crée une copie avec une étape agentique compacte mise à jour.
+  AdhaStreaming withToolStatus(String? status) {
+    return AdhaStreaming(
+      conversation: conversation,
+      partialContent: partialContent,
+      currentChunkId: currentChunkId,
+      requestMessageId: requestMessageId,
+      conversationId: conversationId,
+      isStreaming: isStreaming,
+      isPendingConversationId: isPendingConversationId,
+      toolStatus: status,
     );
   }
 
@@ -178,6 +201,7 @@ class AdhaStreaming extends AdhaState {
       conversationId: backendConversationId,
       isStreaming: isStreaming,
       isPendingConversationId: false, // Le backend a confirmé l'ID
+      toolStatus: toolStatus,
     );
   }
 
@@ -190,6 +214,7 @@ class AdhaStreaming extends AdhaState {
     conversationId,
     isStreaming,
     isPendingConversationId,
+    toolStatus,
   ];
 }
 

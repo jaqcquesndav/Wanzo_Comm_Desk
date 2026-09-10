@@ -11,7 +11,7 @@ import '../../sales/models/sale.dart';
 import '../../settings/models/settings.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
-import 'package:wanzo/core/enums/currency_enum.dart';
+import '../utils/invoice_money.dart';
 
 /// En-tête (identité émettrice) à utiliser sur les pièces commerciales.
 ///
@@ -39,10 +39,15 @@ class _IssuerIdentity {
   factory _IssuerIdentity.from(Settings settings) {
     final ctx = BusinessContextService();
     final useBu = ctx.shouldUseBusinessUnitIdentity;
+    // Repli entreprise : quand l'utilisateur n'a pas renseigné l'identité dans
+    // les Settings locaux, on retombe sur les identifiants de l'entreprise
+    // reçus via /auth/me (Company entity : RCCM/NIF/IdNat).
+    String orCompany(String local, String? fromCtx) =>
+        local.isNotEmpty ? local : (fromCtx ?? '');
     return _IssuerIdentity(
       name: useBu
           ? (ctx.businessUnitName ?? settings.companyName)
-          : settings.companyName,
+          : orCompany(settings.companyName, ctx.companyName),
       address: useBu
           ? (ctx.businessUnitAddress ?? settings.companyAddress)
           : settings.companyAddress,
@@ -51,13 +56,13 @@ class _IssuerIdentity {
           : settings.companyPhone,
       rccm: useBu
           ? (ctx.businessUnitRccm ?? settings.rccmNumber)
-          : settings.rccmNumber,
+          : orCompany(settings.rccmNumber, ctx.companyRccm),
       taxId: useBu
           ? (ctx.businessUnitTaxId ?? settings.taxIdentificationNumber)
-          : settings.taxIdentificationNumber,
+          : orCompany(settings.taxIdentificationNumber, ctx.companyTaxId),
       idNat: useBu
           ? (ctx.businessUnitIdNat ?? settings.idNatNumber)
-          : settings.idNatNumber,
+          : orCompany(settings.idNatNumber, ctx.companyNationalId),
     );
   }
 }
@@ -73,7 +78,11 @@ class InvoiceService {
 
     final issuer = _IssuerIdentity.from(settings);
 
-    final Currency currency = settings.activeCurrency;
+    // Devise de présentation du document + conversion de TOUS les montants
+    // depuis leur base CDF (voir InvoiceMoney) : une ligne ne peut plus
+    // s'imprimer sous le symbole d'une autre devise que la sienne.
+    final money = InvoiceMoney.forSale(sale);
+    final currencyCode = money.currencyCode;
 
     pw.Widget? logoWidget;
     if (settings.companyLogo.isNotEmpty) {
@@ -106,13 +115,20 @@ class InvoiceService {
         .replaceAll('{MONTH}', sale.date.month.toString().padLeft(2, '0'))
         .replaceAll('{SEQ}', sale.id.substring(0, 8));
 
-    final total = sale.totalAmountInCdf;
+    // Montants figés dans la devise de la vente : une vente en USD doit produire
+    // une facture en USD, pas en CDF (même logique que receipt_printer_service).
+    final total = sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
+    final paidTx = sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf;
+    final remainingTx = total - paidTx;
+    // HT et TVA sont stockés en CDF : on les ramène au prorata dans la devise de
+    // la vente pour rester cohérent avec le total affiché.
+    final txRatio =
+        sale.totalAmountInCdf > 0 ? total / sale.totalAmountInCdf : 1.0;
     // La TVA n'apparaît que si l'entreprise est assujettie (régime NORMAL) ET que
     // l'affichage des taxes est activé. En régime minimal/SMT : aucune TVA.
     final showTax = settings.showTaxes && settings.isTaxSubject;
-    final taxAmount = showTax ? (sale.taxAmount ?? 0.0) : 0.0;
-    final subtotal =
-        showTax ? (sale.amountHT ?? (total - taxAmount)) : total;
+    final taxAmount = showTax ? (sale.taxAmount ?? 0.0) * txRatio : 0.0;
+    final subtotal = total - taxAmount;
     final effectiveTaxRate =
         subtotal > 0 ? (taxAmount / subtotal) * 100 : settings.defaultTaxRate;
     final taxRateLabel =
@@ -281,7 +297,10 @@ class InvoiceService {
                   ),
 
                   ...sale.items.map((item) {
-                    final itemTotal = item.quantity * item.unitPrice;
+                    // Montants ramenés dans la devise du document depuis leur
+                    // base CDF : la ligne peut avoir sa propre devise.
+                    final itemUnit = money.lineUnit(item);
+                    final itemTotal = money.lineTotal(item);
                     return pw.TableRow(
                       children: [
                         pw.Padding(
@@ -298,14 +317,14 @@ class InvoiceService {
                         pw.Padding(
                           padding: const pw.EdgeInsets.all(5),
                           child: pw.Text(
-                            formatCurrency(item.unitPrice, currency.code),
+                            formatCurrency(itemUnit, currencyCode),
                             textAlign: pw.TextAlign.right,
                           ),
                         ),
                         pw.Padding(
                           padding: const pw.EdgeInsets.all(5),
                           child: pw.Text(
-                            formatCurrency(itemTotal, currency.code),
+                            formatCurrency(itemTotal, currencyCode),
                             textAlign: pw.TextAlign.right,
                           ),
                         ),
@@ -335,7 +354,7 @@ class InvoiceService {
                         pw.Container(
                           width: 120,
                           child: pw.Text(
-                            formatCurrency(subtotal, currency.code),
+                            formatCurrency(subtotal, currencyCode),
                             textAlign: pw.TextAlign.right,
                           ),
                         ),
@@ -356,7 +375,7 @@ class InvoiceService {
                           pw.Container(
                             width: 120,
                             child: pw.Text(
-                              formatCurrency(taxAmount, currency.code),
+                              formatCurrency(taxAmount, currencyCode),
                               textAlign: pw.TextAlign.right,
                             ),
                           ),
@@ -380,7 +399,7 @@ class InvoiceService {
                           pw.Container(
                             width: 120,
                             child: pw.Text(
-                              formatCurrency(total, currency.code),
+                              formatCurrency(total, currencyCode),
                               style: pw.TextStyle(font: boldFont, fontSize: 12),
                               textAlign: pw.TextAlign.right,
                             ),
@@ -393,7 +412,7 @@ class InvoiceService {
               ),
 
               // Display payment status if applicable
-              if (sale.paidAmountInCdf > 0) ...[
+              if (paidTx > 0) ...[
                 pw.SizedBox(height: 5),
                 pw.Row(
                   mainAxisSize: pw.MainAxisSize.min,
@@ -412,14 +431,14 @@ class InvoiceService {
                     pw.Container(
                       width: 120,
                       child: pw.Text(
-                        formatCurrency(sale.paidAmountInCdf, currency.code),
+                        formatCurrency(paidTx, currencyCode),
                         style: pw.TextStyle(font: regularFont, fontSize: 10),
                         textAlign: pw.TextAlign.right,
                       ),
                     ),
                   ],
                 ),
-                if (sale.remainingAmountInCdf > 0) ...[
+                if (remainingTx > 0) ...[
                   pw.SizedBox(height: 5),
                   pw.Row(
                     mainAxisSize: pw.MainAxisSize.min,
@@ -437,8 +456,8 @@ class InvoiceService {
                         width: 120,
                         child: pw.Text(
                           formatCurrency(
-                            sale.remainingAmountInCdf,
-                            currency.code,
+                            remainingTx,
+                            currencyCode,
                           ),
                           style: pw.TextStyle(font: regularFont, fontSize: 10),
                           textAlign: pw.TextAlign.right,
@@ -539,7 +558,11 @@ class InvoiceService {
 
     final issuer = _IssuerIdentity.from(settings);
 
-    final Currency currency = settings.activeCurrency;
+    // Devise de présentation du document + conversion de TOUS les montants
+    // depuis leur base CDF (voir InvoiceMoney) : une ligne ne peut plus
+    // s'imprimer sous le symbole d'une autre devise que la sienne.
+    final money = InvoiceMoney.forSale(sale);
+    final currencyCode = money.currencyCode;
 
     pw.Widget? logoWidget;
     if (settings.companyLogo.isNotEmpty) {
@@ -566,13 +589,20 @@ class InvoiceService {
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
     final formattedDate = dateFormat.format(sale.date);
 
-    final total = sale.totalAmountInCdf;
+    // Montants figés dans la devise de la vente : une vente en USD doit produire
+    // une facture en USD, pas en CDF (même logique que receipt_printer_service).
+    final total = sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
+    final paidTx = sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf;
+    final remainingTx = total - paidTx;
+    // HT et TVA sont stockés en CDF : on les ramène au prorata dans la devise de
+    // la vente pour rester cohérent avec le total affiché.
+    final txRatio =
+        sale.totalAmountInCdf > 0 ? total / sale.totalAmountInCdf : 1.0;
     // La TVA n'apparaît que si l'entreprise est assujettie (régime NORMAL) ET que
     // l'affichage des taxes est activé. En régime minimal/SMT : aucune TVA.
     final showTax = settings.showTaxes && settings.isTaxSubject;
-    final taxAmount = showTax ? (sale.taxAmount ?? 0.0) : 0.0;
-    final subtotal =
-        showTax ? (sale.amountHT ?? (total - taxAmount)) : total;
+    final taxAmount = showTax ? (sale.taxAmount ?? 0.0) * txRatio : 0.0;
+    final subtotal = total - taxAmount;
     final effectiveTaxRate =
         subtotal > 0 ? (taxAmount / subtotal) * 100 : settings.defaultTaxRate;
     final taxRateLabel =
@@ -706,7 +736,10 @@ class InvoiceService {
               pw.SizedBox(height: 3),
 
               ...sale.items.map((item) {
-                final itemTotal = item.quantity * item.unitPrice;
+                // Montants ramenés dans la devise du document depuis leur
+                // base CDF : la ligne peut avoir sa propre devise.
+                final itemUnit = money.lineUnit(item);
+                final itemTotal = money.lineTotal(item);
                 return pw.Padding(
                   padding: const pw.EdgeInsets.symmetric(vertical: 1),
                   child: pw.Row(
@@ -730,7 +763,7 @@ class InvoiceService {
                       pw.Expanded(
                         flex: 2,
                         child: pw.Text(
-                          formatCurrency(item.unitPrice, currency.code),
+                          formatCurrency(itemUnit, currencyCode),
                           style: pw.TextStyle(font: regularFont, fontSize: 8),
                           textAlign: pw.TextAlign.right,
                         ),
@@ -738,7 +771,7 @@ class InvoiceService {
                       pw.Expanded(
                         flex: 2,
                         child: pw.Text(
-                          formatCurrency(itemTotal, currency.code),
+                          formatCurrency(itemTotal, currencyCode),
                           style: pw.TextStyle(font: regularFont, fontSize: 8),
                           textAlign: pw.TextAlign.right,
                         ),
@@ -765,7 +798,7 @@ class InvoiceService {
                   pw.SizedBox(
                     width: 60, // Adjust width as needed
                     child: pw.Text(
-                      formatCurrency(subtotal, currency.code),
+                      formatCurrency(subtotal, currencyCode),
                       style: pw.TextStyle(font: regularFont, fontSize: 8),
                       textAlign: pw.TextAlign.right,
                     ),
@@ -785,7 +818,7 @@ class InvoiceService {
                     pw.SizedBox(
                       width: 60, // Adjust width as needed
                       child: pw.Text(
-                        formatCurrency(taxAmount, currency.code),
+                        formatCurrency(taxAmount, currencyCode),
                         style: pw.TextStyle(font: regularFont, fontSize: 8),
                         textAlign: pw.TextAlign.right,
                       ),
@@ -805,7 +838,7 @@ class InvoiceService {
                   pw.SizedBox(
                     width: 60, // Adjust width as needed
                     child: pw.Text(
-                      formatCurrency(total, currency.code),
+                      formatCurrency(total, currencyCode),
                       style: pw.TextStyle(font: boldFont, fontSize: 10),
                       textAlign: pw.TextAlign.right,
                     ),
@@ -826,7 +859,7 @@ class InvoiceService {
                   pw.SizedBox(
                     width: 80, // Adjusted width
                     child: pw.Text(
-                      formatCurrency(sale.paidAmountInCdf, currency.code),
+                      formatCurrency(paidTx, currencyCode),
                       style: pw.TextStyle(font: boldFont, fontSize: 10),
                       textAlign: pw.TextAlign.right,
                     ),
@@ -847,7 +880,7 @@ class InvoiceService {
                     child: pw.Text(
                       formatCurrency(
                         total,
-                        currency.code,
+                        currencyCode,
                       ), // 'total' is the full sale amount calculated in this function
                       style: pw.TextStyle(font: regularFont, fontSize: 8),
                       textAlign: pw.TextAlign.right,
@@ -857,7 +890,7 @@ class InvoiceService {
               ),
 
               // Solde Restant (if any)
-              if (sale.remainingAmountInCdf > 0) ...[
+              if (remainingTx > 0) ...[
                 pw.SizedBox(height: 3),
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.end,
@@ -870,8 +903,8 @@ class InvoiceService {
                       width: 80, // Adjusted width
                       child: pw.Text(
                         formatCurrency(
-                          sale.remainingAmountInCdf,
-                          currency.code,
+                          remainingTx,
+                          currencyCode,
                         ),
                         style: pw.TextStyle(font: regularFont, fontSize: 8),
                         textAlign: pw.TextAlign.right,

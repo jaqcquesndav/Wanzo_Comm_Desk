@@ -4,6 +4,7 @@ import 'package:wanzo/core/services/api_client.dart';
 import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
 import 'package:wanzo/core/models/api_response.dart';
+import 'package:wanzo/core/models/operation_payment.dart';
 
 /// Interface standardisée pour les opérations d'API des dépenses
 abstract class ExpenseApiService {
@@ -56,6 +57,18 @@ abstract class ExpenseApiService {
     double? exchangeRate,
     String? supplierPhoneNumber,
   });
+
+  /// Enregistre UNE tranche de règlement fournisseur
+  /// (`POST expenses/:id/payments`). Le serveur recalcule `paidAmount` et
+  /// `paymentStatus`, puis renvoie la dépense à jour.
+  Future<ApiResponse<Expense>> recordExpensePayment(
+    String id,
+    PaymentDraft payment,
+  );
+
+  /// Liste les tranches de règlement d'une dépense
+  /// (`GET expenses/:id/payments`).
+  Future<List<OperationPayment>> getExpensePayments(String id);
 
   /// Supprime une dépense
   Future<ApiResponse<void>> deleteExpense(String id);
@@ -433,6 +446,61 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
         message: 'Error updating expense: ${e.toString()}',
         statusCode: 500,
       );
+    }
+  }
+
+  @override
+  Future<ApiResponse<Expense>> recordExpensePayment(
+    String id,
+    PaymentDraft payment,
+  ) async {
+    try {
+      final response = await _apiClient.post(
+        'expenses/$id/payments',
+        body: payment.toRequestBody(),
+        requiresAuth: true,
+      );
+
+      if (response is Map<String, dynamic>) {
+        final data =
+            (response['data'] is Map<String, dynamic>)
+                ? response['data'] as Map<String, dynamic>
+                : response;
+        return ApiResponse<Expense>(
+          success: true,
+          data: Expense.fromJson(data),
+          message: response['message'] as String? ?? 'Paiement enregistré.',
+          statusCode: response['statusCode'] as int? ?? 201,
+        );
+      }
+      return ApiResponse<Expense>(
+        success: false,
+        data: null,
+        message: 'Format de réponse invalide du serveur',
+        statusCode: 500,
+      );
+    } catch (e) {
+      debugPrint("[ExpenseAPI] ❌ Error recording expense payment: $e");
+      return ApiResponse<Expense>(
+        success: false,
+        data: null,
+        message: 'Échec de l\'enregistrement du paiement: ${e.toString()}',
+        statusCode: 500,
+      );
+    }
+  }
+
+  @override
+  Future<List<OperationPayment>> getExpensePayments(String id) async {
+    try {
+      final response = await _apiClient.get(
+        'expenses/$id/payments',
+        requiresAuth: true,
+      );
+      return OperationPayment.listFrom(response);
+    } catch (e) {
+      debugPrint('[ExpenseAPI] ⚠️ Historique des règlements indisponible: $e');
+      return const <OperationPayment>[];
     }
   }
 

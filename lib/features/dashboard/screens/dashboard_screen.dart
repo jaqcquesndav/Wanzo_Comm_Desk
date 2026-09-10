@@ -6,6 +6,7 @@ import 'package:wanzo/l10n/app_localizations.dart'; // Corrected import path
 
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/services/currency_display_service.dart';
 import 'package:wanzo/features/dashboard/bloc/dashboard_bloc.dart';
 import 'package:wanzo/features/dashboard/bloc/operation_journal_bloc.dart';
 import 'package:wanzo/features/dashboard/services/journal_service.dart';
@@ -80,6 +81,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   _ExpandedView _expandedView = _ExpandedView.none;
   bool _isChartExpanded = false;
 
+  /// Affichage double devise (CDF + USD). Piloté par [CurrencyDisplayService].
+  bool _dualCurrency = false;
+
   // Souscription pour écouter les changements de dépenses
   StreamSubscription? _expenseSubscription;
   // Souscription pour écouter la fin de synchronisation
@@ -120,6 +124,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _expenseBloc.add(
       LoadExpensesByDateRange(now.subtract(const Duration(days: 365)), now),
     );
+
+    // Préférence d'affichage double devise (CDF + USD).
+    _dualCurrency = CurrencyDisplayService.instance.dualCurrency.value;
+    CurrencyDisplayService.instance.dualCurrency.addListener(
+      _onDualCurrencyChanged,
+    );
+    CurrencyDisplayService.instance.load();
 
     // Écouter les changements d'état de l'ExpenseBloc pour rafraîchir le dashboard
     _expenseSubscription = _expenseBloc.stream.listen((expenseState) {
@@ -165,11 +176,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  void _onDualCurrencyChanged() {
+    if (!mounted) return;
+    setState(() {
+      _dualCurrency = CurrencyDisplayService.instance.dualCurrency.value;
+    });
+  }
+
   @override
   void dispose() {
     // Annuler les souscriptions pour éviter les fuites de mémoire
     _expenseSubscription?.cancel();
     _syncSubscription?.cancel();
+    CurrencyDisplayService.instance.dualCurrency.removeListener(
+      _onDualCurrencyChanged,
+    );
     super.dispose();
   }
 
@@ -743,52 +764,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
           crossAxisCount = 6;
         }
 
+        // Devise fonctionnelle = CDF (OHADA). L'USD n'apparaît QUE si
+        // l'utilisateur a activé la double devise, en montant secondaire subtil,
+        // à partir des montants USD RÉELLEMENT enregistrés (pas de conversion).
+        final bool dual = _dualCurrency;
+        final bool isCompact = availableWidth < mobileBreakpoint;
         final kpiCards = [
-          // 1. Revenus USD (Vue comptable: chiffre d'affaires)
+          // 1. Revenus (chiffre d'affaires) - CDF officiel, USD subtil si double devise
           _buildResponsiveStatCard(
             context,
-            title: 'Revenus (USD)', // Terminologie comptable
-            value: formatCurrency(kpiData.salesTodayUsd, 'USD'),
-            icon: Icons.trending_up,
-            color: Colors.green,
-            l10n: l10n,
-            subtitle: 'Chiffre d\'affaires',
-            isCompact: availableWidth < mobileBreakpoint,
-          ),
-          // 2. Revenus CDF (Vue comptable: chiffre d'affaires)
-          _buildResponsiveStatCard(
-            context,
-            title: 'Revenus (CDF)', // Terminologie comptable
+            title: 'Revenus',
             value: formatCurrency(kpiData.salesTodayCdf, 'CDF'),
+            secondaryValue:
+                dual ? formatCurrency(kpiData.salesTodayUsd, 'USD') : null,
             icon: Icons.trending_up,
             color: Colors.green,
             l10n: l10n,
             subtitle: 'Chiffre d\'affaires',
-            isCompact: availableWidth < mobileBreakpoint,
+            isCompact: isCompact,
           ),
-          // 3. Charges USD (Vue comptable: dépenses engagées)
+          // 2. Charges (dépenses engagées) - CDF officiel, USD subtil si double devise
           _buildResponsiveStatCard(
             context,
-            title: 'Charges (USD)', // Terminologie comptable
-            value: formatCurrency(kpiData.expensesUsd, 'USD'),
-            icon: Icons.trending_down,
-            color: Colors.red,
-            l10n: l10n,
-            subtitle: 'Dépenses engagées',
-            isCompact: availableWidth < mobileBreakpoint,
-          ),
-          // 4. Charges CDF (Vue comptable: dépenses engagées)
-          _buildResponsiveStatCard(
-            context,
-            title: 'Charges (CDF)', // Terminologie comptable
+            title: 'Charges',
             value: formatCurrency(kpiData.expensesCdf, 'CDF'),
+            secondaryValue:
+                dual ? formatCurrency(kpiData.expensesUsd, 'USD') : null,
             icon: Icons.trending_down,
             color: Colors.red,
             l10n: l10n,
             subtitle: 'Dépenses engagées',
-            isCompact: availableWidth < mobileBreakpoint,
+            isCompact: isCompact,
           ),
-          // 5. Valeur Stock
+          // 3. Valeur Stock
           _buildResponsiveStatCard(
             context,
             title: 'Valeur Stock',
@@ -800,9 +808,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 kpiData.stockValueAtCost > 0
                     ? '+${formatCurrency(kpiData.potentialProfit, 'CDF')} potentiel'
                     : null,
-            isCompact: availableWidth < mobileBreakpoint,
+            isCompact: isCompact,
           ),
-          // 6. Créances à encaisser (Vue trésorerie: argent attendu)
+          // 4. Créances à encaisser (Vue trésorerie: argent attendu)
           _buildResponsiveStatCard(
             context,
             title: 'À encaisser', // Vue trésorerie
@@ -811,7 +819,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             color: Theme.of(context).colorScheme.primary,
             l10n: l10n,
             subtitle: 'Créances clients',
-            isCompact: availableWidth < mobileBreakpoint,
+            isCompact: isCompact,
           ),
         ];
 
@@ -898,6 +906,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required Color color,
     required AppLocalizations l10n,
     String? subtitle,
+    String? secondaryValue,
     bool isCompact = false,
   }) {
     final theme = Theme.of(context);
@@ -948,6 +957,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 maxLines: 1,
               ),
             ),
+            // Montant secondaire (USD réel) - affiché en mode double devise
+            if (secondaryValue != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Text(
+                  secondaryValue,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontSize: isCompact ? 10 : 11,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
             // Sous-titre optionnel
             if (subtitle != null)
               Padding(

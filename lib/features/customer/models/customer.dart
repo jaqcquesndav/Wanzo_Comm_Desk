@@ -22,6 +22,11 @@ class Customer extends Equatable {
   @HiveField(2)
   final String phoneNumber;
 
+  /// Matricule / code client renvoye par le backend (affichage). Injecte
+  /// manuellement dans fromJson pour eviter de regenerer customer.g.dart.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? customerCode;
+
   /// Adresse email du client
   @HiveField(3)
   final String? email; // Changed to nullable
@@ -91,6 +96,7 @@ class Customer extends Equatable {
     required this.id,
     required this.name,
     required this.phoneNumber,
+    this.customerCode,
     this.email,
     this.address,
     required this.createdAt,
@@ -113,6 +119,7 @@ class Customer extends Equatable {
     String? id,
     String? name,
     String? phoneNumber,
+    String? customerCode,
     String? email,
     String? address,
     DateTime? createdAt,
@@ -133,6 +140,7 @@ class Customer extends Equatable {
       id: id ?? this.id,
       name: name ?? this.name,
       phoneNumber: phoneNumber ?? this.phoneNumber,
+      customerCode: customerCode ?? this.customerCode,
       email: email ?? this.email,
       address: address ?? this.address,
       createdAt: createdAt ?? this.createdAt,
@@ -153,7 +161,7 @@ class Customer extends Equatable {
 
   /// Crée une instance de Customer à partir d'une carte JSON
   factory Customer.fromJson(Map<String, dynamic> json) =>
-      _$CustomerFromJson(json);
+      _$CustomerFromJson(json).copyWith(customerCode: json['customerCode'] as String?);
 
   /// Convertit une instance de Customer en carte JSON
   Map<String, dynamic> toJson() => _$CustomerToJson(this);
@@ -170,6 +178,7 @@ class Customer extends Equatable {
     id,
     name,
     phoneNumber,
+    customerCode,
     email,
     address,
     createdAt,

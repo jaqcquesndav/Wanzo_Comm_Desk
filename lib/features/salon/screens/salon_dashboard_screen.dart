@@ -6,8 +6,11 @@ import 'package:wanzo/core/modules/module_registry.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/shared_widgets/quick_actions_sheet.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
+import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/features/dashboard/bloc/dashboard_bloc.dart';
 
 import '../cubit/salon_cubit.dart';
+import '../services/salon_api_service.dart';
 
 /// Tableau de bord du mode SALON DE COIFFURE (desktop).
 ///
@@ -16,8 +19,51 @@ import '../cubit/salon_cubit.dart';
 /// performances. Les données proviennent du `SalonCubit` (carte locale + équipe
 /// backend, offline-tolerant), sans dépendance supplémentaire. Les actions clés
 /// passent par la feuille partagée d'actions rapides (un seul déclencheur).
-class SalonDashboardScreen extends StatelessWidget {
+class SalonDashboardScreen extends StatefulWidget {
   const SalonDashboardScreen({super.key});
+
+  @override
+  State<SalonDashboardScreen> createState() => _SalonDashboardScreenState();
+}
+
+class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
+  final SalonApiService _api = SalonApiService();
+
+  // Commissions à payer sur le mois en cours (source réelle :
+  // `SalonApiService.getCommissions`, comme l'écran Performances). Neutre
+  // (`null`) tant que non chargé / indisponible — jamais de valeur fabriquée.
+  double? _commissionsMonth;
+
+  @override
+  void initState() {
+    super.initState();
+    // Le tableau de bord salon EST l'écran d'accueil du mode : personne d'autre
+    // n'amorce le KPI global (CA du jour). On le déclenche si besoin.
+    final dashState = context.read<DashboardBloc>().state;
+    if (dashState is! DashboardLoaded) {
+      context.read<DashboardBloc>().add(LoadDashboardData(date: DateTime.now()));
+    }
+    _loadCommissions();
+  }
+
+  Future<void> _loadCommissions() async {
+    final now = DateTime.now();
+    final from = DateTime(now.year, now.month, 1);
+    final to = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    try {
+      final rows = await _api.getCommissions(from: from, to: to);
+      if (!mounted) return;
+      setState(() {
+        _commissionsMonth =
+            rows.fold<double>(0, (sum, r) => sum + r.totalCommission);
+      });
+    } catch (_) {
+      // Indisponible (réseau/backend) : on laisse `_commissionsMonth` à null →
+      // état neutre « — » dans la grille (jamais de valeur fabriquée).
+      if (!mounted) return;
+      setState(() => _commissionsMonth = null);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,10 +98,16 @@ class SalonDashboardScreen extends StatelessWidget {
           }
           return SingleChildScrollView(
             padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _kpiRow(context, state),
+            // Sur grand écran, les tuiles d'action ne doivent pas s'étirer sur
+            // toute la largeur : on borne la colonne et on la centre (comme le
+            // reste des écrans desktop).
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 900),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _kpiRow(context, state),
                 const SizedBox(height: 28),
                 Text(
                   'Démarrer',
@@ -96,8 +148,10 @@ class SalonDashboardScreen extends StatelessWidget {
                   title: 'Performances',
                   subtitle: 'Commissions par coiffeur (paie)',
                   onTap: () => context.push('/salon/performance'),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           );
         },
@@ -143,27 +197,73 @@ class SalonDashboardScreen extends StatelessWidget {
     );
   }
 
+  /// KPI métier RÉELS (aucune valeur fabriquée) : CA du jour (CDF/USD) et
+  /// clients servis proviennent du KPI global (`DashboardBloc`, même source que
+  /// le tableau de bord principal et restaurant) ; les commissions à payer du
+  /// mois proviennent de `SalonApiService`. Une donnée non chargée affiche un
+  /// état neutre (« — »).
   Widget _kpiRow(BuildContext context, SalonState state) {
-    final cards = [
-      _KpiCard(
-        icon: Icons.content_cut,
-        color: const Color(0xFF8B5CF6),
-        label: 'Prestations',
-        value: '${state.activeServices.length}',
-      ),
-      _KpiCard(
-        icon: Icons.badge_outlined,
-        color: const Color(0xFF197CA8),
-        label: 'Coiffeurs',
-        value: '${state.activeStylists.length}',
-      ),
-    ];
-    return Wrap(
-      spacing: 16,
-      runSpacing: 16,
-      children: [
-        for (final card in cards) SizedBox(width: 220, child: card),
-      ],
+    return BlocBuilder<DashboardBloc, DashboardState>(
+      builder: (context, dashState) {
+        final bool loaded = dashState is DashboardLoaded;
+        final String caCdf =
+            loaded ? formatCurrency(dashState.salesTodayCdf, 'CDF') : '—';
+        final String caUsd =
+            loaded ? formatCurrency(dashState.salesTodayUsd, 'USD') : '—';
+        // `clientsServedToday` : nombre réel de clients servis aujourd'hui (≈
+        // tickets du jour). Il n'existe pas de compteur de tickets dédié dans le
+        // KPI global, on l'utilise donc comme repère du nombre de tickets.
+        final String clients =
+            loaded ? '${dashState.clientsServedToday}' : '—';
+        final String commissions = _commissionsMonth != null
+            ? formatCurrency(_commissionsMonth!, 'CDF')
+            : '—';
+        final cards = [
+          _KpiCard(
+            icon: Icons.payments,
+            color: const Color(0xFF16A34A),
+            label: 'CA du jour (CDF)',
+            value: caCdf,
+          ),
+          _KpiCard(
+            icon: Icons.payments,
+            color: const Color(0xFF16A34A),
+            label: 'CA du jour (USD)',
+            value: caUsd,
+          ),
+          _KpiCard(
+            icon: Icons.groups_outlined,
+            color: const Color(0xFF0EA5E9),
+            label: 'Clients servis (jour)',
+            value: clients,
+          ),
+          _KpiCard(
+            icon: Icons.savings_outlined,
+            color: const Color(0xFFF59E0B),
+            label: 'Commissions (mois)',
+            value: commissions,
+          ),
+          _KpiCard(
+            icon: Icons.content_cut,
+            color: const Color(0xFF8B5CF6),
+            label: 'Prestations',
+            value: '${state.activeServices.length}',
+          ),
+          _KpiCard(
+            icon: Icons.badge_outlined,
+            color: const Color(0xFF197CA8),
+            label: 'Coiffeurs',
+            value: '${state.activeStylists.length}',
+          ),
+        ];
+        return Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          children: [
+            for (final card in cards) SizedBox(width: 220, child: card),
+          ],
+        );
+      },
     );
   }
 
@@ -225,12 +325,16 @@ class _KpiCard extends StatelessWidget {
                 children: [
                   Text(
                     value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleLarge
                         ?.copyWith(fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall
                         ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                   ),

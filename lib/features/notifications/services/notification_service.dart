@@ -595,6 +595,9 @@ class NotificationService {
 
   /// Ferme le service de notification
   void dispose() {
+    _connectivityService.connectionStatus.removeListener(
+      _onConnectivityChanged,
+    );
     _notificationStreamController.close();
   }
 }

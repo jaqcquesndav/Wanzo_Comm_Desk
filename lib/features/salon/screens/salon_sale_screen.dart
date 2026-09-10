@@ -3,13 +3,18 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:wanzo/core/enums/currency_enum.dart';
+import 'package:wanzo/core/models/currency_settings_model.dart';
 import 'package:wanzo/core/modules/module_registry.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/features/customer/widgets/customer_picker_field.dart';
+import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
 import 'package:wanzo/features/inventory/models/product.dart';
 import 'package:wanzo/features/inventory/repositories/inventory_repository.dart';
+import 'package:wanzo/features/invoice/widgets/post_sale_document_sheet.dart';
 import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/sales/models/sale_item.dart';
@@ -120,23 +125,107 @@ class SalonSaleScreen extends StatefulWidget {
 
 class _SalonSaleScreenState extends State<SalonSaleScreen> {
   final List<_TicketLine> _lines = [];
-  final _customerController = TextEditingController();
   final _cashController = TextEditingController();
   _PickerMode _pickerMode = _PickerMode.services;
   String _search = '';
   _PayMethod _method = _PayMethod.cash;
   bool _submitting = false;
 
+  // Client du ticket : optionnel. On SUGGÈRE les clients enregistrés (recherche
+  // async backend dès 2 lettres, comme l'atelier/restaurant) tout en gardant la
+  // saisie libre pour un client de passage (« client comptoir »). `_customerId`
+  // n'est renseigné que lorsqu'un client existant est sélectionné.
+  String? _customerId;
+  String? _customerName;
+  String? _customerPhone;
+  // Vente construite au moment d'encaisser, conservée pour générer la pièce
+  // (reçu / facture) une fois le `saleId` renvoyé par le backend.
+  Sale? _pendingSale;
+  // Contrôleur du nom de client (détenu ici). Porte soit le nom d'un client
+  // sélectionné, soit le nom/numéro d'un client de passage saisi librement.
+  final _customerNameController = TextEditingController();
+
+  // Devise de la transaction (contrat bi-devise, comme la boutique). Les prix du
+  // catalogue (prestations/produits) sont stockés en CDF : ils sont convertis
+  // vers la devise choisie via le taux central (CurrencySettings/CurrencyService).
+  Currency _defaultCurrency = Currency.CDF;
+  Currency? _selectedTransactionCurrency;
+  double _transactionExchangeRate = 1.0; // taux devise sélectionnée → CDF
+  Map<Currency, double> _exchangeRates = {};
+  List<Currency> _availableCurrencies = Currency.values;
+
+  @override
+  void initState() {
+    super.initState();
+    final cubit = context.read<CurrencySettingsCubit>();
+    final state = cubit.state;
+    if (state.status == CurrencySettingsStatus.loaded) {
+      _initializeCurrencySettings(state.settings);
+    } else {
+      cubit.loadSettings();
+    }
+  }
+
   @override
   void dispose() {
-    _customerController.dispose();
     _cashController.dispose();
+    _customerNameController.dispose();
     super.dispose();
   }
 
+  /// Initialise devise active + taux de change (même source de vérité que la
+  /// boutique : Settings pour la devise active, CurrencySettings pour les taux).
+  void _initializeCurrencySettings(CurrencySettings settings) {
+    final activeCurrency = _resolveCompanyActiveCurrency(settings);
+    setState(() {
+      _defaultCurrency = activeCurrency;
+      _exchangeRates = {
+        Currency.USD: settings.usdToCdfRate,
+        Currency.FCFA: settings.fcfaToCdfRate,
+        Currency.CDF: 1.0,
+      };
+      _availableCurrencies = _exchangeRates.keys
+          .where((k) => (_exchangeRates[k] ?? 0) > 0)
+          .toList();
+      if (!_availableCurrencies.contains(activeCurrency)) {
+        _availableCurrencies.add(activeCurrency);
+      }
+      _selectedTransactionCurrency =
+          _availableCurrencies.contains(activeCurrency)
+              ? activeCurrency
+              : _availableCurrencies.first;
+      _transactionExchangeRate =
+          _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
+    });
+  }
+
+  /// Devise active de la société : source de vérité = Settings synchronisés
+  /// backend ; repli sur la devise locale de CurrencySettings.
+  Currency _resolveCompanyActiveCurrency(CurrencySettings localFallback) {
+    final settingsState = context.read<old_settings_bloc.SettingsBloc>().state;
+    if (settingsState is old_settings_state.SettingsLoaded) {
+      return settingsState.settings.activeCurrency;
+    } else if (settingsState is old_settings_state.SettingsUpdated) {
+      return settingsState.settings.activeCurrency;
+    }
+    return localFallback.activeCurrency;
+  }
+
+  /// Convertit un montant CDF vers la devise de transaction sélectionnée.
+  double _convertFromCdf(double cdfAmount) {
+    if (_transactionExchangeRate <= 0) return cdfAmount;
+    return cdfAmount / _transactionExchangeRate;
+  }
+
+  String get _currencyCode =>
+      _selectedTransactionCurrency?.code ?? _defaultCurrency.code;
+
+  // Totaux (base CDF) et leurs équivalents dans la devise de transaction.
   double get _total => _lines.fold(0, (sum, l) => sum + l.totalCdf);
   double get _totalCommission =>
       _lines.fold(0, (sum, l) => sum + l.commissionAmount);
+  double get _totalInCurrency => _convertFromCdf(_total);
+  double get _totalCommissionInCurrency => _convertFromCdf(_totalCommission);
 
   double _cashGiven() =>
       double.tryParse(_cashController.text.replaceAll(' ', '')) ?? 0;
@@ -157,9 +246,15 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
       ctx.currentContext?.userRole,
       '/salon/sale',
     );
-    return BlocListener<SalesBloc, SalesState>(
-      listener: _onSalesState,
-      child: WanzoScaffold(
+    return BlocListener<CurrencySettingsCubit, CurrencySettingsState>(
+      listener: (context, state) {
+        if (state.status == CurrencySettingsStatus.loaded) {
+          _initializeCurrencySettings(state.settings);
+        }
+      },
+      child: BlocListener<SalesBloc, SalesState>(
+        listener: _onSalesState,
+        child: WanzoScaffold(
         currentIndex: index < 0 ? 0 : index,
         title: 'Nouveau ticket',
         onBackPressed: () =>
@@ -194,23 +289,16 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
           },
         ),
       ),
+      ),
     );
   }
 
   void _onSalesState(BuildContext context, SalesState state) {
     if (!_submitting) return;
     if (state is SalesOperationSuccess) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vente enregistrée'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      if (context.canPop()) {
-        context.pop();
-      } else {
-        context.go('/dashboard');
-      }
+      // Même flux post-vente que la boutique : génération de la pièce
+      // (reçu / facture) puis feuille d'options PARTAGÉE (adaptative).
+      _handleSaleSuccess(state.saleId);
     } else if (state is SalesError) {
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -361,7 +449,7 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
     return _PickTile(
       icon: Icons.content_cut,
       name: s.name,
-      priceLabel: formatCurrency(s.priceCdf, 'CDF'),
+      priceLabel: formatCurrency(_convertFromCdf(s.priceCdf), _currencyCode),
       subtitle: s.durationMinutes != null && s.durationMinutes! > 0
           ? '${s.durationMinutes} min'
           : null,
@@ -383,7 +471,8 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
     return _PickTile(
       icon: Icons.shopping_bag_outlined,
       name: p.name,
-      priceLabel: formatCurrency(p.sellingPriceInCdf, 'CDF'),
+      priceLabel:
+          formatCurrency(_convertFromCdf(p.sellingPriceInCdf), _currencyCode),
       subtitle: 'Stock : ${p.stockQuantity.toStringAsFixed(0)}',
       color: theme.colorScheme.tertiary,
       onTap: () => setState(() {
@@ -397,6 +486,22 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
     );
   }
 
+  /// Champ client : picker partagé (suggestions depuis le cache Hive en ligne
+  /// comme hors ligne, recherche serveur en complément, création inline). La
+  /// saisie libre reste possible (client comptoir).
+  Widget _customerField() {
+    return CustomerPickerField(
+      controller: _customerNameController,
+      label: 'Client (optionnel)',
+      hint: 'Client enregistré ou client comptoir',
+      onSelected: (c) => setState(() {
+        _customerId = c?.id;
+        _customerName = c?.name;
+        _customerPhone = c?.phoneNumber;
+      }),
+    );
+  }
+
   // ── Colonne droite : ticket + caisse ─────────────────────────────────────
   Widget _buildTicketColumn(SalonState state) {
     final theme = Theme.of(context);
@@ -406,18 +511,7 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: TextField(
-              controller: _customerController,
-              textCapitalization: TextCapitalization.words,
-              decoration: InputDecoration(
-                labelText: 'Client (optionnel)',
-                hintText: 'Client comptoir',
-                isDense: true,
-                prefixIcon: const Icon(Icons.person_outline),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
+            child: _customerField(),
           ),
           const Divider(height: 1),
           Expanded(
@@ -485,7 +579,7 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
                   onChanged: (q) => setState(() => line.quantity = q),
                 ),
                 const Spacer(),
-                Text(formatCurrency(line.totalCdf, 'CDF'),
+                Text(formatCurrency(_convertFromCdf(line.totalCdf), _currencyCode),
                     style: TextStyle(
                         fontWeight: FontWeight.w700,
                         color: theme.colorScheme.primary)),
@@ -522,7 +616,7 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
                 const SizedBox(width: 8),
                 if (line.stylist != null)
                   Text(
-                    'Comm. ${formatCurrency(line.commissionAmount, 'CDF')}',
+                    'Comm. ${formatCurrency(_convertFromCdf(line.commissionAmount), _currencyCode)}',
                     style: theme.textTheme.labelSmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant),
                   ),
@@ -535,8 +629,9 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
   }
 
   Widget _buildCheckout(ThemeData theme) {
-    final total = _total;
-    final change = _cashGiven() - total;
+    final code = _currencyCode;
+    final totalInCurrency = _totalInCurrency;
+    final change = _cashGiven() - totalInCurrency;
     return Material(
       elevation: 8,
       child: Padding(
@@ -545,12 +640,47 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Sélecteur de devise + taux (contrat bi-devise, comme la boutique).
+            if (_availableCurrencies.length > 1) ...[
+              DropdownButtonFormField<Currency>(
+                value: _selectedTransactionCurrency,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Devise de la transaction',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+                items: _availableCurrencies
+                    .map((c) => DropdownMenuItem<Currency>(
+                          value: c,
+                          child: Text(c.displayName(context)),
+                        ))
+                    .toList(),
+                onChanged: (c) {
+                  if (c == null) return;
+                  setState(() {
+                    _selectedTransactionCurrency = c;
+                    _transactionExchangeRate = _exchangeRates[c] ?? 1.0;
+                  });
+                },
+              ),
+              if (_selectedTransactionCurrency != null &&
+                  _selectedTransactionCurrency != _defaultCurrency)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Taux : 1 ${_selectedTransactionCurrency?.code} = ${formatCurrency(_transactionExchangeRate, 'CDF')}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+              const SizedBox(height: 8),
+            ],
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('Total', style: theme.textTheme.titleMedium),
                 Text(
-                  formatCurrency(total, 'CDF'),
+                  formatCurrency(totalInCurrency, code),
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: theme.colorScheme.primary,
@@ -558,11 +688,21 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
                 ),
               ],
             ),
+            // Contre-valeur en CDF (base monétaire) si autre devise.
+            if (code != 'CDF')
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  'Total (CDF) ${formatCurrency(_total, 'CDF')}',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(fontStyle: FontStyle.italic),
+                ),
+              ),
             if (_totalCommission > 0)
               Align(
                 alignment: Alignment.centerRight,
                 child: Text(
-                  'Commissions ${formatCurrency(_totalCommission, 'CDF')}',
+                  'Commissions ${formatCurrency(_totalCommissionInCurrency, code)}',
                   style: theme.textTheme.labelSmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant),
                 ),
@@ -584,10 +724,15 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
               const SizedBox(height: 8),
               TextField(
                 controller: _cashController,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(
+                    RegExp(r'^\d+\.?\d{0,2}'),
+                  ),
+                ],
                 decoration: InputDecoration(
-                  labelText: 'Montant reçu (CDF)',
+                  labelText: 'Montant reçu ($code)',
                   isDense: true,
                   prefixIcon: const Icon(Icons.payments),
                   border: OutlineInputBorder(
@@ -600,8 +745,8 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     change >= 0
-                        ? 'Monnaie à rendre : ${formatCurrency(change, 'CDF')}'
-                        : 'Manque : ${formatCurrency(-change, 'CDF')}',
+                        ? 'Monnaie à rendre : ${formatCurrency(change, code)}'
+                        : 'Manque : ${formatCurrency(-change, code)}',
                     style: theme.textTheme.titleSmall?.copyWith(
                       color: change >= 0
                           ? Colors.green.shade700
@@ -624,7 +769,8 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.check),
-              label: Text('Encaisser · ${formatCurrency(total, 'CDF')}'),
+              label:
+                  Text('Encaisser · ${formatCurrency(totalInCurrency, code)}'),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
@@ -637,23 +783,28 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
 
   // ── Règlement ───────────────────────────────────────────────────────────
   void _confirm() {
-    final total = _total;
+    final code = _currencyCode;
+    final rate = _transactionExchangeRate;
+    final totalCdf = _total;
+    final totalInCurrency = _totalInCurrency;
     final bool completed = _method == _PayMethod.cash;
-    final paid = completed ? total : 0.0;
+    final paidCdf = completed ? totalCdf : 0.0;
+    final paidInCurrency = completed ? totalInCurrency : 0.0;
 
     // Construction des SaleItem : lignes de prestation (service) avec exécutant
     // + commission figée ; lignes produit (product) avec commission de détail
     // éventuelle. On réutilise `withCalculatedTotal` qui calcule le montant de
-    // commission à partir du taux.
+    // commission à partir du taux. Les prix catalogue (CDF) sont convertis dans
+    // la devise de transaction (comme la boutique).
     final items = <SaleItem>[
       for (final l in _lines)
         SaleItem.withCalculatedTotal(
           productId: l.refId,
           productName: l.name,
           quantity: l.quantity,
-          unitPrice: l.unitPriceCdf,
-          currencyCode: 'CDF',
-          exchangeRate: 1.0,
+          unitPrice: _convertFromCdf(l.unitPriceCdf),
+          currencyCode: code,
+          exchangeRate: rate,
           itemType: l.isService ? SaleItemType.service : SaleItemType.product,
           performerId: l.stylist?.id,
           performerName: l.stylist?.name,
@@ -661,30 +812,132 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
         ),
     ];
 
-    final customerName = _customerController.text.trim().isEmpty
-        ? 'Client comptoir'
-        : _customerController.text.trim();
+    // Client existant sélectionné ⇒ on garde son nom + son id ; sinon on
+    // conserve le nom libre saisi (client de passage), défaut « Client comptoir ».
+    final typed = _customerNameController.text.trim();
+    // Un champ comptoir qui ressemble a un numero de telephone declenche
+    // l'auto-creation du client via son numero plutot que de servir de nom.
+    final typedIsPhone = _customerId == null &&
+        RegExp(r'^\+?[0-9][0-9 ()\-]{5,}$').hasMatch(typed);
+    final customerName = _customerId != null && _customerName != null
+        ? _customerName!
+        : (typed.isEmpty || typedIsPhone ? 'Client comptoir' : typed);
 
     final sale = Sale(
       id: '',
       date: DateTime.now(),
+      customerId: _customerId,
       customerName: customerName,
+      // Client comptoir avec telephone : si pas de client selectionne mais
+      // que le champ contient un numero, on l'envoie pour l'auto-creation.
+      customerPhoneNumber:
+          _customerId != null ? _customerPhone : (typedIsPhone ? typed : null),
       items: items,
-      totalAmountInCdf: total,
-      paidAmountInCdf: paid,
-      transactionCurrencyCode: 'CDF',
-      transactionExchangeRate: 1.0,
-      totalAmountInTransactionCurrency: total,
-      paidAmountInTransactionCurrency: paid,
+      totalAmountInCdf: totalCdf,
+      paidAmountInCdf: paidCdf,
+      transactionCurrencyCode: code,
+      transactionExchangeRate: rate,
+      totalAmountInTransactionCurrency: totalInCurrency,
+      paidAmountInTransactionCurrency: paidInCurrency,
       discountPercentage: 0,
       paymentMethod: _method.apiValue,
       status: completed ? SaleStatus.completed : SaleStatus.pending,
       notes: 'Ticket salon',
     );
 
+    _pendingSale = sale;
     setState(() => _submitting = true);
     context.read<SalesBloc>().add(AddSale(sale));
     _autoPrintCashTicket(sale);
+  }
+
+  /// Flux post-vente PARTAGÉ avec la boutique : génère la pièce (reçu si
+  /// espèces / mobile money, facture si crédit) puis ouvre la feuille d'options
+  /// commune (aperçu / impression / ticket thermique / partage).
+  Future<void> _handleSaleSuccess(String? saleId) async {
+    final pending = _pendingSale;
+    final settings = _resolveSettings();
+    final phone = _customerPhone;
+    if (mounted) setState(() => _submitting = false);
+
+    if (pending == null ||
+        settings == null ||
+        saleId == null ||
+        saleId.isEmpty) {
+      // Repli : comportement historique (message + retour).
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vente enregistrée'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      _goBack();
+      return;
+    }
+
+    final saleForPdf = pending.copyWith(id: saleId);
+    final isReceipt = saleForPdf.paymentMethod != _PayMethod.credit.apiValue;
+
+    PostSaleDocument? doc;
+    try {
+      doc = await generatePostSaleDocument(
+        saleForPdf,
+        settings,
+        isReceipt: isReceipt,
+      );
+    } catch (_) {
+      doc = null;
+    }
+    if (!mounted) return;
+
+    if (doc == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vente enregistrée'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      _goBack();
+      return;
+    }
+
+    // Vider le ticket : une fermeture par tap hors feuille ne doit pas
+    // permettre de ré-encaisser la même vente.
+    setState(() {
+      _lines.clear();
+      _customerId = null;
+      _customerName = null;
+      _customerPhone = null;
+      _customerNameController.clear();
+      _cashController.clear();
+      _pendingSale = null;
+    });
+
+    showPostSaleDocumentSheet(
+      context: context,
+      pdfPath: doc.pdfPath,
+      documentType: doc.documentType,
+      sale: saleForPdf,
+      settings: settings,
+      customerPhone: phone,
+      onClose: _goBack,
+    );
+  }
+
+  /// Résout les paramètres entreprise (source de vérité : SettingsBloc).
+  old_settings_model.Settings? _resolveSettings() {
+    final st = context.read<old_settings_bloc.SettingsBloc>().state;
+    if (st is old_settings_state.SettingsLoaded) return st.settings;
+    if (st is old_settings_state.SettingsUpdated) return st.settings;
+    return null;
+  }
+
+  void _goBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/dashboard');
+    }
   }
 
   /// Auto-impression du ticket espèces (même câblage que boutique/restaurant).

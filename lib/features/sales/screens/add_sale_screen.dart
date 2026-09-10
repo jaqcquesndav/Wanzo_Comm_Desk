@@ -1,9 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:url_launcher/url_launcher.dart'; // Pour ouvrir les fichiers PDF
 import 'package:wanzo/core/enums/currency_enum.dart'; // Corrected: Currency is the enum name
 import 'package:wanzo/core/models/currency_settings_model.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
@@ -12,14 +9,14 @@ import 'package:wanzo/core/widgets/desktop/adaptive_modal.dart';
 import 'package:wanzo/core/widgets/desktop/modal_form_shell.dart';
 import 'package:wanzo/core/widgets/smart_image.dart'; // SmartImage for Cloudinary URLs
 import 'package:wanzo/features/customer/bloc/customer_bloc.dart';
-import 'package:wanzo/features/customer/bloc/customer_event.dart';
-import 'package:wanzo/features/customer/bloc/customer_state.dart';
 import 'package:wanzo/features/customer/models/customer.dart';
+import 'package:wanzo/features/customer/widgets/customer_picker_field.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_bloc.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_event.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_state.dart';
 import 'package:wanzo/features/inventory/models/product.dart';
 import 'package:wanzo/features/invoice/services/invoice_service.dart';
+import 'package:wanzo/features/invoice/widgets/post_sale_document_sheet.dart';
 import 'package:wanzo/services/receipt_printer_service.dart';
 import 'package:wanzo/features/settings/bloc/settings_bloc.dart'
     as old_settings_bloc;
@@ -243,9 +240,13 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   }
 
   void _initializeCurrencySettings(CurrencySettings settings) {
+    // Devise active de la société : source de vérité = Settings (Hive/backend
+    // via SettingsBloc). CurrencySettings (local) ne sert plus qu'aux taux de
+    // change ci-dessous ; le POS et la facture lisent ainsi la même devise.
+    final activeCurrency = _resolveCompanyActiveCurrency(settings);
     setState(() {
-      _defaultCurrency = settings.activeCurrency;
-      _selectedTransactionCurrency = settings.activeCurrency;
+      _defaultCurrency = activeCurrency;
+      _selectedTransactionCurrency = activeCurrency;
       // The following lines correctly initialize _exchangeRates
       _exchangeRates = {
         Currency.USD: settings.usdToCdfRate,
@@ -253,7 +254,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         Currency.CDF: 1.0, // CDF to CDF is always 1.0
       };
 
-      _transactionExchangeRate = _exchangeRates[settings.activeCurrency] ?? 1.0;
+      _transactionExchangeRate = _exchangeRates[activeCurrency] ?? 1.0;
 
       _availableCurrencies =
           _exchangeRates.keys
@@ -261,13 +262,13 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
               .toList();
 
       // Ensure default currency is always available if it has a rate
-      if (!_availableCurrencies.contains(settings.activeCurrency) &&
-          (_exchangeRates[settings.activeCurrency] ?? 0) > 0) {
-        _availableCurrencies.add(settings.activeCurrency);
+      if (!_availableCurrencies.contains(activeCurrency) &&
+          (_exchangeRates[activeCurrency] ?? 0) > 0) {
+        _availableCurrencies.add(activeCurrency);
       }
       // If no currencies are available (e.g. all rates are 0 or null), add default as a fallback
       if (_availableCurrencies.isEmpty) {
-        _availableCurrencies.add(settings.activeCurrency);
+        _availableCurrencies.add(activeCurrency);
       }
 
       if (_selectedTransactionCurrency == null ||
@@ -275,7 +276,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         _selectedTransactionCurrency =
             _availableCurrencies.isNotEmpty
                 ? _availableCurrencies.first
-                : settings.activeCurrency;
+                : activeCurrency;
       }
 
       // Devise imposée par le préremplissage (ex. commande atelier en USD/CDF).
@@ -292,6 +293,20 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       _transactionExchangeRate =
           _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
     });
+  }
+
+  /// Résout la devise active de la société. Source de vérité : les Settings
+  /// synchronisés backend (SettingsBloc). À défaut (état non encore chargé), on
+  /// se rabat sur la devise locale de CurrencySettings.
+  Currency _resolveCompanyActiveCurrency(CurrencySettings localFallback) {
+    final settingsState =
+        context.read<old_settings_bloc.SettingsBloc>().state;
+    if (settingsState is old_settings_state.SettingsLoaded) {
+      return settingsState.settings.activeCurrency;
+    } else if (settingsState is old_settings_state.SettingsUpdated) {
+      return settingsState.settings.activeCurrency;
+    }
+    return localFallback.activeCurrency;
   }
 
   @override
@@ -416,18 +431,6 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     return {'amount': totalTVA, 'rate': weightedRate, 'base': totalTTC - totalTVA};
   }
 
-  Future<void> _searchCustomerByPhone(String phoneNumber) async {
-    if (phoneNumber.isEmpty) {
-      setState(() {
-        _foundCustomer = null;
-        _linkedCustomerId = null;
-        _customerNameController.clear();
-      });
-      return;
-    }
-    context.read<CustomerBloc>().add(SearchCustomers(phoneNumber));
-  }
-
   @override
   Widget build(BuildContext context) {
     return BlocListener<CurrencySettingsCubit, CurrencySettingsState>(
@@ -476,43 +479,6 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                       backgroundColor: Colors.red,
                     ),
                   );
-                }
-              },
-            ),
-            BlocListener<CustomerBloc, CustomerState>(
-              listener: (context, state) {
-                if (state is CustomerSearchResults) {
-                  if (state.customers.isNotEmpty &&
-                      state.customers.any(
-                        (c) => c.phoneNumber == _customerPhoneController.text,
-                      )) {
-                    final matchedCustomer = state.customers.firstWhere(
-                      (c) => c.phoneNumber == _customerPhoneController.text,
-                    );
-                    setState(() {
-                      _foundCustomer = matchedCustomer;
-                      _linkedCustomerId = matchedCustomer.id;
-                      _customerNameController.text = matchedCustomer.name;
-                    });
-                  } else {
-                    setState(() {
-                      _foundCustomer = null;
-                      _linkedCustomerId = null;
-                    });
-                  }
-                } else if (state is CustomerError) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        "Erreur recherche client: ${state.message}",
-                      ),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                  setState(() {
-                    _foundCustomer = null;
-                    _linkedCustomerId = null;
-                  });
                 }
               },
             ),
@@ -942,152 +908,30 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                           ),
                           const Divider(),
                           const SizedBox(height: WanzoSpacing.sm),
-                          BlocBuilder<CustomerBloc, CustomerState>(
-                            builder: (context, customerState) {
-                              final allCustomers =
-                                  customerState is CustomerSearchResults
-                                      ? customerState.customers
-                                      : (customerState is CustomersLoaded
-                                          ? customerState.customers
-                                          : <Customer>[]);
-
-                              return Autocomplete<Customer>(
-                                optionsBuilder: (
-                                  TextEditingValue textEditingValue,
-                                ) {
-                                  if (textEditingValue.text.isEmpty) {
-                                    return const Iterable<Customer>.empty();
-                                  }
-
-                                  // Rechercher en temps réel
-                                  _searchCustomerByPhone(textEditingValue.text);
-
-                                  return allCustomers.where((
-                                    Customer customer,
-                                  ) {
-                                    return customer.phoneNumber
-                                            .toLowerCase()
-                                            .contains(
-                                              textEditingValue.text
-                                                  .toLowerCase(),
-                                            ) ||
-                                        customer.name.toLowerCase().contains(
-                                          textEditingValue.text.toLowerCase(),
-                                        );
-                                  });
-                                },
-                                displayStringForOption:
-                                    (Customer option) => option.phoneNumber,
-                                onSelected: (Customer selection) {
-                                  setState(() {
-                                    _foundCustomer = selection;
-                                    _linkedCustomerId = selection.id;
-                                    _customerPhoneController.text =
-                                        selection.phoneNumber;
-                                    _customerNameController.text =
-                                        selection.name;
-                                  });
-                                },
-                                fieldViewBuilder: (
-                                  context,
-                                  textEditingController,
-                                  focusNode,
-                                  onFieldSubmitted,
-                                ) {
-                                  // Synchroniser avec notre controller
-                                  if (_customerPhoneController.text !=
-                                      textEditingController.text) {
-                                    textEditingController.text =
-                                        _customerPhoneController.text;
-                                  }
-
-                                  textEditingController.addListener(() {
-                                    if (_customerPhoneController.text !=
-                                        textEditingController.text) {
-                                      _customerPhoneController.text =
-                                          textEditingController.text;
-
-                                      // Réinitialiser si le texte change
-                                      if (_foundCustomer != null &&
-                                          _foundCustomer!.phoneNumber !=
-                                              textEditingController.text) {
-                                        setState(() {
-                                          _foundCustomer = null;
-                                          _linkedCustomerId = null;
-                                          _customerNameController.clear();
-                                        });
-                                      }
-                                    }
-                                  });
-
-                                  return TextFormField(
-                                    controller: textEditingController,
-                                    focusNode: focusNode,
-                                    decoration: const InputDecoration(
-                                      labelText:
-                                          'Contact téléphonique du client',
-                                      border: OutlineInputBorder(),
-                                      hintText: 'Ex: 0812345678 (optionnel)',
-                                    ),
-                                    keyboardType: TextInputType.phone,
-                                  );
-                                },
-                                optionsViewBuilder: (
-                                  context,
-                                  onSelected,
-                                  options,
-                                ) {
-                                  return Align(
-                                    alignment: Alignment.topLeft,
-                                    child: Material(
-                                      elevation: 4.0,
-                                      child: ConstrainedBox(
-                                        constraints: const BoxConstraints(
-                                          maxHeight: 200,
-                                          maxWidth: 400,
-                                        ),
-                                        child: ListView.builder(
-                                          padding: const EdgeInsets.all(8.0),
-                                          itemCount: options.length,
-                                          itemBuilder: (context, index) {
-                                            final Customer option = options
-                                                .elementAt(index);
-                                            return ListTile(
-                                              leading: const Icon(
-                                                Icons.person,
-                                                size: 20,
-                                              ),
-                                              title: Text(option.name),
-                                              subtitle: Text(
-                                                option.phoneNumber,
-                                              ),
-                                              onTap: () {
-                                                onSelected(option);
-                                              },
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              );
+                          // Picker client partagé : cache Hive complet (online
+                          // et offline), recherche serveur en complément, et
+                          // création inline sans quitter le formulaire.
+                          CustomerPickerField(
+                            controller: _customerNameController,
+                            phoneController: _customerPhoneController,
+                            label: 'Nom du client',
+                            hint: 'Rechercher ou creer un client',
+                            initialCustomer: _foundCustomer,
+                            onSelected: (customer) {
+                              setState(() {
+                                _foundCustomer = customer;
+                                _linkedCustomerId = customer?.id;
+                              });
                             },
                           ),
                           const SizedBox(height: WanzoSpacing.md),
                           TextFormField(
-                            controller: _customerNameController,
-                            decoration: InputDecoration(
-                              labelText: 'Nom du client',
-                              border: const OutlineInputBorder(),
-                              filled: _foundCustomer != null,
-                              fillColor:
-                                  _foundCustomer != null
-                                      ? Colors.green.withAlpha(
-                                        (0.05 * 255).round(),
-                                      )
-                                      : null,
-                              hintText: 'Laissez vide pour "Inconnu"',
+                            controller: _customerPhoneController,
+                            keyboardType: TextInputType.phone,
+                            decoration: const InputDecoration(
+                              labelText: 'Contact téléphonique du client',
+                              border: OutlineInputBorder(),
+                              hintText: 'Ex: 0812345678 (optionnel)',
                             ),
                           ),
                         ],
@@ -1241,9 +1085,11 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     final saleForPdf = Sale(
       id: saleId,
       date: DateTime.now(),
-      customerId:
-          _linkedCustomerId ??
-          'new_cust_ph_${_customerPhoneController.text.isNotEmpty ? _customerPhoneController.text.replaceAll(RegExp(r'[^0-9]'), '') : DateTime.now().millisecondsSinceEpoch}',
+      customerId: _linkedCustomerId,
+      customerPhoneNumber:
+          _customerPhoneController.text.trim().isEmpty
+              ? null
+              : _customerPhoneController.text.trim(),
       customerName: _customerNameController.text,
       items: List<SaleItem>.from(_items),
       totalAmountInCdf: totalInCdf,
@@ -1286,11 +1132,30 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       // Auto-print thermique si activé et paiement cash
       _tryAutoPrintThermal(saleForPdf, currentLegacySettings);
 
-      _showDocumentOptions(
-        pdfPath,
-        documentType,
-        saleForPdf,
-        currentLegacySettings,
+      if (!mounted) return;
+      // Feuille d'options post-vente PARTAGÉE avec le salon (aperçu / impression
+      // / ticket thermique / partage PDF), adaptative desktop/mobile.
+      showPostSaleDocumentSheet(
+        context: context,
+        pdfPath: pdfPath,
+        documentType: documentType,
+        sale: saleForPdf,
+        settings: currentLegacySettings,
+        customerPhone: _customerPhoneController.text,
+        onNewSale: () {
+          _resetForm();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Formulaire réinitialisé. Vous pouvez enregistrer une nouvelle vente.',
+              ),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        },
+        onClose: _closeAfterSuccess,
       );
     } else {
       if (mounted) {
@@ -1384,367 +1249,6 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         );
       }
     });
-  }
-
-  void _showDocumentOptions(
-    String pdfPath,
-    String documentType,
-    Sale sale,
-    old_settings_model.Settings settings,
-  ) {
-    final invoiceService = InvoiceService();
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isDesktop = screenWidth >= 900;
-
-    // Utiliser AdaptiveModal sur desktop, BottomSheet sur mobile
-    if (isDesktop) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (BuildContext dialogContext) {
-          return AdaptiveModal(
-            title: 'Vente enregistrée avec succès',
-            subtitle: 'Montant total: ${_formatAmount(sale)}',
-            size: ModalSize.small,
-            headerIcon: Icons.check_circle,
-            headerIconColor: Colors.green,
-            showCloseButton: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildDocumentOptionTile(
-                  icon: Icons.add_circle_outline,
-                  iconColor: Colors.green,
-                  title: 'Enregistrer une autre vente',
-                  subtitle: 'Réinitialiser le formulaire',
-                  onTap: () {
-                    Navigator.pop(dialogContext);
-                    _resetForm();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Formulaire réinitialisé. Vous pouvez enregistrer une nouvelle vente.',
-                        ),
-                        backgroundColor: Colors.green,
-                        duration: Duration(seconds: 2),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  },
-                ),
-                _buildDocumentOptionTile(
-                  icon: Icons.visibility,
-                  iconColor: Colors.blue,
-                  title: 'Prévisualiser $documentType',
-                  onTap: () async {
-                    Navigator.pop(dialogContext);
-                    try {
-                      final file = File(pdfPath);
-                      if (await file.exists()) {
-                        final uri = Uri.file(pdfPath);
-                        await launchUrl(uri);
-                      }
-                    } catch (e) {
-                      debugPrint('Erreur lors de l\'ouverture du document: $e');
-                    }
-                    if (mounted) _closeAfterSuccess();
-                  },
-                ),
-                _buildDocumentOptionTile(
-                  icon: Icons.print,
-                  iconColor: Colors.blue,
-                  title: 'Imprimer $documentType',
-                  onTap: () async {
-                    Navigator.pop(dialogContext);
-                    await invoiceService.printDocument(pdfPath);
-                    if (mounted) _closeAfterSuccess();
-                  },
-                ),
-                // Option ticket thermique pour ventes cash
-                if (ReceiptPrinterService.isCashPayment(sale.paymentMethod))
-                  _buildDocumentOptionTile(
-                    icon: Icons.receipt,
-                    iconColor: Colors.teal,
-                    title: 'Ticket thermique',
-                    subtitle: 'Imprimante ESC/POS',
-                    onTap: () async {
-                      Navigator.pop(dialogContext);
-                      final printerService = ReceiptPrinterService();
-                      final success = await printerService.printCashReceipt(
-                        sale,
-                        settings,
-                      );
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              success
-                                  ? 'Ticket thermique imprimé'
-                                  : 'Échec impression thermique',
-                            ),
-                            backgroundColor:
-                                success ? Colors.green : Colors.red,
-                          ),
-                        );
-                        _closeAfterSuccess();
-                      }
-                    },
-                  ),
-                _buildDocumentOptionTile(
-                  icon: Icons.share,
-                  iconColor: Colors.orange,
-                  title: 'Partager $documentType',
-                  onTap: () async {
-                    Navigator.pop(dialogContext);
-                    await invoiceService.shareInvoice(
-                      sale,
-                      settings,
-                      customerPhoneNumber: _customerPhoneController.text,
-                    );
-                    if (mounted) _closeAfterSuccess();
-                  },
-                ),
-                _buildDocumentOptionTile(
-                  icon: Icons.close,
-                  iconColor: Colors.grey,
-                  title: 'Fermer et continuer',
-                  onTap: () {
-                    Navigator.pop(dialogContext);
-                    if (mounted) _closeAfterSuccess();
-                  },
-                ),
-              ],
-            ),
-          );
-        },
-      );
-    } else {
-      // Mobile: garder le BottomSheet
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
-        ),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        builder: (BuildContext bc) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(
-              vertical: 16.0,
-              horizontal: 8.0,
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  // En-tête avec message de succès
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 16.0, top: 8.0),
-                    child: Column(
-                      children: [
-                        const Icon(
-                          Icons.check_circle,
-                          color: Colors.green,
-                          size: 48.0,
-                        ),
-                        const SizedBox(height: 8.0),
-                        Text(
-                          'Vente enregistrée avec succès',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24.0,
-                            vertical: 8.0,
-                          ),
-                          child: Text(
-                            'Montant total: ${_formatAmount(sale)}',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                        ),
-                        const Divider(),
-                      ],
-                    ),
-                  ),
-                  // Options
-                  ListTile(
-                    leading: const Icon(
-                      Icons.add_circle_outline,
-                      color: Colors.green,
-                    ),
-                    title: const Text('Enregistrer une autre vente'),
-                    subtitle: const Text('Réinitialiser le formulaire'),
-                    onTap: () {
-                      Navigator.pop(bc);
-                      _resetForm();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Formulaire réinitialisé. Vous pouvez enregistrer une nouvelle vente.',
-                          ),
-                          backgroundColor: Colors.green,
-                          duration: Duration(seconds: 2),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.visibility, color: Colors.blue),
-                    title: Text('Prévisualiser $documentType'),
-                    onTap: () async {
-                      Navigator.pop(bc);
-                      try {
-                        final file = File(pdfPath);
-                        if (await file.exists()) {
-                          final uri = Uri.file(pdfPath);
-                          await launchUrl(uri);
-                        }
-                      } catch (e) {
-                        debugPrint(
-                          'Erreur lors de l\'ouverture du document: $e',
-                        );
-                      }
-                      if (mounted) _closeAfterSuccess();
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.print, color: Colors.blue),
-                    title: Text('Imprimer $documentType'),
-                    onTap: () async {
-                      Navigator.pop(bc);
-                      await invoiceService.printDocument(pdfPath);
-                      if (mounted) _closeAfterSuccess();
-                    },
-                  ),
-                  // Option ticket thermique pour ventes cash (mobile)
-                  if (ReceiptPrinterService.isCashPayment(sale.paymentMethod))
-                    ListTile(
-                      leading: const Icon(Icons.receipt, color: Colors.teal),
-                      title: const Text('Ticket thermique'),
-                      subtitle: const Text('Imprimante ESC/POS'),
-                      onTap: () async {
-                        Navigator.pop(bc);
-                        final printerService = ReceiptPrinterService();
-                        final success = await printerService.printCashReceipt(
-                          sale,
-                          settings,
-                        );
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                success
-                                    ? 'Ticket thermique imprimé'
-                                    : 'Échec impression thermique',
-                              ),
-                              backgroundColor:
-                                  success ? Colors.green : Colors.red,
-                            ),
-                          );
-                          _closeAfterSuccess();
-                        }
-                      },
-                    ),
-                  ListTile(
-                    leading: const Icon(Icons.share, color: Colors.orange),
-                    title: Text('Partager $documentType'),
-                    onTap: () async {
-                      Navigator.pop(bc);
-                      await invoiceService.shareInvoice(
-                        sale,
-                        settings,
-                        customerPhoneNumber: _customerPhoneController.text,
-                      );
-                      if (mounted) _closeAfterSuccess();
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.close, color: Colors.grey),
-                    title: const Text('Fermer et continuer'),
-                    onTap: () {
-                      Navigator.pop(bc);
-                      if (mounted) _closeAfterSuccess();
-                    },
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      );
-    }
-  }
-
-  /// Helper pour construire une option de document (desktop)
-  Widget _buildDocumentOptionTile({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    String? subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, color: iconColor),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (subtitle != null)
-                      Text(
-                        subtitle,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, color: Colors.grey[400]),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Méthode pour formater le montant de la vente
-  String _formatAmount(Sale sale) {
-    // Si une devise de transaction est spécifiée et qu'il y a un montant dans cette devise
-    if (sale.transactionCurrencyCode != null &&
-        sale.totalAmountInTransactionCurrency != null) {
-      return '${sale.totalAmountInTransactionCurrency!.toStringAsFixed(2)} ${sale.transactionCurrencyCode}';
-    }
-
-    // Par défaut, utiliser le montant en CDF
-    return '${sale.totalAmountInCdf.toStringAsFixed(2)} CDF';
   }
 
   /// Construit l'icône de catégorie pour les produits sans image
@@ -2572,15 +2076,15 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     final currentTransactionExchangeRateToCdf =
         _exchangeRates[dialogCurrency] ?? 1.0;
 
-    showModalBottomSheet(
+    AdaptiveModal.show<void>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (bottomSheetContext) {
-        return StatefulBuilder(
+      title: 'Ajouter un poste',
+      headerIcon: Icons.add_shopping_cart,
+      size: ModalSize.large,
+      contentPadding: EdgeInsets.zero,
+      child: Builder(
+        builder: (bottomSheetContext) {
+          return StatefulBuilder(
           builder: (context, setStateDialog) {
             double calculatedTotalPrice = 0;
             final qty = int.tryParse(quantityController.text);
@@ -2598,28 +2102,10 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
               ),
               child: Form(
                 key: addItemFormKey,
-                child: SingleChildScrollView(
-                  child: Column(
+                child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Header
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Ajouter un poste',
-                            style: Theme.of(context).textTheme.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                          IconButton(
-                            onPressed: () => Navigator.pop(bottomSheetContext),
-                            icon: const Icon(Icons.close),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
                       // Sélection du type de poste avec chips
                       Text(
                         'Type de poste',
@@ -3000,12 +2486,11 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                       const SizedBox(height: 16),
                     ],
                   ),
-                ),
               ),
             );
           },
         );
-      },
+      }),
     );
   }
 
@@ -3293,14 +2778,15 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     final currencySymbol =
         _selectedTransactionCurrency?.symbol ?? _defaultCurrency.symbol;
 
-    showModalBottomSheet(
+    AdaptiveModal.show<void>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (bottomSheetContext) {
-        return StatefulBuilder(
+      title: 'Modifier l\'article',
+      headerIcon: Icons.edit,
+      size: ModalSize.large,
+      contentPadding: EdgeInsets.zero,
+      child: Builder(
+        builder: (bottomSheetContext) {
+          return StatefulBuilder(
           builder: (context, setStateDialog) {
             double calculatedTotal = 0;
             final qty = int.tryParse(quantityController.text);
@@ -3316,34 +2802,10 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                 right: 16,
                 top: 16,
               ),
-              child: SingleChildScrollView(
-                child: Column(
+              child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            _buildItemLeadingWidget(item),
-                            const SizedBox(width: 12),
-                            Text(
-                              'Modifier l\'article',
-                              style: Theme.of(context).textTheme.titleLarge
-                                  ?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(bottomSheetContext),
-                          icon: const Icon(Icons.close),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-
                     // Libellé / Nom
                     TextFormField(
                       controller: nameController,
@@ -3553,11 +3015,10 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                     const SizedBox(height: 16),
                   ],
                 ),
-              ),
             );
           },
         );
-      },
+      }),
     );
   }
 
@@ -3637,9 +3098,11 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       final sale = Sale(
         id: '',
         date: DateTime.now(),
-        customerId:
-            _linkedCustomerId ??
-            'new_cust_ph_${_customerPhoneController.text.isNotEmpty ? _customerPhoneController.text.replaceAll(RegExp(r'[^0-9]'), '') : DateTime.now().millisecondsSinceEpoch}',
+        customerId: _linkedCustomerId,
+        customerPhoneNumber:
+            _customerPhoneController.text.trim().isEmpty
+                ? null
+                : _customerPhoneController.text.trim(),
         customerName:
             _customerNameController.text.isNotEmpty
                 ? _customerNameController.text

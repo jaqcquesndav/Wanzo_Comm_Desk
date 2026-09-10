@@ -5,6 +5,7 @@ import '../exceptions/api_exceptions.dart';
 import '../../features/inventory/models/product.dart';
 import './api_client.dart';
 import './image_upload_service.dart';
+import './catalog_models.dart';
 
 class ProductApiService {
   final ApiClient _apiClient;
@@ -261,5 +262,105 @@ class ProductApiService {
         'Failed to delete product: An unexpected error occurred. $e',
       );
     }
+  }
+
+  // ============= CATALOGUE PARTAGE WANZO =============
+  // Images de produits mutualisees entre entreprises + amelioration IA.
+  // Toutes ces methodes sont "best-effort" : elles ne doivent jamais casser le
+  // flux de creation/edition d'un produit (retour vide/neutre en cas d'echec).
+
+  /// Deplie l'enveloppe standard `{success, data}` (jusqu'a deux niveaux).
+  dynamic _unwrap(dynamic response) {
+    dynamic data = response;
+    if (data is Map && data['data'] != null) data = data['data'];
+    if (data is Map && data['data'] != null) data = data['data'];
+    return data;
+  }
+
+  /// `GET catalog/lookup?barcode=&name=` : images publiques deja ajoutees par
+  /// d'autres entreprises pour ce produit (suggestions). Silencieux hors-ligne.
+  Future<List<CatalogSuggestion>> lookupCatalog({
+    String? barcode,
+    String? name,
+  }) async {
+    try {
+      final params = <String, String>{};
+      if (barcode != null && barcode.isNotEmpty) params['barcode'] = barcode;
+      if (name != null && name.isNotEmpty) params['name'] = name;
+      if (params.isEmpty) return [];
+      final response = await _apiClient.get(
+        'catalog/lookup',
+        queryParameters: params,
+        requiresAuth: true,
+      );
+      final data = _unwrap(response);
+      final list = data is List ? data : const [];
+      return list
+          .whereType<Map>()
+          .map((e) => CatalogSuggestion.fromJson(
+                e.map((k, v) => MapEntry(k.toString(), v)),
+              ))
+          .where((s) => s.imageUrl.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// `POST catalog` : indexe une image ajoutee (pour reutilisation par d'autres).
+  Future<void> indexCatalogImage({
+    required String imageUrl,
+    String? publicId,
+    String? barcode,
+    String? name,
+    bool enhanced = false,
+    String? description,
+    String? sourceProductId,
+  }) async {
+    final body = <String, dynamic>{'imageUrl': imageUrl};
+    if (publicId != null) body['publicId'] = publicId;
+    if (barcode != null && barcode.isNotEmpty) body['barcode'] = barcode;
+    if (name != null && name.isNotEmpty) body['name'] = name;
+    if (enhanced) body['enhanced'] = true;
+    if (description != null && description.isNotEmpty) {
+      body['description'] = description;
+    }
+    if (sourceProductId != null) body['sourceProductId'] = sourceProductId;
+    await _apiClient.post('catalog', body: body, requiresAuth: true);
+  }
+
+  /// `POST catalog/enhance` : amelioration IA de l'image. Renvoie `ok` avec une
+  /// nouvelle image, ou `pending` (indisponible pour l'instant, PAS une erreur).
+  Future<CatalogEnhanceResult> enhanceCatalogImage({
+    String? imageUrl,
+    String? imageBase64,
+    String? barcode,
+    String? name,
+    String? hint,
+  }) async {
+    final body = <String, dynamic>{};
+    if (imageUrl != null) body['imageUrl'] = imageUrl;
+    if (imageBase64 != null) body['imageBase64'] = imageBase64;
+    if (barcode != null && barcode.isNotEmpty) body['barcode'] = barcode;
+    if (name != null && name.isNotEmpty) body['name'] = name;
+    if (hint != null && hint.isNotEmpty) body['hint'] = hint;
+    final response = await _apiClient.post(
+      'catalog/enhance',
+      body: body,
+      requiresAuth: true,
+    );
+    final data = _unwrap(response);
+    if (data is Map) {
+      return CatalogEnhanceResult.fromJson(
+        data.map((k, v) => MapEntry(k.toString(), v)),
+      );
+    }
+    return const CatalogEnhanceResult(ok: false, pending: false);
+  }
+
+  /// `POST catalog/:id/use` : incremente l'usage quand une suggestion est adoptee.
+  Future<void> useCatalogImage(String id) async {
+    if (id.isEmpty) return;
+    await _apiClient.post('catalog/$id/use', requiresAuth: true);
   }
 }

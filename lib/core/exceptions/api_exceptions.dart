@@ -49,6 +49,25 @@ class NetworkException extends ApiException {
   bool get isRetryable => true;
 }
 
+/// Écriture CONSERVÉE hors ligne, à rejouer au retour du réseau.
+///
+/// Distincte d'une [NetworkException] : la saisie n'est PAS perdue. On ne
+/// renvoie volontairement pas une fausse réponse de succès, car l'interface
+/// afficherait une entité qui n'existe pas encore côté serveur. Les écrans
+/// doivent présenter ce cas comme un enregistrement différé, pas comme un
+/// échec.
+class OfflineQueuedException extends ApiException {
+  OfflineQueuedException({
+    super.endpoint,
+    String? message,
+  }) : super(message ??
+            'Pas de connexion : enregistré sur cet appareil et '
+                'synchronisé automatiquement au retour du réseau.');
+
+  @override
+  bool get isRetryable => false;
+}
+
 /// Exception pour les erreurs d'authentification (401)
 class AuthenticationException extends ApiException {
   AuthenticationException(

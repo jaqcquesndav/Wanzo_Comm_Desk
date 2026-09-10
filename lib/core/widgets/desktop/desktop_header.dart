@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:badges/badges.dart' as badges;
 import '../../../constants/colors.dart';
 import '../../utils/logout_confirmation.dart';
+import '../../services/business_context_service.dart';
+import '../../modules/activity_mode.dart';
 import '../../../features/auth/bloc/auth_bloc.dart';
 import '../../../features/settings/bloc/settings_bloc.dart';
 import '../../../features/settings/bloc/settings_event.dart';
@@ -44,8 +46,19 @@ class DesktopHeader extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final authState = context.read<AuthBloc>().state;
     final user = authState is AuthAuthenticated ? authState.user : null;
-    final userName = user?.name ?? 'Utilisateur';
-    final userEmail = user?.email ?? '';
+    // Défense en profondeur : ne jamais afficher l'id Auth0 (sub) ni 'N/A'
+    // comme nom ; retomber sur l'email puis 'Utilisateur'.
+    final displayName = (user != null &&
+            user.name.isNotEmpty &&
+            user.name != user.id &&
+            user.name != 'N/A')
+        ? user.name
+        : ((user?.email.isNotEmpty ?? false) && user!.email != 'N/A'
+            ? user.email
+            : 'Utilisateur');
+    final userName = displayName;
+    final rawEmail = user?.email ?? '';
+    final userEmail = rawEmail != 'N/A' ? rawEmail : '';
 
     return Container(
       height: 64,
@@ -107,6 +120,12 @@ class DesktopHeader extends StatelessWidget {
 
                   // Actions personnalisées
                   if (actions != null) ...actions!,
+
+                  const SizedBox(width: 8),
+
+                  // Badge du MODE COURANT (indicateur). Le CHOIX du mode se fait
+                  // UNIQUEMENT dans les Paramètres : un appui y renvoie.
+                  _buildModeBadge(context, theme),
 
                   const SizedBox(width: 8),
 
@@ -173,6 +192,52 @@ class DesktopHeader extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+
+  /// Badge du MODE COURANT (indicateur, non sélecteur). Reflète le mode
+  /// d'activité actif du point de vente (Restaurant, Atelier, Salon…). Source de
+  /// vérité : [BusinessContextService.activityMode]. Masqué en mode Général
+  /// (retail) — le POS reste alors visuellement inchangé. Un appui renvoie vers
+  /// les Paramètres où le mode se change (comme l'app bar mobile).
+  Widget _buildModeBadge(BuildContext context, ThemeData theme) {
+    return ListenableBuilder(
+      listenable: BusinessContextService(),
+      builder: (context, _) {
+        final mode = BusinessContextService().activityMode;
+        if (mode == ActivityMode.retail) return const SizedBox.shrink();
+        final scheme = theme.colorScheme;
+        return Tooltip(
+          message: 'Mode : ${mode.label} — appuyez pour changer',
+          child: Material(
+            color: scheme.primaryContainer,
+            borderRadius: BorderRadius.circular(20),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () => context.push('/settings'),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.tune, size: 16, color: scheme.onPrimaryContainer),
+                    const SizedBox(width: 6),
+                    Text(
+                      mode.shortLabel,
+                      style: TextStyle(
+                        color: scheme.onPrimaryContainer,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

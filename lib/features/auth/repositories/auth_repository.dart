@@ -38,7 +38,11 @@ class AuthRepository {
 
   /// Méthode d'initialisation
   Future<void> init() async {
-    await Hive.initFlutter();
+    // Hive est déjà initialisé au démarrage (main._initializeHive) vers le
+    // sous-dossier propre à l'app. Ne pas ré-appeler initFlutter() ici : sans
+    // chemin, cela ré-oriente Hive vers le dossier Documents partagé et
+    // provoque une collision de verrou avec les autres apps Wanzo (crash au
+    // lancement simultané, écran Paramètres figé sur le lock).
     if (!Hive.isAdapterRegistered(0)) {
       Hive.registerAdapter(UserAdapter());
     }

@@ -19,10 +19,14 @@ class Auth0InfoScreen extends StatelessWidget {
     final isDesktop = screenSize.width >= _platform.desktopMinWidth;
     final isTablet = screenSize.width >= _platform.tabletMinWidth && !isDesktop;
 
-    return BlocListener<AuthBloc, AuthState>(
+    return BlocConsumer<AuthBloc, AuthState>(
       listener: (context, state) {
         if (state is AuthAuthenticated) {
           context.go('/dashboard');
+        } else if (state is AuthSyncPending) {
+          context.go('/sync-pending');
+        } else if (state is AuthBusinessUnitRequired) {
+          context.go('/join-business-unit');
         } else if (state is AuthFailure) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -32,10 +36,36 @@ class Auth0InfoScreen extends StatelessWidget {
           );
         }
       },
-      child:
-          isDesktop
-              ? _buildDesktopLayout(context)
-              : _buildMobileLayout(context, isTablet),
+      builder: (context, state) {
+        // Pendant tout l'échange post-Auth0 (profil, /auth/me, résolution
+        // entreprise et unité), l'écran gardait son bouton de connexion :
+        // l'utilisateur avait l'impression d'être renvoyé sur la page de
+        // connexion sans savoir que la session s'ouvrait.
+        final isBusy =
+            state is AuthLoading ||
+            state is AuthAuthenticated ||
+            state is AuthSyncPending ||
+            state is AuthBusinessUnitRequired;
+
+        if (isBusy) {
+          return const Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 20),
+                  Text('Connexion en cours, ouverture de votre espace...'),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return isDesktop
+            ? _buildDesktopLayout(context)
+            : _buildMobileLayout(context, isTablet);
+      },
     );
   }
 

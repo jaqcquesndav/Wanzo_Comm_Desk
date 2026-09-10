@@ -14,6 +14,7 @@ import '../../../core/platform/image_picker/image_picker_service_factory.dart';
 import '../../../core/platform/image_picker/image_picker_service_interface.dart';
 import '../../../core/widgets/desktop/responsive_form_container.dart';
 import '../../../core/widgets/desktop/modal_form_shell.dart';
+import '../../../core/widgets/product_photo_manager.dart';
 import '../bloc/inventory_bloc.dart';
 import '../bloc/inventory_event.dart';
 import '../bloc/inventory_state.dart';
@@ -57,9 +58,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
   late ProductUnit _selectedUnit;
   String? _selectedSubCategory;
 
-  File? _selectedImageFile; // To store the selected image file
   String?
-  _currentImagePath; // To store the path of an existing or newly saved image
+  _currentImagePath; // Chemin d'une image locale existante (rétro-compat imagePath)
+  ProductPhotoSelection?
+  _photoSelection; // Sélection courante du gestionnaire de photos
+  String _lookupBarcode = ''; // Code-barres courant (suggestions catalogue)
+  String _lookupName = ''; // Nom courant (suggestions catalogue)
 
   bool _isEditing = false;
   Currency? _selectedInputCurrency;
@@ -93,6 +97,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
     _barcodeController = TextEditingController(
       text: widget.product?.barcode ?? '',
     );
+    _lookupName = widget.product?.name ?? '';
+    _lookupBarcode = widget.product?.barcode ?? '';
 
     final currencySettingsCubit = context.read<CurrencySettingsCubit>();
     final currencySettingsState = currencySettingsCubit.state;
@@ -173,134 +179,79 @@ class _AddProductScreenState extends State<AddProductScreen> {
     super.dispose();
   }
 
-  Future<void> _pickImageFromGallery() async {
-    try {
-      final File? pickedFile = await _imagePickerService.pickFromGallery();
-
-      if (pickedFile != null) {
-        final Directory appDir = await getApplicationDocumentsDirectory();
-        final String fileName = path.basename(pickedFile.path);
-        final String savedImagePath = path.join(appDir.path, fileName);
-
-        String uniqueSavedImagePath = savedImagePath;
-        int counter = 1;
-        while (await File(uniqueSavedImagePath).exists()) {
-          String newFileName =
-              '${path.basenameWithoutExtension(savedImagePath)}_$counter${path.extension(savedImagePath)}';
-          uniqueSavedImagePath = path.join(appDir.path, newFileName);
-          counter++;
-        }
-
-        await pickedFile.copy(uniqueSavedImagePath);
-
-        setState(() {
-          _selectedImageFile = pickedFile;
-          _currentImagePath = uniqueSavedImagePath;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        final l10n = AppLocalizations.of(context)!;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.imagePickingErrorMessage(e.toString()))),
-        );
-      }
+  /// Galerie initiale du produit (édition) : les images existantes, ou l'imageUrl
+  /// principale à défaut (rétro-compat).
+  List<ProductImage> _initialImages() {
+    final p = widget.product;
+    if (p == null) return const [];
+    if (p.images.isNotEmpty) return p.images;
+    if (p.imageUrl != null && p.imageUrl!.isNotEmpty) {
+      return [ProductImage(url: p.imageUrl!)];
     }
+    return const [];
   }
 
-  Future<void> _pickImageFromCamera() async {
-    if (!_imagePickerService.isCameraAvailable) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'La caméra n\'est pas disponible sur cette plateforme. Utilisez la galerie.',
-            ),
-          ),
-        );
-      }
-      return;
+  /// Copie un fichier dans le dossier documents avec un nom unique (persiste la
+  /// photo au-delà des fichiers temporaires du picker, utile hors-ligne).
+  Future<File> _uniqueCopy(File src, Directory dir) async {
+    final base = path.basename(src.path);
+    var dest = path.join(dir.path, base);
+    var counter = 1;
+    while (await File(dest).exists()) {
+      dest = path.join(
+        dir.path,
+        '${path.basenameWithoutExtension(base)}_$counter${path.extension(base)}',
+      );
+      counter++;
     }
-    try {
-      final File? pickedFile = await _imagePickerService.pickFromCamera();
-
-      if (pickedFile != null) {
-        final Directory appDir = await getApplicationDocumentsDirectory();
-        final String fileName = path.basename(pickedFile.path);
-        final String savedImagePath = path.join(appDir.path, fileName);
-
-        String uniqueSavedImagePath = savedImagePath;
-        int counter = 1;
-        while (await File(uniqueSavedImagePath).exists()) {
-          String newFileName =
-              '${path.basenameWithoutExtension(savedImagePath)}_$counter${path.extension(savedImagePath)}';
-          uniqueSavedImagePath = path.join(appDir.path, newFileName);
-          counter++;
-        }
-
-        await pickedFile.copy(uniqueSavedImagePath);
-
-        setState(() {
-          _selectedImageFile = pickedFile;
-          _currentImagePath = uniqueSavedImagePath;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        final l10n = AppLocalizations.of(context)!;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.imagePickingErrorMessage(e.toString()))),
-        );
-      }
-    }
+    return src.copy(dest);
   }
 
-  void _showImageSourceActionSheet(BuildContext context) {
+  /// Sélecteur d'images pour le gestionnaire de photos (desktop : galerie, plus
+  /// caméra si disponible), puis persiste les fichiers choisis.
+  Future<List<File>> _pickImages() async {
     final l10n = AppLocalizations.of(context)!;
-    showModalBottomSheet(
-      context: context,
-      builder: (BuildContext bc) {
-        return SafeArea(
-          child: Wrap(
-            children: <Widget>[
-              ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: Text(l10n.galleryAction),
-                onTap: () {
-                  _pickImageFromGallery();
-                  Navigator.of(context).pop();
-                },
-              ),
-              if (_imagePickerService.isCameraAvailable)
+    String source = 'gallery';
+    if (_imagePickerService.isCameraAvailable) {
+      final chosen = await showModalBottomSheet<String>(
+        context: context,
+        builder: (BuildContext bc) {
+          return SafeArea(
+            child: Wrap(
+              children: <Widget>[
+                ListTile(
+                  leading: const Icon(Icons.photo_library),
+                  title: Text(l10n.galleryAction),
+                  onTap: () => Navigator.of(bc).pop('gallery'),
+                ),
                 ListTile(
                   leading: const Icon(Icons.photo_camera),
                   title: Text(l10n.cameraAction),
-                  onTap: () {
-                    _pickImageFromCamera();
-                    Navigator.of(context).pop();
-                  },
+                  onTap: () => Navigator.of(bc).pop('camera'),
                 ),
-              if (_selectedImageFile != null ||
-                  (_currentImagePath != null && _currentImagePath!.isNotEmpty))
-                ListTile(
-                  leading: const Icon(Icons.delete, color: Colors.red),
-                  title: Text(
-                    l10n.removeImageAction,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                  onTap: () {
-                    setState(() {
-                      _selectedImageFile = null;
-                      _currentImagePath = null;
-                    });
-                    Navigator.of(context).pop();
-                  },
-                ),
-            ],
-          ),
+              ],
+            ),
+          );
+        },
+      );
+      if (chosen == null) return [];
+      source = chosen;
+    }
+    try {
+      final File? pickedFile = source == 'camera'
+          ? await _imagePickerService.pickFromCamera()
+          : await _imagePickerService.pickFromGallery();
+      if (pickedFile == null) return [];
+      final appDir = await getApplicationDocumentsDirectory();
+      return [await _uniqueCopy(pickedFile, appDir)];
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.imagePickingErrorMessage(e.toString()))),
         );
-      },
-    );
+      }
+      return [];
+    }
   }
 
   /// Ouvre le scanner de code-barres
@@ -356,6 +307,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       if (result != null && result.isNotEmpty) {
         setState(() {
           _barcodeController.text = result;
+          _lookupBarcode = result;
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -430,95 +382,19 @@ class _AddProductScreenState extends State<AddProductScreen> {
                         l10n.productImageSectionTitle,
                       ),
                       const SizedBox(height: WanzoSpacing.md),
-                      GestureDetector(
-                        onTap: () => _showImageSourceActionSheet(context),
-                        child: Container(
-                          height: 150,
-                          decoration: BoxDecoration(
-                            color: Colors.grey[200],
-                            borderRadius: BorderRadius.circular(
-                              WanzoSpacing.sm,
-                            ),
-                            border: Border.all(color: Colors.grey.shade400),
-                          ),
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              if (_selectedImageFile != null)
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(
-                                    WanzoSpacing.sm,
-                                  ),
-                                  child: Image.file(
-                                    _selectedImageFile!,
-                                    width: double.infinity,
-                                    height: 150,
-                                    fit: BoxFit.cover,
-                                  ),
-                                )
-                              else if (_currentImagePath != null &&
-                                  _currentImagePath!.isNotEmpty)
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(
-                                    WanzoSpacing.sm,
-                                  ),
-                                  child: Image.file(
-                                    File(
-                                      _currentImagePath!,
-                                    ), // Display existing image
-                                    width: double.infinity,
-                                    height: 150,
-                                    fit: BoxFit.cover,
-                                  ),
-                                )
-                              else
-                                Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.add_a_photo,
-                                      size: 40,
-                                      color: Colors.grey[600],
-                                    ),
-                                    const SizedBox(height: WanzoSpacing.sm),
-                                    Text(
-                                      l10n.addImageLabel,
-                                      style: TextStyle(color: Colors.grey[700]),
-                                    ),
-                                  ],
-                                ),
-                              if (_selectedImageFile != null ||
-                                  (_currentImagePath != null &&
-                                      _currentImagePath!.isNotEmpty))
-                                Positioned(
-                                  top: 8,
-                                  right: 8,
-                                  child: InkWell(
-                                    onTap: () {
-                                      setState(() {
-                                        _selectedImageFile = null;
-                                        _currentImagePath = null;
-                                      });
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(
-                                          alpha: 0.5,
-                                        ),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.close,
-                                        color: Colors.white,
-                                        size: 18,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
+                      ProductPhotoManager(
+                        desktop: true,
+                        initialImages: _initialImages(),
+                        initialImagePath: widget.product?.imagePath,
+                        barcode: _lookupBarcode,
+                        name: _lookupName,
+                        pickImages: _pickImages,
+                        onChanged: (sel) => _photoSelection = sel,
+                        onDescriptionSuggested: (desc) {
+                          if (_descriptionController.text.trim().isEmpty) {
+                            _descriptionController.text = desc;
+                          }
+                        },
                       ),
                       const SizedBox(height: WanzoSpacing.lg),
 
@@ -537,6 +413,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                           border: const OutlineInputBorder(),
                           prefixIcon: const Icon(Icons.inventory),
                         ),
+                        onChanged: (v) => setState(() => _lookupName = v),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
                             return l10n.productNameValidationError;
@@ -571,6 +448,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                             tooltip: 'Scanner un code-barres',
                           ),
                         ),
+                        onChanged: (v) => setState(() => _lookupBarcode = v),
                       ),
                       const SizedBox(height: WanzoSpacing.md),
 
@@ -1158,6 +1036,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
       inputCurrency,
     );
 
+    // Galerie de photos gérée par ProductPhotoManager. Si une sélection existe,
+    // on lui fait entièrement confiance (une suppression est donc respectée).
+    final selection = _photoSelection;
+    final selImages = selection?.images ?? const <ProductImage>[];
+    final primaryUrl = selImages.isNotEmpty ? selImages.first.url : null;
+
     final product = Product(
       id: widget.product?.id ?? const Uuid().v4(),
       name: _nameController.text,
@@ -1171,7 +1055,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
       alertThreshold: double.tryParse(_alertThresholdController.text) ?? 5.0,
       createdAt: widget.product?.createdAt ?? DateTime.now(),
       updatedAt: DateTime.now(),
-      imagePath: _currentImagePath,
+      imagePath:
+          selection?.primaryLocalPath ??
+          (selection == null ? _currentImagePath : null),
+      imageUrl:
+          primaryUrl ?? (selection == null ? widget.product?.imageUrl : null),
+      images: selImages,
       inputCurrencyCode: inputCurrency.code,
       inputExchangeRate: exchangeRate, // Store the rate used for this product
       costPriceInInputCurrency: costPriceInput,

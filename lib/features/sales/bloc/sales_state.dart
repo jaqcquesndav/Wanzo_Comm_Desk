@@ -44,6 +44,26 @@ class SalesOperationSuccess extends SalesState {
   List<Object?> get props => [message, saleId]; // Updated props
 }
 
+/// Règlement enregistré sur une vente (une tranche).
+///
+/// Porte la vente à jour pour que l'écran de détail se rafraîchisse sans
+/// recharger toute la liste, et [synced] pour distinguer un encaissement
+/// confirmé par le serveur d'un encaissement mis en file hors ligne.
+class SalePaymentRecorded extends SalesState {
+  final Sale sale;
+  final bool synced;
+  final String message;
+
+  const SalePaymentRecorded({
+    required this.sale,
+    required this.synced,
+    required this.message,
+  });
+
+  @override
+  List<Object?> get props => [sale, synced, message];
+}
+
 /// État d'erreur
 class SalesError extends SalesState {
   final String message;

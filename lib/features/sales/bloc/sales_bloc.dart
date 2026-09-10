@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart'; // Pour debugPrint
 import '../models/sale.dart';
 import '../models/sale_item.dart'; // Ensure SaleItem and SaleItemType are imported
 import '../repositories/sales_repository.dart';
+import '../../../core/models/operation_payment.dart';
 import '../../dashboard/models/operation_journal_entry.dart';
 import '../../dashboard/bloc/operation_journal_bloc.dart'; // Imports events too
 import '../../dashboard/repositories/operation_journal_repository.dart'; // Pour accéder au repository directement
@@ -43,14 +44,75 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
     on<AddSale>(_onAddSale);
     on<UpdateSale>(_onUpdateSale);
     on<UpdateSaleStatus>(_onUpdateSaleStatus);
+    on<RecordSalePayment>(_onRecordSalePayment);
     on<DeleteSale>(_onDeleteSale);
+  }
+
+  /// Enregistrer une tranche de règlement sur une créance client.
+  Future<void> _onRecordSalePayment(
+    RecordSalePayment event,
+    Emitter<SalesState> emit,
+  ) async {
+    emit(const SalesLoading());
+    try {
+      final outcome = await _salesRepository.recordPayment(
+        event.sale,
+        event.payment,
+      );
+
+      // Encaissement au journal des opérations : seule la tranche réellement
+      // encaissée impacte la trésorerie (le chiffre d'affaires a déjà été
+      // enregistré à la création de la vente).
+      try {
+        final shortId = event.sale.id.substring(
+          0,
+          event.sale.id.length >= 6 ? 6 : event.sale.id.length,
+        );
+        await _journalRepository.addOperation(
+          OperationJournalEntry(
+            id: _uuid.v4(),
+            date: event.payment.paidAt,
+            description: 'Encaissement - Vente #$shortId',
+            type: OperationType.cashIn,
+            amount: event.payment.amountInCdf,
+            relatedDocumentId: event.sale.id,
+            paymentMethod: event.payment.method,
+            currencyCode: event.payment.currencyCode,
+            isDebit: true,
+            isCredit: false,
+            balanceAfter: 0,
+            customerId: event.sale.customerId,
+            customerName: event.sale.customerName,
+          ),
+        );
+        _operationJournalBloc.add(const RefreshJournal());
+      } catch (journalError) {
+        debugPrint('ERREUR journal (encaissement vente): $journalError');
+      }
+
+      emit(
+        SalePaymentRecorded(
+          sale: outcome.sale,
+          synced: outcome.synced,
+          message: outcome.message,
+        ),
+      );
+      add(const LoadSales());
+    } catch (e) {
+      emit(
+        SalesError(
+          'Le paiement n\'a pas pu être enregistré: '
+          '${e is StateError ? e.message : e.toString()}',
+        ),
+      );
+    }
   }
 
   /// Charger toutes les ventes
   Future<void> _onLoadSales(LoadSales event, Emitter<SalesState> emit) async {
     emit(const SalesLoading());
     try {
-      final sales = await _salesRepository.getAllSales();
+      final sales = await _salesRepository.getAllSales(syncWithApi: true);
       final totalAmountInCdf = sales.fold(
         0.0,
         (total, sale) => total + sale.totalAmountInCdf,

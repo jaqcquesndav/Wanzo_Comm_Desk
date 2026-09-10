@@ -5,6 +5,7 @@ import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/modules/activity_mode.dart';
+import 'package:wanzo/core/modules/module_registry.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import '../bloc/settings_bloc.dart';
 import '../bloc/settings_event.dart';
@@ -311,6 +312,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ActivityMode.atelier,
                   ActivityMode.atelierMaintenance,
                   ActivityMode.salon,
+                  ActivityMode.imprimerie,
                 ])
                   RadioListTile<ActivityMode>(
                     value: mode,
@@ -326,6 +328,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Mode : ${selected.label}')),
                       );
+                      // Le shell écoute BusinessContextService : la nav se
+                      // recompose immédiatement. On atterrit sur la 1re
+                      // destination du nouveau mode pour ne pas rester sur un
+                      // écran devenu hors-nav.
+                      final nav = ModuleRegistry.sidebar(
+                        ctx.activityMode,
+                        ctx.currentContext?.userRole,
+                      );
+                      if (nav.isNotEmpty && context.mounted) {
+                        context.go(nav.first.route);
+                      }
                     },
                   ),
               ],

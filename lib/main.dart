@@ -90,6 +90,9 @@ import 'package:wanzo/features/settings/bloc/settings_event.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Plafond mémoire du cache d'images décodées (évite l'explosion RAM).
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 100 << 20; // 100 MB
+
   // Initialiser sqflite_ffi pour Windows/Linux desktop
   if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
     sqfliteFfiInit();
@@ -335,6 +338,11 @@ Future<void> main() async {
           blocs['currencySettings'] as CurrencySettingsCubit;
       await currencySettingsCubit.loadSettings();
 
+      // Amorcer le taux de change central depuis le backend (autorité =
+      // accounting, exposé par gestion). Best-effort: ignoré silencieusement
+      // hors ligne, le taux reste éditable localement dans les paramètres.
+      await currencySettingsCubit.seedCentralExchangeRates();
+
       // 14. Vérifier les produits expirant (après chargement complet)
       try {
         final inventoryRepository =
@@ -577,6 +585,7 @@ Map<String, dynamic> _initializeBlocsSync(
     salesRepository: repositories['sales'] as SalesRepository,
     customerRepository: repositories['customer'] as CustomerRepository,
     transactionRepository: repositories['transaction'] as TransactionRepository,
+    currencyService: currencyService,
   );
   blocs['dashboard'] = dashboardBloc;
 

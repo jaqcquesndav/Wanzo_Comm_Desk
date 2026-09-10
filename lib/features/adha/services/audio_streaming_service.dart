@@ -73,6 +73,13 @@ class AudioStreamingService {
   Timer? _playbackLevelTimer;
   double _playbackPhase = 0.0;
 
+  // Throttle des émissions de niveau audio : le stream micro produit
+  // beaucoup de chunks/s ; sans throttle chaque chunk pousse un événement
+  // (et un rebuild). On plafonne à ~60 ms (≈16/s), suffisant pour l'onde
+  // visuelle et bien plus léger pour l'UI.
+  static const int _levelEmitThrottleMs = 60;
+  DateTime? _lastLevelEmitAt;
+
   final _connectionStateController =
       StreamController<AudioConnectionState>.broadcast();
   final _audioLevelController = StreamController<double>.broadcast();
@@ -220,7 +227,10 @@ class AudioStreamingService {
     }
 
     final wavData = _createWavFile(combinedPcm);
-    final base64Audio = base64Encode(wavData);
+    // Encodage base64 hors thread UI (compute) : sur un enregistrement long
+    // le WAV peut peser plusieurs centaines de Ko et base64Encode bloquerait
+    // la frame.
+    final base64Audio = await compute(_encodeBase64, wavData);
 
     debugPrint(
       '[AudioStreamingService] Audio: ${combinedPcm.length}B PCM '
@@ -280,7 +290,9 @@ class AudioStreamingService {
     final item = _audioQueue.removeAt(0);
 
     try {
-      final audioBytes = base64Decode(item.base64Audio);
+      // Décodage base64 hors thread UI (compute) pour ne pas saccader la
+      // lecture pendant qu'Adha parle.
+      final audioBytes = await compute(_decodeBase64, item.base64Audio);
       final tempDir = await getTemporaryDirectory();
       final ext = item.format == 'wav' ? 'wav' : 'mp3';
       final tempFile = File(
@@ -298,7 +310,10 @@ class AudioStreamingService {
 
   void _onChunkPlaybackComplete() {
     _isProcessingQueue = false;
-    _cleanupOldTempFiles();
+    // Le nettoyage des fichiers temp se fait UNIQUEMENT en fin de session
+    // (_cleanupAudioResources), pas après chaque chunk : lister/statter le
+    // dossier temp à chaque phrase jouée est du I/O inutile pendant la
+    // lecture. Les fichiers restants sont purgés à endSession().
 
     if (_audioQueue.isNotEmpty) {
       _processQueue();
@@ -421,7 +436,7 @@ class AudioStreamingService {
     final visualLevel = ((dbfs - silenceThresholdDb) /
             (speechThresholdDb + 12.0 - silenceThresholdDb))
         .clamp(0.0, 1.0);
-    _audioLevelController.add(visualLevel);
+    _emitLevelThrottled(visualLevel);
 
     if (!vadEnabled || !_isRecordingActive) return;
 
@@ -464,6 +479,17 @@ class AudioStreamingService {
   // UTILITAIRES
   // ==========================================================================
 
+  /// Émet un niveau audio en respectant le throttle [_levelEmitThrottleMs].
+  void _emitLevelThrottled(double level) {
+    final now = DateTime.now();
+    if (_lastLevelEmitAt == null ||
+        now.difference(_lastLevelEmitAt!).inMilliseconds >=
+            _levelEmitThrottleMs) {
+      _lastLevelEmitAt = now;
+      _audioLevelController.add(level);
+    }
+  }
+
   Uint8List _createWavFile(Uint8List pcmData) {
     final int dataSize = pcmData.length;
     final int fileSize = 36 + dataSize;
@@ -491,27 +517,6 @@ class AudioStreamingService {
     result.setRange(44, 44 + dataSize, pcmData);
 
     return result;
-  }
-
-  void _cleanupOldTempFiles() {
-    getTemporaryDirectory().then((tempDir) {
-      try {
-        final now = DateTime.now();
-        final tempFiles = tempDir.listSync().where(
-          (file) =>
-              file.path.contains('tts_') &&
-              (file.path.endsWith('.wav') || file.path.endsWith('.mp3')),
-        );
-        for (final file in tempFiles) {
-          try {
-            final stat = file.statSync();
-            if (now.difference(stat.modified).inSeconds > 30) {
-              file.deleteSync();
-            }
-          } catch (_) {}
-        }
-      } catch (_) {}
-    });
   }
 
   Future<void> _cleanupAudioResources() async {
@@ -544,8 +549,20 @@ class AudioStreamingService {
     _silenceTimer?.cancel();
     _audioStreamSubscription?.cancel();
     _playerStateSubscription?.cancel();
-    _audioRecorder.dispose();
-    _audioPlayer.dispose();
+
+    // Stop borné par un timeout avant dispose : sur desktop un stop natif
+    // (recorder/player) peut rester bloqué et figer la fermeture de l'écran.
+    // On borne à 2 s puis on dispose quoi qu'il arrive.
+    _audioRecorder
+        .stop()
+        .timeout(const Duration(seconds: 2), onTimeout: () => null)
+        .catchError((_) => null)
+        .whenComplete(_audioRecorder.dispose);
+    _audioPlayer
+        .stop()
+        .timeout(const Duration(seconds: 2), onTimeout: () {})
+        .catchError((_) {})
+        .whenComplete(_audioPlayer.dispose);
 
     _connectionStateController.close();
     _audioLevelController.close();
@@ -561,6 +578,11 @@ class _AudioQueueItem {
   final String format;
   _AudioQueueItem({required this.base64Audio, required this.format});
 }
+
+// Helpers top-level pour compute() : encodage/décodage base64 exécutés dans
+// un isolate afin de ne pas bloquer le thread UI sur de gros buffers audio.
+Uint8List _decodeBase64(String data) => base64Decode(data);
+String _encodeBase64(Uint8List data) => base64Encode(data);
 
 /// États de connexion audio
 enum AudioConnectionState { disconnected, connecting, connected, ready, error }

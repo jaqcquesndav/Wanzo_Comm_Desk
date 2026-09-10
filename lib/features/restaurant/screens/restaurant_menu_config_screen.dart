@@ -7,8 +7,10 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:wanzo/core/modules/activity_mode.dart';
 import 'package:wanzo/core/platform/image_picker/image_picker_service_factory.dart';
 import 'package:wanzo/core/platform/image_picker/image_picker_service_interface.dart';
+import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
@@ -18,6 +20,7 @@ import '../models/menu_course.dart';
 import '../models/menu_item.dart';
 import '../repositories/menu_repository.dart';
 import '../services/restaurant_api_service.dart';
+import '../utils/menu_share.dart';
 
 /// Composition de la CARTE du restaurant : un vrai catalogue de plats, authoré
 /// directement (nom, prix, photo, description, catégorie). Chaque plat est une
@@ -52,7 +55,7 @@ class _RestaurantMenuConfigScreenState
   }
 
   Future<void> _load() async {
-    final items = await _repo.loadAll();
+    final items = await _repo.loadAllSynced();
     if (!mounted) return;
     setState(() {
       _items = items;
@@ -145,6 +148,11 @@ class _RestaurantMenuConfigScreenState
     final grouped = _byCourse;
     final courses = grouped.keys.toList()
       ..sort((a, b) => a.order.compareTo(b.order));
+    // La carte PUBLIQUE (publication + QR + partage du lien) est réservée au
+    // mode RESTAURANT. Le salon (coiffure) et les autres modes réutilisent la
+    // même carte pour les prestations, mais sans page publique.
+    final isRestaurant =
+        BusinessContextService().activityMode == ActivityMode.restaurant;
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -154,21 +162,29 @@ class _RestaurantMenuConfigScreenState
         ),
         title: const Text('Composer la carte'),
         actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: FilledButton.icon(
+          if (isRestaurant) ...[
+            IconButton(
+              tooltip: 'Partager la carte',
+              icon: const Icon(Icons.ios_share),
               onPressed:
-                  (_publishing || _items.isEmpty) ? null : _publishMenu,
-              icon: _publishing
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.cloud_upload_outlined),
-              label: const Text('Publier la carte'),
+                  _items.isEmpty ? null : () => shareRestaurantMenu(context, _api),
             ),
-          ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: FilledButton.icon(
+                onPressed:
+                    (_publishing || _items.isEmpty) ? null : _publishMenu,
+                icon: _publishing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cloud_upload_outlined),
+                label: const Text('Publier la carte'),
+              ),
+            ),
+          ],
         ],
       ),
       floatingActionButton: FloatingActionButton(

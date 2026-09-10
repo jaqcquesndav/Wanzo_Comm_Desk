@@ -38,17 +38,28 @@ class _ConnectivityStatusBannerState extends State<ConnectivityStatusBanner> {
     // Vérifier l'état initial
     _isConnected = _connectivityService.isConnected;
     _showBanner = !_isConnected || widget.showAlways;
-      // S'abonner aux changements de connectivité
-    _connectivityService.connectionStatus.addListener(() {
-      if (mounted) {
-        setState(() {
-          _isConnected = _connectivityService.isConnected;
-          _showBanner = !_isConnected || widget.showAlways;
-        });
-      }
-    });
+    // S'abonner aux changements de connectivité
+    _connectivityService.connectionStatus.addListener(_onConnectivityChanged);
     
     if (mounted) setState(() {});
+  }
+
+  /// Handler nommé pour les changements de connectivité (permet removeListener)
+  void _onConnectivityChanged() {
+    if (mounted) {
+      setState(() {
+        _isConnected = _connectivityService.isConnected;
+        _showBanner = !_isConnected || widget.showAlways;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _connectivityService.connectionStatus.removeListener(
+      _onConnectivityChanged,
+    );
+    super.dispose();
   }
 
   @override

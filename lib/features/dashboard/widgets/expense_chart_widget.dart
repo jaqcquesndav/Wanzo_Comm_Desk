@@ -1824,11 +1824,11 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
 
   String _formatAmount(double amount) {
     if (amount >= 1000000) {
-      return '${(amount / 1000000).toStringAsFixed(1)}M FC';
+      return '${(amount / 1000000).toStringAsFixed(1)}M CDF';
     } else if (amount >= 1000) {
-      return '${(amount / 1000).toStringAsFixed(1)}K FC';
+      return '${(amount / 1000).toStringAsFixed(1)}K CDF';
     }
-    return '${amount.toStringAsFixed(0)} FC';
+    return '${amount.toStringAsFixed(0)} CDF';
   }
 
   String _formatCompactAmount(double amount) {

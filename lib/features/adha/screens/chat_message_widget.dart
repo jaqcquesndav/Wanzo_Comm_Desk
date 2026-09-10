@@ -45,6 +45,32 @@ class ChatMessageWidget extends StatelessWidget {
     this.onRetryMessage, // Initialize in constructor
   });
 
+  // ──────────────────────────────────────────────────────────────────────
+  // RegExp compilés UNE SEULE FOIS (static final) plutôt que recréés à
+  // chaque build/chaque appel. Pendant le streaming, _buildMessageContent
+  // et _buildMixedContent sont appelés très souvent : recompiler ces
+  // patterns à chaque fois est un coût inutile qui contribue au jank.
+  // ──────────────────────────────────────────────────────────────────────
+  static final RegExp _codeBlockRe = RegExp(r'```[\s\S]*?```');
+  static final RegExp _latexInlineRe = RegExp(r'\$[^$]+\$');
+  static final RegExp _tableRe = RegExp(
+    r'^\|.+\|\s*$\n^\|[\s\-:|]+\|\s*$(?:\n^\|.+\|\s*$)+',
+    multiLine: true,
+  );
+  static final RegExp _codePattern = RegExp(
+    r'```(\w+)?\n?([\s\S]*?)```',
+    multiLine: true,
+  );
+  static final RegExp _latexBlockPattern = RegExp(
+    r'\$\$([\s\S]*?)\$\$',
+    multiLine: true,
+  );
+  static final RegExp _imagePattern = RegExp(r'!\[([^\]]*)\]\(([^)]+)\)');
+  static final RegExp _tablePattern = RegExp(
+    r'(^\|.+\|\s*$\n^\|[\s\-:|]+\|\s*$(?:\n^\|.+\|\s*$)+)',
+    multiLine: true,
+  );
+
   @override
   Widget build(BuildContext context) {
     final isUser = message.isUserMessage;
@@ -196,7 +222,7 @@ class ChatMessageWidget extends StatelessWidget {
 
   /// Vérifie si le contenu contient des blocs de code markdown
   bool _containsCodeBlocks(String content) {
-    return RegExp(r'```[\s\S]*?```').hasMatch(content);
+    return _codeBlockRe.hasMatch(content);
   }
 
   /// Vérifie si le contenu contient du LaTeX
@@ -204,7 +230,7 @@ class ChatMessageWidget extends StatelessWidget {
     return content.contains(r'$$') ||
         content.contains(r'\[') ||
         content.contains(r'\(') ||
-        RegExp(r'\$[^$]+\$').hasMatch(content);
+        _latexInlineRe.hasMatch(content);
   }
 
   /// Vérifie si le contenu contient des images
@@ -218,10 +244,7 @@ class ChatMessageWidget extends StatelessWidget {
   /// de données. Doit rester aligné avec le `tablePattern` de
   /// _buildMixedContent.
   bool _containsTables(String content) {
-    return RegExp(
-      r'^\|.+\|\s*$\n^\|[\s\-:|]+\|\s*$(?:\n^\|.+\|\s*$)+',
-      multiLine: true,
-    ).hasMatch(content);
+    return _tableRe.hasMatch(content);
   }
 
   /// Construit un contenu mixte (texte + code + LaTeX + images)
@@ -235,15 +258,12 @@ class ChatMessageWidget extends StatelessWidget {
     // une ligne de données). Capture le bloc entier pour le rendre dans un
     // scroll horizontal — sans ça, les tables larges débordent du viewport
     // sur écrans split-pane / fenêtre étroite.
-    final tablePattern = RegExp(
-      r'(^\|.+\|\s*$\n^\|[\s\-:|]+\|\s*$(?:\n^\|.+\|\s*$)+)',
-      multiLine: true,
-    );
-    final codePattern = RegExp(r'```(\w+)?\n?([\s\S]*?)```', multiLine: true);
+    final tablePattern = _tablePattern;
+    final codePattern = _codePattern;
     // Pattern pour détecter le LaTeX en bloc
-    final latexBlockPattern = RegExp(r'\$\$([\s\S]*?)\$\$', multiLine: true);
+    final latexBlockPattern = _latexBlockPattern;
     // Pattern pour détecter les images markdown
-    final imagePattern = RegExp(r'!\[([^\]]*)\]\(([^)]+)\)');
+    final imagePattern = _imagePattern;
 
     int lastIndex = 0;
 

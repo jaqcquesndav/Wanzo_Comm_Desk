@@ -44,6 +44,21 @@ class BusinessContextService extends ChangeNotifier {
   /// `true` si l'entreprise courante est une coopérative.
   bool get isCooperative => companyVariant == 'cooperative';
 
+  /// Nom de l'entreprise courante (issu de /auth/me → Company).
+  String? get companyName => _currentContext?.companyName;
+
+  /// RCCM de l'entreprise (issu de /auth/me → Company). Sert de repli pour
+  /// l'en-tête des pièces commerciales quand les Settings locaux sont vides.
+  String? get companyRccm => _currentContext?.companyRccm;
+
+  /// NIF (impôt) de l'entreprise (issu de /auth/me → Company). Requis KYC,
+  /// en-têtes d'états de sortie/PDF et scoring.
+  String? get companyTaxId => _currentContext?.companyTaxId;
+
+  /// IdNat (identification nationale) de l'entreprise (issu de /auth/me →
+  /// Company). Pour une coopérative, l'IdNat reste l'identifiant national.
+  String? get companyNationalId => _currentContext?.companyNationalId;
+
   /// Mode d'activité courant (défaut retail). Pilote l'affichage modulaire
   /// via `ModuleRegistry` (sidebar desktop + bottom-nav mobile).
   ActivityMode get activityMode =>
@@ -164,6 +179,10 @@ class BusinessContextService extends ChangeNotifier {
       companyId: user.companyId ?? company?.id,
       companyName: user.companyName ?? company?.name,
       companyVariant: company?.variant ?? 'standard',
+      // Identifiants légaux de l'entreprise issus de /auth/me (Company entity).
+      companyRccm: company?.registrationNumber,
+      companyTaxId: company?.taxId,
+      companyNationalId: company?.nationalId,
       activityMode: _currentContext?.activityMode ?? 'retail',
       businessUnitId: user.businessUnitId ?? businessUnit?.id,
       businessUnitCode: businessUnit?.code,
@@ -272,6 +291,15 @@ class BusinessContext {
   /// Default 'standard' pour rétrocompat.
   final String companyVariant;
 
+  /// RCCM de l'entreprise (source /auth/me → Company). Repli en-tête pièces.
+  final String? companyRccm;
+
+  /// NIF (impôt) de l'entreprise (source /auth/me → Company).
+  final String? companyTaxId;
+
+  /// IdNat de l'entreprise (source /auth/me → Company).
+  final String? companyNationalId;
+
   /// Mode d'activité ('retail'|'restaurant'|'hotel'|'services'). Défaut
   /// 'retail'. Pilote l'affichage modulaire via `ModuleRegistry`.
   final String activityMode;
@@ -322,6 +350,9 @@ class BusinessContext {
     this.companyId,
     this.companyName,
     this.companyVariant = 'standard',
+    this.companyRccm,
+    this.companyTaxId,
+    this.companyNationalId,
     this.activityMode = 'retail',
     this.businessUnitId,
     this.businessUnitCode,
@@ -346,6 +377,9 @@ class BusinessContext {
           (json['companyVariant'] as String?) == 'cooperative'
               ? 'cooperative'
               : 'standard',
+      companyRccm: json['companyRccm'] as String?,
+      companyTaxId: json['companyTaxId'] as String?,
+      companyNationalId: json['companyNationalId'] as String?,
       activityMode: json['activityMode'] as String? ?? 'retail',
       businessUnitId: json['businessUnitId'] as String?,
       businessUnitCode: json['businessUnitCode'] as String?,
@@ -373,6 +407,9 @@ class BusinessContext {
     'companyId': companyId,
     'companyName': companyName,
     'companyVariant': companyVariant,
+    'companyRccm': companyRccm,
+    'companyTaxId': companyTaxId,
+    'companyNationalId': companyNationalId,
     'activityMode': activityMode,
     'businessUnitId': businessUnitId,
     'businessUnitCode': businessUnitCode,
@@ -401,6 +438,9 @@ class BusinessContext {
     String? companyId,
     String? companyName,
     String? companyVariant,
+    String? companyRccm,
+    String? companyTaxId,
+    String? companyNationalId,
     String? activityMode,
     String? businessUnitId,
     String? businessUnitCode,
@@ -420,6 +460,9 @@ class BusinessContext {
       companyId: companyId ?? this.companyId,
       companyName: companyName ?? this.companyName,
       companyVariant: companyVariant ?? this.companyVariant,
+      companyRccm: companyRccm ?? this.companyRccm,
+      companyTaxId: companyTaxId ?? this.companyTaxId,
+      companyNationalId: companyNationalId ?? this.companyNationalId,
       activityMode: activityMode ?? this.activityMode,
       businessUnitId: businessUnitId ?? this.businessUnitId,
       businessUnitCode: businessUnitCode ?? this.businessUnitCode,

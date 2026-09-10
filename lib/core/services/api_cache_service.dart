@@ -3,7 +3,6 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
-import 'package:path_provider/path_provider.dart';
 
 /// Service pour gérer le cache des requêtes API
 class ApiCacheService {
@@ -21,8 +20,11 @@ class ApiCacheService {
   
   /// Initialise le service de cache
   Future<void> init() async {
-    final dir = await getApplicationDocumentsDirectory();
-    Hive.init(dir.path);  // Changed from initFlutter to init
+    // NE PAS ré-initialiser Hive ici : le répertoire Hive est fixé une seule
+    // fois au démarrage (main._initializeHive → sous-dossier propre à l'app).
+    // Un Hive.init(Documents) ré-orientait TOUTES les boxes ouvertes ensuite
+    // vers C:\Users\...\Documents (dossier partagé) → collision de verrou avec
+    // les autres apps Wanzo. On ouvre simplement la box dans le répertoire courant.
     _cacheBox = await Hive.openBox<String>('api_cache');
   }
   

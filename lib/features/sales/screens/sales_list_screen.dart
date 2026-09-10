@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import 'package:get_it/get_it.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
 import 'package:wanzo/core/services/sync_service.dart';
+import 'package:wanzo/core/platform/platform_service.dart';
+import 'package:wanzo/core/utils/currency_formatter.dart';
 
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/navigation/app_router.dart';
@@ -90,6 +92,10 @@ class _SalesListScreenState extends State<SalesListScreen> {
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('dd/MM/yyyy', 'fr_FR');
 
+    final bool isNarrow =
+        MediaQuery.sizeOf(context).width <
+        PlatformService.instance.tabletMinWidth;
+
     return BlocBuilder<SalesBloc, SalesState>(
       builder: (context, state) {
         return WanzoScaffold(
@@ -117,7 +123,7 @@ class _SalesListScreenState extends State<SalesListScreen> {
                               dateFormat.format(s.date),
                               s.customerName,
                               s.items.length.toString(),
-                              '${s.totalAmountInCdf.toStringAsFixed(2)} ${s.transactionCurrencyCode ?? "CDF"}',
+                              formatCurrency(s.totalAmountInCdf, 'CDF'),
                               s.status.displayName,
                               s.paymentMethod ?? '',
                             ],
@@ -138,19 +144,43 @@ class _SalesListScreenState extends State<SalesListScreen> {
               tooltip: 'Actualiser',
             ),
           ],
-          floatingActionButton: FloatingActionButton(
-            onPressed:
-                () => FormNavigationService.instance.openSaleForm(
-                  context,
-                  onSuccess:
-                      () => context.read<SalesBloc>().add(const LoadSales()),
-                ),
-            tooltip: 'Nouvelle vente',
-            child: const Icon(Icons.add),
-          ),
-          body: _buildBody(context, state),
+          floatingActionButton:
+              isNarrow
+                  ? FloatingActionButton(
+                    onPressed: () => _openSaleForm(context),
+                    tooltip: 'Nouvelle vente',
+                    child: const Icon(Icons.add),
+                  )
+                  : null,
+          body:
+              isNarrow
+                  ? _buildBody(context, state)
+                  : Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: Row(
+                          children: [
+                            FilledButton.icon(
+                              onPressed: () => _openSaleForm(context),
+                              icon: const Icon(Icons.add),
+                              label: const Text('Nouvelle vente'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(child: _buildBody(context, state)),
+                    ],
+                  ),
         );
       },
+    );
+  }
+
+  void _openSaleForm(BuildContext context) {
+    FormNavigationService.instance.openSaleForm(
+      context,
+      onSuccess: () => context.read<SalesBloc>().add(const LoadSales()),
     );
   }
 
@@ -232,10 +262,6 @@ class _SalesListScreenState extends State<SalesListScreen> {
     List<Sale> sales,
     double totalAmount,
   ) {
-    final currencyFormat = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'CDF',
-    );
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
 
     return Column(
@@ -254,7 +280,7 @@ class _SalesListScreenState extends State<SalesListScreen> {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               Text(
-                'Total: ${currencyFormat.format(totalAmount)}',
+                'Total: ${formatCurrency(totalAmount, 'CDF')}',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: Theme.of(context).colorScheme.primary,
@@ -268,7 +294,6 @@ class _SalesListScreenState extends State<SalesListScreen> {
         Expanded(
           child: _SalesDataTable(
             sales: sales,
-            currencyFormat: currencyFormat,
             dateFormat: dateFormat,
             onSaleTap: (sale) {
               context.pushNamed(
@@ -350,13 +375,11 @@ class _SalesListScreenState extends State<SalesListScreen> {
 /// Widget DataTable pour afficher les ventes
 class _SalesDataTable extends StatelessWidget {
   final List<Sale> sales;
-  final NumberFormat currencyFormat;
   final DateFormat dateFormat;
   final Function(Sale) onSaleTap;
 
   const _SalesDataTable({
     required this.sales,
-    required this.currencyFormat,
     required this.dateFormat,
     required this.onSaleTap,
   });
@@ -485,7 +508,7 @@ class _SalesDataTable extends StatelessWidget {
                               // Montant
                               DataCell(
                                 Text(
-                                  currencyFormat.format(sale.totalAmountInCdf),
+                                  formatCurrency(sale.totalAmountInCdf, 'CDF'),
                                   style: theme.textTheme.bodyMedium?.copyWith(
                                     fontWeight: FontWeight.bold,
                                     color: theme.colorScheme.primary,
@@ -556,7 +579,6 @@ class _SalesDataTable extends StatelessWidget {
                                     context,
                                     sale.paidAmountInCdf,
                                     sale.totalAmountInCdf,
-                                    currencyFormat,
                                   ),
                                 ),
                               // Actions
@@ -598,7 +620,6 @@ class _SalesDataTable extends StatelessWidget {
     BuildContext context,
     double paidAmount,
     double totalAmount,
-    NumberFormat currencyFormat,
   ) {
     final theme = Theme.of(context);
     final percentage = totalAmount > 0 ? (paidAmount / totalAmount * 100) : 0;
@@ -652,7 +673,7 @@ class _SalesDataTable extends StatelessWidget {
         if (isPartiallyPaid || isNotPaid) ...[
           const SizedBox(width: 8),
           Text(
-            currencyFormat.format(paidAmount),
+            formatCurrency(paidAmount, 'CDF'),
             style: theme.textTheme.bodySmall?.copyWith(color: statusColor),
           ),
         ],
@@ -692,7 +713,7 @@ class _SalesDataTable extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                     Text(
-                      'Montant: ${currencyFormat.format(sale.totalAmountInCdf)}',
+                      'Montant: ${formatCurrency(sale.totalAmountInCdf, 'CDF')}',
                     ),
                     Text('Date: ${dateFormat.format(sale.date)}'),
                   ],

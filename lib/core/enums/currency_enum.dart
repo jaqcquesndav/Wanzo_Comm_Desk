@@ -32,7 +32,7 @@ extension CurrencyExtension on Currency {
   String get symbol {
     switch (this) {
       case Currency.CDF:
-        return 'FC'; // Or CDF
+        return 'CDF'; // Franc congolais affiché en code ISO
       case Currency.USD:
         return '\$';
       case Currency.FCFA:

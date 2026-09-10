@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/services/currency_service.dart';
 import 'package:intl/intl.dart'; // Keep for _formatDate
 import '../../sales/models/sale.dart';
 import '../../sales/repositories/sales_repository.dart';
+import '../../sales/utils/sale_payment_flow.dart';
 import '../../receivables/utils/receivables_utils.dart';
+import 'package:wanzo/core/shared_widgets/responsive_action_bar.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
@@ -33,7 +36,16 @@ class CustomerDetailsScreen extends StatelessWidget {
       context.read<CustomerBloc>().add(LoadCustomer(customerId));
 
       return Scaffold(
-        appBar: AppBar(title: Text(localizations.customerDetailsTitle)),
+        appBar: AppBar(
+          title: Text(localizations.customerDetailsTitle),
+          // Retour SÛR : en accès direct (deep link) la pile peut être vide →
+          // replier sur le hub Contacts pour ne jamais bloquer l'utilisateur.
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () =>
+                context.canPop() ? context.pop() : context.go('/contacts'),
+          ),
+        ),
         body: BlocBuilder<CustomerBloc, CustomerState>(
           builder: (context, state) {
             if (state is CustomerLoading) {
@@ -65,6 +77,12 @@ class CustomerDetailsScreen extends StatelessWidget {
         return Scaffold(
           appBar: AppBar(
             title: Text(localizations.customerDetailsTitle),
+            // Retour SÛR : pile vide (deep link) → repli sur Contacts.
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () =>
+                  context.canPop() ? context.pop() : context.go('/contacts'),
+            ),
             actions: [
               IconButton(
                 icon: const Icon(Icons.edit),
@@ -165,6 +183,9 @@ class CustomerDetailsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                // Actions de contact direct : Appeler / WhatsApp / Email.
+                _buildContactActions(context, customer),
                 const SizedBox(height: 16),
                 // Carte statistiques
                 Card(
@@ -254,6 +275,49 @@ class CustomerDetailsScreen extends StatelessWidget {
                                   Icons.receipt_long,
                                   '',
                                   localizations.unpaidSalesCount(unpaid.length),
+                                ),
+                                const SizedBox(height: 12),
+                                // Wrap : « Régler » et « Relancer » passent à
+                                // la ligne au lieu de déborder.
+                                Wrap(
+                                  alignment: WrapAlignment.end,
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    ElevatedButton.icon(
+                                      icon: const Icon(
+                                        Icons.payments_outlined,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Régler'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green.shade700,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                      onPressed:
+                                          () => _settleReceivable(
+                                            context,
+                                            unpaid.toList(),
+                                            currencyService,
+                                          ),
+                                    ),
+                                    ElevatedButton.icon(
+                                      icon: const Icon(
+                                        Icons.campaign_outlined,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Relancer'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.orange.shade700,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                      onPressed:
+                                          () => _remindCustomer(
+                                            context,
+                                            customer,
+                                          ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -533,6 +597,9 @@ class CustomerDetailsScreen extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          // Actions de contact direct : Appeler / WhatsApp / Email.
+          _buildContactActions(context, customer),
           const SizedBox(height: 16),
 
           Card(
@@ -611,36 +678,30 @@ class CustomerDetailsScreen extends StatelessWidget {
             customerName: customer.name,
           ),
           const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              Expanded(
-                child: _buildActionButton(
-                  context,
-                  Icons.add_shopping_cart,
-                  localizations.addSaleButtonLabel,
-                  onPressed: () => _addSale(context, customer),
-                ),
+          // ResponsiveActionBar : trois boutons libellés ne tenaient pas dans
+          // une Row d'Expanded sur une fenêtre étroite (débordement).
+          ResponsiveActionBar(
+            items: [
+              ActionBarItem(
+                icon: Icons.add_shopping_cart,
+                label: localizations.addSaleButtonLabel,
+                background: Theme.of(context).colorScheme.primaryContainer,
+                foreground: Theme.of(context).colorScheme.onPrimaryContainer,
+                onPressed: () => _addSale(context, customer),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildActionButton(
-                  context,
-                  Icons.phone,
-                  localizations.callButtonLabel,
-                  onPressed:
-                      () => _makePhoneCall(context, customer.phoneNumber),
-                ),
+              ActionBarItem(
+                icon: Icons.phone,
+                label: localizations.callButtonLabel,
+                background: Theme.of(context).colorScheme.primaryContainer,
+                foreground: Theme.of(context).colorScheme.onPrimaryContainer,
+                onPressed: () => _makePhoneCall(context, customer.phoneNumber),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildActionButton(
-                  context,
-                  Icons.delete,
-                  localizations.deleteButtonLabel,
-                  isDestructive: true,
-                  onPressed: () => _confirmDelete(context, customer),
-                ),
+              ActionBarItem(
+                icon: Icons.delete,
+                label: localizations.deleteButtonLabel,
+                background: Colors.red.withValues(alpha: 0.1),
+                foreground: Colors.red,
+                onPressed: () => _confirmDelete(context, customer),
               ),
             ],
           ),
@@ -676,35 +737,6 @@ class CustomerDetailsScreen extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton(
-    BuildContext context,
-    IconData icon,
-    String label, {
-    required VoidCallback onPressed,
-    bool isDestructive = false,
-  }) {
-    final theme = Theme.of(context);
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 18),
-      label: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 12),
-      ), // Adjusted text style
-      style: ElevatedButton.styleFrom(
-        backgroundColor:
-            isDestructive
-                ? Colors.red.withValues(alpha: 0.1)
-                : theme.colorScheme.primaryContainer,
-        foregroundColor:
-            isDestructive ? Colors.red : theme.colorScheme.onPrimaryContainer,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-        textStyle: const TextStyle(fontSize: 12),
       ),
     );
   }
@@ -768,19 +800,112 @@ class CustomerDetailsScreen extends StatelessWidget {
     );
   }
 
-  void _makePhoneCall(BuildContext context, String phoneNumber) {
-    final localizations = AppLocalizations.of(context)!;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(localizations.callingNumber(phoneNumber)),
-      ), // Corrected
+  /// Règle une créance du client : choix de la pièce puis dialogue de
+  /// paiement (montant, mode, date, référence). On attend la réponse de
+  /// l'API avant d'informer l'utilisateur.
+  Future<void> _settleReceivable(
+    BuildContext context,
+    List<Sale> unpaidSales,
+    CurrencyService currencyService,
+  ) async {
+    final sale = await pickSaleToSettle(
+      context,
+      unpaidSales,
+      formatAmount: currencyService.formatAmount,
+    );
+    if (sale == null || !context.mounted) return;
+    final updated = await startSalePaymentFlow(context, sale);
+    if (updated != null && context.mounted) {
+      // Recharge la fiche pour rafraîchir le solde impayé affiché.
+      context.read<CustomerBloc>().add(LoadCustomer(sale.customerId ?? ''));
+    }
+  }
+
+  /// Rangée d'actions de contact direct : Appeler / WhatsApp / Email.
+  ///
+  /// [ResponsiveActionBar] au lieu d'une `Row` de trois `Expanded` : les
+  /// libellés débordaient sur les fenêtres étroites.
+  Widget _buildContactActions(BuildContext context, Customer customer) {
+    return ResponsiveActionBar(
+      items: [
+        ActionBarItem(
+          icon: Icons.phone,
+          label: 'Appeler',
+          background: Theme.of(context).colorScheme.primaryContainer,
+          foreground: Theme.of(context).colorScheme.onPrimaryContainer,
+          onPressed: () => _makePhoneCall(context, customer.phoneNumber),
+        ),
+        ActionBarItem(
+          icon: Icons.chat,
+          label: 'WhatsApp',
+          background: Theme.of(context).colorScheme.primaryContainer,
+          foreground: Theme.of(context).colorScheme.onPrimaryContainer,
+          onPressed: () => _contactViaWhatsApp(context, customer),
+        ),
+        ActionBarItem(
+          icon: Icons.email,
+          label: 'Email',
+          background: Theme.of(context).colorScheme.primaryContainer,
+          foreground: Theme.of(context).colorScheme.onPrimaryContainer,
+          onPressed: () => _sendEmail(context, customer.email ?? ''),
+        ),
+      ],
     );
   }
 
-  void _sendEmail(BuildContext context, String email) {
-    final localizations = AppLocalizations.of(context)!;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(localizations.emailingTo(email))), // Corrected
+  /// Lance un appel téléphonique réel vers le client (lien `tel:`).
+  Future<void> _makePhoneCall(BuildContext context, String phoneNumber) async {
+    if (phoneNumber.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucun numéro de téléphone disponible.')),
+      );
+      return;
+    }
+    final ok = await launchPhoneCall(phoneNumber);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible de lancer l\'appel.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Ouvre le client mail réel avec l'adresse du client pré-remplie.
+  Future<void> _sendEmail(BuildContext context, String email) async {
+    if (email.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucune adresse email disponible.')),
+      );
+      return;
+    }
+    final ok = await launchEmail(email);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible d\'ouvrir la messagerie.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Contacte le client via WhatsApp (repli SMS) sur son numéro enregistré.
+  Future<void> _contactViaWhatsApp(
+    BuildContext context,
+    Customer customer,
+  ) async {
+    if (customer.phoneNumber.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucun numéro de téléphone disponible.')),
+      );
+      return;
+    }
+    await launchWhatsAppOrSms(
+      context,
+      message: 'Bonjour ${customer.name},',
+      phone: customer.phoneNumber,
     );
   }
 
