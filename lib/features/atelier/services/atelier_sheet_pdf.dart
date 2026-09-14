@@ -110,11 +110,14 @@ class AtelierSheetPdf {
 
     final isMaintenance = order.metier.isMaintenanceLike;
     final isImprimerie = order.metier == AtelierMetier.imprimerie;
+    final isPressing = order.metier == AtelierMetier.pressing;
     final title = isMaintenance
         ? 'FICHE DE RÉCEPTION ET DE RÉPARATION'
         : isImprimerie
             ? 'FICHE TRAVAIL D\'IMPRESSION'
-            : 'FICHE DE COMMANDE / BON DE LIVRAISON';
+            : isPressing
+                ? 'FICHE DE DÉPÔT PRESSING'
+                : 'FICHE DE COMMANDE / BON DE LIVRAISON';
 
     // Imprimerie : première image du design / BAT embarquée (optionnelle).
     pw.Widget? designImage;
@@ -140,7 +143,7 @@ class AtelierSheetPdf {
             children: [
               _header(issuer, title, logo, regular, bold),
               pw.SizedBox(height: 10),
-              _metaBar(order, regular, bold, isMaintenance),
+              _metaBar(order, regular, bold),
               pw.SizedBox(height: 12),
               _clientBox(order, regular, bold),
               pw.SizedBox(height: 12),
@@ -148,6 +151,8 @@ class AtelierSheetPdf {
                 ..._maintenanceBody(order, regular, bold, italic)
               else if (isImprimerie)
                 ..._printBody(order, regular, bold, italic, designImage)
+              else if (isPressing)
+                ..._pressingBody(order, regular, bold)
               else
                 ..._confectionBody(order, regular, bold, italic),
               pw.SizedBox(height: 12),
@@ -254,8 +259,13 @@ class AtelierSheetPdf {
     AtelierOrder order,
     pw.Font regular,
     pw.Font bold,
-    bool isMaintenance,
   ) {
+    // Vocabulaire des dates selon le métier : réception/retrait (réparation,
+    // pressing) ou enregistrement/livraison (confection, imprimerie).
+    final isPressing = order.metier == AtelierMetier.pressing;
+    final isMaintenance = order.metier.isMaintenanceLike;
+    final entryLabel = isPressing ? 'DÉPÔT' : isMaintenance ? 'RÉCEPTION' : 'ENREGISTREMENT';
+    final exitLabel = (isPressing || isMaintenance) ? 'RETRAIT PRÉVU' : 'LIVRAISON PRÉVUE';
     pw.Widget cell(String label, String value) => pw.Expanded(
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -277,10 +287,8 @@ class AtelierSheetPdf {
       child: pw.Row(
         children: [
           cell('FICHE N°', _shortId(order.id)),
-          cell(isMaintenance ? 'RÉCEPTION' : 'ENREGISTREMENT',
-              _fmtDate(order.entryDate)),
-          cell(isMaintenance ? 'RETRAIT PRÉVU' : 'LIVRAISON PRÉVUE',
-              _fmtDate(order.exitDate)),
+          cell(entryLabel, _fmtDate(order.entryDate)),
+          cell(exitLabel, _fmtDate(order.exitDate)),
           cell('STATUT', order.status.labelFor(order.metier)),
         ],
       ),
@@ -508,6 +516,75 @@ class AtelierSheetPdf {
           ),
           child: designImage,
         ),
+      ],
+    ];
+  }
+
+  // ── Corps pressing : articles déposés ───────────────────────────────────
+  static List<pw.Widget> _pressingBody(
+    AtelierOrder order,
+    pw.Font regular,
+    pw.Font bold,
+  ) {
+    final d = order.pressingDetails;
+    final items = d?.items ?? const <PressingItem>[];
+    pw.Widget cellText(String t, {bool isBold = false, pw.TextAlign align = pw.TextAlign.left}) => pw.Padding(
+          padding: const pw.EdgeInsets.all(4),
+          child: pw.Text(t, textAlign: align, style: pw.TextStyle(font: isBold ? bold : regular, fontSize: 9)),
+        );
+    return [
+      _sectionTitle('DÉPÔT', bold),
+      pw.Row(children: [
+        pw.Expanded(child: _inlineField('Service', (d?.isExpress ?? false) ? 'Express' : 'Standard', regular, bold)),
+        pw.Expanded(child: _inlineField('N° de sac / ticket', d?.bagNumber ?? '—', regular, bold)),
+        pw.Expanded(
+            child: _inlineField('Poids', d?.totalWeightKg == null ? '—' : '${d!.totalWeightKg} kg', regular, bold)),
+      ]),
+      pw.SizedBox(height: 10),
+      _sectionTitle('ARTICLES DÉPOSÉS (${d?.itemsCount ?? 0})', bold),
+      if (items.isEmpty)
+        _paragraph('Aucun article détaillé.', regular)
+      else
+        pw.Table(
+          border: pw.TableBorder.all(color: PdfColors.grey300),
+          columnWidths: const {
+            0: pw.FlexColumnWidth(3),
+            1: pw.FixedColumnWidth(36),
+            2: pw.FlexColumnWidth(2.2),
+            3: pw.FlexColumnWidth(2.5),
+          },
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+              children: [
+                cellText('Article', isBold: true),
+                cellText('Qté', isBold: true, align: pw.TextAlign.center),
+                cellText('Traitement', isBold: true),
+                cellText('Remarque', isBold: true),
+              ],
+            ),
+            for (final it in items)
+              pw.TableRow(children: [
+                cellText(it.type),
+                cellText('${it.quantity}', align: pw.TextAlign.center),
+                cellText(it.treatment ?? '—'),
+                cellText(it.note ?? ''),
+              ]),
+          ],
+        ),
+      if (d?.stains != null && d!.stains!.trim().isNotEmpty) ...[
+        pw.SizedBox(height: 10),
+        _sectionTitle('TACHES ET DÉFAUTS SIGNALÉS AU DÉPÔT', bold),
+        _paragraph(d.stains!, regular),
+      ],
+      if (d?.instructions != null && d!.instructions!.trim().isNotEmpty) ...[
+        pw.SizedBox(height: 10),
+        _sectionTitle('CONSIGNES', bold),
+        _paragraph(d.instructions!, regular),
+      ],
+      if (d?.operatorName != null && d!.operatorName!.trim().isNotEmpty) ...[
+        pw.SizedBox(height: 10),
+        _inlineField('Réceptionnaire', d.operatorName!, regular, bold),
       ],
     ];
   }

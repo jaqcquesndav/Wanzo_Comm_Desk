@@ -424,6 +424,95 @@ class PrintJobDetails extends Equatable {
       ];
 }
 
+/// Article déposé au pressing (une ligne de la fiche de dépôt).
+class PressingItem extends Equatable {
+  final String type; // Chemise, Costume 2 pièces, Couette…
+  final int quantity;
+  final String? treatment; // Nettoyage à sec, Lavage, Repassage, Détachage…
+  final String? note; // Tache, bouton manquant, couleur…
+
+  const PressingItem({required this.type, this.quantity = 1, this.treatment, this.note});
+
+  factory PressingItem.fromJson(Map<String, dynamic> json) => PressingItem(
+        type: json['type'] as String? ?? '',
+        quantity: int.tryParse('${json['quantity'] ?? 1}') ?? 1,
+        treatment: json['treatment'] as String?,
+        note: json['note'] as String?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'type': type,
+        'quantity': quantity,
+        if (treatment != null && treatment!.isNotEmpty) 'treatment': treatment,
+        if (note != null && note!.isNotEmpty) 'note': note,
+      };
+
+  @override
+  List<Object?> get props => [type, quantity, treatment, note];
+}
+
+/// Fiche de DÉPÔT d'un pressing (miroir du jsonb backend `pressingDetails`) :
+/// articles déposés, niveau de service, poids, défauts signalés, consignes.
+class PressingDetails extends Equatable {
+  final List<PressingItem> items;
+  final String? serviceLevel; // standard | express
+  final double? totalWeightKg; // Linge au poids
+  final String? bagNumber; // N° de sac / ticket de dépôt
+  final String? stains; // Taches, défauts, boutons manquants signalés au dépôt
+  final String? instructions; // Consignes (amidon, pliage, cintre…)
+  final String? operatorName; // Réceptionnaire / opérateur
+
+  const PressingDetails({
+    this.items = const [],
+    this.serviceLevel,
+    this.totalWeightKg,
+    this.bagNumber,
+    this.stains,
+    this.instructions,
+    this.operatorName,
+  });
+
+  int get itemsCount => items.fold(0, (s, i) => s + i.quantity);
+  bool get isExpress => serviceLevel == 'express';
+
+  bool get isEmpty =>
+      items.isEmpty &&
+      (serviceLevel == null || serviceLevel!.isEmpty) &&
+      totalWeightKg == null &&
+      (bagNumber == null || bagNumber!.isEmpty) &&
+      (stains == null || stains!.isEmpty) &&
+      (instructions == null || instructions!.isEmpty) &&
+      (operatorName == null || operatorName!.isEmpty);
+
+  factory PressingDetails.fromJson(Map<String, dynamic> json) => PressingDetails(
+        items: (json['items'] is List)
+            ? (json['items'] as List)
+                .whereType<Map>()
+                .map((e) => PressingItem.fromJson(Map<String, dynamic>.from(e)))
+                .toList()
+            : const [],
+        serviceLevel: json['serviceLevel'] as String?,
+        totalWeightKg: json['totalWeightKg'] == null ? null : double.tryParse('${json['totalWeightKg']}'),
+        bagNumber: json['bagNumber'] as String?,
+        stains: json['stains'] as String?,
+        instructions: json['instructions'] as String?,
+        operatorName: json['operatorName'] as String?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (items.isNotEmpty) 'items': items.map((e) => e.toJson()).toList(),
+        if (serviceLevel != null) 'serviceLevel': serviceLevel,
+        if (totalWeightKg != null) 'totalWeightKg': totalWeightKg,
+        if (bagNumber != null) 'bagNumber': bagNumber,
+        if (stains != null) 'stains': stains,
+        if (instructions != null) 'instructions': instructions,
+        if (operatorName != null) 'operatorName': operatorName,
+      };
+
+  @override
+  List<Object?> get props => [items, serviceLevel, totalWeightKg, bagNumber, stains, instructions, operatorName];
+}
+
 /// Événement d'étape horodaté (miroir du backend `StageEvent`). Base des KPI de
 /// performance de prestation (durée par étape, cycle) → future cote crédit.
 class StageEvent {
@@ -469,6 +558,7 @@ class AtelierOrder extends Equatable {
   final AtelierMetier metier;
   final MaintenanceDetails? maintenanceDetails;
   final PrintJobDetails? printDetails;
+  final PressingDetails? pressingDetails;
   /// Historique horodaté des étapes (KPI de performance de prestation).
   final List<StageEvent> stageHistory;
   final DateTime? entryDate;
@@ -500,6 +590,7 @@ class AtelierOrder extends Equatable {
     this.metier = AtelierMetier.couture,
     this.maintenanceDetails,
     this.printDetails,
+    this.pressingDetails,
     this.stageHistory = const [],
     this.entryDate,
     this.exitDate,
@@ -546,6 +637,9 @@ class AtelierOrder extends Equatable {
           ? PrintJobDetails.fromJson(
               json['printDetails'] as Map<String, dynamic>)
           : null,
+      pressingDetails: json['pressingDetails'] is Map<String, dynamic>
+          ? PressingDetails.fromJson(json['pressingDetails'] as Map<String, dynamic>)
+          : null,
       stageHistory: (json['stageHistory'] is List)
           ? (json['stageHistory'] as List)
               .whereType<Map<String, dynamic>>()
@@ -585,6 +679,7 @@ class AtelierOrder extends Equatable {
     if (maintenanceDetails != null)
       'maintenanceDetails': maintenanceDetails!.toJson(),
     if (printDetails != null) 'printDetails': printDetails!.toJson(),
+    if (pressingDetails != null) 'pressingDetails': pressingDetails!.toJson(),
     if (entryDate != null) 'entryDate': entryDate!.toIso8601String(),
     if (exitDate != null) 'exitDate': exitDate!.toIso8601String(),
     'totalAmount': totalAmount,
@@ -616,6 +711,7 @@ class AtelierOrder extends Equatable {
     if (maintenanceDetails != null)
       'maintenanceDetails': maintenanceDetails!.toJson(),
     if (printDetails != null) 'printDetails': printDetails!.toJson(),
+    if (pressingDetails != null) 'pressingDetails': pressingDetails!.toJson(),
     if (entryDate != null) 'entryDate': entryDate!.toIso8601String(),
     if (exitDate != null) 'exitDate': exitDate!.toIso8601String(),
     'totalAmount': totalAmount,
@@ -634,6 +730,7 @@ class AtelierOrder extends Equatable {
     AtelierMetier? metier,
     MaintenanceDetails? maintenanceDetails,
     PrintJobDetails? printDetails,
+    PressingDetails? pressingDetails,
   }) {
     return AtelierOrder(
       id: id,
@@ -645,6 +742,7 @@ class AtelierOrder extends Equatable {
       metier: metier ?? this.metier,
       maintenanceDetails: maintenanceDetails ?? this.maintenanceDetails,
       printDetails: printDetails ?? this.printDetails,
+      pressingDetails: pressingDetails ?? this.pressingDetails,
       stageHistory: stageHistory,
       entryDate: entryDate,
       exitDate: exitDate,

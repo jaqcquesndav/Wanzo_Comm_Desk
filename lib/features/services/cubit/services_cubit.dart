@@ -108,6 +108,25 @@ class ServicesCubit extends Cubit<ServicesState> {
 
   Future<void> toggleActive(ServiceItem item) => save(item.copyWith(active: !item.active));
 
+  /// Import en masse (CSV) : cache local d'abord (visible hors ligne), puis
+  /// publication groupée ; les éléments non publiés restent en attente et
+  /// repartent au prochain `load()`.
+  Future<void> importAll(List<ServiceItem> items) async {
+    if (items.isEmpty) return;
+    final metier = currentMetier;
+    final stamped = [for (final it in items) it.copyWith(metier: it.metier ?? metier, pendingSync: true)];
+    for (final it in stamped) {
+      await _repository.upsert(it);
+    }
+    emit(state.copyWith(items: _visible(await _repository.loadAll())));
+    try {
+      await _api.bulkUpsert(stamped);
+      await load();
+    } catch (_) {
+      // Reste en attente ; republié par `load()`.
+    }
+  }
+
   /// Services actifs correspondant à une recherche du point de vente
   /// (nom ou catégorie), limités pour rester lisibles sous le champ.
   List<ServiceItem> search(String query, {int limit = 5}) {

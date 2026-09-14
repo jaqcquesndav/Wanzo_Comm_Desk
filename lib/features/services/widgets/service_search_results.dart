@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:wanzo/core/utils/adaptive_pull_up.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 
 import '../models/service_item.dart';
@@ -107,10 +108,14 @@ class ServiceSearchResults extends StatelessWidget {
       onPick(service, tier);
       return;
     }
-    final tier = await showDialog<ServicePriceTier>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text(service.name),
+    final tier = await showAdaptivePullUp<ServicePriceTier>(
+      context,
+      title: service.name,
+      icon: Icons.design_services_outlined,
+      maxWidth: 420,
+      builder: (ctx) => ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
           for (final t in service.priceTiers)
             ListTile(

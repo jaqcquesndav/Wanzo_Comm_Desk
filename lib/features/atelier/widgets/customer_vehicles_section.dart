@@ -6,7 +6,7 @@ import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/features/atelier/models/customer_vehicle.dart';
 import 'package:wanzo/features/atelier/screens/vehicle_sheet_screen.dart';
 import 'package:wanzo/features/atelier/services/atelier_api_service.dart';
-import 'package:wanzo/features/atelier/widgets/vehicle_form_dialog.dart';
+import 'package:wanzo/features/atelier/widgets/vehicle_form_sheet.dart';
 
 /// Section « Véhicules » du détail client, mode garage uniquement : liste des
 /// véhicules du client, ajout / modification, et ouverture de la FICHE DE
@@ -48,12 +48,12 @@ class _CustomerVehiclesSectionState extends State<CustomerVehiclesSection> {
   }
 
   Future<void> _add() async {
-    final v = await showVehicleFormDialog(context, customerId: widget.customerId);
+    final v = await showVehicleForm(context, customerId: widget.customerId);
     if (v != null) _load();
   }
 
   Future<void> _edit(CustomerVehicle vehicle) async {
-    final v = await showVehicleFormDialog(context, customerId: widget.customerId, vehicle: vehicle);
+    final v = await showVehicleForm(context, customerId: widget.customerId, vehicle: vehicle);
     if (v != null) _load();
   }
 

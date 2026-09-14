@@ -28,7 +28,7 @@ import 'package:wanzo/l10n/app_localizations.dart'; // Updated import
 import 'package:wanzo/features/services/cubit/services_cubit.dart';
 import 'package:wanzo/features/services/models/service_item.dart';
 import 'package:wanzo/features/services/widgets/services_tab.dart';
-import 'package:wanzo/features/services/widgets/public_catalog_dialog.dart';
+import 'package:wanzo/features/services/widgets/public_catalog_sheet.dart';
 
 /// Écran principal de gestion de l'inventaire
 class InventoryScreen extends StatefulWidget {
@@ -153,7 +153,7 @@ class _InventoryScreenState extends State<InventoryScreen>
             IconButton(
               icon: const Icon(Icons.storefront_outlined),
               tooltip: 'Catalogue public',
-              onPressed: () => showPublicCatalogDialog(context),
+              onPressed: () => showPublicCatalogSheet(context),
             ),
             // Bouton de recherche
             IconButton(

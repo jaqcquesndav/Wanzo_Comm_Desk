@@ -14,9 +14,10 @@ import 'package:wanzo/features/atelier/cubit/atelier_orders_cubit.dart';
 import 'package:wanzo/features/atelier/config/vehicle_catalog.dart';
 import 'package:wanzo/features/atelier/models/atelier_order.dart';
 import 'package:wanzo/features/atelier/models/customer_vehicle.dart';
-import 'package:wanzo/features/atelier/widgets/vehicle_form_dialog.dart';
+import 'package:wanzo/features/atelier/widgets/vehicle_form_sheet.dart';
 import 'package:wanzo/features/atelier/screens/atelier_client_profile_screen.dart';
 import 'package:wanzo/features/atelier/services/atelier_api_service.dart';
+import 'package:wanzo/features/services/config/service_suggestions.dart';
 
 /// Formulaire de création / modification d'une commande de confection.
 ///
@@ -86,6 +87,14 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   final _machineCtrl = TextEditingController();
   final _printInstructionsCtrl = TextEditingController();
   List<String> _designPhotos = [];
+  // ── Fiche de dépôt (pressing) ──
+  String _pressingLevel = 'standard'; // standard | express
+  final _bagCtrl = TextEditingController();
+  final _weightCtrl = TextEditingController();
+  final _stainsCtrl = TextEditingController();
+  final _pressingInstructionsCtrl = TextEditingController();
+  final _pressingOperatorCtrl = TextEditingController();
+  final List<_PressingItemRow> _pressingItems = [];
   final ImagePickerServiceInterface _imagePicker =
       ImagePickerServiceFactory.getInstance();
   final _imageUpload = ImageUploadService();
@@ -150,6 +159,19 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
         _machineCtrl.text = p.machine ?? '';
         _printInstructionsCtrl.text = p.instructions ?? '';
         _designPhotos = List<String>.from(p.designPhotos);
+      }
+      final pr = o.pressingDetails;
+      if (pr != null) {
+        _pressingLevel = pr.serviceLevel ?? 'standard';
+        _bagCtrl.text = pr.bagNumber ?? '';
+        _weightCtrl.text = pr.totalWeightKg?.toString() ?? '';
+        _stainsCtrl.text = pr.stains ?? '';
+        _pressingInstructionsCtrl.text = pr.instructions ?? '';
+        _pressingOperatorCtrl.text = pr.operatorName ?? '';
+        for (final it in pr.items) {
+          _pressingItems.add(_PressingItemRow(
+              type: it.type, quantity: it.quantity, treatment: it.treatment, note: it.note ?? ''));
+        }
       }
       if (o.metier.usesMeasurements) _checkMeasurements(o.customerId);
     } else {
@@ -220,6 +242,14 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     _vinCtrl.dispose();
     _mileageCtrl.dispose();
     _fuelCtrl.dispose();
+    _bagCtrl.dispose();
+    _weightCtrl.dispose();
+    _stainsCtrl.dispose();
+    _pressingInstructionsCtrl.dispose();
+    _pressingOperatorCtrl.dispose();
+    for (final r in _pressingItems) {
+      r.dispose();
+    }
     _faultCtrl.dispose();
     _diagnosticCtrl.dispose();
     _repairCtrl.dispose();
@@ -238,6 +268,10 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   bool get _isMaintenance => _metier.isMaintenanceLike;
   bool get _isGarage => _metier == AtelierMetier.garage;
   bool get _isImprimerie => _metier == AtelierMetier.imprimerie;
+  bool get _isPressing => _metier == AtelierMetier.pressing;
+
+  /// Confection (couture / cordonnerie) : modèle, tissu, mesures.
+  bool get _isConfection => !_isMaintenance && !_isImprimerie && !_isPressing;
 
   double get _remaining {
     final t = double.tryParse(_totalCtrl.text) ?? 0;
@@ -278,7 +312,9 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                         ? 'Ex. Réparation TV Samsung, Vidange moteur…'
                         : _isImprimerie
                             ? 'Ex. 500 cartes de visite, Banderole 3m…'
-                            : 'Ex. Robe wax, Costume 3 pièces…',
+                            : _isPressing
+                                ? 'Ex. Dépôt Mme Kavira, 3 costumes et 5 chemises…'
+                                : 'Ex. Robe wax, Costume 3 pièces…',
                     border: const OutlineInputBorder(),
                   ),
                   validator: (v) => (v == null || v.trim().isEmpty) ? 'Requis' : null,
@@ -288,6 +324,8 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                   _maintenanceSection()
                 else if (_isImprimerie)
                   _printSection()
+                else if (_isPressing)
+                  _pressingSection()
                 else
                   TextFormField(
                     controller: _modelCtrl,
@@ -359,7 +397,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                     ),
                   ),
                 ],
-                if (!_isMaintenance && !_isImprimerie) ...[
+                if (_isConfection) ...[
                   const SizedBox(height: 16),
                   // ── Tissu (couture) ──
                   _fabricDropdown(),
@@ -484,7 +522,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
 
   Future<void> _addVehicle() async {
     if (_customerId == null) return;
-    final v = await showVehicleFormDialog(context, customerId: _customerId!);
+    final v = await showVehicleForm(context, customerId: _customerId!);
     if (v == null || !mounted) return;
     setState(() => _vehicles = [v, ..._vehicles]);
     _applyVehicle(v);
@@ -598,9 +636,9 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   /// En couture, on choisit couture vs cordonnerie (le mode « atelier » regroupe
   /// les deux). Plus de sélecteur de métier redondant.
   Widget _metierSelector() {
-    // Imprimerie : le métier est fixé par le mode, la fiche travail d'impression
-    // porte toute la config → pas de sélecteur métier redondant.
-    if (_isImprimerie) return const SizedBox.shrink();
+    // Imprimerie et pressing : le métier est fixé par le mode, la fiche du
+    // métier porte toute la config → pas de sélecteur métier redondant.
+    if (_isImprimerie || _isPressing) return const SizedBox.shrink();
     if (_isMaintenance) {
       return DropdownButtonFormField<String>(
         value: _specialty,
@@ -669,13 +707,15 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   /// Noms de responsables déjà saisis sur des commandes du même métier
   /// (opérateurs pour l'imprimerie, techniciens pour la maintenance). Sert de
   /// suggestions à l'autocomplétion → saisie rapide des intervenants récurrents.
-  List<String> _priorStaffNames({required bool imprimerie}) {
+  List<String> _priorStaffNames({required bool imprimerie, bool pressing = false}) {
     final orders = context.read<AtelierOrdersCubit>().state.orders;
     final names = <String>{};
     for (final o in orders) {
-      final n = imprimerie
-          ? o.printDetails?.operatorName
-          : o.maintenanceDetails?.technicianName;
+      final n = pressing
+          ? o.pressingDetails?.operatorName
+          : imprimerie
+              ? o.printDetails?.operatorName
+              : o.maintenanceDetails?.technicianName;
       if (n != null && n.trim().isNotEmpty) names.add(n.trim());
     }
     final list = names.toList()..sort();
@@ -1106,6 +1146,174 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     }
   }
 
+  /// Fiche de DÉPÔT d'un pressing : articles, niveau de service, poids,
+  /// défauts signalés, consignes. Aucun vocabulaire couture ni appareil.
+  Widget _pressingSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle('Fiche de dépôt'),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'standard', icon: Icon(Icons.schedule), label: Text('Standard')),
+            ButtonSegment(value: 'express', icon: Icon(Icons.bolt), label: Text('Express')),
+          ],
+          selected: {_pressingLevel},
+          onSelectionChanged: (s) => setState(() => _pressingLevel = s.first),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(child: _tf(_bagCtrl, 'N° de sac / ticket', hint: 'Ex. S-014')),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _tf(_weightCtrl, 'Poids total (kg)',
+                  hint: 'Linge au poids', keyboard: const TextInputType.numberWithOptions(decimal: true)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(child: _sectionTitle('Articles déposés')),
+            TextButton.icon(
+              onPressed: () => setState(() => _pressingItems.add(_PressingItemRow())),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Ajouter un article'),
+            ),
+          ],
+        ),
+        if (_pressingItems.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Ajoutez chaque article (chemise, costume, couette…) avec sa quantité et son traitement.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ),
+        for (var i = 0; i < _pressingItems.length; i++) _pressingItemCard(i),
+        const SizedBox(height: 8),
+        _tf(_stainsCtrl, 'Taches et défauts signalés au dépôt',
+            hint: 'Tache de vin sur la manche, bouton manquant…', min: 2, max: 3),
+        const SizedBox(height: 12),
+        _tf(_pressingInstructionsCtrl, 'Consignes',
+            hint: 'Amidon léger, sur cintre, pliage…', min: 1, max: 2),
+        const SizedBox(height: 12),
+        _staffAutocomplete(_pressingOperatorCtrl, 'Réceptionnaire',
+            _priorStaffNames(imprimerie: false, pressing: true)),
+      ],
+    );
+  }
+
+  static const List<String> _pressingTreatments = [
+    'Nettoyage à sec', 'Lavage', 'Lavage et repassage', 'Repassage seul', 'Détachage',
+    'Cuir et daim', 'Teinture', 'Retouche',
+  ];
+
+  Widget _pressingItemCard(int i) {
+    final row = _pressingItems[i];
+    final articles = ServiceSuggestions.serviceNames(ActivityMode.pressing);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Autocomplete<String>(
+                    initialValue: TextEditingValue(text: row.type.text),
+                    optionsBuilder: (v) {
+                      final q = v.text.trim().toLowerCase();
+                      return q.isEmpty ? articles : articles.where((a) => a.toLowerCase().contains(q));
+                    },
+                    onSelected: (v) => row.type.text = v,
+                    fieldViewBuilder: (context, ctrl, focus, _) => TextFormField(
+                      controller: ctrl,
+                      focusNode: focus,
+                      onChanged: (v) => row.type.text = v,
+                      decoration: const InputDecoration(
+                          labelText: 'Article', hintText: 'Chemise, Costume…', isDense: true, border: OutlineInputBorder()),
+                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Requis' : null,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 72,
+                  child: TextFormField(
+                    controller: row.quantity,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(labelText: 'Qté', isDense: true, border: OutlineInputBorder()),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Retirer',
+                  onPressed: () => setState(() => _pressingItems.removeAt(i).dispose()),
+                  icon: const Icon(Icons.remove_circle_outline),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: DropdownButtonFormField<String>(
+                    value: _pressingTreatments.contains(row.treatment) ? row.treatment : null,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Traitement', isDense: true, border: OutlineInputBorder()),
+                    items: [for (final t in _pressingTreatments) DropdownMenuItem(value: t, child: Text(t))],
+                    onChanged: (v) => setState(() => row.treatment = v),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 3,
+                  child: TextFormField(
+                    controller: row.note,
+                    decoration: const InputDecoration(
+                        labelText: 'Remarque', hintText: 'Couleur, tache…', isDense: true, border: OutlineInputBorder()),
+                  ),
+                ),
+                const SizedBox(width: 40),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  PressingDetails? _buildPressingDetails() {
+    if (!_isPressing) return null;
+    String? t(TextEditingController c) => c.text.trim().isEmpty ? null : c.text.trim();
+    final d = PressingDetails(
+      items: [
+        for (final r in _pressingItems)
+          if (r.type.text.trim().isNotEmpty)
+            PressingItem(
+              type: r.type.text.trim(),
+              quantity: int.tryParse(r.quantity.text.trim()) ?? 1,
+              treatment: r.treatment,
+              note: t(r.note),
+            ),
+      ],
+      serviceLevel: _pressingLevel,
+      totalWeightKg: double.tryParse(_weightCtrl.text.trim().replaceAll(',', '.')),
+      bagNumber: t(_bagCtrl),
+      stains: t(_stainsCtrl),
+      instructions: t(_pressingInstructionsCtrl),
+      operatorName: t(_pressingOperatorCtrl),
+    );
+    return d.isEmpty ? null : d;
+  }
+
   PrintJobDetails? _buildPrintDetails() {
     if (!_isImprimerie) return null;
     String? t(TextEditingController c) =>
@@ -1148,16 +1356,17 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       metier: _metier,
       maintenanceDetails: _buildMaintenanceDetails(),
       printDetails: _buildPrintDetails(),
-      modelDetails: (_isMaintenance || _isImprimerie)
-          ? null
-          : (_modelCtrl.text.trim().isEmpty ? null : _modelCtrl.text.trim()),
+      pressingDetails: _buildPressingDetails(),
+      modelDetails: _isConfection
+          ? (_modelCtrl.text.trim().isEmpty ? null : _modelCtrl.text.trim())
+          : null,
       entryDate: _entryDate,
       exitDate: _exitDate,
       totalAmount: double.tryParse(_totalCtrl.text) ?? 0,
       advanceAmount: double.tryParse(_advanceCtrl.text) ?? 0,
       currencyCode: _currency,
       exchangeRate: _currency == 'CDF' ? 1 : (double.tryParse(_rateCtrl.text) ?? 1),
-      fabricProvidedBy: (_isMaintenance || _isImprimerie) ? null : _fabric,
+      fabricProvidedBy: _isConfection ? _fabric : null,
     );
 
     final result = _isEdit
@@ -1173,5 +1382,22 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
         const SnackBar(content: Text('Échec de l\'enregistrement')),
       );
     }
+  }
+}
+
+/// Ligne d'article de la fiche de dépôt pressing (contrôleurs par ligne).
+class _PressingItemRow {
+  final TextEditingController type;
+  final TextEditingController quantity;
+  final TextEditingController note;
+  String? treatment;
+  _PressingItemRow({String type = '', int quantity = 1, this.treatment, String note = ''})
+      : type = TextEditingController(text: type),
+        quantity = TextEditingController(text: '$quantity'),
+        note = TextEditingController(text: note);
+  void dispose() {
+    type.dispose();
+    quantity.dispose();
+    note.dispose();
   }
 }

@@ -10,6 +10,11 @@ import '../models/settings.dart';
 import 'package:wanzo/services/import/csv_import_service.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_bloc.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_event.dart';
+import 'package:wanzo/core/enums/currency_enum.dart';
+import 'package:wanzo/core/services/currency_service.dart';
+import 'package:wanzo/features/services/cubit/services_cubit.dart';
+import 'package:wanzo/services/import/csv_import_confirm.dart';
+import 'package:wanzo/services/import/services_csv_import_service.dart';
 
 /// Écran des paramètres de sauvegarde et rapports
 class BackupSettingsScreen extends StatefulWidget {
@@ -419,6 +424,14 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                   onTap: () => _handleCsvImport(context),
                   color: Colors.purple,
                 ),
+                _buildActionCard(
+                  context,
+                  icon: Icons.design_services_outlined,
+                  title: 'Importer services',
+                  subtitle: 'Services et paliers de prix (CSV)',
+                  onTap: () => _handleServicesCsvImport(context),
+                  color: Colors.teal,
+                ),
               ],
             ),
           ],
@@ -515,6 +528,52 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
   }
 
   /// Gère l'import CSV de produits
+  /// Import CSV des services (pendant de l'import produits) : prix convertis
+  /// en CDF selon la politique de devise, cache local puis publication.
+  Future<void> _handleServicesCsvImport(BuildContext context) async {
+    final currency = context.read<CurrencyService>();
+    final cubit = ServicesCubit();
+    try {
+      final result = await ServicesCsvImportService.pickAndParseCSV(
+        rateToCdf: (code) {
+          for (final c in Currency.values) {
+            if (c.code == code) return currency.getRateToCdf(c);
+          }
+          return 1.0;
+        },
+        metier: cubit.currentMetier,
+      );
+      if (result == null || !context.mounted) return;
+      if (result.services.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.errors.isNotEmpty ? result.errors.first : 'Aucun service trouvé dans le fichier'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+      final ok = await confirmCsvImport(
+        context,
+        successCount: result.successCount,
+        totalRows: result.totalRows,
+        errors: result.errors,
+        noun: 'service(s)',
+      );
+      if (!ok || !context.mounted) return;
+      await cubit.importAll(result.services);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${result.successCount} service(s) importé(s)'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } finally {
+      await cubit.close();
+    }
+  }
+
   Future<void> _handleCsvImport(BuildContext context) async {
     final result = await CsvImportService.pickAndParseCSV(context);
     if (result == null || !mounted) return;
@@ -533,54 +592,15 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       return;
     }
 
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder:
-          (ctx) => AlertDialog(
-            title: const Text('Confirmer l\'import'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${result.successCount} produits prêts à importer sur ${result.totalRows} lignes.',
-                ),
-                if (result.errors.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '${result.errors.length} erreur(s):',
-                    style: const TextStyle(
-                      color: Colors.orange,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  ...result.errors
-                      .take(5)
-                      .map(
-                        (e) => Text(e, style: const TextStyle(fontSize: 12)),
-                      ),
-                  if (result.errors.length > 5)
-                    Text(
-                      '... et ${result.errors.length - 5} autres',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Annuler'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Importer'),
-              ),
-            ],
-          ),
+    final confirm = await confirmCsvImport(
+      context,
+      successCount: result.successCount,
+      totalRows: result.totalRows,
+      errors: result.errors,
+      noun: 'produit(s)',
     );
 
-    if (confirm == true && mounted) {
+    if (confirm && mounted) {
       for (final product in result.products) {
         context.read<InventoryBloc>().add(AddProduct(product));
       }

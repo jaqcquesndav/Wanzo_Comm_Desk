@@ -106,14 +106,14 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
     return WanzoScaffold(
       currentIndex: index < 0 ? 0 : index,
       title: boardMetier == AtelierMetier.garage
-          ? 'Commandes — Garage'
+          ? 'Interventions garage'
           : boardMetier == AtelierMetier.pressing
-              ? 'Commandes — Pressing'
-          : boardMetier == AtelierMetier.maintenance
-          ? 'Commandes — Maintenance'
-          : boardMetier == AtelierMetier.imprimerie
-              ? 'Commandes — Imprimerie'
-              : 'Commandes — Atelier',
+              ? 'Dépôts pressing'
+              : boardMetier == AtelierMetier.maintenance
+                  ? 'Commandes maintenance'
+                  : boardMetier == AtelierMetier.imprimerie
+                      ? 'Travaux imprimerie'
+                      : 'Commandes atelier',
       appBarActions: [
         IconButton(
           tooltip: 'Actualiser',
@@ -259,7 +259,9 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
                   ? 'Fiche de réparation / imprimer'
                   : order.metier == AtelierMetier.imprimerie
                       ? 'Fiche travail d\'impression / imprimer'
-                      : 'Bon de commande / imprimer',
+                      : order.metier == AtelierMetier.pressing
+                          ? 'Fiche de dépôt / imprimer'
+                          : 'Bon de commande / imprimer',
             ),
             subtitle: const Text('État de sortie imprimable (A4)'),
             onTap: () {
@@ -500,6 +502,22 @@ class _AtelierCard extends StatelessWidget {
             style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
             overflow: TextOverflow.ellipsis,
           ),
+          // Pressing : nombre d'articles et niveau de service, lisibles d'un
+          // coup d'œil sur le board.
+          if (order.pressingDetails != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              [
+                '${order.pressingDetails!.itemsCount} article(s)',
+                if (order.pressingDetails!.isExpress) 'Express',
+                if ((order.pressingDetails!.bagNumber ?? '').isNotEmpty) 'Sac ${order.pressingDetails!.bagNumber}',
+              ].join(' · '),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: order.pressingDetails!.isExpress ? theme.colorScheme.error : theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
           if (order.customerName != null) ...[
             const SizedBox(height: 2),
             Row(

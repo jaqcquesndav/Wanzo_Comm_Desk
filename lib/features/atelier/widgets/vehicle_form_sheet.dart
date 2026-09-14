@@ -1,36 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:wanzo/core/utils/adaptive_pull_up.dart';
+
 import '../config/vehicle_catalog.dart';
 import '../models/customer_vehicle.dart';
 import '../services/atelier_api_service.dart';
 
-/// Formulaire d'un véhicule client (création ou modification) en boîte de
-/// dialogue, utilisable depuis la fiche client et depuis une commande garage.
-/// Structure : Fabricant, Modèle, Année, puis le véhicule spécifique.
-/// Retourne le véhicule enregistré, ou null si annulé.
-Future<CustomerVehicle?> showVehicleFormDialog(
+/// Formulaire d'un véhicule client (création ou modification), présenté en
+/// pull-up sur mobile et en boîte de dialogue sur écran large, depuis la fiche
+/// client comme depuis une commande garage. Structure : Fabricant, Modèle,
+/// Année, puis le véhicule spécifique. Retourne le véhicule enregistré, ou
+/// null si annulé.
+Future<CustomerVehicle?> showVehicleForm(
   BuildContext context, {
   required String customerId,
   CustomerVehicle? vehicle,
 }) {
-  return showDialog<CustomerVehicle>(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => _VehicleFormDialog(customerId: customerId, vehicle: vehicle),
+  return showAdaptivePullUp<CustomerVehicle>(
+    context,
+    title: vehicle == null ? 'Nouveau véhicule' : 'Modifier le véhicule',
+    icon: Icons.directions_car_outlined,
+    isDismissible: false,
+    builder: (_) => _VehicleForm(customerId: customerId, vehicle: vehicle),
   );
 }
 
-class _VehicleFormDialog extends StatefulWidget {
+class _VehicleForm extends StatefulWidget {
   final String customerId;
   final CustomerVehicle? vehicle;
-  const _VehicleFormDialog({required this.customerId, this.vehicle});
+  const _VehicleForm({required this.customerId, this.vehicle});
 
   @override
-  State<_VehicleFormDialog> createState() => _VehicleFormDialogState();
+  State<_VehicleForm> createState() => _VehicleFormState();
 }
 
-class _VehicleFormDialogState extends State<_VehicleFormDialog> {
+class _VehicleFormState extends State<_VehicleForm> {
   final _formKey = GlobalKey<FormState>();
   final _api = AtelierApiService();
   late final _brand = TextEditingController(text: widget.vehicle?.brand ?? '');
@@ -142,17 +147,15 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return AlertDialog(
-      title: Text(_isEdit ? 'Modifier le véhicule' : 'Nouveau véhicule'),
-      contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-      content: SizedBox(
-        width: 520,
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               children: [
                 Text('Fabricant, modèle, année',
                     style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.primary)),
@@ -211,20 +214,30 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
                 ),
                 const SizedBox(height: 12),
                 _tf(_notes, 'Remarques', hint: 'Particularités, accessoires, historique connu...', lines: 2),
-                const SizedBox(height: 8),
               ],
             ),
           ),
         ),
-      ),
-      actions: [
-        TextButton(onPressed: _saving ? null : () => Navigator.of(context).pop(), child: const Text('Annuler')),
-        FilledButton.icon(
-          onPressed: _saving ? null : _save,
-          icon: _saving
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.save_outlined, size: 18),
-          label: Text(_isEdit ? 'Enregistrer' : 'Ajouter'),
+        // Barre d'action collée en bas : toujours visible, même sur un long formulaire.
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: Row(
+            children: [
+              TextButton(
+                onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                child: const Text('Annuler'),
+              ),
+              const Spacer(),
+              FilledButton.icon(
+                onPressed: _saving ? null : _save,
+                icon: _saving
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.save_outlined, size: 18),
+                label: Text(_isEdit ? 'Enregistrer' : 'Ajouter'),
+              ),
+            ],
+          ),
         ),
       ],
     );

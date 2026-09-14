@@ -7,7 +7,7 @@ import 'package:wanzo/features/atelier/models/atelier_order.dart';
 import 'package:wanzo/features/atelier/models/customer_vehicle.dart';
 import 'package:wanzo/features/atelier/services/atelier_api_service.dart';
 import 'package:wanzo/features/atelier/services/vehicle_sheet_pdf.dart';
-import 'package:wanzo/features/atelier/widgets/vehicle_form_dialog.dart';
+import 'package:wanzo/features/atelier/widgets/vehicle_form_sheet.dart';
 import 'package:wanzo/features/settings/bloc/settings_bloc.dart';
 import 'package:wanzo/features/settings/bloc/settings_state.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
@@ -66,7 +66,7 @@ class _VehicleSheetScreenState extends State<VehicleSheetScreen> {
   }
 
   Future<void> _edit() async {
-    final v = await showVehicleFormDialog(context, customerId: _vehicle.customerId, vehicle: _vehicle);
+    final v = await showVehicleForm(context, customerId: _vehicle.customerId, vehicle: _vehicle);
     if (v != null && mounted) setState(() { _vehicle = v; _changed = true; });
   }
 
