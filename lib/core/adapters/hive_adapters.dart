@@ -8,7 +8,6 @@ import '../../features/adha/models/adha_context_info.dart';
 import '../../features/sales/models/sale.dart'; // Corrected: Import main model file
 import '../../features/sales/models/sale_item.dart'; // Ensure SaleItemAdapter is available if defined separately or via sale_item.g.dart
 import '../../features/customer/models/customer.dart'; // Added import for Customer model
-import '../../features/customer/models/customer_contact.dart';
 import '../../features/supplier/models/supplier.dart'; // Added import for Supplier model
 import '../../features/settings/models/settings.dart'; // Added import for Settings model
 import '../../features/inventory/models/product.dart';

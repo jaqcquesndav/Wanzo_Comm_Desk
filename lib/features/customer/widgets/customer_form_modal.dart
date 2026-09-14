@@ -10,8 +10,6 @@ import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
 import '../bloc/customer_state.dart';
 import '../models/customer.dart';
-import '../models/customer_contact.dart';
-import '../models/customer_type.dart';
 import 'customer_organization_fields.dart';
 
 /// Modal pour ajouter ou modifier un client
