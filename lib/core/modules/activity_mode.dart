@@ -38,18 +38,38 @@ enum ActivityMode {
   /// atelier — même moteur commande + fabrication + tableau Kanban — mais plus
   /// simple : à la place des mensurations, une fiche travail d'impression
   /// (format, support, quantité, finition, bon à tirer).
-  imprimerie;
+  imprimerie,
 
-  /// Vrai pour tout atelier (confection OU maintenance) — sert au gating des
-  /// écrans à fiche métier spécifique (mesures / appareil).
+  /// Pressing / blanchisserie : dépôt d'articles (vêtements, linge), nettoyage,
+  /// repassage, retrait. Même moteur commande + Kanban que l'atelier, avec une
+  /// fiche articles (pièces, poids, traitement) à la place des mensurations.
+  pressing,
+
+  /// Garage automobile : réception de véhicules, diagnostic, réparation,
+  /// contrôle, restitution. Même moteur que la maintenance, mais le véhicule
+  /// est un objet suivi dans le temps (fiche par véhicule, historique par
+  /// client) et les services ont des paliers (Basic, Premium, Spéciaux).
+  garage;
+
+  /// Vrai pour tout atelier (confection, maintenance, garage) — sert au gating
+  /// des écrans à fiche métier spécifique (mesures / appareil / véhicule).
   bool get isAtelier =>
-      this == ActivityMode.atelier || this == ActivityMode.atelierMaintenance;
+      this == ActivityMode.atelier ||
+      this == ActivityMode.atelierMaintenance ||
+      this == ActivityMode.garage;
 
   /// Vrai pour tout mode piloté par un tableau Kanban de fabrication
   /// (ateliers + imprimerie). Sert au gating du moteur commande → fabrication
   /// et de l'écran Kanban, indépendamment de la fiche métier (mesures, appareil
   /// ou travail d'impression).
-  bool get isWorkshop => isAtelier || this == ActivityMode.imprimerie;
+  bool get isWorkshop =>
+      isAtelier ||
+      this == ActivityMode.imprimerie ||
+      this == ActivityMode.pressing;
+
+  /// Vrai pour les métiers de réparation (fiche appareil ou véhicule).
+  bool get isMaintenanceLike =>
+      this == ActivityMode.atelierMaintenance || this == ActivityMode.garage;
 
   /// Valeur stable persistée/échangée avec le backend.
   String get apiValue => name;
@@ -73,6 +93,10 @@ enum ActivityMode {
         return ActivityMode.salon;
       case 'imprimerie':
         return ActivityMode.imprimerie;
+      case 'pressing':
+        return ActivityMode.pressing;
+      case 'garage':
+        return ActivityMode.garage;
       case 'retail':
       default:
         return ActivityMode.retail;
@@ -98,6 +122,10 @@ enum ActivityMode {
         return 'Salon de coiffure / Beauté';
       case ActivityMode.imprimerie:
         return 'Imprimerie';
+      case ActivityMode.pressing:
+        return 'Pressing / Blanchisserie';
+      case ActivityMode.garage:
+        return 'Garage automobile';
     }
   }
 
@@ -120,6 +148,10 @@ enum ActivityMode {
         return 'Salon';
       case ActivityMode.imprimerie:
         return 'Imprimerie';
+      case ActivityMode.pressing:
+        return 'Pressing';
+      case ActivityMode.garage:
+        return 'Garage';
     }
   }
 
@@ -142,6 +174,10 @@ enum ActivityMode {
         return 'Coiffure / beauté : carte de prestations, coiffeurs à la commission, ticket et paie.';
       case ActivityMode.imprimerie:
         return 'Travaux d\'impression : commande, bon à tirer, fabrication suivie au Kanban.';
+      case ActivityMode.pressing:
+        return 'Dépôt d\'articles, nettoyage, repassage et retrait suivis au Kanban.';
+      case ActivityMode.garage:
+        return 'Véhicules des clients, diagnostic, réparation, contrôle ; services Basic / Premium / Spéciaux.';
     }
   }
 }

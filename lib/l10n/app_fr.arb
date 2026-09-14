@@ -203,6 +203,11 @@
   "@lowStockTabLabel": {
     "description": "Étiquette pour l'onglet Stock faible"
   },
+  "offerNavLabel": "Offre",
+  "inventoryTabLabel": "Inventaire",
+  "servicesTabLabel": "Services",
+  "lowStockFilterLabel": "Stock faible uniquement",
+  "addServiceButton": "Ajouter un service",
   "transactionsTabLabel": "Transactions",
   "@transactionsTabLabel": {
     "description": "Étiquette pour l'onglet Transactions"

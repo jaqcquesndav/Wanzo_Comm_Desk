@@ -68,6 +68,8 @@ List<AdhaSuggestion> suggestionsFor(ActivityMode mode) {
     case ActivityMode.atelier:
     case ActivityMode.atelierMaintenance:
     case ActivityMode.imprimerie:
+    case ActivityMode.pressing:
+    case ActivityMode.garage:
       return const [
         AdhaSuggestion(
           icon: Icons.build_circle_outlined,

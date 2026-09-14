@@ -11,6 +11,8 @@ import '../../features/auth/screens/join_business_unit_screen.dart';
 import '../../features/dashboard/screens/dashboard_screen.dart';
 import '../../features/inventory/models/product.dart';
 import '../../features/inventory/screens/add_product_screen.dart';
+import '../../features/services/models/service_item.dart';
+import '../../features/services/screens/service_form_screen.dart';
 import '../../features/inventory/screens/inventory_screen.dart';
 import '../../features/inventory/screens/product_details_screen.dart';
 import '../../features/sales/screens/add_sale_screen.dart';
@@ -344,6 +346,16 @@ class AppRouter {
             path: 'add',
             pageBuilder: (context, state) =>
                 _noAnim(state, const AddProductScreen()),
+          ),
+          GoRoute(
+            path: 'services/add',
+            pageBuilder: (context, state) =>
+                _noAnim(state, const ServiceFormScreen()),
+          ),
+          GoRoute(
+            path: 'services/edit',
+            pageBuilder: (context, state) => _noAnim(
+                state, ServiceFormScreen(service: state.extra as ServiceItem?)),
           ),
           GoRoute(
             path: 'edit/:productId',

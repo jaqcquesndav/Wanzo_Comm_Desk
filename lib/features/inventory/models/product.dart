@@ -364,6 +364,11 @@ class Product extends Equatable {
   @HiveField(30)
   final String? subCategory;
 
+  /// Visible sur le catalogue public (vitrine en ligne) de l'entreprise.
+  @HiveField(31, defaultValue: false)
+  @JsonKey(defaultValue: false)
+  final bool isPublic;
+
   /// Constructeur
   const Product({
     required this.id,
@@ -400,6 +405,7 @@ class Product extends Equatable {
     this.syncStatus = 'pending',
     this.localId,
     this.subCategory,
+    this.isPublic = false,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -502,6 +508,7 @@ class Product extends Equatable {
     String? syncStatus,
     String? localId,
     String? subCategory,
+    bool? isPublic,
   }) {
     return Product(
       id: id ?? this.id,
@@ -538,6 +545,7 @@ class Product extends Equatable {
       syncStatus: syncStatus ?? this.syncStatus,
       localId: localId ?? this.localId,
       subCategory: subCategory ?? this.subCategory,
+      isPublic: isPublic ?? this.isPublic,
     );
   }
 
@@ -575,5 +583,6 @@ class Product extends Equatable {
     syncStatus,
     localId,
     subCategory,
+    isPublic,
   ];
 }

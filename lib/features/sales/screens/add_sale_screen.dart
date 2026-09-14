@@ -33,6 +33,9 @@ import '../../../core/services/barcode_scanner_service.dart'; // Import du servi
 import '../bloc/sales_bloc.dart';
 import '../models/sale.dart';
 import '../models/sale_item.dart';
+import 'package:wanzo/features/services/cubit/services_cubit.dart';
+import 'package:wanzo/features/services/models/service_item.dart';
+import 'package:wanzo/features/services/widgets/service_search_results.dart';
 
 /// Types de postes pour les devis/factures (UI uniquement, stocké dans notes)
 enum QuoteItemCategory {
@@ -187,6 +190,9 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   int _searchResultsTotal = 0;
   int _searchDisplayCount = 8;
   static const int _searchPageSize = 8;
+  // Services du catalogue (page Offre) suggérés à la facturation.
+  late final ServicesCubit _servicesCubit = ServicesCubit()..load();
+  List<ServiceItem> _serviceResults = [];
 
   // Currency related state
   Currency _defaultCurrency = Currency.CDF; // App default
@@ -315,6 +321,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     _customerPhoneController.dispose();
     _notesController.dispose();
     _productSearchController.dispose();
+    _servicesCubit.close();
     _productSearchFocusNode.dispose();
     super.dispose();
   }
@@ -333,6 +340,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     if (query.isEmpty) {
       setState(() {
         _searchResults = [];
+        _serviceResults = [];
         _showSearchResults = false;
         _searchResultsTotal = 0;
       });
@@ -362,11 +370,14 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             })
             .toList();
 
+    final serviceMatches = _servicesCubit.search(normalizedQuery);
+
     setState(() {
       _searchResultsTotal = results.length;
       _searchDisplayCount = _searchPageSize;
       _searchResults = results.take(_searchDisplayCount).toList();
-      _showSearchResults = results.isNotEmpty;
+      _serviceResults = serviceMatches;
+      _showSearchResults = results.isNotEmpty || serviceMatches.isNotEmpty;
     });
   }
 
@@ -1457,7 +1468,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             ),
 
             // Dropdown des résultats
-            if (_showSearchResults && _searchResults.isNotEmpty)
+            if (_showSearchResults &&
+                (_searchResults.isNotEmpty || _serviceResults.isNotEmpty))
               Container(
                 margin: const EdgeInsets.only(top: 4),
                 decoration: BoxDecoration(
@@ -1476,6 +1488,15 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (_serviceResults.isNotEmpty)
+                      ServiceSearchResults(
+                        services: _serviceResults,
+                        currencyCode: _selectedTransactionCurrency?.code ?? 'CDF',
+                        exchangeRate: _selectedTransactionCurrency == null
+                            ? 1.0
+                            : (_exchangeRates[_selectedTransactionCurrency!] ?? 1.0),
+                        onPick: _quickAddService,
+                      ),
                     Flexible(
                       child: ListView.separated(
                         shrinkWrap: true,
@@ -1515,11 +1536,12 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
             // Message aucun résultat
             if (_productSearchController.text.isNotEmpty &&
-                _searchResults.isEmpty)
+                _searchResults.isEmpty &&
+                _serviceResults.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Text(
-                  'Aucun produit trouvé pour "${_productSearchController.text}"',
+                  'Aucun produit ou service trouvé pour "${_productSearchController.text}"',
                   style: TextStyle(
                     fontStyle: FontStyle.italic,
                     color: Colors.grey[600],
@@ -1697,6 +1719,57 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   }
 
   /// Ajoute rapidement un produit au panier avec quantité 1
+  /// Ajoute un service du catalogue (page Offre) au palier choisi.
+  void _quickAddService(ServiceItem service, ServicePriceTier tier) {
+    if (_selectedTransactionCurrency == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Veuillez d\'abord sélectionner une devise.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final exchangeRate = _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
+    final unitPrice = tier.priceCdf / exchangeRate;
+    final label = service.hasMultipleTiers ? '${service.name} (${tier.label})' : service.name;
+
+    _addItem(SaleItem(
+      productId: service.id,
+      serviceId: service.id,
+      priceTierCode: tier.code,
+      productName: label,
+      quantity: 1,
+      unitPrice: unitPrice,
+      totalPrice: unitPrice,
+      currencyCode: _selectedTransactionCurrency!.code,
+      exchangeRate: exchangeRate,
+      unitPriceInCdf: tier.priceCdf,
+      totalPriceInCdf: tier.priceCdf,
+      itemType: SaleItemType.service,
+      taxRate: service.taxRate ?? _getApplicableTaxRate(),
+    ));
+
+    _productSearchController.clear();
+    setState(() {
+      _searchResults = [];
+      _serviceResults = [];
+      _showSearchResults = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$label ajouté'),
+        backgroundColor: Colors.green,
+        duration: const Duration(milliseconds: 1200),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
   void _quickAddProduct(Product product) {
     if (_selectedTransactionCurrency == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2704,6 +2777,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         (existingItem) =>
             existingItem.productId == item.productId &&
             existingItem.itemType == item.itemType &&
+            existingItem.serviceId == item.serviceId &&
+            existingItem.priceTierCode == item.priceTierCode &&
             existingItem.unitPrice == item.unitPrice,
       );
 
@@ -2720,6 +2795,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         // Créer un nouvel item avec la quantité mise à jour
         final updatedItem = SaleItem(
           productId: existingItem.productId,
+          serviceId: existingItem.serviceId,
+          priceTierCode: existingItem.priceTierCode,
           productName: existingItem.productName,
           quantity: updatedQuantity,
           unitPrice: existingItem.unitPrice,

@@ -313,6 +313,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ActivityMode.atelierMaintenance,
                   ActivityMode.salon,
                   ActivityMode.imprimerie,
+                  ActivityMode.pressing,
+                  ActivityMode.garage,
                 ])
                   RadioListTile<ActivityMode>(
                     value: mode,

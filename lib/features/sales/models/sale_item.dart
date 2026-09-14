@@ -103,6 +103,14 @@ class SaleItem extends Equatable {
   @HiveField(18)
   final double? commissionAmount;
 
+  /// Service du catalogue (page Offre) facturé sur cette ligne, le cas échéant.
+  @HiveField(19)
+  final String? serviceId;
+
+  /// Palier de prix retenu pour ce service (basic, premium, speciaux...).
+  @HiveField(20)
+  final String? priceTierCode;
+
   /// Constructeur
   const SaleItem({
     this.id,
@@ -124,6 +132,8 @@ class SaleItem extends Equatable {
     this.performerName,
     this.commissionRate,
     this.commissionAmount,
+    this.serviceId,
+    this.priceTierCode,
   });
 
   factory SaleItem.fromJson(Map<String, dynamic> json) =>
@@ -146,6 +156,8 @@ class SaleItem extends Equatable {
     String? performerId,
     String? performerName,
     double? commissionRate,
+    String? serviceId,
+    String? priceTierCode,
   }) {
     // Calcul du prix total avec remise
     final discountAmount = discount ?? 0.0;
@@ -181,6 +193,8 @@ class SaleItem extends Equatable {
       performerName: performerName,
       commissionRate: commissionRate,
       commissionAmount: calculatedCommissionAmount,
+      serviceId: serviceId,
+      priceTierCode: priceTierCode,
     );
   }
 
@@ -205,6 +219,8 @@ class SaleItem extends Equatable {
     String? performerName,
     double? commissionRate,
     double? commissionAmount,
+    String? serviceId,
+    String? priceTierCode,
   }) {
     return SaleItem(
       id: id ?? this.id,
@@ -226,6 +242,8 @@ class SaleItem extends Equatable {
       performerName: performerName ?? this.performerName,
       commissionRate: commissionRate ?? this.commissionRate,
       commissionAmount: commissionAmount ?? this.commissionAmount,
+      serviceId: serviceId ?? this.serviceId,
+      priceTierCode: priceTierCode ?? this.priceTierCode,
     );
   }
 
@@ -250,5 +268,7 @@ class SaleItem extends Equatable {
     performerName,
     commissionRate,
     commissionAmount,
+    serviceId,
+    priceTierCode,
   ];
 }

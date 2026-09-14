@@ -36,13 +36,15 @@ class SaleItemAdapter extends TypeAdapter<SaleItem> {
       performerName: fields[16] as String?,
       commissionRate: fields[17] as double?,
       commissionAmount: fields[18] as double?,
+      serviceId: fields[19] as String?,
+      priceTierCode: fields[20] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, SaleItem obj) {
     writer
-      ..writeByte(19)
+      ..writeByte(21)
       ..writeByte(10)
       ..write(obj.id)
       ..writeByte(0)
@@ -80,7 +82,11 @@ class SaleItemAdapter extends TypeAdapter<SaleItem> {
       ..writeByte(17)
       ..write(obj.commissionRate)
       ..writeByte(18)
-      ..write(obj.commissionAmount);
+      ..write(obj.commissionAmount)
+      ..writeByte(19)
+      ..write(obj.serviceId)
+      ..writeByte(20)
+      ..write(obj.priceTierCode);
   }
 
   @override
@@ -158,6 +164,8 @@ SaleItem _$SaleItemFromJson(Map<String, dynamic> json) => SaleItem(
       performerName: json['performerName'] as String?,
       commissionRate: (json['commissionRate'] as num?)?.toDouble(),
       commissionAmount: (json['commissionAmount'] as num?)?.toDouble(),
+      serviceId: json['serviceId'] as String?,
+      priceTierCode: json['priceTierCode'] as String?,
     );
 
 Map<String, dynamic> _$SaleItemToJson(SaleItem instance) => <String, dynamic>{
@@ -181,6 +189,8 @@ Map<String, dynamic> _$SaleItemToJson(SaleItem instance) => <String, dynamic>{
       if (instance.commissionRate case final value?) 'commissionRate': value,
       if (instance.commissionAmount case final value?)
         'commissionAmount': value,
+      if (instance.serviceId case final value?) 'serviceId': value,
+      if (instance.priceTierCode case final value?) 'priceTierCode': value,
     };
 
 const _$SaleItemTypeEnumMap = {

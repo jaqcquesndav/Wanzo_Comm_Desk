@@ -10,6 +10,7 @@ import 'package:printing/printing.dart';
 import 'package:wanzo/core/enums/currency_enum.dart';
 import 'package:wanzo/features/dashboard/models/operation_journal_entry.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
+import 'package:wanzo/core/modules/mode_vocabulary.dart';
 
 /// Service pour la génération du journal des opérations en PDF
 ///
@@ -482,7 +483,7 @@ class JournalService {
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
               pw.Text(
-                'Mouvements de stock:',
+                '${ModeVocabulary.current.stockMovements}:',
                 style: pw.TextStyle(font: font, fontSize: 10),
               ),
               pw.Text(

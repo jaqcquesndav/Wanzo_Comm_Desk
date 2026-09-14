@@ -72,6 +72,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
   // Expiration date fields
   bool _hasExpirationDate = false;
   DateTime? _expirationDate;
+  bool _isPublic = false;
 
   late final ImagePickerServiceInterface _imagePickerService;
 
@@ -151,6 +152,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     // Initialize expiration date fields
     _expirationDate = widget.product?.expirationDate;
     _hasExpirationDate = _expirationDate != null;
+    _isPublic = widget.product?.isPublic ?? false;
 
     // Mode atelier : précharger le type existant (overlay local) en édition.
     if (_activityMode.isAtelier && _isEditing) {
@@ -837,6 +839,22 @@ class _AddProductScreenState extends State<AddProductScreen> {
                       ),
                       const SizedBox(height: WanzoSpacing.md),
 
+                      // Catalogue public : le produit est visible sur la vitrine en ligne.
+                      SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        value: _isPublic,
+                        onChanged: (v) => setState(() => _isPublic = v),
+                        secondary: Icon(
+                          Icons.storefront_outlined,
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                        title: Text(
+                          'Visible sur le catalogue public',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        subtitle: const Text('Affiché sur la vitrine en ligne de votre entreprise'),
+                      ),
+
                       // ============= EXPIRATION DATE SECTION (DISCRETE) =============
                       Theme(
                         data: Theme.of(
@@ -1067,6 +1085,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       sellingPriceInInputCurrency: sellingPriceInput,
       expirationDate: _hasExpirationDate ? _expirationDate : null,
       subCategory: _selectedSubCategory,
+      isPublic: _isPublic,
     );
 
     // Mode atelier : persister le type d'article dans l'overlay local (keyé par

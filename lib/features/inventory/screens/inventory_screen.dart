@@ -25,6 +25,9 @@ import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cub
 import 'package:wanzo/core/services/currency_service.dart'; // Added
 import 'package:wanzo/core/services/sync_service.dart'; // Added for sync status
 import 'package:wanzo/l10n/app_localizations.dart'; // Updated import
+import 'package:wanzo/features/services/cubit/services_cubit.dart';
+import 'package:wanzo/features/services/models/service_item.dart';
+import 'package:wanzo/features/services/widgets/services_tab.dart';
 
 /// Écran principal de gestion de l'inventaire
 class InventoryScreen extends StatefulWidget {
@@ -43,12 +46,29 @@ class _InventoryScreenState extends State<InventoryScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 3, vsync: this)
+      ..addListener(() {
+        // Le bouton d'ajout dépend de l'onglet actif (produit / service / rien).
+        if (mounted) setState(() {});
+      });
     // Chargement initial des produits
     context.read<InventoryBloc>().add(const LoadProducts());
 
     // Écouter le SyncService pour recharger les produits après synchronisation
     _setupSyncListener();
+  }
+
+  // Catalogue des services (onglet Services) : cache local puis serveur.
+  late final ServicesCubit _servicesCubit = ServicesCubit()..load();
+
+  void _openServiceForm(BuildContext context, {ServiceItem? service}) {
+    FormNavigationService.instance.openServiceForm(
+      context,
+      service: service,
+      onSuccess: () {
+        if (mounted) _servicesCubit.load();
+      },
+    );
   }
 
   void _setupSyncListener() {
@@ -62,7 +82,7 @@ class _InventoryScreenState extends State<InventoryScreen>
           if (currentIndex == 0) {
             context.read<InventoryBloc>().add(const LoadProducts());
           } else if (currentIndex == 1) {
-            context.read<InventoryBloc>().add(const LoadLowStockProducts());
+            _servicesCubit.load();
           } else if (currentIndex == 2) {
             context.read<InventoryBloc>().add(const LoadAllTransactions());
           }
@@ -73,6 +93,7 @@ class _InventoryScreenState extends State<InventoryScreen>
 
   @override
   void dispose() {
+    _servicesCubit.close();
     _tabController.dispose();
     _searchController.dispose();
     _syncSubscription?.cancel();
@@ -149,9 +170,13 @@ class _InventoryScreenState extends State<InventoryScreen>
                   child: Row(
                     children: [
                       FilledButton.icon(
-                        onPressed: () => _openProductForm(context),
+                        onPressed: () => _tabController.index == 1
+                            ? _openServiceForm(context)
+                            : _openProductForm(context),
                         icon: const Icon(Icons.add),
-                        label: Text(l10n.addProductButton),
+                        label: Text(_tabController.index == 1
+                            ? l10n.addServiceButton
+                            : l10n.addProductButton),
                       ),
                     ],
                   ),
@@ -160,8 +185,8 @@ class _InventoryScreenState extends State<InventoryScreen>
               TabBar(
                 controller: _tabController,
                 tabs: [
-                  Tab(text: l10n.allProductsTabLabel),
-                  Tab(text: l10n.lowStockTabLabel),
+                  Tab(text: l10n.inventoryTabLabel),
+                  Tab(text: l10n.servicesTabLabel),
                   Tab(text: l10n.transactionsTabLabel),
                 ],
                 labelColor: Theme.of(context).primaryColor,
@@ -170,9 +195,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                   if (index == 0) {
                     context.read<InventoryBloc>().add(const LoadProducts());
                   } else if (index == 1) {
-                    context.read<InventoryBloc>().add(
-                      const LoadLowStockProducts(),
-                    );
+                    _servicesCubit.load();
                   } else if (index == 2) {
                     context.read<InventoryBloc>().add(
                       const LoadAllTransactions(),
@@ -207,32 +230,14 @@ class _InventoryScreenState extends State<InventoryScreen>
                         }
                       },
                     ),
-                    // Onglet "Stock faible"
-                    BlocBuilder<InventoryBloc, InventoryState>(
-                      builder: (context, state) {
-                        if (state is InventoryLoading) {
-                          return const Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        } else if (state is ProductsLoaded) {
-                          return _buildProductsList(
-                            context,
-                            state,
-                            l10n,
-                            lowStockOnly: true,
-                          );
-                        } else if (state is InventoryError) {
-                          return _buildErrorWidget(
-                            context,
-                            state.message,
-                            l10n,
-                          );
-                        } else {
-                          return Center(
-                            child: Text(l10n.noLowStockProductsMessage),
-                          );
-                        }
-                      },
+                    // Onglet "Services" : catalogue à paliers de prix (page Offre)
+                    BlocProvider.value(
+                      value: _servicesCubit,
+                      child: ServicesTab(
+                        onAdd: () => _openServiceForm(context),
+                        onEdit: (service) =>
+                            _openServiceForm(context, service: service),
+                      ),
                     ),
                     // Onglet "Transactions"
                     BlocBuilder<InventoryBloc, InventoryState>(
@@ -268,7 +273,9 @@ class _InventoryScreenState extends State<InventoryScreen>
           floatingActionButton:
               (isNarrow && _tabController.index != 2)
                   ? FloatingActionButton(
-                    onPressed: () => _openProductForm(context),
+                    onPressed: () => _tabController.index == 1
+                        ? _openServiceForm(context)
+                        : _openProductForm(context),
                     backgroundColor:
                         Theme.of(
                           context,
@@ -376,9 +383,21 @@ class _InventoryScreenState extends State<InventoryScreen>
 
                 return ListView.builder(
                   shrinkWrap: true,
-                  itemCount: categories.length,
+                  itemCount: categories.length + 1,
                   itemBuilder: (context, index) {
-                    final category = categories[index];
+                    if (index == 0) {
+                      // Le stock faible est un FILTRE (les cartes produits
+                      // portent déjà le badge), plus un onglet à part.
+                      return ListTile(
+                        leading: const Icon(Icons.warning_amber_outlined, color: Colors.orange),
+                        title: Text(l10n.lowStockFilterLabel),
+                        onTap: () {
+                          Navigator.pop(context);
+                          context.read<InventoryBloc>().add(const LoadLowStockProducts());
+                        },
+                      );
+                    }
+                    final category = categories[index - 1];
                     return ListTile(
                       title: Text(
                         _getCategoryName(category, l10n),

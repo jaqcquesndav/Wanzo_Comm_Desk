@@ -31,6 +31,7 @@ import 'package:wanzo/features/inventory/bloc/inventory_state.dart';
 import 'package:wanzo/features/dashboard/widgets/operations_dock.dart';
 import 'package:wanzo/core/services/sync_service.dart';
 import 'package:get_it/get_it.dart';
+import 'package:wanzo/core/modules/mode_vocabulary.dart';
 
 enum _ExpandedView { none, operationsJournal }
 
@@ -773,7 +774,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           // 1. Revenus (chiffre d'affaires) - CDF officiel, USD subtil si double devise
           _buildResponsiveStatCard(
             context,
-            title: 'Revenus',
+            title: ModeVocabulary.current.revenue,
             value: formatCurrency(kpiData.salesTodayCdf, 'CDF'),
             secondaryValue:
                 dual ? formatCurrency(kpiData.salesTodayUsd, 'USD') : null,
@@ -1465,11 +1466,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _applyQuickFilter(context, JournalFilter.defaultFilter());
                       Navigator.pop(context);
                     }),
-                    _buildQuickFilterChip(context, 'Ventes', () {
+                    _buildQuickFilterChip(context, ModeVocabulary.current.sales, () {
                       _applyQuickFilter(context, JournalFilter.salesOnly());
                       Navigator.pop(context);
                     }),
-                    _buildQuickFilterChip(context, 'Stock', () {
+                    _buildQuickFilterChip(context, ModeVocabulary.current.stock, () {
                       _applyQuickFilter(context, JournalFilter.stockOnly());
                       Navigator.pop(context);
                     }),

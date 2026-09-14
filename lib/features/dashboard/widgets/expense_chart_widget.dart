@@ -6,6 +6,7 @@ import 'package:wanzo/features/expenses/models/expense.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/dashboard/models/chart_period.dart';
 import 'package:wanzo/features/dashboard/models/chart_filter.dart';
+import 'package:wanzo/core/modules/mode_vocabulary.dart';
 
 /// Widget pour afficher les courbes des ventes et dépenses combinées
 class SalesExpenseChartWidget extends StatefulWidget {
@@ -1220,7 +1221,7 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Ventes',
+                      ModeVocabulary.current.sales,
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: WanzoTheme.success,

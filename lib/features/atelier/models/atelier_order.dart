@@ -57,12 +57,36 @@ extension AtelierOrderStatusX on AtelierOrderStatus {
   String labelFor(AtelierMetier metier) {
     switch (metier) {
       case AtelierMetier.maintenance:
+      case AtelierMetier.garage:
         return _maintenanceLabel;
       case AtelierMetier.imprimerie:
         return _imprimerieLabel;
+      case AtelierMetier.pressing:
+        return _pressingLabel;
       case AtelierMetier.couture:
       case AtelierMetier.cordonnerie:
         return label;
+    }
+  }
+
+  String get _pressingLabel {
+    switch (this) {
+      case AtelierOrderStatus.draft:
+        return 'Reçu';
+      case AtelierOrderStatus.measured:
+        return 'Trié';
+      case AtelierOrderStatus.cutting:
+        return 'Nettoyage';
+      case AtelierOrderStatus.sewing:
+        return 'Repassage / finition';
+      case AtelierOrderStatus.ready:
+        return 'Prêt';
+      case AtelierOrderStatus.delivered:
+        return 'Retiré';
+      case AtelierOrderStatus.paid:
+        return 'Réglé';
+      case AtelierOrderStatus.cancelled:
+        return 'Annulé';
     }
   }
 
@@ -111,7 +135,7 @@ extension AtelierOrderStatusX on AtelierOrderStatus {
 
 /// Métier de l'atelier (miroir du backend `AtelierMetier`). Rend le mode
 /// Atelier EXPLICITE : chaque métier n'expose que son vocabulaire et ses champs.
-enum AtelierMetier { couture, cordonnerie, maintenance, imprimerie }
+enum AtelierMetier { couture, cordonnerie, maintenance, imprimerie, pressing, garage }
 
 extension AtelierMetierX on AtelierMetier {
   String get apiValue => name;
@@ -126,8 +150,17 @@ extension AtelierMetierX on AtelierMetier {
         return 'Maintenance / réparation';
       case AtelierMetier.imprimerie:
         return 'Imprimerie';
+      case AtelierMetier.pressing:
+        return 'Pressing / Blanchisserie';
+      case AtelierMetier.garage:
+        return 'Garage automobile';
     }
   }
+
+  /// Vrai pour les métiers de réparation : fiche appareil (maintenance) ou
+  /// fiche véhicule (garage) par commande.
+  bool get isMaintenanceLike =>
+      this == AtelierMetier.maintenance || this == AtelierMetier.garage;
 
   /// Vrai si ce métier prend des mesures corporelles/pied (profil client
   /// réutilisable). La maintenance travaille sur une fiche appareil par commande ;

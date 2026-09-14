@@ -5,6 +5,7 @@ import 'package:wanzo/features/dashboard/models/operation_journal_entry.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_bloc.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_state.dart';
 import 'package:wanzo/features/inventory/models/product.dart';
+import 'package:wanzo/core/modules/mode_vocabulary.dart';
 
 /// Widget qui affiche l'image appropriée pour une opération :
 /// - Image du produit si disponible
@@ -235,7 +236,7 @@ class MultiProductOperationImages extends StatelessWidget {
                     orElse:
                         () => Product(
                           id: '',
-                          name: 'Produit',
+                          name: ModeVocabulary.current.item,
                           stockQuantity: 0,
                           sellingPriceInCdf: 0,
                           costPriceInCdf: 0,

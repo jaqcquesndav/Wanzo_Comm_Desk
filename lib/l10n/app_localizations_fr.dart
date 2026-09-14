@@ -400,6 +400,21 @@ class AppLocalizationsFr extends AppLocalizations {
   String get lowStockTabLabel => 'Stock faible';
 
   @override
+  String get offerNavLabel => 'Offre';
+
+  @override
+  String get inventoryTabLabel => 'Inventaire';
+
+  @override
+  String get servicesTabLabel => 'Services';
+
+  @override
+  String get lowStockFilterLabel => 'Stock faible uniquement';
+
+  @override
+  String get addServiceButton => 'Ajouter un service';
+
+  @override
   String get transactionsTabLabel => 'Transactions';
 
   @override

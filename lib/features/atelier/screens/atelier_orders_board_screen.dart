@@ -70,7 +70,9 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
     if (mode == ActivityMode.atelierMaintenance) {
       return AtelierMetier.maintenance;
     }
+    if (mode == ActivityMode.garage) return AtelierMetier.garage;
     if (mode == ActivityMode.imprimerie) return AtelierMetier.imprimerie;
+    if (mode == ActivityMode.pressing) return AtelierMetier.pressing;
     return AtelierMetier.couture;
   }
 
@@ -103,7 +105,11 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
     );
     return WanzoScaffold(
       currentIndex: index < 0 ? 0 : index,
-      title: boardMetier == AtelierMetier.maintenance
+      title: boardMetier == AtelierMetier.garage
+          ? 'Commandes — Garage'
+          : boardMetier == AtelierMetier.pressing
+              ? 'Commandes — Pressing'
+          : boardMetier == AtelierMetier.maintenance
           ? 'Commandes — Maintenance'
           : boardMetier == AtelierMetier.imprimerie
               ? 'Commandes — Imprimerie'
@@ -243,7 +249,7 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
           ListTile(
             leading: const Icon(Icons.print_outlined),
             title: Text(
-              order.metier == AtelierMetier.maintenance
+              order.metier.isMaintenanceLike
                   ? 'Fiche de réparation / imprimer'
                   : order.metier == AtelierMetier.imprimerie
                       ? 'Fiche travail d\'impression / imprimer'

@@ -15,6 +15,7 @@ import 'package:wanzo/features/expenses/repositories/expense_repository.dart';
 import 'package:wanzo/features/sales/repositories/sales_repository.dart';
 
 import '../bloc/operations_bloc.dart';
+import 'package:wanzo/core/modules/mode_vocabulary.dart';
 
 // Extension for SaleStatus to get a display name
 extension SaleStatusExtension on SaleStatus {
@@ -139,10 +140,10 @@ class _OperationsViewState extends State<_OperationsView>
                 ),
               TabBar(
                 controller: _tabController,
-                tabs: const [
-                  Tab(text: 'Tout'),
-                  Tab(text: 'Ventes'),
-                  Tab(text: 'Dépenses'),
+                tabs: [
+                  const Tab(text: 'Tout'),
+                  Tab(text: ModeVocabulary.current.sales),
+                  const Tab(text: 'Dépenses'),
                 ],
                 labelColor: Theme.of(context).primaryColor,
                 unselectedLabelColor: Colors.grey,

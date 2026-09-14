@@ -95,6 +95,11 @@ class SalesApiService {
                     'discount': item.discount,
                   'currencyCode': item.currencyCode,
                   'itemType': item.itemType.name,
+                  // Service du catalogue (page Offre) et palier de prix retenu.
+                  if (item.serviceId != null && item.serviceId!.isNotEmpty)
+                    'serviceId': item.serviceId,
+                  if (item.priceTierCode != null && item.priceTierCode!.isNotEmpty)
+                    'priceTierCode': item.priceTierCode,
                   if (item.taxRate != null) 'taxRate': item.taxRate,
                   if (item.notes != null) 'notes': item.notes,
                   // Mode salon : exécutant + commission figée (émis seulement

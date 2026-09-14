@@ -832,6 +832,36 @@ abstract class AppLocalizations {
   /// **'Low Stock'**
   String get lowStockTabLabel;
 
+  /// Navigation label of the Offer page (inventory, services, transactions)
+  ///
+  /// In en, this message translates to:
+  /// **'Offer'**
+  String get offerNavLabel;
+
+  /// Tab label: products inventory
+  ///
+  /// In en, this message translates to:
+  /// **'Inventory'**
+  String get inventoryTabLabel;
+
+  /// Tab label: services catalogue
+  ///
+  /// In en, this message translates to:
+  /// **'Services'**
+  String get servicesTabLabel;
+
+  /// Filter option: show only low-stock products
+  ///
+  /// In en, this message translates to:
+  /// **'Low stock only'**
+  String get lowStockFilterLabel;
+
+  /// Button: add a service
+  ///
+  /// In en, this message translates to:
+  /// **'Add a service'**
+  String get addServiceButton;
+
   /// Label for the Transactions tab
   ///
   /// In en, this message translates to:

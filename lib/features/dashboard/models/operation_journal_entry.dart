@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart'; // Added for IconData
 import 'package:hive/hive.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
+import 'package:wanzo/core/modules/mode_vocabulary.dart';
 
 part 'operation_journal_entry.g.dart'; // Pour la génération de code Hive
 
@@ -52,18 +53,20 @@ enum OperationType {
 }
 
 extension OperationTypeExtension on OperationType {
+  /// Libellé adapté au mode d'activité (vente, prestation, intervention...).
   String get displayName {
+    final vocab = ModeVocabulary.current;
     switch (this) {
       case OperationType.saleCash:
-        return 'Vente (Espèce)';
+        return '${vocab.sale} (Espèce)';
       case OperationType.saleCredit:
-        return 'Vente (Crédit)';
+        return '${vocab.sale} (Crédit)';
       case OperationType.saleInstallment:
-        return 'Vente (Échelonnée)';
+        return '${vocab.sale} (Échelonnée)';
       case OperationType.stockIn:
-        return 'Entrée Stock';
+        return vocab.stockIn;
       case OperationType.stockOut:
-        return 'Sortie Stock';
+        return vocab.stockOut;
       case OperationType.cashIn:
         return 'Entrée Espèce';
       case OperationType.cashOut:
@@ -134,8 +137,8 @@ extension OperationTypeExtension on OperationType {
   /// Catégorie comptable principale de l'opération
   String get accountingCategory {
     if (impactsCash) return 'Trésorerie';
-    if (isSalesOperation) return 'Ventes';
-    if (impactsStock) return 'Stock';
+    if (isSalesOperation) return ModeVocabulary.current.sales;
+    if (impactsStock) return ModeVocabulary.current.stock;
     if (isFinancingOperation) return 'Financement';
     return 'Autre';
   }

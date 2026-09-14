@@ -214,6 +214,11 @@
   "@lowStockTabLabel": {
     "description": "Lebo ya kichupo cha Hisa Chini"
   },
+  "offerNavLabel": "Ofa",
+  "inventoryTabLabel": "Mali",
+  "servicesTabLabel": "Huduma",
+  "lowStockFilterLabel": "Hisa chini pekee",
+  "addServiceButton": "Ongeza huduma",
   "transactionsTabLabel": "Miamala",
   "@transactionsTabLabel": {
     "description": "Lebo ya kichupo cha Miamala"

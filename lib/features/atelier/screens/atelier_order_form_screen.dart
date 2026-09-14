@@ -149,8 +149,14 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       final mode = BusinessContextService().activityMode;
       if (mode == ActivityMode.atelierMaintenance) {
         _metier = AtelierMetier.maintenance;
+      } else if (mode == ActivityMode.garage) {
+        // Garage : fiche véhicule imposée (spécialité automobile).
+        _metier = AtelierMetier.garage;
+        _specialty = 'Automobile';
       } else if (mode == ActivityMode.imprimerie) {
         _metier = AtelierMetier.imprimerie;
+      } else if (mode == ActivityMode.pressing) {
+        _metier = AtelierMetier.pressing;
       }
     }
   }
@@ -219,7 +225,8 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     super.dispose();
   }
 
-  bool get _isMaintenance => _metier == AtelierMetier.maintenance;
+  bool get _isMaintenance => _metier.isMaintenanceLike;
+  bool get _isGarage => _metier == AtelierMetier.garage;
   bool get _isImprimerie => _metier == AtelierMetier.imprimerie;
 
   double get _remaining {
@@ -508,9 +515,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       );
     }
     return DropdownButtonFormField<AtelierMetier>(
-      value: _metier == AtelierMetier.maintenance
-          ? AtelierMetier.couture
-          : _metier,
+      value: _metier.usesMeasurements ? _metier : AtelierMetier.couture,
       decoration: const InputDecoration(
           labelText: 'Type d\'atelier', border: OutlineInputBorder()),
       items: const [
@@ -602,7 +607,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   /// réception/réparation papier). Aucun vocabulaire couture ici.
   Widget _maintenanceSection() {
     // La fiche s'adapte au type d'engin/appareil selon la spécialité.
-    final isVehicle = _specialty == 'Automobile';
+    final isVehicle = _isGarage || _specialty == 'Automobile';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

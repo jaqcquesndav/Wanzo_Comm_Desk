@@ -396,6 +396,21 @@ class AppLocalizationsSw extends AppLocalizations {
   String get lowStockTabLabel => 'Hisa Chini';
 
   @override
+  String get offerNavLabel => 'Ofa';
+
+  @override
+  String get inventoryTabLabel => 'Mali';
+
+  @override
+  String get servicesTabLabel => 'Huduma';
+
+  @override
+  String get lowStockFilterLabel => 'Hisa chini pekee';
+
+  @override
+  String get addServiceButton => 'Ongeza huduma';
+
+  @override
   String get transactionsTabLabel => 'Miamala';
 
   @override

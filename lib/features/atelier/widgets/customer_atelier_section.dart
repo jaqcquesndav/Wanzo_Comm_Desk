@@ -30,7 +30,9 @@ class _CustomerAtelierSectionState extends State<CustomerAtelierSection> {
   List<AtelierOrder> _orders = const [];
   bool _loading = true;
 
-  bool get _isAtelier => BusinessContextService().activityMode.isAtelier;
+  // Tout mode piloté par le moteur de commandes (ateliers, imprimerie,
+  // pressing, garage) montre l'historique des commandes du client.
+  bool get _isAtelier => BusinessContextService().activityMode.isWorkshop;
 
   @override
   void initState() {
@@ -139,9 +141,13 @@ class _CustomerAtelierSectionState extends State<CustomerAtelierSection> {
       child: Row(
         children: [
           Icon(
-            o.metier == AtelierMetier.maintenance
-                ? Icons.build_outlined
-                : Icons.checkroom,
+            o.metier == AtelierMetier.garage
+                ? Icons.directions_car_outlined
+                : o.metier == AtelierMetier.pressing
+                    ? Icons.local_laundry_service_outlined
+                    : o.metier == AtelierMetier.maintenance
+                        ? Icons.build_outlined
+                        : Icons.checkroom,
             size: 18,
             color: Colors.grey,
           ),

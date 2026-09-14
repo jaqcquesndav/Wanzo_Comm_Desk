@@ -108,7 +108,7 @@ class AtelierSheetPdf {
       }
     }
 
-    final isMaintenance = order.metier == AtelierMetier.maintenance;
+    final isMaintenance = order.metier.isMaintenanceLike;
     final isImprimerie = order.metier == AtelierMetier.imprimerie;
     final title = isMaintenance
         ? 'FICHE DE RÉCEPTION ET DE RÉPARATION'

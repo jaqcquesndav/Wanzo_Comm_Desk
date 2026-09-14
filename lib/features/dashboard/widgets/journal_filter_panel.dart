@@ -4,6 +4,7 @@ import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/utils/theme.dart';
 import '../models/journal_filter.dart';
 import '../models/operation_journal_entry.dart';
+import 'package:wanzo/core/modules/mode_vocabulary.dart';
 
 /// Widget pour les filtres du journal des opérations
 class JournalFilterPanel extends StatefulWidget {
@@ -119,8 +120,8 @@ class _JournalFilterPanelState extends State<JournalFilterPanel> {
           spacing: WanzoTheme.spacingSm,
           children: [
             _buildQuickFilterChip('Toutes', JournalFilter.defaultFilter()),
-            _buildQuickFilterChip('Ventes', JournalFilter.salesOnly()),
-            _buildQuickFilterChip('Stock', JournalFilter.stockOnly()),
+            _buildQuickFilterChip(ModeVocabulary.current.sales, JournalFilter.salesOnly()),
+            _buildQuickFilterChip(ModeVocabulary.current.stock, JournalFilter.stockOnly()),
             _buildQuickFilterChip('Dépenses', JournalFilter.expensesOnly()),
             _buildQuickFilterChip('Dettes', JournalFilter.customerDebts()),
             // Nouveaux filtres pour distinguer comptabilité et trésorerie

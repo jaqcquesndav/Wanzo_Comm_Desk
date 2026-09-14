@@ -206,6 +206,26 @@
   "@lowStockTabLabel": {
     "description": "Label for the Low Stock tab"
   },
+  "offerNavLabel": "Offer",
+  "@offerNavLabel": {
+    "description": "Navigation label of the Offer page (inventory, services, transactions)"
+  },
+  "inventoryTabLabel": "Inventory",
+  "@inventoryTabLabel": {
+    "description": "Tab label: products inventory"
+  },
+  "servicesTabLabel": "Services",
+  "@servicesTabLabel": {
+    "description": "Tab label: services catalogue"
+  },
+  "lowStockFilterLabel": "Low stock only",
+  "@lowStockFilterLabel": {
+    "description": "Filter option: show only low-stock products"
+  },
+  "addServiceButton": "Add a service",
+  "@addServiceButton": {
+    "description": "Button: add a service"
+  },
   "transactionsTabLabel": "Transactions",
   "@transactionsTabLabel": {
     "description": "Label for the Transactions tab"

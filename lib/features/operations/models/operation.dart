@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 import 'package:hive/hive.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
+import 'package:wanzo/core/modules/mode_vocabulary.dart';
 
 part 'operation.g.dart';
 
@@ -91,7 +92,7 @@ extension OperationTypeExtension on OperationType {
   String get displayName {
     switch (this) {
       case OperationType.sale:
-        return 'Vente';
+        return ModeVocabulary.current.sale;
       case OperationType.expense:
         return 'Dépense';
       case OperationType.financing:

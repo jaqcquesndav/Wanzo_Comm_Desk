@@ -12,6 +12,8 @@ import '../../../features/sales/screens/add_sale_screen.dart';
 import '../../../features/customer/models/customer.dart';
 import '../../../features/supplier/models/supplier.dart';
 import '../../../features/inventory/models/product.dart';
+import '../../../features/services/models/service_item.dart';
+import '../../../features/services/screens/service_form_screen.dart';
 
 /// Service centralisé pour la navigation adaptative vers les formulaires
 /// Sur desktop: ouvre les formulaires COMPLETS dans un Dialog plein écran
@@ -172,6 +174,26 @@ class FormNavigationService {
   }
 
   // ===== PRODUCT =====
+
+  /// Ouvre le formulaire d'ajout/édition d'un service (paliers de prix).
+  Future<bool?> openServiceForm(
+    BuildContext context, {
+    ServiceItem? service,
+    VoidCallback? onSuccess,
+  }) async {
+    if (shouldUseModal(context)) {
+      final result = await _showFormDialog(
+        context,
+        builder: (onSaved) => ServiceFormScreen(service: service, onSaved: onSaved),
+      );
+      if (result == true) onSuccess?.call();
+      return result;
+    }
+    final route = service != null ? '/inventory/services/edit' : '/inventory/services/add';
+    final result = await context.push<bool>(route, extra: service);
+    if (result == true) onSuccess?.call();
+    return result;
+  }
 
   /// Ouvre le formulaire d'ajout/édition de produit
   /// Formulaire COMPLET avec image produit, scanner de code-barres, date d'expiration

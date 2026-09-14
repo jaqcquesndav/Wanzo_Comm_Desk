@@ -5,9 +5,10 @@
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 import 'dart:async' as _i4;
 
-import 'package:hive/hive.dart' as _i5;
+import 'package:hive/hive.dart' as _i6;
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:mockito/src/dummies.dart' as _i6;
+import 'package:mockito/src/dummies.dart' as _i7;
+import 'package:wanzo/core/models/operation_payment.dart' as _i5;
 import 'package:wanzo/features/sales/models/sale.dart' as _i2;
 import 'package:wanzo/features/sales/repositories/sales_repository.dart' as _i3;
 
@@ -27,6 +28,17 @@ import 'package:wanzo/features/sales/repositories/sales_repository.dart' as _i3;
 
 class _FakeSale_0 extends _i1.SmartFake implements _i2.Sale {
   _FakeSale_0(
+    Object parent,
+    Invocation parentInvocation,
+  ) : super(
+          parent,
+          parentInvocation,
+        );
+}
+
+class _FakeSalePaymentOutcome_1 extends _i1.SmartFake
+    implements _i3.SalePaymentOutcome {
+  _FakeSalePaymentOutcome_1(
     Object parent,
     Invocation parentInvocation,
   ) : super(
@@ -125,10 +137,62 @@ class MockSalesRepository extends _i1.Mock implements _i3.SalesRepository {
       ) as _i4.Future<_i2.Sale>);
 
   @override
-  _i4.Future<void> updateSale(_i2.Sale? sale) => (super.noSuchMethod(
+  _i4.Future<void> updateSale(
+    _i2.Sale? sale, {
+    bool? includeItems = true,
+  }) =>
+      (super.noSuchMethod(
         Invocation.method(
           #updateSale,
           [sale],
+          {#includeItems: includeItems},
+        ),
+        returnValue: _i4.Future<void>.value(),
+        returnValueForMissingStub: _i4.Future<void>.value(),
+      ) as _i4.Future<void>);
+
+  @override
+  _i4.Future<_i3.SalePaymentOutcome> recordPayment(
+    _i2.Sale? sale,
+    _i5.PaymentDraft? payment,
+  ) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #recordPayment,
+          [
+            sale,
+            payment,
+          ],
+        ),
+        returnValue:
+            _i4.Future<_i3.SalePaymentOutcome>.value(_FakeSalePaymentOutcome_1(
+          this,
+          Invocation.method(
+            #recordPayment,
+            [
+              sale,
+              payment,
+            ],
+          ),
+        )),
+      ) as _i4.Future<_i3.SalePaymentOutcome>);
+
+  @override
+  _i4.Future<List<_i5.OperationPayment>> getSalePayments(String? saleId) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #getSalePayments,
+          [saleId],
+        ),
+        returnValue: _i4.Future<List<_i5.OperationPayment>>.value(
+            <_i5.OperationPayment>[]),
+      ) as _i4.Future<List<_i5.OperationPayment>>);
+
+  @override
+  _i4.Future<void> flushPendingPayments() => (super.noSuchMethod(
+        Invocation.method(
+          #flushPendingPayments,
+          [],
         ),
         returnValue: _i4.Future<void>.value(),
         returnValueForMissingStub: _i4.Future<void>.value(),
@@ -219,7 +283,7 @@ class MockSalesRepository extends _i1.Mock implements _i3.SalesRepository {
 /// A class which mocks [Box].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockBox<E> extends _i1.Mock implements _i5.Box<E> {
+class MockBox<E> extends _i1.Mock implements _i6.Box<E> {
   MockBox() {
     _i1.throwOnMissingStub(this);
   }
@@ -233,7 +297,7 @@ class MockBox<E> extends _i1.Mock implements _i5.Box<E> {
   @override
   String get name => (super.noSuchMethod(
         Invocation.getter(#name),
-        returnValue: _i6.dummyValue<String>(
+        returnValue: _i7.dummyValue<String>(
           this,
           Invocation.getter(#name),
         ),
@@ -314,14 +378,14 @@ class MockBox<E> extends _i1.Mock implements _i5.Box<E> {
       ));
 
   @override
-  _i4.Stream<_i5.BoxEvent> watch({dynamic key}) => (super.noSuchMethod(
+  _i4.Stream<_i6.BoxEvent> watch({dynamic key}) => (super.noSuchMethod(
         Invocation.method(
           #watch,
           [],
           {#key: key},
         ),
-        returnValue: _i4.Stream<_i5.BoxEvent>.empty(),
-      ) as _i4.Stream<_i5.BoxEvent>);
+        returnValue: _i4.Stream<_i6.BoxEvent>.empty(),
+      ) as _i4.Stream<_i6.BoxEvent>);
 
   @override
   bool containsKey(dynamic key) => (super.noSuchMethod(
