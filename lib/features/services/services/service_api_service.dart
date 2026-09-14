@@ -49,6 +49,17 @@ class ServiceApiService {
     return items;
   }
 
+  /// URL publique signée du catalogue (vitrine) de l'entreprise, produite
+  /// par le backend : jamais reconstruite côté client.
+  Future<String> getPublicCatalogLink() async {
+    final response = await _apiClient.get('public-catalog/link', requiresAuth: true);
+    final url = _asMap(response)['url'];
+    if (url is! String || url.isEmpty) {
+      throw Exception('Lien du catalogue indisponible');
+    }
+    return url;
+  }
+
   Future<ServiceItem> createService(ServiceItem service) async {
     final response = await _apiClient.post('services', body: service.toJson(), requiresAuth: true);
     return ServiceItem.fromJson(_asMap(response));
