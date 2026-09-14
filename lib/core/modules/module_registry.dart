@@ -13,6 +13,10 @@ import 'app_module.dart';
 class ModuleRegistry {
   const ModuleRegistry._();
 
+  /// TOUS les modes d'activité : le socle commun (tableau de bord, opérations,
+  /// offre, contacts, Adha) doit être visible dans chaque mode, sinon la
+  /// navigation du mode se réduit à son seul module métier (page « nue »).
+  /// Doit rester aligné sur `ActivityMode.values` (assertion de [bottomNav]).
   static const Set<ActivityMode> _allModes = {
     ActivityMode.retail,
     ActivityMode.restaurant,
@@ -22,6 +26,8 @@ class ModuleRegistry {
     ActivityMode.atelierMaintenance,
     ActivityMode.salon,
     ActivityMode.imprimerie,
+    ActivityMode.pressing,
+    ActivityMode.garage,
   };
 
   static const List<AppModule> all = [
@@ -357,6 +363,10 @@ class ModuleRegistry {
   /// communs remplissent le reste. En `retail` le résultat est identique à
   /// l'historique (aucun module spécialisé).
   static List<AppModule> bottomNav(ActivityMode mode, String? role) {
+    assert(
+      _allModes.length == ActivityMode.values.length,
+      'ModuleRegistry._allModes doit lister tous les ActivityMode (nouveau mode ajouté ?)',
+    );
     const maxSlots = 5;
     final visible =
         all.where((m) => m.primary && m.visibleFor(mode, role)).toList();

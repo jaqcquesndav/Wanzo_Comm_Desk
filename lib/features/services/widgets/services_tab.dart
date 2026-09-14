@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:wanzo/core/services/currency_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
-import 'package:wanzo/core/utils/currency_formatter.dart';
 
 import '../cubit/services_cubit.dart';
 import '../models/service_item.dart';
@@ -233,7 +233,8 @@ class _ServiceTile extends StatelessWidget {
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Text(
-                              '${t.label} · ${formatCurrency(t.priceCdf, 'CDF')}',
+                              // Devise d'affichage active (politique commune), converti du CDF.
+                              '${t.label} · ${context.read<CurrencyService>().formatAmount(t.priceCdf)}',
                               style: theme.textTheme.labelSmall?.copyWith(
                                 fontWeight: t.isDefault ? FontWeight.w600 : FontWeight.w500,
                               ),

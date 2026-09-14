@@ -609,7 +609,13 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
             labelText: 'Spécialité de maintenance',
             border: OutlineInputBorder()),
         items: [
-          for (final s in kMaintenanceSpecialties)
+          // Une ancienne commande peut porter une spécialité retirée de la
+          // liste (ex. « Automobile », désormais mode garage) : on la garde
+          // sélectionnable pour ne pas casser son édition.
+          for (final s in {
+            ...kMaintenanceSpecialties,
+            if (_specialty != null && _specialty!.isNotEmpty) _specialty!,
+          })
             DropdownMenuItem(value: s, child: Text(s)),
         ],
         onChanged: (v) => setState(() => _specialty = v),
@@ -715,7 +721,8 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   /// Fiche appareil/panne d'un atelier de MAINTENANCE (calquée sur la fiche de
   /// réception/réparation papier). Aucun vocabulaire couture ici.
   Widget _maintenanceSection() {
-    // La fiche s'adapte au type d'engin/appareil selon la spécialité.
+    // Fiche véhicule : mode garage, ou ancienne commande de maintenance saisie
+    // en spécialité « Automobile » avant la création du mode garage.
     final isVehicle = _isGarage || _specialty == 'Automobile';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
+import 'package:wanzo/core/enums/currency_enum.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:wanzo/core/services/currency_service.dart';
 import 'package:wanzo/core/widgets/desktop/modal_form_shell.dart';
 
 import '../config/service_suggestions.dart';
@@ -57,9 +60,61 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
   bool get _isEditing => widget.service != null;
   final _mode = BusinessContextService().activityMode;
 
+  /// Devise de SAISIE des prix : la devise active de l'app (politique de
+  /// devise commune à toute la plateforme) ; les paliers sont stockés en CDF
+  /// via le taux central, comme les prix produits.
+  late CurrencyService _currency;
+  late Currency _inputCurrency;
+
+  /// Paliers proposés en un tap : ceux du mode en premier, puis les usuels.
+  List<ServicePriceTier> get _presets {
+    final seen = <String>{};
+    final out = <ServicePriceTier>[];
+    for (final t in [
+      ...ServiceSuggestions.defaultTiers(_mode),
+      const ServicePriceTier(code: 'standard', label: 'Standard', priceCdf: 0),
+      const ServicePriceTier(code: 'basic', label: 'Basic', priceCdf: 0),
+      const ServicePriceTier(code: 'premium', label: 'Premium', priceCdf: 0),
+      const ServicePriceTier(code: 'speciaux', label: 'Spéciaux', priceCdf: 0),
+      const ServicePriceTier(code: 'express', label: 'Express', priceCdf: 0),
+      const ServicePriceTier(code: 'vip', label: 'VIP', priceCdf: 0),
+    ]) {
+      if (seen.add(t.label.toLowerCase())) out.add(t);
+    }
+    return out;
+  }
+
+  int _tierIndexByLabel(String label) =>
+      _tiers.indexWhere((r) => r.label.text.trim().toLowerCase() == label.toLowerCase());
+
+  void _togglePreset(ServicePriceTier preset) {
+    final idx = _tierIndexByLabel(preset.label);
+    setState(() {
+      if (idx >= 0) {
+        if (_tiers.length <= 1) return; // au moins un palier
+        _tiers.removeAt(idx).dispose();
+        if (_defaultTier >= _tiers.length) _defaultTier = 0;
+      } else {
+        // Une ligne vide (palier « personnalisé » non rempli) est réutilisée.
+        final empty = _tiers.indexWhere(
+            (r) => r.label.text.trim().isEmpty && r.price.text.trim().isEmpty);
+        if (empty >= 0) {
+          _tiers[empty].label.text = preset.label;
+          _tiers[empty].description.text = preset.description ?? '';
+          _tiers[empty].code = preset.code;
+        } else {
+          _tiers.add(_TierRow(
+              label: preset.label, description: preset.description ?? '', code: preset.code));
+        }
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
+    _currency = context.read<CurrencyService>();
+    _inputCurrency = _currency.currentSettings.activeCurrency;
     final s = widget.service;
     if (s != null) {
       _nameCtrl.text = s.name;
@@ -72,7 +127,8 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
         final t = s.priceTiers[i];
         _tiers.add(_TierRow(
           label: t.label,
-          price: t.priceCdf == 0 ? '' : _fmt(t.priceCdf),
+          // Affiché dans la devise de saisie (converti depuis le CDF stocké).
+          price: t.priceCdf == 0 ? '' : _fmt(_currency.convertFromCdf(t.priceCdf, _inputCurrency)),
           description: t.description ?? '',
           code: t.code,
         ));
@@ -127,7 +183,8 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
       tiers.add(ServicePriceTier(
         code: row.code ?? ServicePriceTier.codeFromLabel(label),
         label: label,
-        priceCdf: price,
+        // Stockage en CDF (devise de base) via le taux central.
+        priceCdf: _currency.convertToCdf(price, _inputCurrency),
         isDefault: i == _defaultTier,
         description: row.description.text.trim().isEmpty ? null : row.description.text.trim(),
       ));
@@ -242,21 +299,58 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
               Expanded(
                 child: Text('Paliers de prix', style: theme.textTheme.titleMedium),
               ),
-              TextButton.icon(
-                onPressed: () => setState(() => _tiers.add(_TierRow())),
-                icon: const Icon(Icons.add),
-                label: const Text('Ajouter un palier'),
+              // Devise de saisie : politique de devise de la plateforme (CDF de
+              // base, USD suivi). Les prix sont convertis et stockés en CDF.
+              DropdownButton<Currency>(
+                value: _inputCurrency,
+                underline: const SizedBox.shrink(),
+                items: [
+                  for (final c in Currency.values)
+                    DropdownMenuItem(value: c, child: Text('Prix en ${c.code}')),
+                ],
+                onChanged: (c) {
+                  if (c == null || c == _inputCurrency) return;
+                  setState(() {
+                    // Reconvertit les montants déjà saisis dans la nouvelle devise.
+                    for (final r in _tiers) {
+                      final v = _parsePrice(r.price.text);
+                      if (v == null) continue;
+                      final cdf = _currency.convertToCdf(v, _inputCurrency);
+                      r.price.text = _fmt(_currency.convertFromCdf(cdf, c));
+                    }
+                    _inputCurrency = c;
+                  });
+                },
               ),
             ],
           ),
           Text(
-            'Un même service peut avoir plusieurs prix (ex. Basic, Premium, Spéciaux). '
-            'Le palier par défaut est proposé en premier à la facturation. Prix en CDF.',
+            '1. Cochez les paliers que vous proposez pour ce service. '
+            '2. Indiquez le prix de chacun. '
+            'Le palier marqué comme « par défaut » est proposé en premier à la facturation.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()),
             ),
           ),
           const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final p in _presets)
+                FilterChip(
+                  label: Text(p.label),
+                  selected: _tierIndexByLabel(p.label) >= 0,
+                  onSelected: (_) => _togglePreset(p),
+                ),
+              ActionChip(
+                avatar: const Icon(Icons.add, size: 16),
+                label: const Text('Palier personnalisé'),
+                onPressed: () => setState(() => _tiers.add(_TierRow())),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
           for (var i = 0; i < _tiers.length; i++) _tierCard(i, theme),
           const SizedBox(height: 12),
           SwitchListTile(
@@ -310,10 +404,13 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
           children: [
             Row(
               children: [
-                Radio<int>(
-                  value: i,
-                  groupValue: _defaultTier,
-                  onChanged: (v) => setState(() => _defaultTier = v ?? 0),
+                Tooltip(
+                  message: i == _defaultTier ? 'Palier par défaut' : 'Définir comme palier par défaut',
+                  child: Radio<int>(
+                    value: i,
+                    groupValue: _defaultTier,
+                    onChanged: (v) => setState(() => _defaultTier = v ?? 0),
+                  ),
                 ),
                 Expanded(
                   flex: 3,
@@ -328,7 +425,8 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
                   child: TextFormField(
                     controller: row.price,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: 'Prix (CDF)', isDense: true, border: OutlineInputBorder()),
+                    decoration: InputDecoration(
+                        labelText: 'Prix (${_inputCurrency.code})', isDense: true, border: const OutlineInputBorder()),
                     validator: (v) {
                       if ((v == null || v.trim().isEmpty) && row.label.text.trim().isNotEmpty) return 'Prix requis';
                       if (v != null && v.trim().isNotEmpty && _parsePrice(v) == null) return 'Nombre invalide';

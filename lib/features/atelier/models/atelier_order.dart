@@ -179,14 +179,15 @@ extension AtelierMetierX on AtelierMetier {
 /// Fiche de réception/réparation d'un atelier de MAINTENANCE (miroir du jsonb
 /// backend `maintenanceDetails`). Propre à chaque intervention.
 /// Spécialités d'un atelier de maintenance — le métier étant « maintenance »
-/// (choisi au niveau du mode), la commande précise le domaine, qui adapte les
-/// champs de la fiche appareil (ex. automobile → immatriculation/VIN/km).
+/// (choisi au niveau du mode), la commande précise le domaine. L'automobile
+/// n'en fait plus partie : le garage est un mode à part (métier `garage`,
+/// fiche véhicule et véhicules du client) ; les anciennes commandes
+/// « Automobile » restent lisibles.
 const List<String> kMaintenanceSpecialties = [
   'Informatique',
   'Électronique',
   'Téléphonie',
   'Électroménager',
-  'Automobile',
   'Électromécanique',
   'Thermique / Froid & Clim',
   'Autre',

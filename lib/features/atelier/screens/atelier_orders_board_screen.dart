@@ -156,10 +156,10 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
                 title: status.labelFor(boardMetier),
                 color: _accent[status]!,
                 items: state.orders.where((o) => o.status == status).toList(),
-                // Le règlement (facturation auto) et l'annulation passent par le
-                // menu d'actions (tap) → pas de dépôt direct dans ces colonnes.
-                acceptsDrops: status != AtelierOrderStatus.paid &&
-                    status != AtelierOrderStatus.cancelled,
+                // Déposer une carte dans la colonne « réglée » ouvre directement la
+                // facturation (saut d'étapes autorisé dès que le travail a démarré) ;
+                // l'annulation reste réservée au menu d'actions (tap).
+                acceptsDrops: status != AtelierOrderStatus.cancelled,
                 onAdd: status == AtelierOrderStatus.draft
                     ? () => _openForm(context)
                     : null,
@@ -177,6 +177,12 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
                   onMoveItem: (order, toColumnId) {
                     final target = AtelierOrderStatusX.fromApiValue(toColumnId);
                     if (target == order.status) return;
+                    if (target == AtelierOrderStatus.paid) {
+                      // Facturation : jamais un simple changement de statut, on passe
+                      // par la vente (ticket, facture, journal) qui règle la commande.
+                      _settleViaInvoice(context, cubit, order);
+                      return;
+                    }
                     cubit.updateStatus(order.id, target);
                   },
                   onTapItem: (order) => _showActions(context, cubit, order),
@@ -275,7 +281,8 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
             ListTile(
               leading: const Icon(Icons.receipt_long, color: WanzoColors.success),
               title: const Text('Facturer / encaisser'),
-              subtitle: const Text('Ouvre le formulaire de vente (ticket + facture)'),
+              subtitle: const Text(
+                  'Passe directement à la facturation, quelle que soit l\'étape (ticket + facture)'),
               onTap: () {
                 Navigator.pop(ctx);
                 _settleViaInvoice(context, cubit, order);

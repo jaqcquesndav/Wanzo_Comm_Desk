@@ -23,9 +23,10 @@ enum ActivityMode {
   /// fiche client à mesures. Le mode définit l'état (workflow de production).
   atelier,
 
-  /// Atelier de maintenance / réparation (électronique, électroménager, garage
-  /// auto…) : même moteur de commandes que l'atelier, mais fiche APPAREIL/panne
-  /// à la place des mensurations, et workflow diagnostic → réparation → test.
+  /// Atelier de maintenance / réparation d'appareils (électronique,
+  /// électroménager, informatique…) : même moteur de commandes que l'atelier,
+  /// mais fiche APPAREIL/panne à la place des mensurations, et workflow
+  /// diagnostic → réparation → test. L'automobile relève du mode `garage`.
   atelierMaintenance,
 
   /// Salon de coiffure / beauté : carte de PRESTATIONS tarifées (distinctes du
@@ -169,7 +170,7 @@ enum ActivityMode {
       case ActivityMode.atelier:
         return 'Confection sur mesure : commandes, mesures client, fabrication.';
       case ActivityMode.atelierMaintenance:
-        return 'Réparation d\'appareils / garage : fiche appareil, panne, diagnostic, réparation.';
+        return 'Réparation d\'appareils (électronique, électroménager, informatique) : fiche appareil, panne, diagnostic, réparation.';
       case ActivityMode.salon:
         return 'Coiffure / beauté : carte de prestations, coiffeurs à la commission, ticket et paie.';
       case ActivityMode.imprimerie:

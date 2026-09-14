@@ -149,10 +149,9 @@ class _RestaurantOrdersBoardScreenState
                     .where((o) => o.status == status)
                     .toList()
                   ..sort((a, b) => b.createdAt.compareTo(a.createdAt)),
-                // L'encaissement passe par la caisse ; l'annulation par une
-                // confirmation (tap) → on n'accepte pas le dépôt direct.
-                acceptsDrops: status != RestaurantOrderStatus.paid &&
-                    status != RestaurantOrderStatus.cancelled,
+                // Déposer dans « payée » ouvre l'aperçu avec encaissement (saut
+                // d'étapes autorisé) ; l'annulation reste réservée au tap.
+                acceptsDrops: status != RestaurantOrderStatus.cancelled,
                 onAdd: status == RestaurantOrderStatus.open
                     ? () => _createOrder(context, cubit)
                     : null,
@@ -167,6 +166,11 @@ class _RestaurantOrdersBoardScreenState
             onMoveItem: (order, toColumnId) {
               final target = RestaurantOrderStatusX.fromApiValue(toColumnId);
               if (target == order.status) return;
+              if (target == RestaurantOrderStatus.paid) {
+                // Le paiement passe par la caisse, jamais par un simple statut.
+                showRestaurantOrderQuickView(context, cubit, order);
+                return;
+              }
               cubit.updateStatus(order.id, target);
             },
             onTapItem: (order) =>
