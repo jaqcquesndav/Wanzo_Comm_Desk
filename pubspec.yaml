@@ -1,13 +1,13 @@
-name: wanzo
-description: "Une solution complète de gestion d'entreprise pour les PME africaines."
+﻿name: wanzo
+description: "Une solution complÃ¨te de gestion d'entreprise pour les PME africaines."
 publish_to: 'none'
-version: 1.0.5+6
+version: 1.0.6+7
 
 environment:
   sdk: ^3.7.0
 
 # Commandes importantes:
-# - flutter pub run build_runner build --delete-conflicting-outputs (Génère les adaptateurs Hive)
+# - flutter pub run build_runner build --delete-conflicting-outputs (GÃ©nÃ¨re les adaptateurs Hive)
 
 dependencies:
   flutter:
@@ -56,7 +56,7 @@ dependencies:
   mobile_scanner: ^5.1.1
   permission_handler: ^11.3.1
 
-  # QR (génération du QR public par table restaurant)
+  # QR (gÃ©nÃ©ration du QR public par table restaurant)
   qr_flutter: ^4.1.0
   
   # Authentication
@@ -85,9 +85,9 @@ dependencies:
   record: ^5.2.1
   just_audio: ^0.9.36
   # just_audio_media_kit : backend libmpv pour just_audio sur Windows/Linux.
-  # Sans ce package, just_audio n'a AUCUNE implémentation desktop — les
-  # appels à setFilePath/play échouent silencieusement et le chat audio
-  # ADHA ne produit aucun son malgré l'animation côté UI.
+  # Sans ce package, just_audio n'a AUCUNE implÃ©mentation desktop â€” les
+  # appels Ã  setFilePath/play Ã©chouent silencieusement et le chat audio
+  # ADHA ne produit aucun son malgrÃ© l'animation cÃ´tÃ© UI.
   just_audio_media_kit: ^2.0.6
   media_kit_libs_windows_audio: ^1.0.9
   web_socket_channel: ^2.4.0
@@ -123,7 +123,7 @@ dev_dependencies:
   msix: ^3.16.13
   flutter_launcher_icons: ^0.14.1
 
-# Icônes d'app = logo métier BOUTIQUE/POS (store), pas le « W » générique.
+# IcÃ´nes d'app = logo mÃ©tier BOUTIQUE/POS (store), pas le Â« W Â» gÃ©nÃ©rique.
 flutter_launcher_icons:
   android: false
   ios: false
@@ -183,25 +183,25 @@ msix_config:
   display_name: Wanzo Commerce
   publisher_display_name: Wanzo
   identity_name: com.wanzo.commerce
-  # Éditeur FIXE (doit correspondre exactement au sujet du certificat de
-  # signature). Une identité d'éditeur stable est indispensable pour que les
-  # mises à jour MSIX s'installent PAR-DESSUS l'ancienne version.
+  # Ã‰diteur FIXE (doit correspondre exactement au sujet du certificat de
+  # signature). Une identitÃ© d'Ã©diteur stable est indispensable pour que les
+  # mises Ã  jour MSIX s'installent PAR-DESSUS l'ancienne version.
   publisher: CN=Wanzo
-  # PAS de msix_version codée en dur : elle est dérivée AUTOMATIQUEMENT de
+  # PAS de msix_version codÃ©e en dur : elle est dÃ©rivÃ©e AUTOMATIQUEMENT de
   # `version:` du pubspec (ex. 1.0.1+2 -> 1.0.1.2). Il suffit donc de bumper
-  # `version:` à chaque release pour que Windows accepte la mise à jour
-  # (la version MSIX doit être strictement croissante).
+  # `version:` Ã  chaque release pour que Windows accepte la mise Ã  jour
+  # (la version MSIX doit Ãªtre strictement croissante).
   logo_path: assets/icons/app_icon_square.png
   capabilities: internetClient, microphone
   languages: fr-FR, en-US, sw-TZ
   file_extension: .wanzo
   protocol_activation: wanzo
   execution_alias: wanzo
-  # Certificat de signature PERSISTANT — LE MÊME pour TOUTES les versions, ce
-  # qui permet aux mises à jour de s'installer PAR-DESSUS l'ancienne. Le .pfx
-  # est git-ignoré (présent seulement sur la machine de build) : le mot de passe
+  # Certificat de signature PERSISTANT â€” LE MÃŠME pour TOUTES les versions, ce
+  # qui permet aux mises Ã  jour de s'installer PAR-DESSUS l'ancienne. Le .pfx
+  # est git-ignorÃ© (prÃ©sent seulement sur la machine de build) : le mot de passe
   # ci-dessous est inutilisable sans ce fichier.
-  # ⚠️ Ne régénérez JAMAIS wanzo_codesign.pfx, sinon les mises à jour re-échouent.
+  # âš ï¸ Ne rÃ©gÃ©nÃ©rez JAMAIS wanzo_codesign.pfx, sinon les mises Ã  jour re-Ã©chouent.
   certificate_path: windows/codesign/wanzo_codesign.pfx
   certificate_password: Wanzo#Sign#2026!
   install_certificate: false
