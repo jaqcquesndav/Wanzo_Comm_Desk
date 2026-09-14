@@ -11,7 +11,10 @@ import 'package:wanzo/core/widgets/photo_gallery_viewer.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/features/customer/widgets/customer_picker_field.dart';
 import 'package:wanzo/features/atelier/cubit/atelier_orders_cubit.dart';
+import 'package:wanzo/features/atelier/config/vehicle_catalog.dart';
 import 'package:wanzo/features/atelier/models/atelier_order.dart';
+import 'package:wanzo/features/atelier/models/customer_vehicle.dart';
+import 'package:wanzo/features/atelier/widgets/vehicle_form_dialog.dart';
 import 'package:wanzo/features/atelier/screens/atelier_client_profile_screen.dart';
 import 'package:wanzo/features/atelier/services/atelier_api_service.dart';
 
@@ -39,6 +42,11 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
 
   String? _customerId;
   String? _customerName;
+  // ── Véhicule du client (mode garage) : la commande référence un véhicule
+  // de la fiche client, dont elle alimente la fiche de suivi. ──
+  String? _vehicleId;
+  List<CustomerVehicle> _vehicles = const [];
+  bool _loadingVehicles = false;
   // null = vérification en cours ; true/false = mesures déjà saisies ou non.
   bool? _hasMeasurements;
   AtelierMetier _metier = _lastMetier;
@@ -96,6 +104,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     final o = widget.order;
     if (o != null) {
       _customerId = o.customerId;
+      _vehicleId = o.vehicleId;
       _customerName = o.customerName;
       _metier = o.metier;
       _labelCtrl.text = o.label;
@@ -192,6 +201,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     );
     // Rafraîchir l'indicateur au retour (des mesures ont pu être saisies).
     if (_customerId != null) _checkMeasurements(_customerId!);
+    if (_customerId != null && _isGarage) _loadVehicles(_customerId!);
   }
 
   @override
@@ -434,7 +444,105 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
           _customerName = c?.name;
         });
         if (c != null) _checkMeasurements(c.id);
+        // Nouveau client : on repart d'une liste de véhicules vierge.
+        _vehicleId = null;
+        _vehicles = const [];
+        if (c != null && _isGarage) _loadVehicles(c.id);
       },
+    );
+  }
+
+  Future<void> _loadVehicles(String customerId) async {
+    if (mounted) setState(() => _loadingVehicles = true);
+    try {
+      final v = await _atelierApi.getVehicles(customerId);
+      if (!mounted) return;
+      setState(() {
+        _vehicles = v;
+        _loadingVehicles = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingVehicles = false);
+    }
+  }
+
+  /// Pré-remplit la fiche « véhicule reçu » depuis le véhicule choisi ; le
+  /// kilométrage du jour reste saisi à chaque intervention.
+  void _applyVehicle(CustomerVehicle v) {
+    setState(() {
+      _vehicleId = v.id;
+      _devBrandCtrl.text = v.brand ?? '';
+      _devModelCtrl.text = v.model ?? '';
+      _plateCtrl.text = v.plate ?? '';
+      _vinCtrl.text = v.vin ?? '';
+      _fuelCtrl.text = v.fuel ?? '';
+      if (_mileageCtrl.text.trim().isEmpty && v.mileage != null) {
+        _mileageCtrl.text = '${v.mileage}';
+      }
+    });
+  }
+
+  Future<void> _addVehicle() async {
+    if (_customerId == null) return;
+    final v = await showVehicleFormDialog(context, customerId: _customerId!);
+    if (v == null || !mounted) return;
+    setState(() => _vehicles = [v, ..._vehicles]);
+    _applyVehicle(v);
+  }
+
+  Widget _vehiclePicker() {
+    if (_customerId == null) {
+      return const InputDecorator(
+        decoration: InputDecoration(
+          labelText: 'Véhicule du client',
+          border: OutlineInputBorder(),
+          prefixIcon: Icon(Icons.directions_car_outlined, size: 18),
+        ),
+        child: Text('Sélectionnez d\'abord le client'),
+      );
+    }
+    final selected = _vehicles.any((v) => v.id == _vehicleId) ? _vehicleId : null;
+    return Row(
+      children: [
+        Expanded(
+          child: DropdownButtonFormField<String>(
+            value: selected,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: 'Véhicule du client',
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.directions_car_outlined, size: 18),
+              suffixIcon: _loadingVehicles
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                          width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  : null,
+            ),
+            hint: Text(_vehicles.isEmpty ? 'Aucun véhicule enregistré' : 'Choisir un véhicule'),
+            items: [
+              for (final v in _vehicles)
+                DropdownMenuItem(
+                    value: v.id, child: Text(v.displayLabel, overflow: TextOverflow.ellipsis)),
+            ],
+            onChanged: (id) {
+              for (final v in _vehicles) {
+                if (v.id == id) {
+                  _applyVehicle(v);
+                  return;
+                }
+              }
+            },
+          ),
+        ),
+        const SizedBox(width: 8),
+        IconButton.filledTonal(
+          tooltip: 'Nouveau véhicule',
+          onPressed: _addVehicle,
+          icon: const Icon(Icons.add),
+        ),
+      ],
     );
   }
 
@@ -577,6 +685,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     String label,
     List<String> suggestions, {
     String? hint,
+    IconData? icon,
   }) {
     return Autocomplete<String>(
       initialValue: TextEditingValue(text: target.text),
@@ -596,7 +705,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
             labelText: label,
             hintText: hint,
             border: const OutlineInputBorder(),
-            prefixIcon: const Icon(Icons.badge_outlined, size: 18),
+            prefixIcon: Icon(icon ?? Icons.badge_outlined, size: 18),
           ),
         );
       },
@@ -613,11 +722,29 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       children: [
         _sectionTitle(isVehicle ? 'Véhicule reçu' : 'Appareil reçu'),
         if (isVehicle) ...[
+          if (_isGarage) ...[
+            _vehiclePicker(),
+            const SizedBox(height: 12),
+          ],
+          // Référentiel (marques, modèles, carburants) proposé en saisie ; la
+          // clé force le rafraîchissement quand un véhicule est choisi.
           Row(
+            key: ValueKey('vehicle_identity_$_vehicleId'),
             children: [
-              Expanded(child: _tf(_devBrandCtrl, 'Marque')),
+              Expanded(
+                child: _staffAutocomplete(_devBrandCtrl, 'Fabricant', VehicleCatalog.brands,
+                    icon: Icons.factory_outlined),
+              ),
               const SizedBox(width: 12),
-              Expanded(child: _tf(_devModelCtrl, 'Modèle')),
+              Expanded(
+                child: _staffAutocomplete(
+                    _devModelCtrl,
+                    'Modèle',
+                    VehicleCatalog.modelsFor(_devBrandCtrl.text).isEmpty
+                        ? VehicleCatalog.models.values.expand((e) => e).toList()
+                        : VehicleCatalog.modelsFor(_devBrandCtrl.text),
+                    icon: Icons.directions_car_outlined),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -635,7 +762,12 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
               Expanded(child: _tf(_vinCtrl, 'N° de châssis (VIN)')),
               const SizedBox(width: 12),
               Expanded(
-                  child: _tf(_fuelCtrl, 'Carburant', hint: 'Essence, diesel…')),
+                child: KeyedSubtree(
+                  key: ValueKey('vehicle_fuel_$_vehicleId'),
+                  child: _staffAutocomplete(_fuelCtrl, 'Carburant', VehicleCatalog.fuelTypes,
+                      icon: Icons.local_gas_station_outlined),
+                ),
+              ),
             ],
           ),
         ] else ...[
@@ -1004,6 +1136,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       id: widget.order?.id ?? '',
       customerId: _customerId!,
       customerName: _customerName,
+      vehicleId: _isGarage ? _vehicleId : null,
       label: _labelCtrl.text.trim(),
       metier: _metier,
       maintenanceDetails: _buildMaintenanceDetails(),

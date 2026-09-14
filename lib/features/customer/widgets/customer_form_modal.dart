@@ -10,6 +10,9 @@ import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
 import '../bloc/customer_state.dart';
 import '../models/customer.dart';
+import '../models/customer_contact.dart';
+import '../models/customer_type.dart';
+import 'customer_organization_fields.dart';
 
 /// Modal pour ajouter ou modifier un client
 /// Utilise AdaptiveModal pour une présentation professionnelle desktop
@@ -59,6 +62,10 @@ class _CustomerFormModalState extends State<CustomerFormModal> {
   late final TextEditingController _notesController;
 
   late CustomerCategory _selectedCategory;
+  // Personne morale : nature, NIF / RCCM, personnes de contact.
+  CustomerType _customerType = CustomerType.individual;
+  late final TextEditingController _taxIdController;
+  List<CustomerContact> _contacts = const [];
   bool _isSubmitting = false;
 
   /// Chemin LOCAL de la photo du client (pas d'upload serveur → 0 surcharge).
@@ -89,6 +96,9 @@ class _CustomerFormModalState extends State<CustomerFormModal> {
     );
 
     _selectedCategory = widget.customer?.category ?? CustomerCategory.regular;
+    _customerType = widget.customer?.type ?? CustomerType.individual;
+    _taxIdController = TextEditingController(text: widget.customer?.taxId ?? '');
+    _contacts = widget.customer?.contacts ?? const [];
   }
 
   @override
@@ -98,6 +108,7 @@ class _CustomerFormModalState extends State<CustomerFormModal> {
     _emailController.dispose();
     _addressController.dispose();
     _notesController.dispose();
+    _taxIdController.dispose();
     super.dispose();
   }
 
@@ -298,6 +309,23 @@ class _CustomerFormModalState extends State<CustomerFormModal> {
 
             const SizedBox(height: 20),
 
+            // Section Nature du client (personne physique ou morale)
+            FormSection(
+              title: 'Nature du client',
+              description: 'Particulier ou organisation (PME, ONG, coopérative, institution...)',
+              icon: Icons.apartment_outlined,
+              iconColor: Colors.teal,
+              child: CustomerOrganizationFields(
+                type: _customerType,
+                onTypeChanged: (t) => setState(() => _customerType = t),
+                taxIdController: _taxIdController,
+                contacts: _contacts,
+                onContactsChanged: (c) => _contacts = c,
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
             // Section Adresse et notes
             FormSection(
               title: 'Informations complémentaires',
@@ -380,6 +408,11 @@ class _CustomerFormModalState extends State<CustomerFormModal> {
         totalPurchases: widget.customer?.totalPurchases ?? 0.0,
         lastPurchaseDate: widget.customer?.lastPurchaseDate,
         category: _selectedCategory,
+        customerType: _customerType.apiValue,
+        taxId: _customerType.isOrganization && _taxIdController.text.trim().isNotEmpty
+            ? _taxIdController.text.trim()
+            : null,
+        contacts: _customerType.isOrganization ? _contacts : const [],
         profilePicture: _imagePath,
       );
 

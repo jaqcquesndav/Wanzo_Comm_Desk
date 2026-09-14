@@ -35,13 +35,18 @@ class CustomerAdapter extends TypeAdapter<Customer> {
       updatedAt: fields[15] as DateTime?,
       syncStatus: fields[16] as String,
       localId: fields[17] as String?,
+      customerType: fields[18] == null ? 'individual' : fields[18] as String,
+      taxId: fields[19] as String?,
+      contacts: fields[20] == null
+          ? []
+          : (fields[20] as List).cast<CustomerContact>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, Customer obj) {
     writer
-      ..writeByte(18)
+      ..writeByte(21)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -77,7 +82,13 @@ class CustomerAdapter extends TypeAdapter<Customer> {
       ..writeByte(16)
       ..write(obj.syncStatus)
       ..writeByte(17)
-      ..write(obj.localId);
+      ..write(obj.localId)
+      ..writeByte(18)
+      ..write(obj.customerType)
+      ..writeByte(19)
+      ..write(obj.taxId)
+      ..writeByte(20)
+      ..write(obj.contacts);
   }
 
   @override
@@ -173,6 +184,12 @@ Customer _$CustomerFromJson(Map<String, dynamic> json) => Customer(
       updatedAt: json['updatedAt'] == null
           ? null
           : DateTime.parse(json['updatedAt'] as String),
+      customerType: json['customerType'] as String? ?? 'individual',
+      taxId: json['taxId'] as String?,
+      contacts: (json['contacts'] as List<dynamic>?)
+              ?.map((e) => CustomerContact.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
 
 Map<String, dynamic> _$CustomerToJson(Customer instance) => <String, dynamic>{
@@ -197,6 +214,9 @@ Map<String, dynamic> _$CustomerToJson(Customer instance) => <String, dynamic>{
         'businessUnitType': value,
       if (instance.updatedAt?.toIso8601String() case final value?)
         'updatedAt': value,
+      'customerType': instance.customerType,
+      if (instance.taxId case final value?) 'taxId': value,
+      'contacts': instance.contacts.map((e) => e.toJson()).toList(),
     };
 
 const _$CustomerCategoryEnumMap = {

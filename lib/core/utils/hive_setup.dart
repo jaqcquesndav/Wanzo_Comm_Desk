@@ -8,6 +8,7 @@ import '../../features/auth/models/business_sector.dart' as auth_bs;
 // Customer models
 import '../../features/customer/models/customer.dart'
     as customer_model; // Standardized import
+import '../../features/customer/models/customer_contact.dart';
 
 // Inventory models
 import '../../features/inventory/models/product.dart' as inventory_product;
@@ -79,6 +80,7 @@ Future<void> initializeHiveAdapters() async {
   // Customers - Standardized to use customer_model from features/customer/models/
   _registerAdapterIfNotExists(customer_model.CustomerAdapter());
   _registerAdapterIfNotExists(customer_model.CustomerCategoryAdapter());
+  _registerAdapterIfNotExists(CustomerContactAdapter());
   // Inventory
   _registerAdapterIfNotExists(inventory_product.ProductAdapter());
   _registerAdapterIfNotExists(inventory_product.ProductCategoryAdapter());

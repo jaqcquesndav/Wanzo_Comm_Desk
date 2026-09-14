@@ -8,6 +8,9 @@ import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
 import '../bloc/customer_state.dart';
 import '../models/customer.dart';
+import '../models/customer_contact.dart';
+import '../models/customer_type.dart';
+import '../widgets/customer_organization_fields.dart';
 
 /// Écran pour ajouter ou modifier un client
 class AddCustomerScreen extends StatefulWidget {
@@ -30,6 +33,10 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
   late final TextEditingController _notesController;
 
   late CustomerCategory _selectedCategory;
+  // Personne morale : nature, NIF / RCCM, personnes de contact.
+  CustomerType _customerType = CustomerType.individual;
+  late final TextEditingController _taxIdController;
+  List<CustomerContact> _contacts = const [];
 
   bool get _isEditing => widget.customer != null;
 
@@ -53,6 +60,9 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     );
 
     _selectedCategory = widget.customer?.category ?? CustomerCategory.regular;
+    _customerType = widget.customer?.type ?? CustomerType.individual;
+    _taxIdController = TextEditingController(text: widget.customer?.taxId ?? '');
+    _contacts = widget.customer?.contacts ?? const [];
   }
 
   @override
@@ -62,6 +72,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     _emailController.dispose();
     _addressController.dispose();
     _notesController.dispose();
+    _taxIdController.dispose();
     super.dispose();
   }
 
@@ -130,6 +141,14 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
                   ),
                   const SizedBox(height: 16),
 
+                  CustomerOrganizationFields(
+                    type: _customerType,
+                    onTypeChanged: (t) => setState(() => _customerType = t),
+                    taxIdController: _taxIdController,
+                    contacts: _contacts,
+                    onContactsChanged: (c) => _contacts = c,
+                  ),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _phoneController,
                     decoration: InputDecoration(
@@ -288,6 +307,11 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         totalPurchases: widget.customer?.totalPurchases ?? 0.0,
         lastPurchaseDate: widget.customer?.lastPurchaseDate,
         category: _selectedCategory,
+        customerType: _customerType.apiValue,
+        taxId: _customerType.isOrganization && _taxIdController.text.trim().isNotEmpty
+            ? _taxIdController.text.trim()
+            : null,
+        contacts: _customerType.isOrganization ? _contacts : const [],
       );
 
       if (_isEditing) {

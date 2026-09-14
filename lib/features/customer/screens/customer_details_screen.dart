@@ -15,6 +15,8 @@ import '../bloc/customer_event.dart';
 import '../bloc/customer_state.dart';
 import '../models/customer.dart';
 import '../../atelier/widgets/customer_atelier_section.dart';
+import '../../atelier/widgets/customer_vehicles_section.dart';
+import '../widgets/customer_contacts_card.dart';
 import 'add_customer_screen.dart';
 
 /// Écran de détails d'un client
@@ -151,6 +153,14 @@ class CustomerDetailsScreen extends StatelessWidget {
                         ),
                         const Divider(),
                         const SizedBox(height: 8),
+                        if (customer.type.isOrganization) ...[
+                          _buildInfoRow(customer.type.icon, 'Nature', customer.type.label),
+                          const SizedBox(height: 12),
+                        ],
+                        if ((customer.taxId ?? '').isNotEmpty) ...[
+                          _buildInfoRow(Icons.receipt_long, 'NIF / RCCM', customer.taxId!),
+                          const SizedBox(height: 12),
+                        ],
                         _buildInfoRow(
                           Icons.phone,
                           localizations.customerPhoneLabel,
@@ -352,6 +362,9 @@ class CustomerDetailsScreen extends StatelessWidget {
                   ),
                 ],
                 // Section atelier (mesures + historique) — visible en mode atelier.
+                // Personnes de contact (personne morale) et véhicules (mode garage).
+                CustomerContactsCard(customer: customer),
+                CustomerVehiclesSection(customerId: customer.id, customerName: customer.name),
                 CustomerAtelierSection(
                   customerId: customer.id,
                   customerName: customer.name,
@@ -566,6 +579,22 @@ class CustomerDetailsScreen extends StatelessWidget {
                   const Divider(),
                   const SizedBox(height: 8),
 
+                  if (customer.type.isOrganization) ...[
+
+                    _buildInfoRow(customer.type.icon, 'Nature', customer.type.label),
+
+                    const SizedBox(height: 12),
+
+                  ],
+
+                  if ((customer.taxId ?? '').isNotEmpty) ...[
+
+                    _buildInfoRow(Icons.receipt_long, 'NIF / RCCM', customer.taxId!),
+
+                    const SizedBox(height: 12),
+
+                  ],
+
                   _buildInfoRow(
                     Icons.phone,
                     localizations.customerPhoneLabel,
@@ -673,6 +702,9 @@ class CustomerDetailsScreen extends StatelessWidget {
           ],
 
           // Section atelier (mesures + historique) — visible en mode atelier.
+          // Personnes de contact (personne morale) et véhicules (mode garage).
+          CustomerContactsCard(customer: customer),
+          CustomerVehiclesSection(customerId: customer.id, customerName: customer.name),
           CustomerAtelierSection(
             customerId: customer.id,
             customerName: customer.name,

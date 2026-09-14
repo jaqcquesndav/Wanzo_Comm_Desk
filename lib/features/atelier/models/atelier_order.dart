@@ -461,6 +461,8 @@ class AtelierOrder extends Equatable {
   final String id;
   final String customerId;
   final String? customerName;
+  /// Véhicule du client concerné (mode garage), pour la fiche de suivi.
+  final String? vehicleId;
   final String label;
   final String? modelDetails;
   final AtelierMetier metier;
@@ -491,6 +493,7 @@ class AtelierOrder extends Equatable {
     required this.id,
     required this.customerId,
     this.customerName,
+    this.vehicleId,
     required this.label,
     this.modelDetails,
     this.metier = AtelierMetier.couture,
@@ -530,6 +533,7 @@ class AtelierOrder extends Equatable {
       customerName: (customer is Map<String, dynamic>)
           ? customer['fullName'] as String?
           : json['customerName'] as String?,
+      vehicleId: json['vehicleId'] as String?,
       label: json['label'] as String? ?? '',
       modelDetails: json['modelDetails'] as String?,
       metier: AtelierMetierX.fromApiValue(json['metier'] as String?),
@@ -573,6 +577,7 @@ class AtelierOrder extends Equatable {
     'id': id,
     'customerId': customerId,
     if (customerName != null) 'customerName': customerName,
+    if (vehicleId != null) 'vehicleId': vehicleId,
     'label': label,
     if (modelDetails != null) 'modelDetails': modelDetails,
     'metier': metier.apiValue,
@@ -603,6 +608,7 @@ class AtelierOrder extends Equatable {
   /// Payload de création/mise à jour (les champs null sont omis).
   Map<String, dynamic> toCreateJson() => {
     'customerId': customerId,
+    if (vehicleId != null) 'vehicleId': vehicleId,
     'label': label,
     if (modelDetails != null) 'modelDetails': modelDetails,
     'metier': metier.apiValue,
@@ -632,6 +638,7 @@ class AtelierOrder extends Equatable {
       id: id,
       customerId: customerId,
       customerName: customerName,
+      vehicleId: vehicleId,
       label: label,
       modelDetails: modelDetails,
       metier: metier ?? this.metier,
