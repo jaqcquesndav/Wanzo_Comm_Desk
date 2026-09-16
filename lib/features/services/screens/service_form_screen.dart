@@ -215,7 +215,7 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
     // Un seul cubit pour la sauvegarde : il porte aussi le métier courant
     // (isolation pressing / garage / couture) sans dépendre du modèle atelier.
     final cubit = ServicesCubit();
-    final metier = cubit.currentMetier;
+    final metier = cubit.metierToStamp;
     final item = ServiceItem(
       id: widget.service?.id ?? const Uuid().v4(),
       name: _nameCtrl.text.trim(),
@@ -223,7 +223,11 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
       category: _categoryCtrl.text.trim().isEmpty ? null : _categoryCtrl.text.trim(),
       durationMinutes: int.tryParse(_durationCtrl.text.trim()),
       priceTiers: tiers,
-      activityModes: widget.service?.activityModes ?? const [],
+      // Le service appartient au mode ou il est cree : sans cette marque, le
+      // filtre par mode ne restreint rien et les catalogues se melangent.
+      activityModes: widget.service?.activityModes.isNotEmpty == true
+          ? widget.service!.activityModes
+          : [cubit.currentModeCode],
       metier: widget.service?.metier ?? metier,
       taxRate: widget.service?.taxRate,
       commissionPct: widget.service?.commissionPct,
@@ -428,7 +432,9 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
                     decoration: InputDecoration(
                         labelText: 'Prix (${_inputCurrency.code})', isDense: true, border: const OutlineInputBorder()),
                     validator: (v) {
-                      if ((v == null || v.trim().isEmpty) && row.label.text.trim().isNotEmpty) return 'Prix requis';
+                      // Une colonne sans prix est une case vide du bareme : la
+                      // prestation ne s'applique pas a cette categorie. Elle
+                      // n'est simplement pas enregistree.
                       if (v != null && v.trim().isNotEmpty && _parsePrice(v) == null) return 'Nombre invalide';
                       return null;
                     },

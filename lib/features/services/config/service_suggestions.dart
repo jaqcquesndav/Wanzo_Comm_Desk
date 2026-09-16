@@ -1,5 +1,6 @@
 import '../../../core/modules/activity_mode.dart';
 import '../models/service_item.dart';
+import 'garage_vehicle_categories.dart';
 
 /// Suggestions de saisie pour le catalogue des services, par mode d'activité :
 /// catégories, intitulés fréquents et paliers de prix par défaut. Ce sont des
@@ -11,13 +12,12 @@ class ServiceSuggestions {
   static List<ServicePriceTier> defaultTiers(ActivityMode mode) {
     switch (mode) {
       case ActivityMode.garage:
-        return const [
-          ServicePriceTier(code: 'basic', label: 'Basic', priceCdf: 0, isDefault: true,
-              description: 'Intervention standard, pièces courantes'),
-          ServicePriceTier(code: 'premium', label: 'Premium', priceCdf: 0,
-              description: 'Pièces d\'origine, garantie étendue'),
-          ServicePriceTier(code: 'speciaux', label: 'Spéciaux', priceCdf: 0,
-              description: 'Cas particuliers, sur devis'),
+        // Un garage tarifie par CATEGORIE DE VEHICULE, pas par niveau de
+        // gamme : la prestation n'a pas le meme prix sur une voiture et sur un
+        // poids lourd. Les colonnes laissees vides ne sont pas enregistrees.
+        return [
+          for (var i = 0; i < kGarageVehicleCategories.length; i++)
+            kGarageVehicleCategories[i].toTier(isDefault: i == 0),
         ];
       case ActivityMode.pressing:
         return const [

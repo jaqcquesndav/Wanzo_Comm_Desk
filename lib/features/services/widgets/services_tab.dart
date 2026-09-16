@@ -5,6 +5,9 @@ import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 
 import '../cubit/services_cubit.dart';
 import '../models/service_item.dart';
+import '../screens/garage_price_grid_screen.dart';
+import '../../../core/modules/activity_mode.dart';
+import '../../../core/services/business_context_service.dart';
 
 /// Onglet « Services » de la page Offre : catalogue des services à paliers de
 /// prix, recherche, filtre par catégorie, activation rapide. La création et la
@@ -23,6 +26,19 @@ class _ServicesTabState extends State<ServicesTab> {
   final _searchCtrl = TextEditingController();
   String _query = '';
   String? _category;
+
+  /// Ouvre le bareme du garage, prestations en lignes et categories de
+  /// vehicules en colonnes. Les lignes existantes y sont rechargees.
+  Future<void> _openGrid(BuildContext context, List<ServiceItem> items) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => GaragePriceGridScreen(existing: items),
+      ),
+    );
+    if (saved == true && context.mounted) {
+      context.read<ServicesCubit>().load();
+    }
+  }
 
   @override
   void dispose() {
@@ -61,6 +77,20 @@ class _ServicesTabState extends State<ServicesTab> {
 
         return Column(
           children: [
+            // Un garage tarifie par categorie de vehicule : la grille est la
+            // seule saisie tenable pour un bareme complet.
+            if (BusinessContextService().activityMode == ActivityMode.garage)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _openGrid(context, state.items),
+                    icon: const Icon(Icons.grid_on_outlined, size: 18),
+                    label: const Text('Barème par catégorie de véhicule'),
+                  ),
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
               child: TextField(

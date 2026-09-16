@@ -53,8 +53,25 @@ class ServicesCubit extends Cubit<ServicesState> {
 
   ActivityMode get _mode => BusinessContextService().activityMode;
 
+  /// Code du mode courant, inscrit sur les services créés pour qu'ils ne
+  /// fuient pas dans les autres catalogues.
+  String get currentModeCode => _mode.apiValue;
+
   /// Métier d'atelier courant, pour isoler les catalogues (pressing ≠ garage).
-  String? get currentMetier {
+  ///
+  /// Hors atelier, on demande explicitement les services SANS métier : sans
+  /// cela, une boutique voyait remonter les prestations du garage et du
+  /// pressing de la même entreprise.
+  String get currentMetier {
+    final mode = _mode;
+    if (!mode.isWorkshop) return 'none';
+    return metierForMode(mode).apiValue;
+  }
+
+  /// Métier à ÉCRIRE sur un service créé : nul hors atelier. Le filtre de
+  /// lecture, lui, vaut « none » dans ce cas, ce qui n'est pas une valeur
+  /// stockable.
+  String? get metierToStamp {
     final mode = _mode;
     if (!mode.isWorkshop) return null;
     return metierForMode(mode).apiValue;
@@ -113,8 +130,17 @@ class ServicesCubit extends Cubit<ServicesState> {
   /// repartent au prochain `load()`.
   Future<void> importAll(List<ServiceItem> items) async {
     if (items.isEmpty) return;
-    final metier = currentMetier;
-    final stamped = [for (final it in items) it.copyWith(metier: it.metier ?? metier, pendingSync: true)];
+    final metier = metierToStamp;
+    final modes = [currentModeCode];
+    final stamped = [
+      for (final it in items)
+        it.copyWith(
+          metier: it.metier ?? metier,
+          activityModes:
+              it.activityModes.isEmpty ? modes : it.activityModes,
+          pendingSync: true,
+        )
+    ];
     for (final it in stamped) {
       await _repository.upsert(it);
     }
@@ -158,7 +184,8 @@ class ServicesCubit extends Cubit<ServicesState> {
     final metier = currentMetier;
     return all.where((s) {
       final modeOk = s.activityModes.isEmpty || s.activityModes.contains(mode);
-      final metierOk = metier == null || s.metier == null || s.metier == metier;
+      final metierOk =
+          metier == 'none' ? s.metier == null : s.metier == metier;
       return modeOk && metierOk;
     }).toList();
   }
