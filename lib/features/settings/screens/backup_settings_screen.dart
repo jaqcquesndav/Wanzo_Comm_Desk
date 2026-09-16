@@ -541,7 +541,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
           }
           return 1.0;
         },
-        metier: cubit.currentMetier,
+        metier: cubit.metierToStamp,
       );
       if (result == null || !context.mounted) return;
       if (result.services.isEmpty) {

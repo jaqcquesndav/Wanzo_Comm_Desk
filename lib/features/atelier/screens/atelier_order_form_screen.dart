@@ -18,6 +18,9 @@ import 'package:wanzo/features/atelier/widgets/vehicle_form_sheet.dart';
 import 'package:wanzo/features/atelier/screens/atelier_client_profile_screen.dart';
 import 'package:wanzo/features/atelier/services/atelier_api_service.dart';
 import 'package:wanzo/features/services/config/service_suggestions.dart';
+import '../../services/cubit/services_cubit.dart';
+import '../../services/models/service_item.dart';
+import '../../../core/utils/adaptive_pull_up.dart';
 
 /// Formulaire de création / modification d'une commande de confection.
 ///
@@ -46,6 +49,9 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   // ── Véhicule du client (mode garage) : la commande référence un véhicule
   // de la fiche client, dont elle alimente la fiche de suivi. ──
   String? _vehicleId;
+
+  /// Colonne du bareme correspondant au vehicule recu (garage).
+  String? _vehicleCategory;
   List<CustomerVehicle> _vehicles = const [];
   bool _loadingVehicles = false;
   // null = vérification en cours ; true/false = mesures déjà saisies ou non.
@@ -356,7 +362,19 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                         controller: _totalCtrl,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(labelText: 'Montant total', border: OutlineInputBorder()),
+                        decoration: InputDecoration(
+                          labelText: 'Montant total',
+                          border: const OutlineInputBorder(),
+                          // Le bareme connait le prix de cette prestation pour
+                          // cette categorie de vehicule : inutile de le retaper.
+                          suffixIcon: _metier == AtelierMetier.garage
+                              ? IconButton(
+                                  tooltip: 'Prendre au barème',
+                                  icon: const Icon(Icons.price_change_outlined),
+                                  onPressed: _pickFromPriceGrid,
+                                )
+                              : null,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -509,6 +527,8 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   void _applyVehicle(CustomerVehicle v) {
     setState(() {
       _vehicleId = v.id;
+      // Categorie de tarification : elle designe la colonne du bareme.
+      _vehicleCategory = v.pricingCategory;
       _devBrandCtrl.text = v.brand ?? '';
       _devModelCtrl.text = v.model ?? '';
       _plateCtrl.text = v.plate ?? '';
@@ -519,6 +539,62 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       }
     });
   }
+
+  /// Reprend le prix d'une prestation du bareme, dans la colonne du vehicule.
+  ///
+  /// Sans categorie sur le vehicule, on montre tous les paliers et l'operateur
+  /// tranche : mieux vaut un choix eclaire qu'un montant tape de memoire.
+  Future<void> _pickFromPriceGrid() async {
+    final cubit = ServicesCubit()..load();
+    final services = await cubit.stream
+        .map((s) => s.items)
+        .firstWhere((items) => items.isNotEmpty,
+            orElse: () => const <ServiceItem>[])
+        .timeout(const Duration(seconds: 6),
+            onTimeout: () => const <ServiceItem>[]);
+    if (!mounted) return;
+    if (services.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'Aucune prestation au barème. Créez-le depuis Offre, onglet Services.'),
+      ));
+      return;
+    }
+
+    final picked = await showAdaptivePullUp<_GridPick>(
+      context,
+      title: 'Barème du garage',
+      icon: Icons.price_change_outlined,
+      maxWidth: 460,
+      builder: (ctx) => ListView(
+        shrinkWrap: true,
+        children: [
+          for (final s in services)
+            for (final t in s.priceTiers)
+              if (_vehicleCategory == null || t.code == _vehicleCategory)
+                ListTile(
+                  dense: true,
+                  title: Text(s.name),
+                  subtitle: Text(t.label),
+                  trailing: Text(_fmtTierPrice(t.priceCdf),
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  onTap: () =>
+                      Navigator.of(ctx).pop(_GridPick(s.name, t.priceCdf)),
+                ),
+        ],
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _totalCtrl.text = picked.priceCdf == picked.priceCdf.roundToDouble()
+          ? picked.priceCdf.toInt().toString()
+          : picked.priceCdf.toString();
+      if (_labelCtrl.text.trim().isEmpty) _labelCtrl.text = picked.name;
+    });
+  }
+
+  String _fmtTierPrice(double v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
 
   Future<void> _addVehicle() async {
     if (_customerId == null) return;
@@ -639,7 +715,9 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     // Imprimerie et pressing : le métier est fixé par le mode, la fiche du
     // métier porte toute la config → pas de sélecteur métier redondant.
     if (_isImprimerie || _isPressing) return const SizedBox.shrink();
-    if (_isMaintenance) {
+    // Specialite d'appareil : propre a la maintenance. Le garage travaille sur
+    // un vehicule, pas sur une famille d'appareils.
+    if (_metier == AtelierMetier.maintenance) {
       return DropdownButtonFormField<String>(
         value: _specialty,
         isExpanded: true,
@@ -1400,4 +1478,12 @@ class _PressingItemRow {
     quantity.dispose();
     note.dispose();
   }
+}
+
+
+/// Ce qu'on retient du barème : la prestation et son prix pour la catégorie.
+class _GridPick {
+  final String name;
+  final double priceCdf;
+  const _GridPick(this.name, this.priceCdf);
 }
