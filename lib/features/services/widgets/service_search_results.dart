@@ -15,12 +15,18 @@ class ServiceSearchResults extends StatelessWidget {
   final double exchangeRate;
   final void Function(ServiceItem service, ServicePriceTier tier) onPick;
 
+  /// Catégorie du véhicule concerné (garage). Quand elle est connue, le palier
+  /// correspondant est choisi d'office : le caissier n'a pas à retrouver la
+  /// bonne colonne du barème.
+  final String? vehicleCategoryCode;
+
   const ServiceSearchResults({
     super.key,
     required this.services,
     required this.currencyCode,
     required this.exchangeRate,
     required this.onPick,
+    this.vehicleCategoryCode,
   });
 
   String _price(double priceCdf) =>
@@ -107,6 +113,15 @@ class ServiceSearchResults extends StatelessWidget {
       final tier = service.defaultTier ?? service.priceTiers.first;
       onPick(service, tier);
       return;
+    }
+    // Véhicule connu : sa catégorie désigne la colonne du barème.
+    final code = vehicleCategoryCode;
+    if (code != null && code.isNotEmpty) {
+      final match = service.tierByCode(code);
+      if (match != null) {
+        onPick(service, match);
+        return;
+      }
     }
     final tier = await showAdaptivePullUp<ServicePriceTier>(
       context,

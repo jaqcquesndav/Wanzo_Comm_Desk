@@ -6,6 +6,7 @@ import 'package:wanzo/core/utils/adaptive_pull_up.dart';
 import '../config/vehicle_catalog.dart';
 import '../models/customer_vehicle.dart';
 import '../services/atelier_api_service.dart';
+import '../../services/config/garage_vehicle_categories.dart';
 
 /// Formulaire d'un véhicule client (création ou modification), présenté en
 /// pull-up sur mobile et en boîte de dialogue sur écran large, depuis la fiche
@@ -47,6 +48,9 @@ class _VehicleFormState extends State<_VehicleForm> {
   late final _fuel = TextEditingController(text: widget.vehicle?.fuel ?? '');
   late final _transmission = TextEditingController(text: widget.vehicle?.transmission ?? '');
   late final _bodyType = TextEditingController(text: widget.vehicle?.bodyType ?? '');
+
+  /// Catégorie de tarification : désigne la colonne du barème du garage.
+  String? _pricingCategory;
   late final _mileage = TextEditingController(text: widget.vehicle?.mileage?.toString() ?? '');
   late final _notes = TextEditingController(text: widget.vehicle?.notes ?? '');
   bool _saving = false;
@@ -57,6 +61,12 @@ class _VehicleFormState extends State<_VehicleForm> {
   static List<String> get _years {
     final now = DateTime.now().year + 1;
     return [for (var y = now; y >= 1980; y--) '$y'];
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _pricingCategory = widget.vehicle?.pricingCategory;
   }
 
   @override
@@ -127,6 +137,7 @@ class _VehicleFormState extends State<_VehicleForm> {
       fuel: t(_fuel),
       transmission: t(_transmission),
       bodyType: t(_bodyType),
+      pricingCategory: _pricingCategory,
       mileage: int.tryParse(_mileage.text.replaceAll(RegExp(r'[^0-9]'), '')),
       notes: t(_notes),
     );
@@ -211,6 +222,32 @@ class _VehicleFormState extends State<_VehicleForm> {
                     const SizedBox(width: 12),
                     Expanded(child: _auto(_bodyType, 'Carrosserie', () => VehicleCatalog.bodyTypes)),
                   ],
+                ),
+                const SizedBox(height: 12),
+                // Colonne du bareme du garage : c'est elle qui decide du prix
+                // propose a la caisse, la carrosserie ne suffit pas.
+                DropdownButtonFormField<String>(
+                  value: _pricingCategory,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Catégorie de tarification',
+                    helperText: 'Colonne du barème du garage',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  items: [
+                    const DropdownMenuItem<String>(
+                      value: null,
+                      child: Text('Non précisée'),
+                    ),
+                    for (final c in kGarageVehicleCategories)
+                      DropdownMenuItem<String>(
+                        value: c.code,
+                        child: Text('${c.label} · ${c.hint}',
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: (v) => setState(() => _pricingCategory = v),
                 ),
                 const SizedBox(height: 12),
                 _tf(_notes, 'Remarques', hint: 'Particularités, accessoires, historique connu...', lines: 2),
