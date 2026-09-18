@@ -30,6 +30,22 @@ class ModuleRegistry {
     ActivityMode.garage,
   };
 
+  /// Modes où les finances restent DÉCOUPÉES en deux entrées (Revenus,
+  /// Charges). Le restaurant et le salon en sont exclus : ils reçoivent à la
+  /// place la table des opérations, qui couvre les deux et sait filtrer,
+  /// rechercher et exporter. Trois entrées pour la même matière se
+  /// concurrenceraient sans rien apporter.
+  static const Set<ActivityMode> _modesWithSplitFinances = {
+    ActivityMode.retail,
+    ActivityMode.hotel,
+    ActivityMode.services,
+    ActivityMode.atelier,
+    ActivityMode.atelierMaintenance,
+    ActivityMode.imprimerie,
+    ActivityMode.pressing,
+    ActivityMode.garage,
+  };
+
   static const List<AppModule> all = [
     // ── Socle commun (sidebar + bottom-nav) ────────────────────────────
     AppModule(
@@ -55,7 +71,7 @@ class ModuleRegistry {
       icon: Icons.point_of_sale_outlined,
       activeIcon: Icons.point_of_sale,
       route: '/sales',
-      modes: _allModes,
+      modes: _modesWithSplitFinances,
       inSidebar: true,
       sidebarOrder: 20,
       section: 'Finances',
@@ -66,7 +82,7 @@ class ModuleRegistry {
       icon: Icons.receipt_long_outlined,
       activeIcon: Icons.receipt_long,
       route: '/expenses',
-      modes: _allModes,
+      modes: _modesWithSplitFinances,
       inSidebar: true,
       sidebarOrder: 21,
       section: 'Finances',
@@ -80,6 +96,21 @@ class ModuleRegistry {
       modes: _allModes,
       primary: true,
       order: 1,
+    ),
+    // Deuxième entrée pour la MÊME route que l'onglet « Opérations » de la
+    // bottom-nav : elle n'existe que là où les finances ne sont pas découpées,
+    // c'est-à-dire en restaurant et en salon.
+    AppModule(
+      id: 'operations_ledger',
+      label: 'Opérations',
+      icon: Icons.swap_horiz,
+      activeIcon: Icons.swap_horiz_outlined,
+      route: '/operations',
+      modes: {ActivityMode.restaurant, ActivityMode.salon},
+      inSidebar: true,
+      sidebarOrder: 20,
+      section: 'Finances',
+      order: 20,
     ),
     AppModule(
       id: 'inventory',
@@ -140,7 +171,7 @@ class ModuleRegistry {
       id: 'restaurant_orders',
       label: 'Commandes',
       icon: Icons.restaurant_menu,
-      activeIcon: Icons.restaurant,
+      activeIcon: Icons.restaurant_menu_outlined,
       // La vue « Commandes » est le board Kanban (aperçu par statut, façon
       // Trello) ; la caisse reste à un tap via le bouton dédié du board.
       route: '/restaurant/board',
@@ -188,7 +219,7 @@ class ModuleRegistry {
     ),
     AppModule(
       id: 'atelier_maintenance_orders',
-      label: 'Commandes',
+      label: 'Interventions',
       icon: Icons.handyman_outlined,
       activeIcon: Icons.handyman,
       route: '/atelier/board',
@@ -203,7 +234,7 @@ class ModuleRegistry {
     // Imprimerie : même moteur/board que l'atelier, icône dédiée impression.
     AppModule(
       id: 'imprimerie_orders',
-      label: 'Commandes',
+      label: 'Travaux',
       icon: Icons.print_outlined,
       activeIcon: Icons.print,
       route: '/atelier/board',
@@ -217,7 +248,7 @@ class ModuleRegistry {
     ),
     AppModule(
       id: 'pressing_orders',
-      label: 'Commandes',
+      label: 'Dépôts',
       icon: Icons.local_laundry_service_outlined,
       activeIcon: Icons.local_laundry_service,
       route: '/atelier/board',
@@ -231,7 +262,9 @@ class ModuleRegistry {
     ),
     AppModule(
       id: 'garage_orders',
-      label: 'Véhicules',
+      // L'onglet ouvre le kanban des INTERVENTIONS : il en porte le nom. Le
+      // parc des véhicules est une page voisine (desktop seulement).
+      label: 'Interventions',
       icon: Icons.directions_car_outlined,
       activeIcon: Icons.directions_car,
       route: '/atelier/board',
@@ -244,11 +277,28 @@ class ModuleRegistry {
       available: true,
     ),
     // Tables & QR — chaque table porte un QR public (menu + commande en ligne).
+    // Le parc : page desktop uniquement (`primary: false` la garde hors de la
+    // bottom-nav). Un tableau de véhicules demande une largeur que le
+    // téléphone n'a pas, et sur mobile le véhicule se retrouve par son client.
+    AppModule(
+      id: 'garage_fleet',
+      label: 'Parc',
+      icon: Icons.garage_outlined,
+      activeIcon: Icons.garage,
+      route: '/garage/parc',
+      modes: {ActivityMode.garage},
+      primary: false,
+      order: 2,
+      inSidebar: true,
+      sidebarOrder: 11,
+      section: 'Garage',
+      available: true,
+    ),
     AppModule(
       id: 'restaurant_tables',
       label: 'Tables',
       icon: Icons.table_restaurant,
-      activeIcon: Icons.table_bar,
+      activeIcon: Icons.table_restaurant_outlined,
       route: '/restaurant/tables',
       modes: {ActivityMode.restaurant},
       primary: true,
@@ -313,7 +363,7 @@ class ModuleRegistry {
       id: 'hotel_rooms',
       label: 'Chambres',
       icon: Icons.hotel,
-      activeIcon: Icons.king_bed,
+      activeIcon: Icons.hotel_outlined,
       route: '/hotel/rooms',
       modes: {ActivityMode.hotel},
       primary: true,
@@ -327,7 +377,7 @@ class ModuleRegistry {
       id: 'hotel_reservations',
       label: 'Réservations',
       icon: Icons.event_available,
-      activeIcon: Icons.event,
+      activeIcon: Icons.event_available_outlined,
       route: '/hotel/reservations',
       modes: {ActivityMode.hotel},
       primary: true,

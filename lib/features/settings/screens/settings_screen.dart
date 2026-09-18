@@ -20,6 +20,7 @@ import 'notification_settings_screen.dart';
 import 'financial_account_settings_screen.dart';
 import 'printer_settings_screen.dart';
 import '../../security/screens/security_settings_screen.dart';
+import '../../business_unit/widgets/join_business_unit_dialog.dart';
 
 /// Écran principal des paramètres
 class SettingsScreen extends StatefulWidget {
@@ -149,6 +150,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle:
                 'Configuration de l\'app : ${BusinessContextService().activityMode.label}',
             onTap: _showActivityModePicker,
+          ),
+          _SettingsItem(
+            icon: Icons.account_tree_outlined,
+            title: "Unité d'affaires",
+            subtitle: _uniteCouranteLibelle(),
+            onTap: _rejoindreUnite,
           ),
           _SettingsItem(
             icon: Icons.security,
@@ -465,6 +472,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
         builder: (context) => const FinancialAccountSettingsScreen(),
       ),
     );
+  }
+
+  /// Ce que l'utilisateur voit comme rattachement courant.
+  String _uniteCouranteLibelle() {
+    final contexte = BusinessContextService();
+    final nom = contexte.businessUnitName ?? contexte.businessUnitCode;
+    return nom == null
+        ? "Vous travaillez au niveau de l'entreprise"
+        : 'Rattaché à : $nom';
+  }
+
+  /// Saisie du code d'unité reçu par courriel.
+  Future<void> _rejoindreUnite() async {
+    final rejoint = await JoinBusinessUnitDialog.show(context);
+    if (rejoint == true && mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Unité d'affaires rejointe")),
+      );
+    }
   }
 
   void _navigateToSecuritySettings() {

@@ -105,15 +105,7 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
     );
     return WanzoScaffold(
       currentIndex: index < 0 ? 0 : index,
-      title: boardMetier == AtelierMetier.garage
-          ? 'Interventions garage'
-          : boardMetier == AtelierMetier.pressing
-              ? 'Dépôts pressing'
-              : boardMetier == AtelierMetier.maintenance
-                  ? 'Commandes maintenance'
-                  : boardMetier == AtelierMetier.imprimerie
-                      ? 'Travaux imprimerie'
-                      : 'Commandes atelier',
+      title: boardMetier.boardTitle,
       appBarActions: [
         IconButton(
           tooltip: 'Actualiser',
@@ -123,7 +115,7 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
       ],
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openForm(context),
-        tooltip: 'Nouvelle commande',
+        tooltip: boardMetier.newWorkLabel,
         child: const Icon(Icons.add),
       ),
       body: BlocBuilder<AtelierOrdersCubit, AtelierOrdersState>(
@@ -142,8 +134,8 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
           if (state.orders.isEmpty) {
             return EmptyStateView(
               icon: Icons.assignment_outlined,
-              message: 'Aucune commande pour le moment.',
-              actionLabel: 'Nouvelle commande',
+              message: boardMetier.noWorkLabel,
+              actionLabel: boardMetier.newWorkLabel,
               actionIcon: Icons.add,
               onAction: () => _openForm(context),
             );
@@ -255,13 +247,7 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
           ListTile(
             leading: const Icon(Icons.print_outlined),
             title: Text(
-              order.metier.isMaintenanceLike
-                  ? 'Fiche de réparation / imprimer'
-                  : order.metier == AtelierMetier.imprimerie
-                      ? 'Fiche travail d\'impression / imprimer'
-                      : order.metier == AtelierMetier.pressing
-                          ? 'Fiche de dépôt / imprimer'
-                          : 'Bon de commande / imprimer',
+              order.metier.workSlipLabel,
             ),
             subtitle: const Text('État de sortie imprimable (A4)'),
             onTap: () {
@@ -300,7 +286,7 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
             ),
             ListTile(
               leading: Icon(Icons.cancel_outlined, color: Theme.of(ctx).colorScheme.error),
-              title: const Text('Annuler la commande'),
+              title: Text(order.metier.cancelWorkLabel),
               onTap: () {
                 cubit.updateStatus(order.id, AtelierOrderStatus.cancelled);
                 Navigator.pop(ctx);

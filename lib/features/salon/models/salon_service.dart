@@ -130,6 +130,14 @@ class SalonService extends Equatable {
   /// Prix de la prestation en CDF (base monétaire de l'app).
   final double priceCdf;
 
+  /// Devise dans laquelle le tarif a été SAISI (« CDF », « USD »). Le prix de
+  /// référence reste [priceCdf] ; garder la devise d'origine évite que la
+  /// tarification dérive au gré du taux. `null` sur les anciennes fiches.
+  final String? priceInputCurrencyCode;
+
+  /// Tarif tel que saisi, dans [priceInputCurrencyCode].
+  final double? priceInInputCurrency;
+
   /// Durée indicative de la prestation en minutes (facultatif) — repère de
   /// planning, non facturé au temps.
   final int? durationMinutes;
@@ -153,6 +161,8 @@ class SalonService extends Equatable {
     required this.name,
     required this.category,
     required this.priceCdf,
+    this.priceInputCurrencyCode,
+    this.priceInInputCurrency,
     this.durationMinutes,
     this.targetGender,
     this.serviceCommissionPct,
@@ -165,6 +175,8 @@ class SalonService extends Equatable {
     String? name,
     SalonServiceCategory? category,
     double? priceCdf,
+    String? priceInputCurrencyCode,
+    double? priceInInputCurrency,
     int? durationMinutes,
     String? targetGender,
     double? serviceCommissionPct,
@@ -176,6 +188,9 @@ class SalonService extends Equatable {
       name: name ?? this.name,
       category: category ?? this.category,
       priceCdf: priceCdf ?? this.priceCdf,
+      priceInputCurrencyCode:
+          priceInputCurrencyCode ?? this.priceInputCurrencyCode,
+      priceInInputCurrency: priceInInputCurrency ?? this.priceInInputCurrency,
       durationMinutes: durationMinutes ?? this.durationMinutes,
       targetGender: targetGender ?? this.targetGender,
       serviceCommissionPct: serviceCommissionPct ?? this.serviceCommissionPct,
@@ -189,6 +204,10 @@ class SalonService extends Equatable {
     'name': name,
     'category': category.apiValue,
     'priceCdf': priceCdf,
+    if (priceInputCurrencyCode != null && priceInputCurrencyCode!.isNotEmpty)
+      'priceInputCurrencyCode': priceInputCurrencyCode,
+    if (priceInInputCurrency != null)
+      'priceInInputCurrency': priceInInputCurrency,
     if (durationMinutes != null) 'durationMinutes': durationMinutes,
     if (targetGender != null && targetGender!.isNotEmpty)
       'targetGender': targetGender,
@@ -204,6 +223,8 @@ class SalonService extends Equatable {
       name: (json['name'] ?? '').toString(),
       category: SalonServiceCategoryX.fromValue(json['category'] as String?),
       priceCdf: _numToDouble(json['priceCdf']),
+      priceInputCurrencyCode: json['priceInputCurrencyCode'] as String?,
+      priceInInputCurrency: _numToDoubleOrNull(json['priceInInputCurrency']),
       durationMinutes: _numToIntOrNull(json['durationMinutes']),
       targetGender: json['targetGender'] as String?,
       serviceCommissionPct: _numToDoubleOrNull(json['serviceCommissionPct']),
@@ -218,6 +239,8 @@ class SalonService extends Equatable {
     name,
     category,
     priceCdf,
+    priceInputCurrencyCode,
+    priceInInputCurrency,
     durationMinutes,
     targetGender,
     serviceCommissionPct,

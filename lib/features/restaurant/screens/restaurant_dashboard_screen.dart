@@ -260,13 +260,25 @@ class RestaurantDashboardScreen extends StatelessWidget {
             : '—',
       ),
     ];
-    return Wrap(
-      spacing: 16,
-      runSpacing: 16,
-      children: [
-        for (final card in cards)
-          SizedBox(width: 220, child: card),
-      ],
+    return LayoutBuilder(
+      builder: (context, c) {
+        // Autant de colonnes que la largeur en porte confortablement, sans
+        // descendre sous deux : une carte étirée sur tout un écran large est
+        // aussi illisible qu'une carte écrasée.
+        const double spacing = 16;
+        const double minCard = 240;
+        final int columns =
+            ((c.maxWidth + spacing) / (minCard + spacing)).floor().clamp(2, 6);
+        final double width =
+            (c.maxWidth - spacing * (columns - 1)) / columns;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (final card in cards) SizedBox(width: width, child: card),
+          ],
+        );
+      },
     );
   }
 

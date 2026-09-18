@@ -38,13 +38,16 @@ class ExpenseAdapter extends TypeAdapter<Expense> {
       businessUnitId: fields[18] as String?,
       businessUnitCode: fields[19] as String?,
       businessUnitType: fields[20] as BusinessUnitType?,
+      subCategory: fields[21] as String?,
+      performerId: fields[22] as String?,
+      performerName: fields[23] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Expense obj) {
     writer
-      ..writeByte(21)
+      ..writeByte(24)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(9)
@@ -86,7 +89,13 @@ class ExpenseAdapter extends TypeAdapter<Expense> {
       ..writeByte(19)
       ..write(obj.businessUnitCode)
       ..writeByte(20)
-      ..write(obj.businessUnitType);
+      ..write(obj.businessUnitType)
+      ..writeByte(21)
+      ..write(obj.subCategory)
+      ..writeByte(22)
+      ..write(obj.performerId)
+      ..writeByte(23)
+      ..write(obj.performerName);
   }
 
   @override
@@ -333,6 +342,9 @@ Expense _$ExpenseFromJson(Map<String, dynamic> json) => Expense(
       businessUnitCode: json['businessUnitCode'] as String?,
       businessUnitType: $enumDecodeNullable(
           _$BusinessUnitTypeEnumMap, json['businessUnitType']),
+      subCategory: json['subCategory'] as String?,
+      performerId: json['performerId'] as String?,
+      performerName: json['performerName'] as String?,
       userId: json['userId'] as String?,
       createdAt: json['createdAt'] == null
           ? null
@@ -373,6 +385,9 @@ Map<String, dynamic> _$ExpenseToJson(Expense instance) => <String, dynamic>{
       if (_$BusinessUnitTypeEnumMap[instance.businessUnitType]
           case final value?)
         'businessUnitType': value,
+      if (instance.subCategory case final value?) 'subCategory': value,
+      if (instance.performerId case final value?) 'performerId': value,
+      if (instance.performerName case final value?) 'performerName': value,
     };
 
 const _$ExpenseCategoryEnumMap = {

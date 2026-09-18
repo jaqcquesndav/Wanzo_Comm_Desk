@@ -80,7 +80,7 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
       appBarActions: [
         IconButton(
           icon: const Icon(Icons.content_cut),
-          tooltip: 'Composer la carte',
+          tooltip: 'Composer la tarification',
           onPressed: () => context.push('/salon/prestations'),
         ),
       ],
@@ -129,7 +129,7 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
                   context,
                   icon: Icons.content_cut,
                   color: const Color(0xFF8B5CF6),
-                  title: 'Composer la carte',
+                  title: 'Composer la tarification',
                   subtitle: 'Prestations, prix, durée, commission',
                   onTap: () => context.push('/salon/prestations'),
                 ),
@@ -163,15 +163,18 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
     showWanzoQuickActions(
       context,
       actions: [
+        // Le raccourci porte le nom de l'écran qu'il ouvre : « Nouveau
+        // ticket », pas « Nouvelle prestation » (un ticket peut contenir
+        // plusieurs prestations et des produits).
         QuickActionItem(
-          icon: Icons.add_shopping_cart,
-          label: 'Nouvelle prestation',
+          icon: Icons.receipt_long,
+          label: 'Nouveau ticket',
           color: const Color(0xFF0EA5E9),
           onTap: () => context.push('/salon/sale'),
         ),
         QuickActionItem(
           icon: Icons.content_cut,
-          label: 'Carte',
+          label: 'Tarification',
           color: const Color(0xFF8B5CF6),
           onTap: () => context.push('/salon/prestations'),
         ),
@@ -256,12 +259,25 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
             value: '${state.activeStylists.length}',
           ),
         ];
-        return Wrap(
-          spacing: 16,
-          runSpacing: 16,
-          children: [
-            for (final card in cards) SizedBox(width: 220, child: card),
-          ],
+        return LayoutBuilder(
+          builder: (context, c) {
+            // Autant de colonnes que la largeur en porte confortablement, sans
+            // descendre sous deux : une carte étirée sur tout un écran large est
+            // aussi illisible qu'une carte écrasée.
+            const double spacing = 16;
+            const double minCard = 240;
+            final int columns =
+                ((c.maxWidth + spacing) / (minCard + spacing)).floor().clamp(2, 6);
+            final double width =
+                (c.maxWidth - spacing * (columns - 1)) / columns;
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: [
+                for (final card in cards) SizedBox(width: width, child: card),
+              ],
+            );
+          },
         );
       },
     );

@@ -231,6 +231,32 @@ class BusinessContextService extends ChangeNotifier {
     }
   }
 
+  /// Enregistre l'unité que l'utilisateur vient de rejoindre avec son code.
+  ///
+  /// Le serveur a déjà rattaché l'utilisateur ; il ne reste qu'à refléter ce
+  /// rattachement localement, pour que les écrans suivent sans attendre une
+  /// reconnexion.
+  Future<void> applySwitchedUnit({
+    required String businessUnitId,
+    required String businessUnitCode,
+    String? businessUnitName,
+    String? businessUnitType,
+  }) async {
+    if (_currentContext == null) return;
+    _currentContext = _currentContext!.copyWith(
+      businessUnitId: businessUnitId,
+      businessUnitCode: businessUnitCode,
+      businessUnitName: businessUnitName,
+      businessUnitType: businessUnitType != null
+          ? BusinessUnitTypeExtension.fromApiValue(businessUnitType)
+          : null,
+      scope: 'unit',
+    );
+    await _persistContext();
+    notifyListeners();
+    debugPrint('BusinessContextService: unité rejointe $businessUnitCode');
+  }
+
   /// Réinitialise au niveau entreprise (pour admins)
   Future<void> resetToCompanyLevel() async {
     if (_currentContext != null && hasCompanyScope) {

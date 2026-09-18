@@ -290,7 +290,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEdit ? 'Modifier la commande' : 'Nouvelle commande — Atelier'),
+        title: Text(_isEdit ? _metier.editWorkLabel : _metier.newWorkLabel),
       ),
       body: Center(
         child: ConstrainedBox(
@@ -426,7 +426,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                   icon: _saving
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.check),
-                  label: Text(_isEdit ? 'Enregistrer' : 'Créer la commande'),
+                  label: Text(_isEdit ? 'Enregistrer' : _metier.createWorkLabel),
                 ),
               ],
             ),
@@ -712,9 +712,13 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   /// En couture, on choisit couture vs cordonnerie (le mode « atelier » regroupe
   /// les deux). Plus de sélecteur de métier redondant.
   Widget _metierSelector() {
-    // Imprimerie et pressing : le métier est fixé par le mode, la fiche du
-    // métier porte toute la config → pas de sélecteur métier redondant.
-    if (_isImprimerie || _isPressing) return const SizedBox.shrink();
+    // Le metier est FIXE par le mode partout sauf en atelier couture, ou il
+    // reste un vrai choix entre couture et cordonnerie. Ailleurs (imprimerie,
+    // pressing, garage, maintenance d'appareils) proposer ce choix n'a pas de
+    // sens : le garage affichait « Type d'atelier : Couture ».
+    if (_isImprimerie || _isPressing || _isGarage) {
+      return const SizedBox.shrink();
+    }
     // Specialite d'appareil : propre a la maintenance. Le garage travaille sur
     // un vehicule, pas sur une famille d'appareils.
     if (_metier == AtelierMetier.maintenance) {

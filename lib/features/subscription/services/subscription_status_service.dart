@@ -22,8 +22,46 @@ class SubscriptionBannerState {
   });
 }
 
-/// Interroge customer-service (via le gateway `/land/api/v1`) pour déterminer,
-/// de façon non bloquante, s'il faut afficher une bannière d'abonnement.
+/// Verdict du serveur sur l'accès au compte.
+///
+/// À ne pas confondre avec l'abonnement. Un abonnement épuisé ou expiré
+/// rétrograde le client vers Freemium : il continue de travailler, avec moins
+/// de capacités, et la bannière le lui dit. Un compte suspendu par le
+/// back-office, lui, ferme la porte : plus aucune application, seul Wanzo Land
+/// reste ouvert pour consulter son dossier et écrire au support.
+class AccountAccessBlock {
+  const AccountAccessBlock({
+    required this.message,
+    this.reason,
+    this.supportEmail,
+    this.supportPhone,
+    this.supportWhatsapp,
+  });
+
+  /// Ce que l'on affiche à l'utilisateur.
+  final String message;
+
+  /// Motif saisi par le back-office, quand il y en a un.
+  final String? reason;
+
+  /// Coordonnées du support, telles que le back-office les configure. Elles
+  /// arrivent avec le statut : un numéro qui change ne demande aucune
+  /// nouvelle version de l'application.
+  final String? supportEmail;
+  final String? supportPhone;
+  final String? supportWhatsapp;
+}
+
+/// Résultat d'une interrogation du statut : ce qui bloque, et ce qui informe.
+class SubscriptionEvaluation {
+  const SubscriptionEvaluation({this.accessBlock, this.banner});
+
+  final AccountAccessBlock? accessBlock;
+  final SubscriptionBannerState? banner;
+}
+
+/// Interroge customer-service (via le gateway `/land/api/v1`) pour déterminer
+/// si l'accès est fermé, et sinon s'il faut afficher une bannière d'abonnement.
 class SubscriptionStatusService {
   SubscriptionStatusService({ApiClient? apiClient})
       : _apiClient = apiClient ?? ApiClient();
@@ -40,11 +78,43 @@ class SubscriptionStatusService {
     'past_due',
   ];
 
-  /// Calcule l'état de bannière à afficher, ou null si tout est nominal / injoignable.
-  Future<SubscriptionBannerState?> evaluate() async {
+  /// Accès fermé ? Sinon, quelle bannière afficher ?
+  ///
+  /// Sans réponse du serveur (hors ligne, service injoignable), on ne bloque
+  /// rien et on n'affiche rien : l'application s'utilise hors ligne, et une
+  /// coupure réseau ne doit pas enfermer dehors un client en règle.
+  Future<SubscriptionEvaluation> evaluate() async {
     final status = await _getJson('/subscription/effective-status');
-    if (status == null) return null;
+    if (status == null) return const SubscriptionEvaluation();
 
+    // L'état du COMPTE passe avant tout le reste : s'il est fermé, aucune
+    // considération d'abonnement n'a d'objet.
+    if (status['accessBlocked'] == true) {
+      final support = status['support'];
+      String? contact(String key) {
+        if (support is! Map) return null;
+        final value = support[key]?.toString().trim();
+        return (value == null || value.isEmpty) ? null : value;
+      }
+
+      return SubscriptionEvaluation(
+        accessBlock: AccountAccessBlock(
+          message: status['accessBlockedMessage']?.toString() ??
+              'Votre compte est suspendu.',
+          reason: status['accountSuspensionReason']?.toString(),
+          supportEmail: contact('email'),
+          supportPhone: contact('phone'),
+          supportWhatsapp: contact('whatsapp'),
+        ),
+      );
+    }
+
+    final banner = await _evaluateBanner(status);
+    return SubscriptionEvaluation(banner: banner);
+  }
+
+  /// Bannière d'abonnement : purement informative, ne bloque jamais l'usage.
+  Future<SubscriptionBannerState?> _evaluateBanner(Map<String, dynamic> status) async {
     final subscription = status['subscription'];
     final rawStatus =
         (subscription is Map ? subscription['status'] : null)?.toString().toLowerCase() ?? '';

@@ -287,6 +287,24 @@ class Expense extends Equatable {
   @JsonKey(includeIfNull: false)
   final BusinessUnitType? businessUnitType;
 
+  /// Precision de la categorie (« Avance prestataire », « Electricite »…).
+  /// Elle evite que le detail se perde dans le motif libre : les rapports
+  /// regroupent alors sur une valeur stable au lieu d'un texte unique.
+  @HiveField(21)
+  @JsonKey(includeIfNull: false)
+  final String? subCategory;
+
+  /// Prestataire concerne (coiffeur). Une avance versee a un coiffeur est une
+  /// sortie de fonds ET une retenue sur ses commissions : sans ce lien, son
+  /// compte ne se solde pas. Meme cle que le prestataire d'une ligne de vente.
+  @HiveField(22)
+  @JsonKey(includeIfNull: false)
+  final String? performerId;
+
+  @HiveField(23)
+  @JsonKey(includeIfNull: false)
+  final String? performerName;
+
   const Expense({
     required this.id,
     this.localId,
@@ -309,6 +327,9 @@ class Expense extends Equatable {
     this.businessUnitId,
     this.businessUnitCode,
     this.businessUnitType,
+    this.subCategory,
+    this.performerId,
+    this.performerName,
     this.userId,
     this.createdAt,
     this.updatedAt,
@@ -338,6 +359,9 @@ class Expense extends Equatable {
     companyId,
     businessUnitId,
     businessUnitCode,
+    subCategory,
+    performerId,
+    performerName,
     businessUnitType,
     userId,
     createdAt,
@@ -368,6 +392,9 @@ class Expense extends Equatable {
     String? businessUnitId,
     String? businessUnitCode,
     BusinessUnitType? businessUnitType,
+    String? subCategory,
+    String? performerId,
+    String? performerName,
     String? userId,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -398,6 +425,9 @@ class Expense extends Equatable {
       businessUnitId: businessUnitId ?? this.businessUnitId,
       businessUnitCode: businessUnitCode ?? this.businessUnitCode,
       businessUnitType: businessUnitType ?? this.businessUnitType,
+      subCategory: subCategory ?? this.subCategory,
+      performerId: performerId ?? this.performerId,
+      performerName: performerName ?? this.performerName,
       userId: userId ?? this.userId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

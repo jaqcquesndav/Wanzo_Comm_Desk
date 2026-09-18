@@ -20,6 +20,10 @@ class CustomerVehicle extends Equatable {
   /// Catégorie de TARIFICATION du barème garage (poids_lourd, fuso, voiture…).
   /// C'est elle qui désigne la colonne de prix ; la carrosserie ne suffit pas.
   final String? pricingCategory;
+  /// Nom du propriétaire, renseigné quand le véhicule vient de la liste du
+  /// parc (tous clients confondus) : sans lui, la liste n'indique pas à qui
+  /// téléphoner quand la voiture arrive.
+  final String? customerName;
   final int? mileage;
   final String? notes;
   final bool active;
@@ -38,6 +42,7 @@ class CustomerVehicle extends Equatable {
     this.transmission,
     this.bodyType,
     this.pricingCategory,
+    this.customerName,
     this.mileage,
     this.notes,
     this.active = true,
@@ -78,6 +83,7 @@ class CustomerVehicle extends Equatable {
         transmission: json['transmission'] as String?,
         bodyType: json['bodyType'] as String?,
         pricingCategory: json['pricingCategory'] as String?,
+        customerName: json['customerName'] as String?,
         mileage: _toInt(json['mileage']),
         notes: json['notes'] as String?,
         active: json['active'] as bool? ?? true,
@@ -104,6 +110,6 @@ class CustomerVehicle extends Equatable {
   @override
   List<Object?> get props => [
         id, customerId, plate, brand, model, year, vin, color, fuel, transmission,
-        bodyType, pricingCategory, mileage, notes, active, createdAt,
+        bodyType, pricingCategory, customerName, mileage, notes, active, createdAt,
       ];
 }

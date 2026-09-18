@@ -128,9 +128,10 @@ class ServiceSearchResults extends StatelessWidget {
       title: service.name,
       icon: Icons.design_services_outlined,
       maxWidth: 420,
+      // La marge du conteneur suffit : la liste n'ajoute pas la sienne.
+      contentPadding: const EdgeInsets.symmetric(vertical: 8),
       builder: (ctx) => ListView(
         shrinkWrap: true,
-        padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
           for (final t in service.priceTiers)
             ListTile(

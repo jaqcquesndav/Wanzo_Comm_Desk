@@ -157,6 +157,153 @@ extension AtelierMetierX on AtelierMetier {
     }
   }
 
+  /// Le travail, au singulier, tel que le métier le nomme : une couture prend
+  /// une « commande », un garage ouvre une « intervention », un pressing
+  /// enregistre un « dépôt ». Les écrans lisent ce mot au lieu de le réécrire.
+  String get workLabel {
+    switch (this) {
+      case AtelierMetier.maintenance:
+      case AtelierMetier.garage:
+        return 'intervention';
+      case AtelierMetier.pressing:
+        return 'dépôt';
+      case AtelierMetier.imprimerie:
+        return 'travail';
+      case AtelierMetier.couture:
+      case AtelierMetier.cordonnerie:
+        return 'commande';
+    }
+  }
+
+  /// Pluriel, pour les onglets de navigation et les titres de listes.
+  String get workLabelPlural {
+    switch (this) {
+      case AtelierMetier.maintenance:
+      case AtelierMetier.garage:
+        return 'Interventions';
+      case AtelierMetier.pressing:
+        return 'Dépôts';
+      case AtelierMetier.imprimerie:
+        return 'Travaux';
+      case AtelierMetier.couture:
+      case AtelierMetier.cordonnerie:
+        return 'Commandes';
+    }
+  }
+
+  /// Bouton de création : « Nouvelle intervention », « Nouveau dépôt ».
+  String get newWorkLabel {
+    switch (this) {
+      case AtelierMetier.maintenance:
+      case AtelierMetier.garage:
+        return 'Nouvelle intervention';
+      case AtelierMetier.pressing:
+        return 'Nouveau dépôt';
+      case AtelierMetier.imprimerie:
+        return 'Nouveau travail';
+      case AtelierMetier.couture:
+      case AtelierMetier.cordonnerie:
+        return 'Nouvelle commande';
+    }
+  }
+
+  /// Validation du formulaire : « Créer l'intervention », « Créer le dépôt ».
+  String get createWorkLabel {
+    switch (this) {
+      case AtelierMetier.maintenance:
+      case AtelierMetier.garage:
+        return "Créer l'intervention";
+      case AtelierMetier.pressing:
+        return 'Créer le dépôt';
+      case AtelierMetier.imprimerie:
+        return 'Créer le travail';
+      case AtelierMetier.couture:
+      case AtelierMetier.cordonnerie:
+        return 'Créer la commande';
+    }
+  }
+
+  /// Titre du formulaire en modification.
+  String get editWorkLabel {
+    switch (this) {
+      case AtelierMetier.maintenance:
+      case AtelierMetier.garage:
+        return "Modifier l'intervention";
+      case AtelierMetier.pressing:
+        return 'Modifier le dépôt';
+      case AtelierMetier.imprimerie:
+        return 'Modifier le travail';
+      case AtelierMetier.couture:
+      case AtelierMetier.cordonnerie:
+        return 'Modifier la commande';
+    }
+  }
+
+  /// Annulation depuis le tableau.
+  String get cancelWorkLabel {
+    switch (this) {
+      case AtelierMetier.maintenance:
+      case AtelierMetier.garage:
+        return "Annuler l'intervention";
+      case AtelierMetier.pressing:
+        return 'Annuler le dépôt';
+      case AtelierMetier.imprimerie:
+        return 'Annuler le travail';
+      case AtelierMetier.couture:
+      case AtelierMetier.cordonnerie:
+        return 'Annuler la commande';
+    }
+  }
+
+  /// État vide du tableau.
+  String get noWorkLabel {
+    switch (this) {
+      case AtelierMetier.maintenance:
+      case AtelierMetier.garage:
+        return 'Aucune intervention pour le moment.';
+      case AtelierMetier.pressing:
+        return 'Aucun dépôt pour le moment.';
+      case AtelierMetier.imprimerie:
+        return 'Aucun travail pour le moment.';
+      case AtelierMetier.couture:
+      case AtelierMetier.cordonnerie:
+        return 'Aucune commande pour le moment.';
+    }
+  }
+
+  /// Pièce imprimable remise au client.
+  String get workSlipLabel {
+    switch (this) {
+      case AtelierMetier.maintenance:
+      case AtelierMetier.garage:
+        return "Ordre d'intervention / imprimer";
+      case AtelierMetier.pressing:
+        return 'Bon de dépôt / imprimer';
+      case AtelierMetier.imprimerie:
+        return 'Bon de travail / imprimer';
+      case AtelierMetier.couture:
+      case AtelierMetier.cordonnerie:
+        return 'Bon de commande / imprimer';
+    }
+  }
+
+  /// Titre du tableau : « Interventions garage », « Dépôts pressing ».
+  String get boardTitle {
+    switch (this) {
+      case AtelierMetier.maintenance:
+        return 'Interventions maintenance';
+      case AtelierMetier.garage:
+        return 'Interventions garage';
+      case AtelierMetier.pressing:
+        return 'Dépôts pressing';
+      case AtelierMetier.imprimerie:
+        return 'Travaux imprimerie';
+      case AtelierMetier.couture:
+      case AtelierMetier.cordonnerie:
+        return 'Commandes atelier';
+    }
+  }
+
   /// Vrai pour les métiers de réparation : fiche appareil (maintenance) ou
   /// fiche véhicule (garage) par commande.
   bool get isMaintenanceLike =>

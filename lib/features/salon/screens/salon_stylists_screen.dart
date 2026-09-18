@@ -11,13 +11,52 @@ import 'package:wanzo/core/widgets/desktop/desktop_data_table.dart';
 
 import '../cubit/salon_cubit.dart';
 import '../models/stylist.dart';
+import '../services/salon_api_service.dart';
+import '../widgets/stylist_account_actions.dart';
+import '../widgets/stylist_advance_form.dart';
 
 /// Gestion des COIFFEURS / COIFFEUSES du salon (CRUD) : nom, téléphone, modèle
 /// de rémunération (commission / location de fauteuil), taux de commission sur
 /// prestations et sur produits de détail. Version DESKTOP : un tableau dense
 /// (`DesktopDataTable`) + un formulaire en DIALOG (modal), pas une feuille basse.
-class SalonStylistsScreen extends StatelessWidget {
+class SalonStylistsScreen extends StatefulWidget {
   const SalonStylistsScreen({super.key});
+
+  @override
+  State<SalonStylistsScreen> createState() => _SalonStylistsScreenState();
+}
+
+class _SalonStylistsScreenState extends State<SalonStylistsScreen> {
+  final _api = SalonApiService();
+
+  /// Compte de chaque coiffeur sur le MOIS EN COURS, indexé par identifiant.
+  /// Un seul appel pour tout le tableau : le serveur agrège commissions et
+  /// avances ensemble, interroger coiffeur par coiffeur ferait autant d'appels
+  /// que de lignes.
+  Map<String, StylistCommission> _accounts = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAccounts();
+  }
+
+  Future<void> _loadAccounts() async {
+    final now = DateTime.now();
+    try {
+      final rows = await _api.getCommissions(
+        from: DateTime(now.year, now.month, 1),
+        to: now,
+      );
+      if (!mounted) return;
+      setState(() {
+        _accounts = {for (final r in rows) r.stylistId: r};
+      });
+    } catch (_) {
+      // Comptes indisponibles (hors ligne) : le tableau reste utilisable,
+      // les colonnes de compte affichent simplement un tiret.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +73,10 @@ class SalonStylistsScreen extends StatelessWidget {
         IconButton(
           tooltip: 'Actualiser',
           icon: const Icon(Icons.refresh),
-          onPressed: () => context.read<SalonCubit>().load(),
+          onPressed: () {
+            context.read<SalonCubit>().load();
+            _loadAccounts();
+          },
         ),
       ],
       body: BlocBuilder<SalonCubit, SalonState>(
@@ -75,10 +117,14 @@ class SalonStylistsScreen extends StatelessWidget {
                     DataColumn(label: Text('Nom')),
                     DataColumn(label: Text('Téléphone')),
                     DataColumn(label: Text('Rémunération')),
-                    DataColumn(label: Text('Comm. prestations')),
-                    DataColumn(label: Text('Comm. produits')),
+                    DataColumn(label: Text('Taux')),
+                    // Le compte du mois : ce qu'il a gagné, ce qu'il a pris,
+                    // ce qui reste à lui verser.
+                    DataColumn(label: Text('Commissions (mois)')),
+                    DataColumn(label: Text('Avances (mois)')),
+                    DataColumn(label: Text('Solde')),
                     DataColumn(label: Text('Statut')),
-                    DataColumn(label: Text('')),
+                    DataColumn(label: Text('Actions')),
                   ],
                   rowBuilder: (s) => _row(context, s),
                 ),
@@ -92,6 +138,7 @@ class SalonStylistsScreen extends StatelessWidget {
 
   DataRow _row(BuildContext context, Stylist s) {
     final theme = Theme.of(context);
+    final account = _accounts[s.id];
     final remuneration = s.payModel == StylistPayModel.boothRent
         ? '${s.payModel.label} · ${formatCurrency(s.boothRentAmount ?? 0, 'CDF')}'
         : s.payModel.label;
@@ -102,10 +149,28 @@ class SalonStylistsScreen extends StatelessWidget {
         DataCell(Text(remuneration)),
         DataCell(Text(s.payModel == StylistPayModel.boothRent
             ? '—'
-            : '${s.serviceCommissionPct.toStringAsFixed(0)} %')),
-        DataCell(Text(s.payModel == StylistPayModel.boothRent
-            ? '—'
-            : '${s.retailCommissionPct.toStringAsFixed(0)} %')),
+            : '${s.serviceCommissionPct.toStringAsFixed(0)} % · '
+                '${s.retailCommissionPct.toStringAsFixed(0)} %')),
+        DataCell(Text(
+          account == null ? '—' : formatCurrency(account.totalCommission, 'CDF'),
+        )),
+        DataCell(Text(
+          account == null ? '—' : formatCurrency(account.advancesTotal, 'CDF'),
+        )),
+        DataCell(
+          account == null
+              ? const Text('—')
+              : Text(
+                  formatCurrency(account.balance.abs(), 'CDF'),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    // Négatif : le coiffeur a pris plus qu'il n'a gagné.
+                    color: account.balance >= 0
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.error,
+                  ),
+                ),
+        ),
         DataCell(
           s.active
               ? Text('Actif',
@@ -120,7 +185,11 @@ class SalonStylistsScreen extends StatelessWidget {
         DataCell(
           PopupMenuButton<String>(
             onSelected: (v) {
-              if (v == 'edit') {
+              if (v == 'statement') {
+                showStylistStatement(context, s);
+              } else if (v == 'advance') {
+                _recordAdvance(context, s);
+              } else if (v == 'edit') {
                 _openForm(context, existing: s);
               } else if (v == 'toggle') {
                 context
@@ -131,6 +200,10 @@ class SalonStylistsScreen extends StatelessWidget {
               }
             },
             itemBuilder: (_) => [
+              const PopupMenuItem(
+                  value: 'statement', child: Text('Relevé de compte')),
+              const PopupMenuItem(
+                  value: 'advance', child: Text('Verser une avance')),
               const PopupMenuItem(value: 'edit', child: Text('Modifier')),
               PopupMenuItem(
                   value: 'toggle',
@@ -141,6 +214,14 @@ class SalonStylistsScreen extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  /// Verser une avance : c'est une SORTIE DE FONDS pour le salon, donc une
+  /// dépense, rattachée au coiffeur pour venir en déduction de ses commissions.
+  /// On passe par le formulaire de dépense habituel, pré-rempli.
+  Future<void> _recordAdvance(BuildContext context, Stylist s) async {
+    final saved = await showAdvanceForm(context, s);
+    if (saved == true) await _loadAccounts();
   }
 
   Future<void> _confirmDelete(BuildContext context, Stylist s) async {

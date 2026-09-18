@@ -2,6 +2,7 @@ import 'package:wanzo/core/services/api_client.dart';
 
 import '../models/salon_service.dart';
 import '../models/stylist.dart';
+import '../models/stylist_statement.dart';
 
 /// Commission agrégée d'un coiffeur sur une période (entrée de préparation de
 /// la paie). Renvoyée par `/salon/performers/commissions`.
@@ -29,6 +30,12 @@ class StylistCommission {
   /// Commission totale à verser (CDF).
   final double totalCommission;
 
+  /// Somme déjà versée au coiffeur sur la période (avances, primes).
+  final double advancesTotal;
+
+  /// Ce qui reste dû : commissions moins avances. Négatif = trop perçu.
+  final double balance;
+
   const StylistCommission({
     required this.stylistId,
     required this.stylistName,
@@ -38,6 +45,8 @@ class StylistCommission {
     required this.serviceCommission,
     required this.retailCommission,
     required this.totalCommission,
+    this.advancesTotal = 0,
+    this.balance = 0,
   });
 
   factory StylistCommission.fromJson(Map<String, dynamic> json) {
@@ -56,6 +65,8 @@ class StylistCommission {
       serviceCommission: d(json['serviceCommission']),
       retailCommission: d(json['retailCommission']),
       totalCommission: d(json['totalCommission']),
+      advancesTotal: d(json['advancesTotal']),
+      balance: d(json['balance']),
     );
   }
 }
@@ -195,6 +206,26 @@ class SalonApiService {
   // ── Performances / commissions ───────────────────────────────────────────
 
   /// Commissions par coiffeur sur une période (préparation de la paie).
+  /// Relevé de compte d'un coiffeur : commissions gagnées, avances déjà
+  /// perçues et solde restant dû sur la période.
+  Future<StylistStatement> getPerformerStatement(
+    String stylistId, {
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    final qp = <String, String>{};
+    if (from != null) qp['from'] = from.toIso8601String();
+    if (to != null) qp['to'] = to.toIso8601String();
+    final query = qp.isEmpty
+        ? ''
+        : '?${qp.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}';
+    final res = await _apiClient.get(
+      'salon/performers/$stylistId/statement$query',
+      requiresAuth: true,
+    );
+    return StylistStatement.fromJson(_asMap(res));
+  }
+
   Future<List<StylistCommission>> getCommissions({
     DateTime? from,
     DateTime? to,

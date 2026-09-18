@@ -19,6 +19,9 @@ import '../../../features/supplier/models/supplier.dart';
 import '../../../features/supplier/widgets/supplier_picker_field.dart';
 import '../bloc/expense_bloc.dart';
 import '../models/expense.dart';
+import '../../../core/services/business_context_service.dart';
+import '../../../core/shared_widgets/searchable_select.dart';
+import '../config/expense_category_config.dart';
 
 class AddExpenseScreen extends StatefulWidget {
   /// Callback appelé après sauvegarde réussie (mode modal).
@@ -43,6 +46,26 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   DateTime _selectedDate = DateTime.now();
   ExpenseCategory _selectedCategory = ExpenseCategory.other;
+
+  /// Précision de la catégorie (« Avance prestataire », « Électricité »…).
+  String? _selectedSubCategory;
+
+  /// `true` = l'utilisateur a demandé la liste complète, au-delà de son métier.
+  bool _allCategories = false;
+
+  /// Catégories proposées : celles du métier, sauf demande explicite de tout
+  /// voir. La catégorie déjà retenue reste dans la liste, sinon le champ
+  /// afficherait une valeur absente de ses propres choix.
+  List<ExpenseCategory> get _categoryChoices {
+    final list = _allCategories
+        ? ExpenseCategoryConfig.all
+        : ExpenseCategoryConfig.forMode(
+            BusinessContextService().activityMode);
+    if (!list.contains(_selectedCategory)) {
+      return [_selectedCategory, ...list];
+    }
+    return list;
+  }
   String? _selectedPaymentMethod;
 
   String? _linkedSupplierId;
@@ -259,6 +282,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         motif: _descriptionController.text,
         amount: amount,
         category: _selectedCategory,
+        subCategory: _selectedSubCategory,
         paymentMethod: _selectedPaymentMethod ?? 'N/A',
         attachmentUrls: [],
         currencyCode: _selectedTransactionCurrency?.code ?? 'CDF',
@@ -436,83 +460,53 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                     padding: const EdgeInsets.symmetric(
                       horizontal: WanzoSpacing.sm,
                     ),
-                    child: Autocomplete<ExpenseCategory>(
-                      initialValue: TextEditingValue(
-                        text: _selectedCategory.displayName,
-                      ),
-                      optionsBuilder: (TextEditingValue textEditingValue) {
-                        if (textEditingValue.text.isEmpty) {
-                          return ExpenseCategory.values;
-                        }
-                        return ExpenseCategory.values.where((category) {
-                          final displayName =
-                              category.displayName.toLowerCase();
-                          final searchText =
-                              textEditingValue.text.toLowerCase();
-                          return displayName.contains(searchText);
-                        });
-                      },
-                      displayStringForOption:
-                          (ExpenseCategory category) => category.displayName,
-                      onSelected: (ExpenseCategory selection) {
-                        setState(() {
-                          _selectedCategory = selection;
-                        });
-                      },
-                      fieldViewBuilder: (
-                        BuildContext context,
-                        TextEditingController textEditingController,
-                        FocusNode focusNode,
-                        VoidCallback onFieldSubmitted,
-                      ) {
-                        return TextFormField(
-                          controller: textEditingController,
-                          focusNode: focusNode,
-                          onFieldSubmitted: (String value) {
-                            onFieldSubmitted();
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SearchSelectField<ExpenseCategory>(
+                          label: 'Catégorie',
+                          hint: 'Sélectionner une catégorie',
+                          value: _selectedCategory,
+                          items: _categoryChoices,
+                          itemLabel: (category) => category.displayName,
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setState(() {
+                              _selectedCategory = value;
+                              // La sous-catégorie appartient à sa catégorie :
+                              // changer de catégorie la remet à zéro plutôt que
+                              // de garder un détail qui ne veut plus rien dire.
+                              _selectedSubCategory = null;
+                            });
                           },
-                          decoration: InputDecoration(
-                            labelText: 'Catégorie',
-                            border: InputBorder.none,
-                            prefixIcon: Icon(
-                              _selectedCategory.icon,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.primary.withAlpha(120),
+                        ),
+                        SearchSelectField<String>(
+                          label: 'Précision',
+                          hint: 'Préciser (facultatif)',
+                          value: _selectedSubCategory,
+                          items: ExpenseCategoryConfig.subcategoriesFor(
+                              _selectedCategory),
+                          itemLabel: (s) => s,
+                          onChanged: (value) =>
+                              setState(() => _selectedSubCategory = value),
+                        ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () => setState(
+                                () => _allCategories = !_allCategories),
+                            icon: Icon(
+                              _allCategories
+                                  ? Icons.filter_list
+                                  : Icons.filter_list_off,
+                              size: 18,
                             ),
+                            label: Text(_allCategories
+                                ? 'Revenir aux catégories du métier'
+                                : 'Voir toutes les catégories'),
                           ),
-                        );
-                      },
-                      optionsViewBuilder: (
-                        BuildContext context,
-                        AutocompleteOnSelected<ExpenseCategory> onSelected,
-                        Iterable<ExpenseCategory> options,
-                      ) {
-                        return Align(
-                          alignment: Alignment.topLeft,
-                          child: Material(
-                            elevation: 4.0,
-                            child: Container(
-                              width: 300,
-                              constraints: const BoxConstraints(maxHeight: 200),
-                              child: ListView.builder(
-                                padding: const EdgeInsets.all(8.0),
-                                itemCount: options.length,
-                                itemBuilder: (BuildContext context, int index) {
-                                  final option = options.elementAt(index);
-                                  return ListTile(
-                                    leading: Icon(option.icon, size: 18),
-                                    title: Text(option.displayName),
-                                    onTap: () {
-                                      onSelected(option);
-                                    },
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                        );
-                      },
+                        ),
+                      ],
                     ),
                   ),
                 ),

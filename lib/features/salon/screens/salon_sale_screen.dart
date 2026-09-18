@@ -10,6 +10,8 @@ import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/widgets/smart_image.dart';
+import 'package:wanzo/core/shared_widgets/payment_method_selector.dart';
 import 'package:wanzo/features/customer/widgets/customer_picker_field.dart';
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
 import 'package:wanzo/features/inventory/models/product.dart';
@@ -28,6 +30,7 @@ import 'package:wanzo/features/settings/models/settings.dart'
 
 import '../cubit/salon_cubit.dart';
 import '../models/salon_service.dart';
+import '../models/salon_audience.dart';
 import '../models/stylist.dart';
 
 /// Modes de règlement à la caisse (identiques au reste de l'app).
@@ -82,28 +85,21 @@ class _TicketLine {
   int quantity = 1;
   Stylist? stylist;
 
-  /// Override de commission propre à la prestation (null pour un produit).
-  final double? serviceCommissionOverridePct;
-
   _TicketLine({
     required this.isService,
     required this.refId,
     required this.name,
     required this.unitPriceCdf,
-    this.serviceCommissionOverridePct,
   });
 
   double get totalCdf => unitPriceCdf * quantity;
 
   /// Taux de commission applicable : override prestation, sinon taux du
   /// coiffeur (prestations vs produits). 0 si pas de coiffeur.
+  /// Taux applicable : celui de la fiche du coiffeur, prestations ou produits.
+  /// Une seule règle, lisible au même endroit que la paie. 0 sans coiffeur.
   double get commissionRate {
-    if (isService) {
-      if (serviceCommissionOverridePct != null) {
-        return serviceCommissionOverridePct!;
-      }
-      return stylist?.serviceCommissionPct ?? 0;
-    }
+    if (isService) return stylist?.serviceCommissionPct ?? 0;
     return stylist?.retailCommissionPct ?? 0;
   }
 
@@ -370,8 +366,8 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
     if (state.activeServices.isEmpty) {
       return EmptyStateView(
         icon: Icons.content_cut,
-        message: 'Aucune prestation. Composez d\'abord la carte.',
-        actionLabel: 'Composer la carte',
+        message: 'Aucune prestation. Composez d\'abord la tarification.',
+        actionLabel: 'Composer la tarification',
         actionIcon: Icons.edit,
         onAction: () => context.push('/salon/prestations'),
       );
@@ -384,7 +380,7 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
     }
     final grouped = <SalonServiceCategory, List<SalonService>>{};
     for (final s in services) {
-      grouped.putIfAbsent(s.category, () => []).add(s);
+      grouped.putIfAbsent(salonTechniqueOf(s), () => []).add(s);
     }
     final categories = grouped.keys.toList()
       ..sort((a, b) => a.order.compareTo(b.order));
@@ -460,7 +456,6 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
           refId: s.id,
           name: s.name,
           unitPriceCdf: s.priceCdf,
-          serviceCommissionOverridePct: s.serviceCommissionPct,
         ));
       }),
     );
@@ -470,6 +465,8 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
     final theme = Theme.of(context);
     return _PickTile(
       icon: Icons.shopping_bag_outlined,
+      imageUrl: p.imageUrl,
+      imagePath: p.imagePath,
       name: p.name,
       priceLabel:
           formatCurrency(_convertFromCdf(p.sellingPriceInCdf), _currencyCode),
@@ -708,17 +705,12 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
                 ),
               ),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: [
-                for (final m in _PayMethod.values)
-                  ChoiceChip(
-                    avatar: Icon(m.icon, size: 18),
-                    label: Text(m.label),
-                    selected: _method == m,
-                    onSelected: (_) => setState(() => _method = m),
-                  ),
-              ],
+            PaymentMethodSelector<_PayMethod>(
+              methods: _PayMethod.values,
+              selected: _method,
+              labelOf: (m) => m.label,
+              iconOf: (m) => m.icon,
+              onChanged: (m) => setState(() => _method = m),
             ),
             if (_method == _PayMethod.cash) ...[
               const SizedBox(height: 8),
@@ -971,6 +963,12 @@ class _PickTile extends StatelessWidget {
   final String? subtitle;
   final Color color;
   final VoidCallback onTap;
+
+  /// Photo de l'article. On ne propose jamais un produit sans son image quand
+  /// elle existe : au comptoir, l'oeil reconnaît l'emballage avant le nom.
+  final String? imageUrl;
+  final String? imagePath;
+
   const _PickTile({
     required this.icon,
     required this.name,
@@ -978,6 +976,8 @@ class _PickTile extends StatelessWidget {
     required this.color,
     required this.onTap,
     this.subtitle,
+    this.imageUrl,
+    this.imagePath,
   });
 
   @override
@@ -993,8 +993,32 @@ class _PickTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, size: 18, color: color),
-              const Spacer(),
+              Expanded(
+                child: SmartImage.hasImage(
+                        imageUrl: imageUrl, imagePath: imagePath)
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: SmartImage(
+                            imageUrl: imageUrl,
+                            imagePath: imagePath,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      )
+                    // Pas encore de photo sur la fiche : l'icône tient la place
+                    // pour que la grille reste régulière.
+                    : Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(icon, size: 22, color: color),
+                      ),
+              ),
+              const SizedBox(height: 6),
               Text(name,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,

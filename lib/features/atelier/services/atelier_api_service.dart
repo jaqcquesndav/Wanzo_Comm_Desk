@@ -14,6 +14,20 @@ class AtelierApiService {
 
   // ── Véhicules des clients (mode garage) ────────────────────────────────────
 
+  /// Le parc du garage, tous clients confondus.
+  ///
+  /// Le garagiste reconnaît la voiture avant le client : il cherche par
+  /// plaque. Passer par la fiche du client rendait le parc introuvable tant
+  /// qu'on ne savait pas à qui la voiture appartenait.
+  Future<List<CustomerVehicle>> getAllVehicles() async {
+    final res = await _apiClient.get('atelier/vehicles', requiresAuth: true);
+    final data = res?['data'];
+    final list = data is List ? data : (data is Map ? (data['data'] as List? ?? []) : []);
+    return list
+        .map((e) => CustomerVehicle.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<List<CustomerVehicle>> getVehicles(String customerId) async {
     final res = await _apiClient.get('atelier/customers/$customerId/vehicles',
         requiresAuth: true);

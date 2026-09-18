@@ -7,10 +7,14 @@ import 'package:wanzo/core/modules/module_registry.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
+import 'package:wanzo/core/enums/currency_enum.dart';
+import 'package:wanzo/core/models/currency_settings_model.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
 
 import '../cubit/salon_cubit.dart';
 import '../models/salon_service.dart';
+import '../models/salon_audience.dart';
 import '../repositories/salon_service_repository.dart';
 import '../services/salon_api_service.dart';
 
@@ -64,7 +68,7 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
     final grouped = <SalonServiceCategory, List<SalonService>>{};
     for (final item in _items) {
       if (q.isNotEmpty && !item.name.toLowerCase().contains(q)) continue;
-      grouped.putIfAbsent(item.category, () => []).add(item);
+      grouped.putIfAbsent(salonTechniqueOf(item), () => []).add(item);
     }
     return grouped;
   }
@@ -117,7 +121,7 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
       ..sort((a, b) => a.order.compareTo(b.order));
     return WanzoScaffold(
       currentIndex: index < 0 ? 0 : index,
-      title: 'Composer la carte',
+      title: 'Composer la tarification',
       appBarActions: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -130,7 +134,7 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.cloud_upload_outlined),
-            label: const Text('Publier la carte'),
+            label: const Text('Publier la tarification'),
           ),
         ),
       ],
@@ -144,7 +148,7 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
           : _items.isEmpty
               ? const EmptyStateView(
                   icon: Icons.content_cut,
-                  message: 'Votre carte est vide. Ajoutez vos prestations.',
+                  message: 'Votre tarification est vide. Ajoutez vos prestations.',
                 )
               : Column(
                   children: [
@@ -228,7 +232,6 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
   Widget _serviceCard(SalonService item) {
     final theme = Theme.of(context);
     final duration = item.durationMinutes;
-    final commission = item.serviceCommissionPct;
     return Card(
       clipBehavior: Clip.antiAlias,
       margin: const EdgeInsets.only(bottom: 10),
@@ -270,7 +273,13 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
                       ],
                     ),
                     const SizedBox(height: 2),
-                    Text(formatCurrency(item.priceCdf, 'CDF'),
+                    Text(
+                        // Tarif dans SA devise de saisie : un salon qui
+                        // affiche « 25 $ » doit relire « 25 $ ».
+                        formatCurrency(
+                          item.priceInInputCurrency ?? item.priceCdf,
+                          item.priceInputCurrencyCode ?? 'CDF',
+                        ),
                         style: TextStyle(
                             color: theme.colorScheme.primary,
                             fontWeight: FontWeight.w700,
@@ -281,9 +290,10 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
                       children: [
                         if (duration != null && duration > 0)
                           _meta(theme, Icons.schedule, '$duration min'),
-                        if (commission != null)
-                          _meta(theme, Icons.percent,
-                              'Comm. ${commission.toStringAsFixed(0)} %'),
+                        // Le public visé : « Coupe » ne dit pas pour qui.
+                        if (SalonAudience.of(item) != SalonAudience.tous)
+                          _meta(theme, Icons.people_outline,
+                              SalonAudience.of(item).label),
                       ],
                     ),
                   ],
@@ -344,7 +354,7 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Supprimer la prestation'),
-        content: Text('Retirer « ${item.name} » de la carte ?'),
+        content: Text('Retirer « ${item.name} » de la tarification ?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -392,9 +402,19 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
   late final TextEditingController _nameController;
   late final TextEditingController _priceController;
   late final TextEditingController _durationController;
-  late final TextEditingController _commissionController;
   late SalonServiceCategory _category;
+
+  /// Public visé, distinct de la technique : une coupe peut être homme ou
+  /// femme sans cesser d'être une coupe.
+  late SalonAudience _audience;
   bool _saving = false;
+
+  // Devise de SAISIE du tarif. Le prix enregistré reste en CDF (base de
+  // l'app) : on convertit à l'enregistrement, et on conserve le montant saisi
+  // avec sa devise pour que la tarification ne dérive pas au gré du taux.
+  Currency _inputCurrency = Currency.CDF;
+  Map<Currency, double> _rates = {Currency.CDF: 1.0};
+  List<Currency> _currencies = const [Currency.CDF];
 
   @override
   void initState() {
@@ -405,35 +425,93 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
         text: e != null ? e.priceCdf.toStringAsFixed(0) : '');
     _durationController = TextEditingController(
         text: e?.durationMinutes != null ? '${e!.durationMinutes}' : '');
-    _commissionController = TextEditingController(
-        text: e?.serviceCommissionPct != null
-            ? e!.serviceCommissionPct!.toStringAsFixed(0)
-            : '');
-    _category = e?.category ?? SalonServiceCategory.femme;
+    // La technique par défaut est la coupe ; le public se lit sur la fiche,
+    // en rattrapant les anciennes qui le rangeaient dans la catégorie.
+    _category = e == null ? SalonServiceCategory.coupe : salonTechniqueOf(e);
+    _audience = e == null ? SalonAudience.tous : SalonAudience.of(e);
+    _initCurrencies(e);
   }
+
+  /// Devise active de la société et taux en vigueur : même source que le
+  /// ticket et la boutique (CurrencySettings). Une fiche déjà saisie rouvre
+  /// dans SA devise, avec le montant d'origine.
+  void _initCurrencies(SalonService? existing) {
+    final cubit = context.read<CurrencySettingsCubit>();
+    if (cubit.state.status == CurrencySettingsStatus.loaded) {
+      _applyCurrencySettings(cubit.state.settings, existing);
+    } else {
+      cubit.loadSettings();
+    }
+  }
+
+  void _applyCurrencySettings(CurrencySettings settings, SalonService? existing) {
+    final rates = <Currency, double>{
+      Currency.CDF: 1.0,
+      Currency.USD: settings.usdToCdfRate,
+      Currency.FCFA: settings.fcfaToCdfRate,
+    };
+    final available =
+        rates.keys.where((c) => (rates[c] ?? 0) > 0).toList();
+    Currency chosen = settings.activeCurrency;
+    if (existing?.priceInputCurrencyCode != null) {
+      chosen = Currency.values.firstWhere(
+        (c) => c.code == existing!.priceInputCurrencyCode,
+        orElse: () => settings.activeCurrency,
+      );
+    }
+    if (!available.contains(chosen)) available.add(chosen);
+    _rates = rates;
+    _currencies = available;
+    _inputCurrency = chosen;
+    // Le champ affiche le montant DANS la devise retenue : pour une fiche
+    // ancienne (montant d'origine inconnu), on convertit depuis le CDF.
+    final double shown = existing == null
+        ? 0
+        : (existing.priceInInputCurrency ??
+            (rateOf(chosen) > 0 ? existing.priceCdf / rateOf(chosen) : existing.priceCdf));
+    if (existing != null) {
+      _priceController.text =
+          shown == shown.roundToDouble() ? shown.toStringAsFixed(0) : shown.toStringAsFixed(2);
+    }
+    if (mounted) setState(() {});
+  }
+
+  double rateOf(Currency c) => _rates[c] ?? 1.0;
 
   @override
   void dispose() {
     _nameController.dispose();
     _priceController.dispose();
     _durationController.dispose();
-    _commissionController.dispose();
     super.dispose();
+  }
+
+  /// Contre-valeur en CDF du tarif saisi, au taux en vigueur.
+  double _priceInCdf() {
+    final entered = double.tryParse(_priceController.text.trim()) ?? 0;
+    return entered * rateOf(_inputCurrency);
   }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    final price = double.tryParse(_priceController.text.trim()) ?? 0;
+    final entered = double.tryParse(_priceController.text.trim()) ?? 0;
+    // Le CDF reste la base enregistrée ; la devise de saisie et son montant
+    // sont conservés pour que la tarification ne bouge pas avec le taux.
+    final price = entered * rateOf(_inputCurrency);
     final duration = int.tryParse(_durationController.text.trim());
-    final commission = double.tryParse(_commissionController.text.trim());
     final service = SalonService(
       id: widget.existing?.id ?? const Uuid().v4(),
       name: _nameController.text.trim(),
       category: _category,
+      targetGender: _audience.apiValue,
       priceCdf: price,
+      priceInputCurrencyCode: _inputCurrency.code,
+      priceInInputCurrency: entered,
       durationMinutes: (duration != null && duration > 0) ? duration : null,
-      serviceCommissionPct: commission,
+      // La commission n'est plus portée par la prestation : elle se lit sur
+      // la fiche du coiffeur au moment du ticket.
+      serviceCommissionPct: null,
       active: widget.existing?.active ?? true,
       position: widget.existing?.position ?? 0,
     );
@@ -504,12 +582,13 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
                       value: _category,
                       isExpanded: true,
                       decoration: const InputDecoration(
-                        labelText: 'Catégorie',
+                        labelText: 'Technique',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.category),
                       ),
+                      // Seules les techniques : le public a son propre champ.
                       items: [
-                        for (final c in SalonServiceCategory.values)
+                        for (final c in kSalonTechniqueCategories)
                           DropdownMenuItem(value: c, child: Text(c.label)),
                       ],
                       onChanged: (v) {
@@ -517,25 +596,20 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
                       },
                     ),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _priceController,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                            RegExp(r'^\d+\.?\d{0,2}')),
-                      ],
+                    DropdownButtonFormField<SalonAudience>(
+                      value: _audience,
+                      isExpanded: true,
                       decoration: const InputDecoration(
-                        labelText: 'Prix (CDF) *',
+                        labelText: 'Public visé',
                         border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.sell),
+                        prefixIcon: Icon(Icons.people_outline),
                       ),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Le prix est requis';
-                        }
-                        final price = double.tryParse(v.trim());
-                        if (price == null || price <= 0) return 'Prix invalide';
-                        return null;
+                      items: [
+                        for (final a in SalonAudience.values)
+                          DropdownMenuItem(value: a, child: Text(a.label)),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) setState(() => _audience = v);
                       },
                     ),
                     const SizedBox(height: 12),
@@ -543,41 +617,80 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
+                          flex: 3,
                           child: TextFormField(
-                            controller: _durationController,
+                            controller: _priceController,
                             keyboardType: TextInputType.number,
                             inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
+                              FilteringTextInputFormatter.allow(
+                                  RegExp(r'^\d\+\.?\d\{0,2}')),
                             ],
-                            decoration: const InputDecoration(
-                              labelText: 'Durée (min)',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.schedule),
+                            decoration: InputDecoration(
+                              labelText: 'Tarif (${_inputCurrency.code}) *',
+                              border: const OutlineInputBorder(),
+                              prefixIcon: const Icon(Icons.sell),
                             ),
+                            onChanged: (_) => setState(() {}),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
+                                return 'Le tarif est requis';
+                              }
+                              final price = double.tryParse(v.trim());
+                              if (price == null || price <= 0) return 'Tarif invalide';
+                              return null;
+                            },
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: TextFormField(
-                            controller: _commissionController,
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(
-                                  RegExp(r'^\d+\.?\d{0,2}')),
-                            ],
+                          flex: 2,
+                          child: DropdownButtonFormField<Currency>(
+                            value: _inputCurrency,
+                            isExpanded: true,
                             decoration: const InputDecoration(
-                              labelText: 'Commission %',
-                              hintText: 'Coiffeur',
+                              labelText: 'Devise',
                               border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.percent),
                             ),
+                            items: [
+                              for (final c in _currencies)
+                                DropdownMenuItem(value: c, child: Text(c.code)),
+                            ],
+                            onChanged: (c) {
+                              if (c == null) return;
+                              setState(() => _inputCurrency = c);
+                            },
                           ),
                         ),
                       ],
                     ),
+                    // Contre-valeur en CDF : la base enregistrée reste le franc, on
+                    // la montre pour que la conversion ne soit jamais une surprise.
+                    if (_inputCurrency != Currency.CDF)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          'Soit ${formatCurrency(_priceInCdf(), 'CDF')} '
+                          '(1 ${_inputCurrency.code} = ${formatCurrency(rateOf(_inputCurrency), 'CDF')})',
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _durationController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                      ],
+                      decoration: const InputDecoration(
+                        labelText: 'Durée (min)',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.schedule),
+                      ),
+                    ),
                     const SizedBox(height: 6),
                     Text(
-                      'Commission facultative : si vide, on applique le taux du coiffeur.',
+                      'La commission se calcule au ticket, selon la fiche du coiffeur.',
                       style: theme.textTheme.bodySmall
                           ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                     ),
@@ -605,7 +718,7 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
                             )
                           : const Icon(Icons.check),
                       label:
-                          Text(isEditing ? 'Enregistrer' : 'Ajouter à la carte'),
+                          Text(isEditing ? 'Enregistrer' : 'Ajouter à la tarification'),
                     ),
                   ],
                 ),

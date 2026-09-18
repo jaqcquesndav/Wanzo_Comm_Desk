@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:wanzo/features/sales/repositories/sales_repository.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/auth/bloc/auth_bloc.dart';
 import '../../features/auth/screens/splash_screen.dart';
@@ -51,6 +52,7 @@ import '../services/business_context_service.dart';
 import '../../features/atelier/cubit/atelier_orders_cubit.dart';
 import '../../features/atelier/services/atelier_api_service.dart';
 import '../../features/atelier/screens/atelier_orders_board_screen.dart';
+import '../../features/atelier/screens/garage_fleet_screen.dart';
 import '../../features/salon/cubit/salon_cubit.dart';
 import '../../features/salon/screens/salon_dashboard_screen.dart';
 import '../../features/salon/screens/salon_prestations_screen.dart';
@@ -205,6 +207,13 @@ class AppRouter {
             path: '/atelier/board',
             pageBuilder: (context, state) =>
                 _noAnim(state, const AtelierOrdersBoardScreen()),
+          ),
+          // Le parc partage le sous-arbre atelier : la fiche de suivi d'un
+          // véhicule lit les mêmes interventions que le tableau.
+          GoRoute(
+            path: '/garage/parc',
+            pageBuilder: (context, state) =>
+                _noAnim(state, const GarageFleetScreen()),
           ),
         ],
       ),
@@ -517,19 +526,12 @@ class AppRouter {
         name: AppRoute.saleDetail.name,
         pageBuilder: (context, state) {
           final sale = state.extra as Sale?;
-
-          if (sale == null) {
-            return _noAnim(
-              state,
-              Scaffold(
-                appBar: AppBar(title: const Text('Error')),
-                body: const Center(
-                  child: Text('Sale data not provided or invalid.'),
-                ),
-              ),
-            );
-          }
-          return _noAnim(state, SaleDetailsScreen(sale: sale));
+          // L'appelant a deja la vente : on l'affiche sans aller-retour.
+          if (sale != null) return _noAnim(state, SaleDetailsScreen(sale: sale));
+          // Sinon on la charge depuis son identifiant : le journal des
+          // operations et les liens profonds ne transportent que celui-ci.
+          final id = state.pathParameters['id'] ?? '';
+          return _noAnim(state, _SaleDetailById(saleId: id));
         },
       ),
       GoRoute(
@@ -595,3 +597,45 @@ extension AppRouteExtension on AppRoute {
 // Helper method to get path with parameters
 String saleDetailPath(String id) => '/sale-detail/$id';
 String expenseDetailPath(String id) => '/expense-detail/$id';
+
+/// Charge une vente a partir de son identifiant, puis affiche son detail.
+///
+/// Sert aux appelants qui ne disposent que de l'identifiant (journal des
+/// operations, lien profond). Un echec de chargement le dit en francais, au
+/// lieu de l'ancien ecran « Sale data not provided ».
+class _SaleDetailById extends StatelessWidget {
+  const _SaleDetailById({required this.saleId});
+
+  final String saleId;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Sale?>(
+      future: context.read<SalesRepository>().getSaleById(saleId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final sale = snapshot.data;
+        if (sale == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Vente')),
+            body: const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  "Cette vente est introuvable sur cet appareil. "
+                  "Synchronisez, puis reessayez.",
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          );
+        }
+        return SaleDetailsScreen(sale: sale);
+      },
+    );
+  }
+}

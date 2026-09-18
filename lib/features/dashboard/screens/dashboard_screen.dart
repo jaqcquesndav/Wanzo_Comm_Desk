@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../utils/open_journal_operation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import 'package:wanzo/l10n/app_localizations.dart'; // Corrected import path
@@ -1347,8 +1348,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       }
 
                       return DataRow(
+                        // Une ligne du journal reflete un document : on va au
+                        // document. Les lignes sans piece propre (mouvements de
+                        // stock, financement) ne bougent pas.
                         onSelectChanged: (_) {
-                          debugPrint('Opération: ${entry.description}');
+                          openJournalOperationDocument(context, entry);
                         },
                         cells: [
                           DataCell(

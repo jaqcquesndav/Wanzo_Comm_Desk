@@ -104,7 +104,11 @@ class _OperationsViewState extends State<_OperationsView>
         MediaQuery.sizeOf(context).width <
         PlatformService.instance.tabletMinWidth;
     final String createLabel =
-        _tabController.index <= 1 ? 'Ajouter une vente' : 'Ajouter une dépense';
+        _tabController.index <= 1
+            // « Ajouter une prestation » en salon, « une commande » en
+            // restaurant : le bouton nomme ce que l'exploitant enregistre.
+            ? ModeVocabulary.current.addSaleLabel
+            : 'Ajouter une dépense';
 
     return BlocBuilder<OperationsBloc, OperationsState>(
       builder: (context, state) {

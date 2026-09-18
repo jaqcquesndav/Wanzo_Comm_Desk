@@ -12,6 +12,10 @@ Future<T?> showAdaptivePullUp<T>(
   IconData? icon,
   double maxWidth = 520,
   bool isDismissible = true,
+
+  /// Marge autour du contenu. Sans elle, les champs touchent les bords du
+  /// cadre. Une liste qui porte déjà sa propre marge passe `EdgeInsets.zero`.
+  EdgeInsets contentPadding = const EdgeInsets.fromLTRB(16, 12, 16, 16),
 }) {
   final isWide = MediaQuery.sizeOf(context).width >= 720;
   if (isWide) {
@@ -31,7 +35,12 @@ Future<T?> showAdaptivePullUp<T>(
             children: [
               _PullUpHeader(title: title, icon: icon, onClose: () => Navigator.of(ctx).pop()),
               const Divider(height: 1),
-              Flexible(child: builder(ctx)),
+              Flexible(
+                child: Padding(
+                  padding: contentPadding,
+                  child: builder(ctx),
+                ),
+              ),
             ],
           ),
         ),
@@ -57,7 +66,12 @@ Future<T?> showAdaptivePullUp<T>(
             children: [
               _PullUpHeader(title: title, icon: icon, onClose: () => Navigator.of(ctx).pop()),
               const Divider(height: 1),
-              Flexible(child: builder(ctx)),
+              Flexible(
+                child: Padding(
+                  padding: contentPadding,
+                  child: builder(ctx),
+                ),
+              ),
             ],
           ),
         ),

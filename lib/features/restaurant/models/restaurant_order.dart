@@ -38,6 +38,12 @@ extension RestaurantOrderStatusX on RestaurantOrderStatus {
     );
   }
 
+  /// Une commande soldée est CLOSE : réglée (facturée) ou annulée. Plus aucune
+  /// ligne ne peut y entrer, sinon le plat ajouté ne figure sur aucune facture.
+  bool get isSettled =>
+      this == RestaurantOrderStatus.paid ||
+      this == RestaurantOrderStatus.cancelled;
+
   /// Une commande active occupe une table / reste dans la liste de service.
   bool get isActive =>
       this == RestaurantOrderStatus.open ||
@@ -114,12 +120,18 @@ class RestaurantOrderLine extends Equatable {
   final int quantity;
   final String? note; // Ex. « sans oignon », cuisson…
 
+  /// `true` quand la ligne est un ARTICLE DU STOCK (jus, bière, eau) et non un
+  /// plat préparé. C'est ce qui décide, à l'encaissement, si la vente
+  /// décrémente le stock ou enregistre une prestation de cuisine.
+  final bool fromStock;
+
   const RestaurantOrderLine({
     required this.productId,
     required this.productName,
     required this.unitPriceCdf,
     required this.quantity,
     this.note,
+    this.fromStock = false,
   });
 
   double get totalCdf => _round2(unitPriceCdf * quantity);
@@ -131,6 +143,7 @@ class RestaurantOrderLine extends Equatable {
       unitPriceCdf: unitPriceCdf,
       quantity: quantity ?? this.quantity,
       note: note ?? this.note,
+      fromStock: fromStock,
     );
   }
 
@@ -140,6 +153,7 @@ class RestaurantOrderLine extends Equatable {
     'unitPriceCdf': unitPriceCdf,
     'quantity': quantity,
     if (note != null) 'note': note,
+    if (fromStock) 'fromStock': true,
   };
 
   factory RestaurantOrderLine.fromJson(Map<String, dynamic> json) {
@@ -149,11 +163,13 @@ class RestaurantOrderLine extends Equatable {
       unitPriceCdf: (json['unitPriceCdf'] as num).toDouble(),
       quantity: (json['quantity'] as num).toInt(),
       note: json['note'] as String?,
+      fromStock: json['fromStock'] as bool? ?? false,
     );
   }
 
   @override
-  List<Object?> get props => [productId, productName, unitPriceCdf, quantity, note];
+  List<Object?> get props =>
+      [productId, productName, unitPriceCdf, quantity, note, fromStock];
 }
 
 /// Commande restaurant (ticket rattaché à une table ou un client).
@@ -176,6 +192,14 @@ class RestaurantOrder extends Equatable {
   /// en JSON → dérivée du `tableId` puis du libellé (cf. [RestaurantOrderTypeX]).
   final RestaurantOrderType type;
 
+  /// Client ENREGISTRÉ rattaché à la commande, quand il est connu (surtout à
+  /// emporter). `null` = client de passage : le libellé suffit. C'est ce lien
+  /// qui donne à la vente son vrai client, donc l'historique et la créance.
+  final String? customerId;
+
+  /// Nom du client retenu, pour l'afficher sans relire la fiche.
+  final String? customerName;
+
   /// Historique horodaté des étapes [{status, at}] — KPI de temps de service
   /// (prestation), base de la future cote crédit.
   final List<Map<String, dynamic>> stageHistory;
@@ -189,8 +213,13 @@ class RestaurantOrder extends Equatable {
     this.notes,
     this.tableId,
     this.type = RestaurantOrderType.dineIn,
+    this.customerId,
+    this.customerName,
     this.stageHistory = const [],
   });
+
+  /// La commande est close : elle a été facturée ou annulée, on n'y touche plus.
+  bool get isSettled => status.isSettled;
 
   /// Temps de préparation/service : de la création au passage « servie ».
   Duration? get serviceTime {
@@ -219,6 +248,8 @@ class RestaurantOrder extends Equatable {
     String? notes,
     String? tableId,
     RestaurantOrderType? type,
+    String? customerId,
+    String? customerName,
     List<Map<String, dynamic>>? stageHistory,
   }) {
     return RestaurantOrder(
@@ -230,6 +261,8 @@ class RestaurantOrder extends Equatable {
       notes: notes ?? this.notes,
       tableId: tableId ?? this.tableId,
       type: type ?? this.type,
+      customerId: customerId ?? this.customerId,
+      customerName: customerName ?? this.customerName,
       stageHistory: stageHistory ?? this.stageHistory,
     );
   }
@@ -243,6 +276,8 @@ class RestaurantOrder extends Equatable {
     if (notes != null) 'notes': notes,
     if (tableId != null) 'tableId': tableId,
     'type': type.apiValue,
+    if (customerId != null) 'customerId': customerId,
+    if (customerName != null) 'customerName': customerName,
     if (stageHistory.isNotEmpty) 'stageHistory': stageHistory,
   };
 
@@ -268,6 +303,10 @@ class RestaurantOrder extends Equatable {
         tableId: tableId,
         label: label,
       ),
+      customerId: (json['customerId'] as String?)?.trim().isEmpty ?? true
+          ? null
+          : (json['customerId'] as String).trim(),
+      customerName: json['customerName'] as String?,
       stageHistory: (json['stageHistory'] as List<dynamic>?)
               ?.whereType<Map<String, dynamic>>()
               .toList() ??
@@ -277,7 +316,8 @@ class RestaurantOrder extends Equatable {
 
   @override
   List<Object?> get props =>
-      [id, label, lines, status, createdAt, notes, tableId, type, stageHistory];
+      [id, label, lines, status, createdAt, notes, tableId, type, customerId,
+       customerName, stageHistory];
 }
 
 /// Arrondi bancaire au centime — centralisé pour tout le module.

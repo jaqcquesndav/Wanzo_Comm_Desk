@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/restaurant_order.dart';
 import '../repositories/restaurant_order_repository.dart';
+import '../services/restaurant_order_sync.dart';
 
 class RestaurantOrdersState extends Equatable {
   final List<RestaurantOrder> orders;
@@ -42,16 +44,40 @@ class RestaurantOrdersState extends Equatable {
 /// `Sale`) est piloté par l'écran caisse, qui appelle ensuite [markPaid].
 class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
   final RestaurantOrderRepository _repository;
+  final RestaurantOrderSync _sync;
   final Uuid _uuid;
 
-  RestaurantOrdersCubit(this._repository, {Uuid uuid = const Uuid()})
-    : _uuid = uuid,
-      super(const RestaurantOrdersState());
+  RestaurantOrdersCubit(
+    this._repository, {
+    Uuid uuid = const Uuid(),
+    RestaurantOrderSync? sync,
+  })  : _uuid = uuid,
+        _sync = sync ?? RestaurantOrderSync(),
+        super(const RestaurantOrdersState());
 
   Future<void> load() async {
     emit(state.copyWith(loading: true));
-    final orders = await _repository.loadAll();
-    emit(RestaurantOrdersState(orders: orders, loading: false));
+    // Le local d'abord : l'écran s'affiche immédiatement, même hors ligne.
+    final local = await _repository.loadAll();
+    emit(RestaurantOrdersState(orders: local, loading: false));
+
+    // Puis ce que les AUTRES postes ont ouvert. Une commande partagée écrase
+    // sa copie locale : le serveur fait foi entre appareils. Les commandes
+    // encore inconnues du serveur (ouvertes hors ligne) sont conservées.
+    try {
+      final remote = await _sync.pull();
+      if (remote.isEmpty && local.isNotEmpty) return;
+      final byId = {for (final o in local) o.id: o};
+      for (final o in remote) {
+        byId[o.id] = o;
+        await _repository.save(o);
+      }
+      final merged = byId.values.toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      emit(RestaurantOrdersState(orders: merged, loading: false));
+    } catch (_) {
+      // Hors ligne : on garde la vue locale, le service continue.
+    }
   }
 
   /// Ouvre une nouvelle commande (table / emporter) et la retourne.
@@ -64,6 +90,8 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
     String label, {
     String? tableId,
     RestaurantOrderType? type,
+    String? customerId,
+    String? customerName,
   }) async {
     final cleanTableId =
         (tableId != null && tableId.trim().isNotEmpty) ? tableId.trim() : null;
@@ -77,6 +105,12 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
       createdAt: DateTime.now(),
       tableId: cleanTableId,
       type: resolvedType,
+      customerId: (customerId != null && customerId.trim().isNotEmpty)
+          ? customerId.trim()
+          : null,
+      customerName: (customerName != null && customerName.trim().isNotEmpty)
+          ? customerName.trim()
+          : null,
     );
     await _upsert(order);
     return order;
@@ -86,7 +120,10 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
   /// (même produit + même note).
   Future<void> addLine(String orderId, RestaurantOrderLine line) async {
     final order = state.byId(orderId);
-    if (order == null) return;
+    // Une commande réglée ou annulée est close : le plat ajouté après coup ne
+    // serait sur aucune facture. Les écrans masquent déjà l'action, cette garde
+    // est le filet qui empêche un autre chemin de la contourner.
+    if (order == null || order.isSettled) return;
     final lines = List<RestaurantOrderLine>.from(order.lines);
     final idx = lines.indexWhere(
       (l) => l.productId == line.productId && l.note == line.note,
@@ -105,7 +142,7 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
   /// client…). Ignore un libellé vide (garde l'ancien).
   Future<void> renameOrder(String orderId, String label) async {
     final order = state.byId(orderId);
-    if (order == null) return;
+    if (order == null || order.isSettled) return;
     final trimmed = label.trim();
     if (trimmed.isEmpty || trimmed == order.label) return;
     await _upsert(order.copyWith(label: trimmed));
@@ -117,7 +154,10 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
     int quantity,
   ) async {
     final order = state.byId(orderId);
-    if (order == null || lineIndex < 0 || lineIndex >= order.lines.length) {
+    if (order == null ||
+        order.isSettled ||
+        lineIndex < 0 ||
+        lineIndex >= order.lines.length) {
       return;
     }
     final lines = List<RestaurantOrderLine>.from(order.lines);
@@ -144,14 +184,43 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
   }
 
   /// Marque la commande réglée. À appeler APRÈS création réussie de la `Sale`.
-  Future<void> markPaid(String orderId) =>
-      updateStatus(orderId, RestaurantOrderStatus.paid);
+  /// Une commande déjà close est ignorée : deux encaissements du même ticket
+  /// produiraient deux ventes pour un seul repas.
+  Future<void> markPaid(String orderId) async {
+    final order = state.byId(orderId);
+    if (order == null || order.isSettled) return;
+    await updateStatus(orderId, RestaurantOrderStatus.paid);
+  }
+
+  /// Rattache (ou détache) le client enregistré d'une commande en cours.
+  Future<void> setCustomer(
+    String orderId, {
+    String? customerId,
+    String? customerName,
+  }) async {
+    final order = state.byId(orderId);
+    if (order == null || order.isSettled) return;
+    await _upsert(RestaurantOrder(
+      id: order.id,
+      label: order.label,
+      lines: order.lines,
+      status: order.status,
+      createdAt: order.createdAt,
+      notes: order.notes,
+      tableId: order.tableId,
+      type: order.type,
+      customerId: customerId,
+      customerName: customerName,
+      stageHistory: order.stageHistory,
+    ));
+  }
 
   Future<void> cancel(String orderId) =>
       updateStatus(orderId, RestaurantOrderStatus.cancelled);
 
   Future<void> deleteOrder(String orderId) async {
     await _repository.delete(orderId);
+    unawaited(_sync.remove(orderId).catchError((_) {}));
     emit(
       state.copyWith(
         orders: state.orders.where((o) => o.id != orderId).toList(),
@@ -161,6 +230,9 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
 
   Future<void> _upsert(RestaurantOrder order) async {
     await _repository.save(order);
+    // Partage best-effort : l'échec ne bloque pas le service, la commande
+    // repartira au prochain enregistrement ou au prochain chargement.
+    unawaited(_sync.push(order).catchError((_) {}));
     final orders = List<RestaurantOrder>.from(state.orders);
     final idx = orders.indexWhere((o) => o.id == order.id);
     if (idx >= 0) {

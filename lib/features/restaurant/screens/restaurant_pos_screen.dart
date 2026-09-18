@@ -11,6 +11,7 @@ import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/widgets/dish_thumb_grid.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
+import 'package:wanzo/core/shared_widgets/payment_method_selector.dart';
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
 import 'package:wanzo/features/customer/bloc/customer_bloc.dart';
 import 'package:wanzo/features/customer/bloc/customer_event.dart';
@@ -33,6 +34,8 @@ import '../models/menu_course.dart';
 import '../models/menu_item.dart';
 import '../models/restaurant_order.dart';
 import '../repositories/menu_repository.dart';
+import 'package:wanzo/features/inventory/models/product.dart';
+import 'package:wanzo/features/inventory/repositories/inventory_repository.dart';
 
 /// Point de vente restaurant — mise en page desktop dense en 3 colonnes :
 /// MENU (la CARTE) | TICKET (commande en cours) | CAISSE (encaissement).
@@ -94,6 +97,9 @@ class _CourseBadge extends StatelessWidget {
   }
 }
 
+/// Source de sélection à la caisse : carte du jour ou stock.
+enum _PickSource { carte, stock }
+
 class RestaurantPosScreen extends StatefulWidget {
   /// Commande à pré-sélectionner à l'ouverture (ex. depuis le plan de salle),
   /// passée via le query param `orderId` de la route `/restaurant/orders`.
@@ -108,6 +114,8 @@ class RestaurantPosScreen extends StatefulWidget {
 class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   final MenuRepository _menuRepo = MenuRepository();
   List<MenuItem> _dishes = [];
+  List<Product> _products = const [];
+  _PickSource _source = _PickSource.carte;
   bool _menuLoading = true;
   String? _selectedOrderId;
   String _search = '';
@@ -177,10 +185,19 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   }
 
   Future<void> _loadMenu() async {
+    // Stock lu AVANT l'attente (pas de contexte traversé par un `await`) : il
+    // vient du cache Hive, donc disponible même hors ligne.
+    List<Product> products = const [];
+    try {
+      products = context.read<InventoryRepository>().getAllProducts();
+    } catch (_) {
+      // Dépôt indisponible : la carte seule, plutôt qu'un écran bloqué.
+    }
     final dishes = await _menuRepo.loadAllSynced();
     if (!mounted) return;
     setState(() {
       _dishes = dishes;
+      _products = products;
       _menuLoading = false;
     });
   }
@@ -330,13 +347,16 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     );
   }
 
+  // D'où vient l'article : la CARTE (plat préparé) ou le STOCK (boisson).
+  // Seul un article du stock décrémente le stock à l'encaissement.
   // ── Colonne 1 : Menu (la carte) ──────────────────────────────────────────
   Widget _buildMenu(RestaurantOrder order) {
     if (_menuLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    // Carte vide (aucun plat authoré) → inviter à la composer.
-    if (_dishes.isEmpty) {
+    // Carte vide ET stock vide → inviter à composer la carte. Avec du stock
+    // (boissons), on laisse la caisse ouvrir sur l'onglet Stock.
+    if (_dishes.isEmpty && _products.isEmpty) {
       return EmptyStateView(
         icon: Icons.restaurant_menu,
         message: 'La carte est vide.\nAjoutez vos plats pour prendre les commandes.',
@@ -348,11 +368,34 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     }
     return Column(
       children: [
+        if (_products.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            child: SegmentedButton<_PickSource>(
+              segments: const [
+                ButtonSegment(
+                  value: _PickSource.carte,
+                  icon: Icon(Icons.restaurant_menu, size: 18),
+                  label: Text('Carte'),
+                ),
+                ButtonSegment(
+                  value: _PickSource.stock,
+                  icon: Icon(Icons.local_bar_outlined, size: 18),
+                  label: Text('Stock'),
+                ),
+              ],
+              selected: {_source},
+              showSelectedIcon: false,
+              onSelectionChanged: (v) => setState(() => _source = v.first),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
           child: TextField(
             decoration: InputDecoration(
-              hintText: 'Rechercher un plat…',
+              hintText: _source == _PickSource.stock
+                  ? 'Rechercher un article…'
+                  : 'Rechercher un plat…',
               prefixIcon: const Icon(Icons.search),
               isDense: true,
               border: OutlineInputBorder(
@@ -361,7 +404,11 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
             onChanged: (v) => setState(() => _search = v),
           ),
         ),
-        Expanded(child: _buildCarte(order)),
+        Expanded(
+          child: _source == _PickSource.stock
+              ? _buildStock(order)
+              : _buildCarte(order),
+        ),
       ],
     );
   }
@@ -403,6 +450,132 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
           ),
         ],
       ],
+    );
+  }
+
+  /// Articles du stock filtrés par la recherche, les épuisés en dernier.
+  List<Product> get _stockMatches {
+    final q = _search.trim().toLowerCase();
+    final list = _products
+        .where((p) => q.isEmpty || p.name.toLowerCase().contains(q))
+        .toList();
+    list.sort((a, b) {
+      final ao = a.stockQuantity <= 0 ? 1 : 0;
+      final bo = b.stockQuantity <= 0 ? 1 : 0;
+      if (ao != bo) return ao - bo;
+      return a.name.compareTo(b.name);
+    });
+    return list;
+  }
+
+  // Stock : articles vendus tels quels (boissons, bouteilles).
+  Widget _buildStock(RestaurantOrder order) {
+    final items = _stockMatches;
+    if (items.isEmpty) {
+      return const EmptyStateView(
+        icon: Icons.search_off,
+        message: 'Aucun article ne correspond.',
+      );
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.all(12),
+      gridDelegate: _menuGrid,
+      itemCount: items.length,
+      itemBuilder: (context, i) => _stockTile(order, items[i]),
+    );
+  }
+
+  /// Tuile d'un article du stock : même mise en page que la tuile-plat, plus le
+  /// stock restant, qui compte sur une bouteille et pas sur un plat.
+  Widget _stockTile(RestaurantOrder order, Product product) {
+    final theme = Theme.of(context);
+    final bool outOfStock = product.stockQuantity <= 0;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: outOfStock
+          ? null
+          : () => context.read<RestaurantOrdersCubit>().addLine(
+                order.id,
+                RestaurantOrderLine(
+                  productId: product.id,
+                  productName: product.name,
+                  unitPriceCdf: product.sellingPriceInCdf,
+                  quantity: 1,
+                  // Article du stock : le stock doit bouger à l'encaissement.
+                  fromStock: true,
+                ),
+              ),
+      child: Opacity(
+        opacity: outOfStock ? 0.5 : 1,
+        child: Card(
+          margin: EdgeInsets.zero,
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    SmartImage(
+                      imageUrl: product.imageUrl,
+                      imagePath: product.imagePath,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      placeholderIcon: Icons.local_bar,
+                      placeholderColor:
+                          theme.colorScheme.surfaceContainerHighest,
+                      placeholderIconSize: 34,
+                    ),
+                    if (outOfStock)
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.error,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text('Épuisé',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(product.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 13)),
+                    Text('Reste ${product.stockQuantity.toStringAsFixed(0)}',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant)),
+                    const SizedBox(height: 2),
+                    Text(
+                      formatCurrency(product.sellingPriceInCdf, 'CDF'),
+                      style: TextStyle(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -725,17 +898,12 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
           const SizedBox(height: 16),
           Text('Règlement', style: theme.textTheme.labelLarge),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            children: [
-              for (final m in _PayMethod.values)
-                ChoiceChip(
-                  avatar: Icon(m.icon, size: 16),
-                  label: Text(m.label),
-                  selected: _method == m,
-                  onSelected: (_) => setState(() => _method = m),
-                ),
-            ],
+          PaymentMethodSelector<_PayMethod>(
+            methods: _PayMethod.values,
+            selected: _method,
+            labelOf: (m) => m.label,
+            iconOf: (m) => m.icon,
+            onChanged: (m) => setState(() => _method = m),
           ),
           const SizedBox(height: 12),
           if (_method == _PayMethod.cash) ...[
@@ -815,9 +983,12 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
             exchangeRate: 1.0,
             unitPriceInCdf: l.unitPriceCdf,
             totalPriceInCdf: l.totalCdf,
-            // Un plat de la carte est une PRESTATION (service), pas un article
-            // de stock : la carte est une entité propre, distincte du stock.
-            itemType: SaleItemType.service,
+            // Un plat de la carte est une PRESTATION de cuisine : son id est
+            // celui d'un MenuItem, pas d'un Product, donc aucun décrément de
+            // stock. Un article pris au stock (jus, bière) est au contraire une
+            // vente d'article, et le stock doit bouger.
+            itemType:
+                l.fromStock ? SaleItemType.product : SaleItemType.service,
           ),
         )
         .toList();
@@ -825,8 +996,11 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     final sale = Sale(
       id: '',
       date: DateTime.now(),
-      customerId: 'resto_${order.id}',
-      customerName: order.label,
+      // Client RÉEL quand la commande en connaît un (à emporter nommé) :
+      // sans cela la vente restait rattachée à un client fabriqué, invisible
+      // dans l'historique du client et dans le journal des opérations.
+      customerId: order.customerId ?? 'resto_${order.id}',
+      customerName: order.customerName ?? order.label,
       items: items,
       totalAmountInCdf: total,
       paidAmountInCdf: paid,

@@ -24,13 +24,24 @@ class ModeVocabulary {
   /// Un article stocké : « Produit », « Pièce », « Consommable »...
   final String item;
 
+  /// Genre grammatical de [sale], pour les libellés construits (« Ajouter une
+  /// prestation », « Ajouter un séjour »). Féminin par défaut : c'est le cas de
+  /// la vente, de la commande, de la prestation et de l'intervention.
+  final bool saleIsFeminine;
+
   const ModeVocabulary({
     required this.sale,
     required this.sales,
     required this.revenue,
     required this.stock,
     required this.item,
+    this.saleIsFeminine = true,
   });
+
+  /// « Ajouter une prestation », « Ajouter un dépôt » : libellé de création
+  /// accordé, pour les écrans qui enregistrent une opération de recette.
+  String get addSaleLabel =>
+      'Ajouter ${saleIsFeminine ? 'une' : 'un'} ${sale.toLowerCase()}';
 
   /// « Mouvements de stock », « Mouvements de pièces »...
   String get stockMovements => 'Mouvements de ${stock.toLowerCase()}';
@@ -49,7 +60,7 @@ class ModeVocabulary {
             sale: 'Commande', sales: 'Commandes', revenue: 'Recettes', stock: 'Stock', item: 'Article');
       case ActivityMode.hotel:
         return const ModeVocabulary(
-            sale: 'Séjour', sales: 'Séjours', revenue: 'Revenus', stock: 'Stock', item: 'Article');
+            sale: 'Séjour', sales: 'Séjours', revenue: 'Revenus', stock: 'Stock', item: 'Article', saleIsFeminine: false);
       case ActivityMode.services:
       case ActivityMode.salon:
         return const ModeVocabulary(
@@ -63,10 +74,10 @@ class ModeVocabulary {
             sale: 'Intervention', sales: 'Interventions', revenue: 'Revenus', stock: 'Pièces', item: 'Pièce');
       case ActivityMode.imprimerie:
         return const ModeVocabulary(
-            sale: 'Travail', sales: 'Travaux', revenue: 'Revenus', stock: 'Consommables', item: 'Consommable');
+            sale: 'Travail', sales: 'Travaux', revenue: 'Revenus', stock: 'Consommables', item: 'Consommable', saleIsFeminine: false);
       case ActivityMode.pressing:
         return const ModeVocabulary(
-            sale: 'Dépôt', sales: 'Dépôts', revenue: 'Revenus', stock: 'Consommables', item: 'Consommable');
+            sale: 'Dépôt', sales: 'Dépôts', revenue: 'Revenus', stock: 'Consommables', item: 'Consommable', saleIsFeminine: false);
       case ActivityMode.retail:
         return _retail;
     }
