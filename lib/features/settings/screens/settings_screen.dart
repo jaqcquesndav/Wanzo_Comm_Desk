@@ -483,15 +483,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
         : 'Rattaché à : $nom';
   }
 
-  /// Saisie du code d'unité reçu par courriel.
+  /// Changement d'unité d'affaires : saisie du code, ou retour à l'entreprise.
   Future<void> _rejoindreUnite() async {
-    final rejoint = await JoinBusinessUnitDialog.show(context);
-    if (rejoint == true && mounted) {
-      setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Unité d'affaires rejointe")),
-      );
-    }
+    final change = await JoinBusinessUnitDialog.show(context);
+    if (change != true || !mounted) return;
+
+    final contexte = BusinessContextService();
+    final libelle = contexte.businessUnitName ??
+        contexte.businessUnitCode ??
+        "l'entreprise générale";
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Vous travaillez maintenant sur $libelle')),
+    );
+
+    // Les caches de l'unité précédente ont été vidés : on retourne au tableau
+    // de bord pour que les écrans se reconstruisent sur les nouvelles données,
+    // plutôt que de garder en mémoire celles de l'unité quittée.
+    context.go('/dashboard');
   }
 
   void _navigateToSecuritySettings() {

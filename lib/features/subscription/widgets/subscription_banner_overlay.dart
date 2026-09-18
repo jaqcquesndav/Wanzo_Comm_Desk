@@ -88,7 +88,14 @@ class _SubscriptionBannerOverlayState extends State<SubscriptionBannerOverlay>
     final result = await _service.evaluate();
     if (!mounted) return;
     setState(() {
-      _accessBlock = result.accessBlock;
+      // Sans reponse du serveur, on garde ce que l'on sait deja : un compte
+      // ferme ne se rouvre pas parce qu'un appel a echoue.
+      // Le sondage ne peut qu'ETABLIR un blocage, jamais en annuler un : un
+      // compte ferme le reste pour la session. Sans cette regle, l'ecran
+      // apparaissait puis disparaissait, et le client retrouvait l'acces.
+      if (result.accessBlock != null) {
+        _accessBlock = result.accessBlock;
+      }
       _banner = result.banner;
       // Un changement de signature réaffiche la bannière rejetée.
       final banner = result.banner;
@@ -122,7 +129,6 @@ class _SubscriptionBannerOverlayState extends State<SubscriptionBannerOverlay>
         child: _AccountBlockedScreen(
           block: block,
           onOpenProfile: () => _openUrl(wanzoLandProfileUrl),
-          onRetry: _refresh,
         ),
       );
     }
@@ -223,12 +229,10 @@ class _AccountBlockedScreen extends StatelessWidget {
   const _AccountBlockedScreen({
     required this.block,
     required this.onOpenProfile,
-    required this.onRetry,
   });
 
   final AccountAccessBlock block;
   final VoidCallback onOpenProfile;
-  final VoidCallback onRetry;
 
   /// Une seule ligne de contact, sobre : l'adresse, et le WhatsApp s'il existe.
   String _supportLine() {
@@ -283,11 +287,6 @@ class _AccountBlockedScreen extends StatelessWidget {
                     _supportLine(),
                     style: const TextStyle(fontSize: 13, color: Colors.black54),
                     textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: onRetry,
-                    child: const Text('Vérifier à nouveau'),
                   ),
                 ],
               ),

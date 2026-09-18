@@ -54,10 +54,24 @@ class AccountAccessBlock {
 
 /// Résultat d'une interrogation du statut : ce qui bloque, et ce qui informe.
 class SubscriptionEvaluation {
-  const SubscriptionEvaluation({this.accessBlock, this.banner});
+  const SubscriptionEvaluation({
+    this.accessBlock,
+    this.banner,
+    this.statutConnu = true,
+  });
+
+  /// Le serveur n'a pas repondu : on ne sait rien, donc on ne change rien.
+  const SubscriptionEvaluation.sansReponse()
+      : accessBlock = null,
+        banner = null,
+        statutConnu = false;
 
   final AccountAccessBlock? accessBlock;
   final SubscriptionBannerState? banner;
+
+  /// Vrai quand ce verdict repose sur une reponse du serveur. Faux quand
+  /// l'appel a echoue : un blocage deja etabli ne doit alors pas etre leve.
+  final bool statutConnu;
 }
 
 /// Interroge customer-service (via le gateway `/land/api/v1`) pour déterminer
@@ -85,7 +99,7 @@ class SubscriptionStatusService {
   /// coupure réseau ne doit pas enfermer dehors un client en règle.
   Future<SubscriptionEvaluation> evaluate() async {
     final status = await _getJson('/subscription/effective-status');
-    if (status == null) return const SubscriptionEvaluation();
+    if (status == null) return const SubscriptionEvaluation.sansReponse();
 
     // L'état du COMPTE passe avant tout le reste : s'il est fermé, aucune
     // considération d'abonnement n'a d'objet.

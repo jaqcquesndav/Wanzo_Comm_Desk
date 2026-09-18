@@ -218,6 +218,32 @@ class AuthBackendService {
   ///
   /// Appelle POST /settings-user-profile/company/join-business-unit
   /// Le code est communiqué par l'admin de l'entreprise.
+  /// Remonte l'utilisateur au niveau de l'entreprise generale.
+  ///
+  /// L'entreprise generale n'a pas de code a saisir : le serveur retrouve
+  /// l'unite racine a partir de l'entreprise de l'utilisateur. Sans cet appel,
+  /// un administrateur descendu dans une agence ne pouvait plus remonter.
+  Future<JoinBusinessUnitResponse> resetToCompanyUnit() async {
+    final response = await _apiClient.post(
+      'users/reset-to-company',
+      body: const {},
+      requiresAuth: true,
+    );
+
+    final data = (response is Map && response['data'] is Map)
+        ? response['data'] as Map<String, dynamic>
+        : (response as Map<String, dynamic>? ?? const {});
+
+    return JoinBusinessUnitResponse(
+      success: true,
+      businessUnitId: data['businessUnitId']?.toString() ?? '',
+      businessUnitCode: data['businessUnitCode']?.toString() ?? '',
+      businessUnitType: data['businessUnitType']?.toString() ?? 'company',
+      businessUnitName: data['businessUnitName']?.toString() ?? 'Entreprise generale',
+      message: "Vous travaillez a nouveau au niveau de l'entreprise.",
+    );
+  }
+
   Future<JoinBusinessUnitResponse> joinBusinessUnit(
     String businessUnitCode,
   ) async {

@@ -44,6 +44,44 @@ class _JoinBusinessUnitDialogState extends State<JoinBusinessUnitDialog> {
     super.dispose();
   }
 
+  /// Remonte au niveau de l'entreprise generale. Aucun code a saisir : c'est
+  /// le serveur qui retrouve l'unite racine.
+  Future<void> _revenirEntreprise() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final reponse = await AuthBackendService().resetToCompanyUnit();
+      await _appliquer(reponse, niveauEntreprise: true);
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (erreur) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = _message(erreur);
+      });
+    }
+  }
+
+  /// Vide ce qui appartenait a l'unite precedente, puis installe la nouvelle.
+  /// L'ordre compte : sans purge prealable, les donnees de l'ancienne unite
+  /// resteraient affichees sous le nom de la nouvelle.
+  Future<void> _appliquer(
+    JoinBusinessUnitResponse reponse, {
+    bool niveauEntreprise = false,
+  }) async {
+    await CacheManagementService.instance.clearAllBusinessUnitData();
+    await BusinessContextService().applySwitchedUnit(
+      businessUnitId: reponse.businessUnitId,
+      businessUnitCode: reponse.businessUnitCode,
+      businessUnitName: reponse.businessUnitName,
+      businessUnitType: reponse.businessUnitType,
+      niveauEntreprise: niveauEntreprise,
+    );
+  }
+
   Future<void> _join() async {
     final code = _codeController.text.trim().toUpperCase();
     if (code.isEmpty) {
@@ -58,16 +96,7 @@ class _JoinBusinessUnitDialogState extends State<JoinBusinessUnitDialog> {
 
     try {
       final reponse = await AuthBackendService().joinBusinessUnit(code);
-
-      // L'unité change : ce qui a été chargé pour la précédente n'a plus cours.
-      await CacheManagementService.instance.clearAllBusinessUnitData();
-
-      await BusinessContextService().applySwitchedUnit(
-        businessUnitId: reponse.businessUnitId,
-        businessUnitCode: reponse.businessUnitCode,
-        businessUnitName: reponse.businessUnitName,
-        businessUnitType: reponse.businessUnitType,
-      );
+      await _appliquer(reponse);
 
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -132,6 +161,12 @@ class _JoinBusinessUnitDialogState extends State<JoinBusinessUnitDialog> {
         ],
       ),
       actions: [
+        // L'entreprise generale n'a pas de code : on y remonte d'un geste.
+        if (!premiereAffectation)
+          TextButton(
+            onPressed: _busy ? null : _revenirEntreprise,
+            child: const Text("Entreprise generale"),
+          ),
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(false),
           child: const Text('Annuler'),

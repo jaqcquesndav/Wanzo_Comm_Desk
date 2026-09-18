@@ -241,6 +241,7 @@ class BusinessContextService extends ChangeNotifier {
     required String businessUnitCode,
     String? businessUnitName,
     String? businessUnitType,
+    bool niveauEntreprise = false,
   }) async {
     if (_currentContext == null) return;
     _currentContext = _currentContext!.copyWith(
@@ -250,7 +251,9 @@ class BusinessContextService extends ChangeNotifier {
       businessUnitType: businessUnitType != null
           ? BusinessUnitTypeExtension.fromApiValue(businessUnitType)
           : null,
-      scope: 'unit',
+      // Remonter a l'entreprise rend la portee « company » : sans cela
+      // l'utilisateur restait borne a une unite qu'il venait de quitter.
+      scope: niveauEntreprise ? 'company' : 'unit',
     );
     await _persistContext();
     notifyListeners();
