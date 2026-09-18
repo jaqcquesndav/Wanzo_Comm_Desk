@@ -1,16 +1,11 @@
 // filepath: lib/features/users/users.dart
 /// Module de gestion des utilisateurs
 ///
-/// Fournit les fonctionnalités pour:
-/// - Gérer le profil utilisateur courant
-/// - Changer les paramètres utilisateur
-/// - Changer d'unité d'affaires
-/// - Gestion des utilisateurs (Admin)
+/// Ne reste que le modele `AppUser`, dont les adaptateurs Hive (typeIds 75-77)
+/// sont enregistres au demarrage. Le bloc de gestion des utilisateurs qui
+/// vivait ici n'etait construit nulle part ; il a ete retire. Changer d'unite
+/// d'affaires se fait via `JoinBusinessUnitDialog`.
 
 library;
 
 export 'models/app_user.dart';
-export 'services/user_api_service.dart';
-export 'bloc/users_bloc.dart';
-export 'bloc/users_event.dart';
-export 'bloc/users_state.dart';
