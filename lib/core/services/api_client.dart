@@ -9,6 +9,7 @@ import '../../features/auth/services/auth0_service.dart'; // Import pour le serv
 import '../exceptions/api_exceptions.dart'; // Import des exceptions personnalisées
 import 'reauth_service.dart'; // Import du service de ré-authentification
 import 'api_circuit_breaker.dart'; // Import du circuit breaker
+import 'account_block_notifier.dart';
 
 class ApiClient {
   final String _baseUrl;
@@ -874,6 +875,12 @@ class ApiClient {
           responseBody: decodedBody,
         );
       case 403:
+        // Compte ferme : le portail refuse tout avec un code stable. On le
+        // signale une fois, l'interface cede la place. Sans cela l'app se
+        // chargeait normalement puis restait vide, chaque ecran echouant en
+        // silence.
+        final refus = AccountBlockNotifier.lireRefus(decodedBody);
+        if (refus != null) AccountBlockNotifier.instance.signal(refus);
         return AuthorizationException(
           message,
           endpoint: endpoint,

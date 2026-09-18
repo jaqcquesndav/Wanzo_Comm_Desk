@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../constants/colors.dart';
 import '../services/subscription_status_service.dart';
+import '../../../core/services/account_block_notifier.dart';
 
 /// URL de la page abonnements sur Wanzo Land (customer service).
 const String wanzoLandSubscriptionUrl = 'https://wanzzo.com/abonnement';
@@ -48,10 +49,29 @@ class _SubscriptionBannerOverlayState extends State<SubscriptionBannerOverlay>
     WidgetsBinding.instance.addObserver(this);
     _refresh();
     _timer = Timer.periodic(_refreshInterval, (_) => _refresh());
+    // Le portail refuse deja les requetes d'un compte ferme : ce signal arrive
+    // des le premier appel, bien avant le prochain sondage.
+    AccountBlockNotifier.instance.addListener(_surRefusDuPortail);
+  }
+
+  /// Un refus du portail vaut verdict : l'ecran de compte ferme prend la main.
+  void _surRefusDuPortail() {
+    final refus = AccountBlockNotifier.instance.value;
+    if (refus == null || !mounted) return;
+    setState(() {
+      _accessBlock = AccountAccessBlock(
+        message: refus.message,
+        reason: refus.reason,
+        supportEmail: refus.supportEmail,
+        supportPhone: refus.supportPhone,
+        supportWhatsapp: refus.supportWhatsapp,
+      );
+    });
   }
 
   @override
   void dispose() {
+    AccountBlockNotifier.instance.removeListener(_surRefusDuPortail);
     _timer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
