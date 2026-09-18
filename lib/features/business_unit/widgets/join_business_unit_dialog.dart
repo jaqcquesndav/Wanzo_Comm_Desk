@@ -1,24 +1,24 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
-import '../../../core/config/env_config.dart';
-import '../../../core/services/api_client.dart';
 import '../../../core/services/business_context_service.dart';
 import '../../../services/cache_management_service.dart';
+import '../../auth/services/auth_backend_service.dart';
 
-/// Rejoindre une unité d'affaires avec le code reçu par courriel.
+/// Changer d'unité d'affaires en saisissant son code.
 ///
-/// Quand un administrateur rattache quelqu'un à une agence ou à un point de
-/// vente, le serveur lui envoie un message portant le code de l'unité. Il ne
-/// manquait plus que l'endroit où le saisir : la route existait, le service de
-/// l'application aussi, mais aucun écran ne les appelait. Le code arrivait donc
-/// dans une boîte aux lettres sans serrure correspondante.
+/// Sert les deux cas, qui sont le même geste : rejoindre une unité quand on
+/// n'en a pas encore, et passer d'une unité à une autre ensuite. Un
+/// administrateur comme un employé peut le faire ; le serveur refuse le code
+/// s'il ne donne pas accès.
 ///
-/// Le changement vide les caches locaux avant de recharger : sans cela, les
-/// données de l'unité précédente resteraient affichées sous le nom de la
-/// nouvelle.
+/// Passe par `AuthBackendService.joinBusinessUnit`, le seul chemin qui
+/// enregistre l'affectation ET prévient accounting-service (événement
+/// `user.updated`). Une version précédente appelait `POST /users/switch-unit`,
+/// qui ne fait que l'enregistrement local : le changement restait invisible de
+/// la comptabilité.
+///
+/// Les caches locaux sont vidés avant de recharger, sinon les données de
+/// l'unité précédente resteraient affichées sous le nom de la nouvelle.
 class JoinBusinessUnitDialog extends StatefulWidget {
   const JoinBusinessUnitDialog({super.key});
 
@@ -57,82 +57,56 @@ class _JoinBusinessUnitDialogState extends State<JoinBusinessUnitDialog> {
     });
 
     try {
-      final headers = await ApiClient().getHeaders(requiresAuth: true);
-      final response = await http
-          .post(
-            Uri.parse('${EnvConfig.commerceBaseUrl}/users/switch-unit'),
-            headers: headers,
-            body: json.encode({'code': code}),
-          )
-          .timeout(const Duration(seconds: 15));
-
-      if (response.statusCode != 200) {
-        setState(() {
-          _busy = false;
-          _error = _messageFor(response);
-        });
-        return;
-      }
+      final reponse = await AuthBackendService().joinBusinessUnit(code);
 
       // L'unité change : ce qui a été chargé pour la précédente n'a plus cours.
       await CacheManagementService.instance.clearAllBusinessUnitData();
 
-      final corps = json.decode(response.body);
-      final unite = corps is Map ? corps['data'] : null;
-      if (unite is Map) {
-        await BusinessContextService().applySwitchedUnit(
-          businessUnitId: unite['businessUnitId']?.toString() ?? '',
-          businessUnitCode: unite['businessUnitCode']?.toString() ?? code,
-          businessUnitName: unite['businessUnitName']?.toString(),
-          businessUnitType: unite['businessUnitType']?.toString(),
-        );
-      }
+      await BusinessContextService().applySwitchedUnit(
+        businessUnitId: reponse.businessUnitId,
+        businessUnitCode: reponse.businessUnitCode,
+        businessUnitName: reponse.businessUnitName,
+        businessUnitType: reponse.businessUnitType,
+      );
 
       if (!mounted) return;
       Navigator.of(context).pop(true);
-    } catch (_) {
+    } catch (erreur) {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = "L'unité n'a pas pu être rejointe. Vérifiez votre connexion.";
+        _error = _message(erreur);
       });
     }
   }
 
-  /// Message utile plutôt qu'un code de statut.
-  String _messageFor(http.Response response) {
-    switch (response.statusCode) {
-      case 404:
-        return "Ce code ne correspond à aucune unité. Vérifiez le code communiqué par votre administrateur.";
-      case 403:
-        return "Vous n'avez pas accès à cette unité d'affaires.";
-      case 400:
-        try {
-          final body = json.decode(response.body);
-          final message = body is Map ? body['message']?.toString() : null;
-          if (message != null && message.isNotEmpty) return message;
-        } catch (_) {
-          // Corps illisible : message générique ci-dessous.
-        }
-        return "Cette unité n'est pas active.";
-      default:
-        return "L'unité n'a pas pu être rejointe.";
-    }
+  /// Le service remonte déjà un message explicite par cas (code inconnu, unité
+  /// inactive, accès refusé) ; on l'affiche tel quel plutôt qu'un code d'état.
+  String _message(Object erreur) {
+    final texte = erreur.toString().replaceFirst('Exception: ', '').trim();
+    return texte.isEmpty
+        ? "L'unité n'a pas pu être rejointe. Vérifiez votre connexion."
+        : texte;
   }
 
   @override
   Widget build(BuildContext context) {
     final contexte = BusinessContextService();
     final uniteCourante = contexte.businessUnitName ?? contexte.businessUnitCode;
+    final premiereAffectation = uniteCourante == null;
 
     return AlertDialog(
-      title: const Text("Rejoindre une unité d'affaires"),
+      title: Text(
+        premiereAffectation
+            ? "Rejoindre une unité d'affaires"
+            : "Changer d'unité d'affaires",
+      ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            uniteCourante == null
+            premiereAffectation
                 ? "Vous travaillez au niveau de l'entreprise."
                 : 'Unité actuelle : $uniteCourante',
             style: Theme.of(context).textTheme.bodySmall,
@@ -170,7 +144,7 @@ class _JoinBusinessUnitDialogState extends State<JoinBusinessUnitDialog> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Rejoindre'),
+              : Text(premiereAffectation ? 'Rejoindre' : 'Changer'),
         ),
       ],
     );

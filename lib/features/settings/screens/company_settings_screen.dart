@@ -10,8 +10,6 @@ import 'package:wanzo/core/enums/user_role.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/widgets/desktop/responsive_form_container.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
-import 'package:wanzo/features/auth/bloc/auth_bloc.dart';
-import 'package:wanzo/features/auth/services/auth_backend_service.dart';
 import '../bloc/settings_bloc.dart';
 import '../bloc/settings_event.dart';
 import '../bloc/settings_state.dart';
@@ -37,7 +35,6 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
   late final TextEditingController _taxNumberController;
   late final TextEditingController _rccmNumberController;
   late final TextEditingController _idNatNumberController;
-  late final TextEditingController _businessUnitCodeController;
 
   String? _companyLogo;
   late BusinessUnitType _businessUnitType;
@@ -80,9 +77,6 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
     _idNatNumberController = TextEditingController(
       text: widget.settings.idNatNumber,
     );
-    _businessUnitCodeController = TextEditingController(
-      text: widget.settings.businessUnitCode ?? '',
-    );
 
     _companyLogo = widget.settings.companyLogo;
     _businessUnitType = widget.settings.businessUnitType;
@@ -97,7 +91,6 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
     _taxNumberController.addListener(_onFieldChanged);
     _rccmNumberController.addListener(_onFieldChanged);
     _idNatNumberController.addListener(_onFieldChanged);
-    _businessUnitCodeController.addListener(_onFieldChanged);
   }
 
   @override
@@ -109,7 +102,6 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
     _taxNumberController.dispose();
     _rccmNumberController.dispose();
     _idNatNumberController.dispose();
-    _businessUnitCodeController.dispose();
     super.dispose();
   }
 
@@ -124,9 +116,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
         _rccmNumberController.text != widget.settings.rccmNumber ||
         _idNatNumberController.text != widget.settings.idNatNumber ||
         _companyLogo != widget.settings.companyLogo ||
-        _businessUnitType != widget.settings.businessUnitType ||
-        _businessUnitCodeController.text !=
-            (widget.settings.businessUnitCode ?? '');
+        _businessUnitType != widget.settings.businessUnitType;
 
     if (hasChanges != _hasChanges) {
       setState(() {
@@ -703,29 +693,6 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
           ),
         ),
 
-        if (_showCodeConfigSection) ...[
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _businessUnitCodeController,
-            readOnly: !_canEditCompany,
-            decoration: InputDecoration(
-              labelText: l10n.businessUnitCodeLabel,
-              hintText: l10n.businessUnitCodeHint,
-              border: const OutlineInputBorder(),
-              prefixIcon: const Icon(Icons.qr_code),
-              helperText: l10n.businessUnitCodeHelper,
-            ),
-            textCapitalization: TextCapitalization.characters,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            l10n.businessUnitCodeInfo,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Colors.grey[600],
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -879,9 +846,6 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
   /// Enregistre les modifications
   void _saveSettings() {
     if (_formKeyCompany.currentState?.validate() ?? false) {
-      final businessUnitCode = _businessUnitCodeController.text.trim();
-      final oldCode = widget.settings.businessUnitCode ?? '';
-
       // Sauvegarde locale via SettingsBloc
       context.read<SettingsBloc>().add(
         UpdateCompanyInfo(
@@ -894,58 +858,15 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
           rccmNumber: _rccmNumberController.text.trim(),
           idNatNumber: _idNatNumberController.text.trim(),
           businessUnitId: _businessUnitId,
-          businessUnitCode:
-              businessUnitCode.isNotEmpty ? businessUnitCode : null,
+          // Transmis tel quel : l'affectation se change dans le reglage
+          // « Unite d'affaires », pas en enregistrant le profil.
+          businessUnitCode: widget.settings.businessUnitCode,
           businessUnitType: _businessUnitType,
           businessUnitName: _businessUnitName,
         ),
       );
-
-      // Si le code BU a changé et n'est pas vide, appeler le backend pour rejoindre l'unité
-      if (businessUnitCode.isNotEmpty && businessUnitCode != oldCode) {
-        _joinBusinessUnitWithCode(businessUnitCode);
-      }
     }
   }
 
   /// Appelle le backend pour rejoindre une unité avec le code donné,
-  /// puis rafraîchit le profil utilisateur.
-  Future<void> _joinBusinessUnitWithCode(String code) async {
-    try {
-      final authBackendService = AuthBackendService();
-      final response = await authBackendService.joinBusinessUnit(code);
-
-      if (!mounted) return;
-
-      final ctx = context;
-      if (response.success) {
-        // Rafraîchir le profil pour récupérer les nouvelles données BU
-        ctx.read<AuthBloc>().add(const AuthRefreshProfileRequested());
-
-        ScaffoldMessenger.of(ctx).showSnackBar(
-          SnackBar(
-            content: Text(response.message ?? 'Unité rejointe avec succès'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(ctx).showSnackBar(
-          SnackBar(
-            content: Text(
-              response.message ?? 'Échec de la jonction à l\'unité',
-            ),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erreur lors de la jonction: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
 }
