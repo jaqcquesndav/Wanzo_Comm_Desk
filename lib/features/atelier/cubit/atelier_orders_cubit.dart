@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../models/atelier_order.dart';
 import '../services/atelier_api_service.dart';
 import '../repositories/atelier_order_cache.dart';
+import 'package:wanzo/core/exceptions/api_exceptions.dart';
 
 class AtelierOrdersState extends Equatable {
   final List<AtelierOrder> orders;
@@ -37,6 +38,23 @@ class AtelierOrdersState extends Equatable {
 /// Le changement de statut est optimiste (mise à jour immédiate de la carte sur
 /// le board), puis réconcilié avec la réponse serveur ; en cas d'échec, on
 /// recharge pour retrouver l'état de vérité.
+/// Ce que rend un enregistrement de fiche.
+///
+/// Distinguer « enregistre » de « conserve hors ligne » evite le pire des deux
+/// mondes : un faux succes qui laisse croire que le serveur a la fiche, ou un
+/// echec qui pousse a ressaisir ce qui est deja en file.
+class AtelierOrderSaveResult {
+  const AtelierOrderSaveResult({this.order, this.horsLigne = false});
+
+  /// La fiche telle qu'elle est desormais connue, localement ou du serveur.
+  final AtelierOrder? order;
+
+  /// Vrai quand l'ecriture attend le retour du reseau.
+  final bool horsLigne;
+
+  bool get ok => order != null;
+}
+
 class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
   final AtelierApiService _api;
   final AtelierOrderCache _cache;
@@ -89,14 +107,21 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
     return orders.where((o) => o.metier == m).toList();
   }
 
-  Future<AtelierOrder?> createOrder(AtelierOrder draft) async {
+  /// Enregistre une nouvelle fiche. Meme traitement du hors ligne que
+  /// [updateOrder] : la saisie n'est jamais perdue.
+  Future<AtelierOrderSaveResult> createOrder(AtelierOrder draft) async {
     try {
       final created = await _api.createOrder(draft);
       emit(state.copyWith(orders: [created, ...state.orders], error: null));
-      return created;
+      return AtelierOrderSaveResult(order: created);
+    } on OfflineQueuedException {
+      final orders = [draft, ...state.orders];
+      emit(state.copyWith(orders: orders, error: null));
+      await _cache.save(_businessUnitId, orders, metier: _metier?.apiValue);
+      return AtelierOrderSaveResult(order: draft, horsLigne: true);
     } catch (e) {
       emit(state.copyWith(error: e.toString()));
-      return null;
+      return const AtelierOrderSaveResult();
     }
   }
 
@@ -121,16 +146,36 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
     }
   }
 
-  Future<AtelierOrder?> updateOrder(String id, Map<String, dynamic> payload) async {
+  /// Corrige une fiche.
+  ///
+  /// Hors ligne, l'ecriture est conservee par la file du client HTTP et sera
+  /// rejouee : on applique la correction a l'etat local et on le signale par
+  /// [horsLigne], au lieu d'afficher un echec qui pousserait a ressaisir.
+  Future<AtelierOrderSaveResult> updateOrder(
+    String id,
+    Map<String, dynamic> payload, {
+    AtelierOrder? local,
+  }) async {
     try {
       final updated = await _api.updateOrder(id, payload);
       emit(state.copyWith(
         orders: state.orders.map((o) => o.id == id ? updated : o).toList(),
+        error: null,
       ));
-      return updated;
+      return AtelierOrderSaveResult(order: updated);
+    } on OfflineQueuedException {
+      // La correction est en file : la carte doit la refleter tout de suite,
+      // sinon l'utilisateur croit que rien n'a ete pris en compte.
+      if (local != null) {
+        final orders =
+            state.orders.map((o) => o.id == id ? local : o).toList();
+        emit(state.copyWith(orders: orders, error: null));
+        await _cache.save(_businessUnitId, orders, metier: _metier?.apiValue);
+      }
+      return AtelierOrderSaveResult(order: local, horsLigne: true);
     } catch (e) {
       emit(state.copyWith(error: e.toString()));
-      return null;
+      return const AtelierOrderSaveResult();
     }
   }
 

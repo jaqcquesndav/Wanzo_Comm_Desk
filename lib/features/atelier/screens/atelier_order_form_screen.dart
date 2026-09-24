@@ -1452,18 +1452,35 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     );
 
     final result = _isEdit
-        ? await cubit.updateOrder(widget.order!.id, draft.toCreateJson())
+        ? await cubit.updateOrder(
+            widget.order!.id,
+            draft.toCreateJson(),
+            // Le brouillon porte deja l identifiant de la fiche editee.
+            local: draft,
+          )
         : await cubit.createOrder(draft);
 
     if (!mounted) return;
     setState(() => _saving = false);
-    if (result != null) {
-      Navigator.of(context).pop();
-    } else {
+
+    if (!result.ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Échec de l\'enregistrement')),
+        const SnackBar(content: Text('Echec de l enregistrement')),
+      );
+      return;
+    }
+
+    // Hors ligne, la fiche est conservee et sera envoyee au retour du
+    // reseau. Le dire explicitement vaut mieux qu'un succes muet :
+    // l'utilisateur sait que le serveur ne l'a pas encore, et ne ressaisit pas.
+    if (result.horsLigne) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enregistré hors ligne, envoi au retour du réseau'),
+        ),
       );
     }
+    Navigator.of(context).pop();
   }
 }
 

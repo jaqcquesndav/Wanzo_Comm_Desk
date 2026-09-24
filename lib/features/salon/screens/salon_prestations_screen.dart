@@ -623,7 +623,7 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
                             keyboardType: TextInputType.number,
                             inputFormatters: [
                               FilteringTextInputFormatter.allow(
-                                  RegExp(r'^\d\+\.?\d\{0,2}')),
+                                  RegExp(r'^\d*\.?\d{0,2}')),
                             ],
                             decoration: InputDecoration(
                               labelText: 'Tarif (${_inputCurrency.code}) *',

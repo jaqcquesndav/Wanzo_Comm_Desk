@@ -292,7 +292,21 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
                 Navigator.pop(ctx);
               },
             ),
-          ] else
+          ] else ...[
+            // Une fiche reglee ou annulee n'offrait que l'impression et la
+            // suppression : on pouvait la detruire mais pas corriger une
+            // coordonnee ou une note de diagnostic. Corriger est moins
+            // destructeur que supprimer, et c'est le geste le plus courant
+            // apres coup.
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Modifier'),
+              subtitle: const Text('Corriger la fiche sans changer son statut'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openForm(context, order: order);
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.delete_outline),
               title: const Text('Supprimer'),
@@ -301,6 +315,7 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
                 Navigator.pop(ctx);
               },
             ),
+          ],
         ];
 
     if (isWide) {
