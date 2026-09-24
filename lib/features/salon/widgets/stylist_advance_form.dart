@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -6,20 +8,77 @@ import 'package:uuid/uuid.dart';
 import 'package:wanzo/core/enums/currency_enum.dart';
 import 'package:wanzo/features/expenses/bloc/expense_bloc.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
+import 'package:wanzo/features/expenses/widgets/cash_out_voucher_sheet.dart';
+import 'package:wanzo/features/settings/bloc/settings_bloc.dart';
+import 'package:wanzo/features/settings/bloc/settings_state.dart';
+import 'package:wanzo/features/settings/models/settings.dart';
 
 import '../models/stylist.dart';
+
+/// Ce que le formulaire rapporte : la dépense telle qu'elle a été enregistrée,
+/// et si elle est déjà partie au serveur ou seulement posée en local.
+class _AdvanceResult {
+  const _AdvanceResult(this.expense, this.reference, {required this.synchronise});
+
+  final Expense expense;
+  final String reference;
+  final bool synchronise;
+}
 
 /// Verser une AVANCE à un coiffeur.
 ///
 /// Une avance est de l'argent qui sort de la caisse : c'est une dépense, pas
-/// une écriture à part. Elle est simplement rattachée au coiffeur, pour venir
-/// en déduction de ses commissions dans son relevé. Le formulaire reste court :
-/// un montant, une date, un motif, parce que c'est un geste de comptoir.
-Future<bool?> showAdvanceForm(BuildContext context, Stylist stylist) {
-  return showDialog<bool>(
+/// une écriture à part. Elle est rattachée au coiffeur par `performerId`, ce
+/// qui la fait venir en déduction de ses commissions dans son relevé. Le
+/// formulaire reste court : un montant, une date, un motif, parce que c'est un
+/// geste de comptoir. À la validation, la caisse sort une pièce signée par le
+/// bénéficiaire, comme pour toute sortie d'espèces.
+Future<bool?> showAdvanceForm(BuildContext context, Stylist stylist) async {
+  final resultat = await showDialog<_AdvanceResult>(
     context: context,
+    barrierDismissible: false,
     builder: (_) => _AdvanceDialog(stylist: stylist),
   );
+  if (resultat == null) return null;
+  if (!context.mounted) return true;
+
+  // Le bon s'affiche depuis l'écran appelant, une fois la boîte refermée :
+  // une feuille par-dessus une boîte de dialogue se ferme mal.
+  final settings = _settingsCourants(context);
+  if (settings != null) {
+    final ok = await showCashOutVoucher(
+      context,
+      CashOutVoucher(
+        reference: resultat.reference,
+        date: resultat.expense.date,
+        beneficiary: stylist.name,
+        motif: resultat.expense.motif,
+        amount: resultat.expense.amount,
+        currencyCode: resultat.expense.currencyCode ?? Currency.CDF.code,
+        paymentMethod: 'Espèces',
+        note: 'Avance à déduire des commissions de ${stylist.name}.'
+            '${resultat.synchronise ? '' : ' Enregistrée hors ligne, envoi au retour du réseau.'}',
+      ),
+      settings,
+    );
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Avance enregistrée. Le bon de caisse n\'a pas pu être produit.',
+          ),
+        ),
+      );
+    }
+  }
+  return true;
+}
+
+Settings? _settingsCourants(BuildContext context) {
+  final etat = context.read<SettingsBloc>().state;
+  if (etat is SettingsLoaded) return etat.settings;
+  if (etat is SettingsUpdated) return etat.settings;
+  return null;
 }
 
 class _AdvanceDialog extends StatefulWidget {
@@ -63,14 +122,16 @@ class _AdvanceDialogState extends State<_AdvanceDialog> {
     if (d != null) setState(() => _date = d);
   }
 
-  void _save() {
+  Future<void> _save() async {
+    if (_saving) return;
     if (!_formKey.currentState!.validate()) return;
     final amount = double.tryParse(_amountController.text.trim()) ?? 0;
     if (amount <= 0) return;
 
     setState(() => _saving = true);
+    final id = const Uuid().v4();
     final expense = Expense(
-      id: const Uuid().v4(),
+      id: id,
       date: _date,
       motif: _motifController.text.trim(),
       amount: amount,
@@ -87,8 +148,48 @@ class _AdvanceDialogState extends State<_AdvanceDialog> {
       paymentStatus: ExpensePaymentStatus.paid,
       attachmentUrls: const [],
     );
-    context.read<ExpenseBloc>().add(AddExpense(expense));
-    Navigator.pop(context, true);
+
+    // On attend le verdict du bloc au lieu de refermer aussitôt : sans cela une
+    // avance refusée par le serveur passait pour versée, et la caisse ne
+    // tombait plus juste.
+    final bloc = context.read<ExpenseBloc>();
+    final verdict = bloc.stream.firstWhere(
+      (s) => s is ExpenseOperationSuccess || s is ExpenseError,
+    );
+    bloc.add(AddExpense(expense));
+
+    ExpenseState etat;
+    bool synchronise = true;
+    try {
+      etat = await verdict.timeout(const Duration(seconds: 25));
+    } on TimeoutException {
+      // La dépense est déjà écrite en local avant l'appel réseau : l'argent est
+      // bien sorti, seul l'envoi traîne.
+      etat = const ExpenseOperationSuccess('Enregistrée, envoi en cours.');
+      synchronise = false;
+    }
+
+    if (!mounted) return;
+
+    if (etat is ExpenseError) {
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Avance non enregistrée : ${etat.message}'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+      return;
+    }
+
+    Navigator.pop(
+      context,
+      _AdvanceResult(
+        expense,
+        'BSC-${id.substring(0, 8).toUpperCase()}',
+        synchronise: synchronise,
+      ),
+    );
   }
 
   @override
@@ -97,7 +198,7 @@ class _AdvanceDialogState extends State<_AdvanceDialog> {
     return AlertDialog(
       title: Text('Avance à ${widget.stylist.name}'),
       content: SizedBox(
-        width: 420,
+        width: MediaQuery.of(context).size.width.clamp(280.0, 420.0),
         child: Form(
           key: _formKey,
           child: Column(
@@ -115,7 +216,7 @@ class _AdvanceDialogState extends State<_AdvanceDialog> {
                       keyboardType: TextInputType.number,
                       inputFormatters: [
                         FilteringTextInputFormatter.allow(
-                            RegExp(r'^\d+\.?\d{0,2}')),
+                            RegExp(r'^\d*\.?\d{0,2}')),
                       ],
                       decoration: InputDecoration(
                         labelText: 'Montant (${_currency.code}) *',
@@ -178,8 +279,9 @@ class _AdvanceDialogState extends State<_AdvanceDialog> {
               ),
               const SizedBox(height: 10),
               Text(
-                "Enregistrée comme une dépense, et retranchée des commissions "
-                "de ${widget.stylist.name} dans son relevé.",
+                "Enregistrée comme une dépense, retranchée des commissions "
+                "de ${widget.stylist.name} dans son relevé. Un bon de sortie "
+                "de caisse est produit à la validation.",
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
@@ -189,13 +291,19 @@ class _AdvanceDialogState extends State<_AdvanceDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _saving ? null : () => Navigator.pop(context, false),
+          onPressed: _saving ? null : () => Navigator.pop(context),
           child: const Text('Annuler'),
         ),
         FilledButton.icon(
           onPressed: _saving ? null : _save,
-          icon: const Icon(Icons.check),
-          label: const Text('Verser'),
+          icon: _saving
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.check),
+          label: Text(_saving ? 'Versement...' : 'Verser'),
         ),
       ],
     );

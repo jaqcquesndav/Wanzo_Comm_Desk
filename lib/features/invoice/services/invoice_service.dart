@@ -944,6 +944,205 @@ class InvoiceService {
     return file.path;
   }
 
+  /// Bon de SORTIE DE CAISSE, au format ticket 80 mm.
+  ///
+  /// Toute somme qui quitte la caisse sans être une vente (avance à un
+  /// prestataire, achat au comptant, remboursement) laisse une pièce que le
+  /// bénéficiaire signe. On reprend l'entête légal des autres pièces, donc la
+  /// même identité émettrice, et la même largeur : la même imprimante sort le
+  /// reçu de vente et ce bon.
+  Future<String> generateCashOutVoucherPdf({
+    required Settings settings,
+    required String reference,
+    required DateTime date,
+    required String beneficiary,
+    required String motif,
+    required double amount,
+    required String currencyCode,
+    String? paymentMethod,
+    String? note,
+  }) async {
+    final pdf = pw.Document();
+    final regularFont = pw.Font.helvetica();
+    final boldFont = pw.Font.helveticaBold();
+    final issuer = _IssuerIdentity.from(settings);
+    final formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(date);
+    final montant = formatCurrency(amount, currencyCode);
+
+    final qrData = <String>[
+      if (issuer.name.isNotEmpty) issuer.name,
+      'BON DE SORTIE DE CAISSE',
+      'Ref: $reference',
+      'Date: $formattedDate',
+      'Beneficiaire: $beneficiary',
+      'Montant: $montant',
+      'wanzzo.com',
+    ].join('\n');
+
+    pw.Widget ligne(String libelle, String valeur, {bool gras = false}) {
+      return pw.Padding(
+        padding: const pw.EdgeInsets.only(bottom: 3),
+        child: pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              flex: 2,
+              child: pw.Text(
+                libelle,
+                style: pw.TextStyle(font: regularFont, fontSize: 8),
+              ),
+            ),
+            pw.Expanded(
+              flex: 3,
+              child: pw.Text(
+                valeur,
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                  font: gras ? boldFont : regularFont,
+                  fontSize: gras ? 10 : 8,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat(
+          80 * PdfPageFormat.mm,
+          300 * PdfPageFormat.mm,
+          marginAll: 5 * PdfPageFormat.mm,
+        ),
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+          children: [
+            pw.Center(
+              child: pw.Text(
+                issuer.name,
+                textAlign: pw.TextAlign.center,
+                style: pw.TextStyle(font: boldFont, fontSize: 12),
+              ),
+            ),
+            if (issuer.address.isNotEmpty)
+              pw.Center(
+                child: pw.Text(
+                  issuer.address,
+                  textAlign: pw.TextAlign.center,
+                  style: pw.TextStyle(font: regularFont, fontSize: 8),
+                ),
+              ),
+            if (issuer.phone.isNotEmpty)
+              pw.Center(
+                child: pw.Text(
+                  'Tél: ${issuer.phone}',
+                  style: pw.TextStyle(font: regularFont, fontSize: 8),
+                ),
+              ),
+            if (issuer.rccm.isNotEmpty || issuer.taxId.isNotEmpty)
+              pw.Center(
+                child: pw.Text(
+                  [
+                    if (issuer.rccm.isNotEmpty) 'RCCM: ${issuer.rccm}',
+                    if (issuer.taxId.isNotEmpty) 'NIF: ${issuer.taxId}',
+                  ].join('  '),
+                  textAlign: pw.TextAlign.center,
+                  style: pw.TextStyle(font: regularFont, fontSize: 7),
+                ),
+              ),
+            pw.SizedBox(height: 8),
+            pw.Divider(thickness: 0.5),
+            pw.Center(
+              child: pw.Text(
+                'BON DE SORTIE DE CAISSE',
+                style: pw.TextStyle(font: boldFont, fontSize: 11),
+              ),
+            ),
+            pw.Divider(thickness: 0.5),
+            pw.SizedBox(height: 6),
+            ligne('N°', reference),
+            ligne('Date', formattedDate),
+            ligne('Bénéficiaire', beneficiary),
+            ligne('Motif', motif),
+            if (paymentMethod != null && paymentMethod.isNotEmpty)
+              ligne('Règlement', paymentMethod),
+            pw.SizedBox(height: 4),
+            pw.Divider(thickness: 0.5),
+            ligne('MONTANT VERSÉ', montant, gras: true),
+            pw.Divider(thickness: 0.5),
+            if (note != null && note.isNotEmpty) ...[
+              pw.SizedBox(height: 6),
+              pw.Text(
+                note,
+                style: pw.TextStyle(
+                  font: regularFont,
+                  fontSize: 7,
+                  color: PdfColors.grey700,
+                ),
+              ),
+            ],
+            pw.SizedBox(height: 18),
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Expanded(
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.center,
+                    children: [
+                      pw.Text('Le caissier',
+                          style: pw.TextStyle(font: regularFont, fontSize: 8)),
+                      pw.SizedBox(height: 20),
+                      pw.Text('..............',
+                          style: pw.TextStyle(font: regularFont, fontSize: 8)),
+                    ],
+                  ),
+                ),
+                pw.Expanded(
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.center,
+                    children: [
+                      pw.Text('Le bénéficiaire',
+                          style: pw.TextStyle(font: regularFont, fontSize: 8)),
+                      pw.SizedBox(height: 20),
+                      pw.Text('..............',
+                          style: pw.TextStyle(font: regularFont, fontSize: 8)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 10),
+            pw.Center(
+              child: pw.BarcodeWidget(
+                barcode: pw.Barcode.qrCode(),
+                data: qrData,
+                width: 70,
+                height: 70,
+              ),
+            ),
+            pw.SizedBox(height: 6),
+            pw.Center(
+              child: pw.Text(
+                'Wanzo by i-kiotahub Goma',
+                style: pw.TextStyle(
+                  font: regularFont,
+                  fontSize: 7,
+                  color: PdfColors.grey600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final output = await getTemporaryDirectory();
+    final file = File('${output.path}/bon_sortie_$reference.pdf');
+    await file.writeAsBytes(await pdf.save());
+    return file.path;
+  }
+
   /// Imprime directement une facture ou un ticket (nécessite une imprimante configurée)
   Future<void> printDocument(String filePath, {bool isReceipt = false}) async {
     try {

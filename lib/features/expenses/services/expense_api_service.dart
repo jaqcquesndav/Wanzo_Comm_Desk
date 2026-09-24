@@ -33,6 +33,13 @@ abstract class ExpenseApiService {
     String? supplierName,
     String? currencyCode,
     double? exchangeRate,
+    // Une dépense peut être rattachée à la personne qui l'a reçue : c'est
+    // ce qui permet au serveur de retrancher une avance des commissions du
+    // coiffeur (ou de tout prestataire) dans son relevé.
+    String? performerId,
+    String? performerName,
+    String? subCategory,
+    String? beneficiary,
     String? supplierPhoneNumber,
   });
 
@@ -55,6 +62,13 @@ abstract class ExpenseApiService {
     String? supplierName,
     String? currencyCode,
     double? exchangeRate,
+    // Une dépense peut être rattachée à la personne qui l'a reçue : c'est
+    // ce qui permet au serveur de retrancher une avance des commissions du
+    // coiffeur (ou de tout prestataire) dans son relevé.
+    String? performerId,
+    String? performerName,
+    String? subCategory,
+    String? beneficiary,
     String? supplierPhoneNumber,
   });
 
@@ -195,6 +209,13 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
     String? supplierName,
     String? currencyCode,
     double? exchangeRate,
+    // Une dépense peut être rattachée à la personne qui l'a reçue : c'est
+    // ce qui permet au serveur de retrancher une avance des commissions du
+    // coiffeur (ou de tout prestataire) dans son relevé.
+    String? performerId,
+    String? performerName,
+    String? subCategory,
+    String? beneficiary,
     String? supplierPhoneNumber,
   }) async {
     try {
@@ -244,6 +265,10 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
         if (supplierName != null) 'supplierName': supplierName,
         if (currencyCode != null) 'currencyCode': currencyCode,
         if (exchangeRate != null) 'exchangeRate': exchangeRate,
+        if (performerId != null) 'performerId': performerId,
+        if (performerName != null) 'performerName': performerName,
+        if (subCategory != null) 'subCategory': subCategory,
+        if (beneficiary != null) 'beneficiary': beneficiary,
         if (supplierPhoneNumber != null && supplierPhoneNumber.isNotEmpty)
           'supplierPhoneNumber': supplierPhoneNumber,
         if (attachmentUrls != null && attachmentUrls.isNotEmpty)
@@ -346,6 +371,13 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
     String? supplierName,
     String? currencyCode,
     double? exchangeRate,
+    // Une dépense peut être rattachée à la personne qui l'a reçue : c'est
+    // ce qui permet au serveur de retrancher une avance des commissions du
+    // coiffeur (ou de tout prestataire) dans son relevé.
+    String? performerId,
+    String? performerName,
+    String? subCategory,
+    String? beneficiary,
     String? supplierPhoneNumber,
   }) async {
     try {
@@ -397,6 +429,10 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
         if (supplierName != null) 'supplierName': supplierName,
         if (currencyCode != null) 'currencyCode': currencyCode,
         if (exchangeRate != null) 'exchangeRate': exchangeRate,
+        if (performerId != null) 'performerId': performerId,
+        if (performerName != null) 'performerName': performerName,
+        if (subCategory != null) 'subCategory': subCategory,
+        if (beneficiary != null) 'beneficiary': beneficiary,
         if (supplierPhoneNumber != null && supplierPhoneNumber.isNotEmpty)
           'supplierPhoneNumber': supplierPhoneNumber,
         // `attachmentUrls` remplace toutes les URLs existantes (selon UpdateExpenseDto)

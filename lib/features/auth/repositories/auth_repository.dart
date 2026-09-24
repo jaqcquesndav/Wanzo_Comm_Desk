@@ -189,6 +189,19 @@ class AuthRepository {
   }
 
   /// Récupère l'utilisateur actuel s'il est connecté
+  /// Dernière session connue, telle que le cache hors ligne la conserve.
+  ///
+  /// Sert de dernier recours au démarrage : si la vérification d'usage échoue
+  /// pour une raison technique (coffre-fort verrouillé, réseau injoignable),
+  /// l'utilisateur doit retrouver son travail, pas un écran de connexion.
+  Future<User?> getLastKnownUser() async {
+    try {
+      return await _auth0Service.offlineAuthService.getLastLoggedInUser();
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<User?> getCurrentUser() async {
     // Si l'utilisateur démo est actif, il devrait être récupéré par les mécanismes standards
     // car Auth0Service.isAuthenticated() et Auth0Service.getAccessToken() le gèrent.

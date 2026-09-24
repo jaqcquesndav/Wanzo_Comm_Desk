@@ -69,6 +69,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         emit(const AuthUnauthenticated());
       }
     } catch (e) {
+      // Dernier recours : plutôt que de renvoyer à l'écran de connexion sur une
+      // panne technique, on rouvre la dernière session connue. Les écritures
+      // partent dans la file hors ligne, et un vrai refus du serveur (401)
+      // déconnectera proprement dès le premier échange.
+      final cached = await _authRepository.getLastKnownUser();
+      if (cached != null && !isClosed) {
+        debugPrint('AuthBloc: reprise de la dernière session connue ($e)');
+        emit(AuthAuthenticated(cached));
+        return;
+      }
       emit(AuthFailure(e.toString()));
     }
   }

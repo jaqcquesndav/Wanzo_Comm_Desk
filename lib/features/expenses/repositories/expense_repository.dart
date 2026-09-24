@@ -159,6 +159,12 @@ class ExpenseRepository {
       supplierName: expenseToSave.supplierName,
       currencyCode: expenseToSave.currencyCode,
       exchangeRate: expenseToSave.exchangeRate,
+      // Sans ces champs le serveur reçoit une dépense anonyme : une avance
+      // versée à un coiffeur n'apparaît alors dans aucun relevé.
+      performerId: expenseToSave.performerId,
+      performerName: expenseToSave.performerName,
+      subCategory: expenseToSave.subCategory,
+      beneficiary: expenseToSave.beneficiary,
     );
 
     if (apiResponse.success && apiResponse.data != null) {
@@ -238,6 +244,12 @@ class ExpenseRepository {
       supplierName: expenseToUpdate.supplierName,
       currencyCode: expenseToUpdate.currencyCode,
       exchangeRate: expenseToUpdate.exchangeRate,
+      // Sans ces champs le serveur reçoit une dépense anonyme : une avance
+      // versée à un coiffeur n'apparaît alors dans aucun relevé.
+      performerId: expenseToUpdate.performerId,
+      performerName: expenseToUpdate.performerName,
+      subCategory: expenseToUpdate.subCategory,
+      beneficiary: expenseToUpdate.beneficiary,
     );
 
     if (apiResponse.success && apiResponse.data != null) {

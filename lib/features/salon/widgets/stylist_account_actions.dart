@@ -47,6 +47,7 @@ class _StatementDialog extends StatefulWidget {
 class _StatementDialogState extends State<_StatementDialog> {
   final _api = SalonApiService();
   final _dateFmt = DateFormat('dd/MM/yyyy');
+  final _nombreFmt = NumberFormat('#,##0', 'fr_FR');
 
   StylistStatement? _statement;
   bool _loading = true;
@@ -101,26 +102,35 @@ class _StatementDialogState extends State<_StatementDialog> {
     await _load();
   }
 
-  /// Le relevé tel qu'on le remet au coiffeur : les sommes versées, précédées
-  /// de la synthèse. Même contenu en PDF et en tableur.
+  /// Le relevé tel qu'on le remet au coiffeur : le compte, ligne à ligne,
+  /// dans l'ordre du temps, avec le solde après chaque mouvement. Ce qui est
+  /// exporté est exactement ce qui est affiché.
   TableExportConfig _exportConfig() {
     final s = _statement!;
+    final lignes = s.ledger;
     return TableExportConfig(
       title: 'Relevé de compte — ${s.stylistName}',
-      subtitle:
-          'Du ${_dateFmt.format(_from)} au ${_dateFmt.format(_to)}\n'
-          'Commissions ${formatCurrency(s.totalCommission, 'CDF')} · '
-          'Avances ${formatCurrency(s.advancesTotal, 'CDF')} · '
-          'Solde ${formatCurrency(s.balance, 'CDF')}',
-      headers: const ['Date', 'Motif', 'Nature', 'Montant'],
+      subtitle: 'Du ${_dateFmt.format(_from)} au ${_dateFmt.format(_to)} '
+          '(montants en CDF)',
+      headers: const ['Date', 'Libellé', 'Nature', 'Gagné', 'Versé', 'Solde'],
       rows: [
-        for (final a in s.advances)
+        for (final l in lignes)
           [
-            a.date == null ? '' : _dateFmt.format(a.date!),
-            a.motif,
-            a.subCategory ?? '',
-            formatCurrency(a.amount, a.currencyCode ?? 'CDF'),
+            l.date == null ? '' : _dateFmt.format(l.date!),
+            l.libelle,
+            l.nature,
+            l.credit == 0 ? '' : _montant(l.credit),
+            l.debit == 0 ? '' : _montant(l.debit),
+            _montant(l.solde),
           ],
+        [
+          '',
+          'TOTAL',
+          '',
+          _montant(s.totalCommission),
+          _montant(s.advancesTotal),
+          _montant(s.balance),
+        ],
       ],
       fileName: 'releve_${s.stylistName.replaceAll(' ', '_').toLowerCase()}',
       companyName: BusinessContextService().currentContext?.companyName,
@@ -152,7 +162,8 @@ class _StatementDialogState extends State<_StatementDialog> {
         ],
       ),
       content: SizedBox(
-        width: 640,
+        // Sur téléphone la largeur fixe déborderait : on suit l'écran.
+        width: MediaQuery.of(context).size.width.clamp(280.0, 640.0),
         child: _loading
             ? const SizedBox(
                 height: 160,
@@ -185,107 +196,203 @@ class _StatementDialogState extends State<_StatementDialog> {
 
   Widget _body(ThemeData theme) {
     final s = _statement!;
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Du ${_dateFmt.format(_from)} au ${_dateFmt.format(_to)}',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
+    final lignes = s.ledger;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Entête de relevé : la période et où l'on aboutit. Le détail est
+        // dans le tableau, pas dans une rangée de vignettes.
+        Text(
+          'Du ${_dateFmt.format(_from)} au ${_dateFmt.format(_to)}'
+          '  ·  ${s.servicesCount} prestation${s.servicesCount > 1 ? 's' : ''}',
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 4),
+        Text.rich(
+          TextSpan(
+            style: theme.textTheme.bodyMedium,
             children: [
-              _fact('Prestations', '${s.servicesCount}'),
-              _fact('Chiffre réalisé',
-                  formatCurrency(s.serviceRevenue + s.retailRevenue, 'CDF')),
-              _fact('Commissions', formatCurrency(s.totalCommission, 'CDF')),
-              _fact('Avances versées', formatCurrency(s.advancesTotal, 'CDF')),
-              _fact(
-                s.balance >= 0 ? 'Reste à verser' : 'Trop perçu',
-                formatCurrency(s.balance.abs(), 'CDF'),
-                color: s.balance >= 0
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.error,
+              TextSpan(
+                text: s.balance >= 0 ? 'Reste à verser ' : 'Trop perçu ',
+              ),
+              TextSpan(
+                text: formatCurrency(s.balance.abs(), 'CDF'),
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: s.balance >= 0
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.error,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 18),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text('Sommes déjà versées',
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w700)),
-          ),
-          const SizedBox(height: 6),
-          if (s.advances.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                'Aucune avance sur la période.',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-            )
-          else
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 240),
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: s.advances.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (context, i) {
-                  final a = s.advances[i];
-                  return ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(a.motif),
-                    subtitle: Text([
-                      if (a.date != null) _dateFmt.format(a.date!),
-                      if ((a.subCategory ?? '').isNotEmpty) a.subCategory!,
-                    ].join(' · ')),
-                    trailing: Text(
-                      formatCurrency(a.amount, a.currencyCode ?? 'CDF'),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 12),
+        if (lignes.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 28),
+            child: Text(
+              'Aucun mouvement sur la période.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          )
+        else
+          Flexible(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 460),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _enTete(theme),
+                    const Divider(height: 1, thickness: 1),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (var i = 0; i < lignes.length; i++)
+                              _ligne(theme, lignes[i], pair: i.isEven),
+                          ],
+                        ),
+                      ),
                     ),
-                  );
-                },
+                    const Divider(height: 1, thickness: 1),
+                    _total(theme, s),
+                  ],
+                ),
               ),
             ),
+          ),
+      ],
+    );
+  }
+
+  /// Largeurs de colonnes partagées par l'entête, les lignes et le total :
+  /// c'est ce qui fait tenir les chiffres les uns sous les autres.
+  static const _colonnes = <int>[74, 150, 84, 84, 88];
+
+  Widget _cellule(String texte, int largeur,
+      {TextStyle? style, TextAlign align = TextAlign.left}) {
+    return SizedBox(
+      width: largeur.toDouble(),
+      child: Text(
+        texte,
+        style: style,
+        textAlign: align,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  Widget _enTete(ThemeData theme) {
+    final style = theme.textTheme.labelSmall?.copyWith(
+      fontWeight: FontWeight.w700,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          _cellule('Date', _colonnes[0], style: style),
+          _cellule('Libellé', _colonnes[1], style: style),
+          _cellule('Gagné', _colonnes[2],
+              style: style, align: TextAlign.right),
+          _cellule('Versé', _colonnes[3],
+              style: style, align: TextAlign.right),
+          _cellule('Solde', _colonnes[4],
+              style: style, align: TextAlign.right),
         ],
       ),
     );
   }
 
-  Widget _fact(String label, String value, {Color? color}) {
-    final theme = Theme.of(context);
+  Widget _ligne(ThemeData theme, StylistLedgerLine l, {required bool pair}) {
+    final corps = theme.textTheme.bodySmall;
+    final chiffres = corps?.copyWith(
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: (color ?? theme.colorScheme.primary).withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+      color: pair
+          ? Colors.transparent
+          : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(label,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: color ?? theme.colorScheme.primary,
+          _cellule(l.date == null ? '' : _dateFmt.format(l.date!), _colonnes[0],
+              style: chiffres),
+          SizedBox(
+            width: _colonnes[1].toDouble(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(l.libelle,
+                    style: corps,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+                Text(
+                  l.nature,
+                  style: theme.textTheme.labelSmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
+          ),
+          _cellule(l.credit == 0 ? '' : _montant(l.credit), _colonnes[2],
+              style: chiffres, align: TextAlign.right),
+          _cellule(l.debit == 0 ? '' : _montant(l.debit), _colonnes[3],
+              style: chiffres?.copyWith(color: theme.colorScheme.error),
+              align: TextAlign.right),
+          _cellule(_montant(l.solde), _colonnes[4],
+              style: chiffres?.copyWith(fontWeight: FontWeight.w700),
+              align: TextAlign.right),
+        ],
+      ),
+    );
+  }
+
+  Widget _total(ThemeData theme, StylistStatement s) {
+    final style = theme.textTheme.bodySmall?.copyWith(
+      fontWeight: FontWeight.w700,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Row(
+        children: [
+          _cellule('', _colonnes[0]),
+          _cellule('TOTAL', _colonnes[1], style: style),
+          _cellule(_montant(s.totalCommission), _colonnes[2],
+              style: style, align: TextAlign.right),
+          _cellule(_montant(s.advancesTotal), _colonnes[3],
+              style: style, align: TextAlign.right),
+          _cellule(
+            _montant(s.balance),
+            _colonnes[4],
+            style: style?.copyWith(
+              color: s.balance >= 0
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.error,
+            ),
+            align: TextAlign.right,
           ),
         ],
       ),
     );
   }
+
+  /// Dans un tableau la devise est dans le sous-titre, pas sur chaque ligne :
+  /// répéter le code cinquante fois empêche de comparer les colonnes.
+  String _montant(double v) => _nombreFmt.format(v);
 }

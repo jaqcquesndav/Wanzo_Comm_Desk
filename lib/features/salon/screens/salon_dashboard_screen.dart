@@ -7,7 +7,10 @@ import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/shared_widgets/quick_actions_sheet.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/shared_widgets/kpi_board.dart';
+import 'package:wanzo/core/utils/daily_series.dart';
 import 'package:wanzo/features/dashboard/bloc/dashboard_bloc.dart';
+import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
 
 import '../cubit/salon_cubit.dart';
 import '../services/salon_api_service.dart';
@@ -205,79 +208,79 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
   /// le tableau de bord principal et restaurant) ; les commissions à payer du
   /// mois proviennent de `SalonApiService`. Une donnée non chargée affiche un
   /// état neutre (« — »).
+  /// Indicateurs du salon, hiérarchisés.
+  ///
+  /// Deux chiffres de pilotage en tête (ce qui rentre, ce qu'il reste à
+  /// verser à l'équipe), le reste en vignettes de contrôle. Les valeurs sont
+  /// réelles : CA et clients servis viennent du KPI global (`DashboardBloc`),
+  /// les commissions de `SalonApiService`. Une donnée non chargée affiche
+  /// « — », jamais un zéro qui ferait croire à une journée blanche.
   Widget _kpiRow(BuildContext context, SalonState state) {
     return BlocBuilder<DashboardBloc, DashboardState>(
       builder: (context, dashState) {
         final bool loaded = dashState is DashboardLoaded;
         final String caCdf =
             loaded ? formatCurrency(dashState.salesTodayCdf, 'CDF') : '—';
-        final String caUsd =
-            loaded ? formatCurrency(dashState.salesTodayUsd, 'USD') : '—';
+        final double caUsd = loaded ? dashState.salesTodayUsd : 0;
         // `clientsServedToday` : nombre réel de clients servis aujourd'hui (≈
-        // tickets du jour). Il n'existe pas de compteur de tickets dédié dans le
-        // KPI global, on l'utilise donc comme repère du nombre de tickets.
+        // tickets du jour). Il n'existe pas de compteur de tickets dédié dans
+        // le KPI global, on l'utilise donc comme repère du nombre de tickets.
         final String clients =
             loaded ? '${dashState.clientsServedToday}' : '—';
         final String commissions = _commissionsMonth != null
             ? formatCurrency(_commissionsMonth!, 'CDF')
             : '—';
-        final cards = [
-          _KpiCard(
-            icon: Icons.payments,
-            color: const Color(0xFF16A34A),
-            label: 'CA du jour (CDF)',
-            value: caCdf,
-          ),
-          _KpiCard(
-            icon: Icons.payments,
-            color: const Color(0xFF16A34A),
-            label: 'CA du jour (USD)',
-            value: caUsd,
-          ),
-          _KpiCard(
-            icon: Icons.groups_outlined,
-            color: const Color(0xFF0EA5E9),
-            label: 'Clients servis (jour)',
-            value: clients,
-          ),
-          _KpiCard(
-            icon: Icons.savings_outlined,
-            color: const Color(0xFFF59E0B),
-            label: 'Commissions (mois)',
-            value: commissions,
-          ),
-          _KpiCard(
-            icon: Icons.content_cut,
-            color: const Color(0xFF8B5CF6),
-            label: 'Prestations',
-            value: '${state.activeServices.length}',
-          ),
-          _KpiCard(
-            icon: Icons.badge_outlined,
-            color: const Color(0xFF197CA8),
-            label: 'Coiffeurs',
-            value: '${state.activeStylists.length}',
-          ),
-        ];
-        return LayoutBuilder(
-          builder: (context, c) {
-            // Autant de colonnes que la largeur en porte confortablement, sans
-            // descendre sous deux : une carte étirée sur tout un écran large est
-            // aussi illisible qu'une carte écrasée.
-            const double spacing = 16;
-            const double minCard = 240;
-            final int columns =
-                ((c.maxWidth + spacing) / (minCard + spacing)).floor().clamp(2, 6);
-            final double width =
-                (c.maxWidth - spacing * (columns - 1)) / columns;
-            return Wrap(
-              spacing: spacing,
-              runSpacing: spacing,
-              children: [
-                for (final card in cards) SizedBox(width: width, child: card),
-              ],
-            );
-          },
+
+        // La courbe des vignettes de pilotage vient des ventes réellement
+        // enregistrées ; sans elles, la vignette reste sans courbe.
+        final ventes = context.watch<SalesBloc>().state;
+        final serieCa =
+            ventes is SalesLoaded ? DailySeries.revenue(ventes.sales) : null;
+
+        return KpiBoard(
+          spacing: 16,
+          tiles: [
+            KpiTile(
+              weight: KpiWeight.pilote,
+              icon: Icons.payments,
+              color: const Color(0xFF16A34A),
+              label: 'CA du jour',
+              value: caCdf,
+              secondary:
+                  caUsd > 0 ? 'dont ${formatCurrency(caUsd, 'USD')}' : null,
+              trend: serieCa,
+              trendLabel: '7 derniers jours',
+            ),
+            KpiTile(
+              weight: KpiWeight.pilote,
+              icon: Icons.savings_outlined,
+              color: const Color(0xFFF59E0B),
+              label: 'Commissions du mois',
+              value: commissions,
+              trendLabel: 'À verser à l\'équipe',
+              onTap: () => context.push('/salon/performance'),
+            ),
+            KpiTile(
+              icon: Icons.groups_outlined,
+              color: const Color(0xFF0EA5E9),
+              label: 'Clients servis (jour)',
+              value: clients,
+            ),
+            KpiTile(
+              icon: Icons.content_cut,
+              color: const Color(0xFF8B5CF6),
+              label: 'Prestations',
+              value: '${state.activeServices.length}',
+              onTap: () => context.push('/salon/prestations'),
+            ),
+            KpiTile(
+              icon: Icons.badge_outlined,
+              color: const Color(0xFF197CA8),
+              label: 'Coiffeurs',
+              value: '${state.activeStylists.length}',
+              onTap: () => context.push('/salon/stylists'),
+            ),
+          ],
         );
       },
     );
@@ -303,62 +306,6 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,
-      ),
-    );
-  }
-}
-
-class _KpiCard extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String label;
-  final String value;
-  const _KpiCard({
-    required this.icon,
-    required this.color,
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: color.withValues(alpha: 0.16),
-              child: Icon(icon, color: color, size: 22),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    value,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleLarge
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    label,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

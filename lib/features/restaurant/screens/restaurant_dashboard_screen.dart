@@ -8,6 +8,8 @@ import 'package:wanzo/core/services/form_navigation_service.dart';
 import 'package:wanzo/core/shared_widgets/quick_actions_sheet.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/shared_widgets/kpi_board.dart';
+import 'package:wanzo/core/utils/daily_series.dart';
 import 'package:wanzo/core/widgets/dish_thumb_grid.dart';
 import 'package:wanzo/features/sales/repositories/sales_repository.dart';
 
@@ -62,7 +64,7 @@ class RestaurantDashboardScreen extends StatelessWidget {
           // conversion : chaque devise affiche son propre total saisi), comme le
           // tableau de bord boutique. Repli sur le total CDF des commandes
           // réglées si la source ventes est indisponible.
-          return FutureBuilder<Map<String, double>>(
+          return FutureBuilder<_ChiffreDuJour>(
             future: _salesTodayByCurrency(context),
             builder: (context, snapshot) {
               final salesToday = snapshot.data;
@@ -121,23 +123,34 @@ class RestaurantDashboardScreen extends StatelessWidget {
   /// les commandes restaurant sont en CDF ; on lit donc directement le
   /// `SalesRepository` (fourni au niveau application). En cas d'indisponibilité,
   /// l'erreur remonte au `FutureBuilder` (repli sur le total CDF des commandes).
-  Future<Map<String, double>> _salesTodayByCurrency(BuildContext context) async {
+  Future<_ChiffreDuJour> _salesTodayByCurrency(BuildContext context) async {
     final repo = context.read<SalesRepository>();
     final now = DateTime.now();
-    final start = DateTime(now.year, now.month, now.day);
+    final aujourdhui = DateTime(now.year, now.month, now.day);
     final end = DateTime(now.year, now.month, now.day, 23, 59, 59);
-    final sales = await repo.getSalesByDateRange(start, end);
+    // Une seule lecture couvre la semaine : le chiffre du jour s'en déduit, et
+    // les courbes de tendance aussi, sans second aller-retour.
+    final semaine = await repo.getSalesByDateRange(
+      aujourdhui.subtract(const Duration(days: 6)),
+      end,
+    );
     double cdf = 0.0;
     double usd = 0.0;
-    for (final s in sales) {
-      if (s.transactionCurrencyCode == 'USD') {
-        usd += s.totalAmountInTransactionCurrency ?? 0.0;
-      } else {
-        // CDF ou devise non renseignée : total en CDF.
-        cdf += s.totalAmountInCdf;
+    for (final s in semaine) {
+      if (!s.date.isBefore(aujourdhui)) {
+        if (s.transactionCurrencyCode == 'USD') {
+          usd += s.totalAmountInTransactionCurrency ?? 0.0;
+        } else {
+          // CDF ou devise non renseignée : total en CDF.
+          cdf += s.totalAmountInCdf;
+        }
       }
     }
-    return {'CDF': cdf, 'USD': usd};
+    return _ChiffreDuJour(
+      cdf: cdf,
+      usd: usd,
+      serieCa: DailySeries.revenue(semaine),
+    );
   }
 
   Widget _section(BuildContext context, String title, Widget child) {
@@ -209,76 +222,67 @@ class RestaurantDashboardScreen extends StatelessWidget {
     );
   }
 
+  /// Indicateurs du service, hiérarchisés.
+  ///
+  /// En tête les deux chiffres qui font piloter un service : ce qui rentre, et
+  /// ce qu'il reste à servir. Le reste en vignettes de contrôle. Le chiffre du
+  /// jour est ventilé par devise de SAISIE, avec repli sur le total CDF des
+  /// commandes réglées tant que la source ventes n'a pas répondu.
   Widget _kpiRow(
     BuildContext context,
     _RestaurantMetrics m,
-    Map<String, double>? salesToday,
+    _ChiffreDuJour? salesToday,
   ) {
-    // Chiffre du jour par devise d'entrée : réutilise la répartition des ventes
-    // du jour par devise ; repli sur le total CDF des commandes réglées tant que
-    // la source ventes n'a pas répondu (ou est indisponible).
-    final double revenueCdf = salesToday?['CDF'] ?? m.revenueToday;
-    final double revenueUsd = salesToday?['USD'] ?? 0.0;
-    final cards = [
-      _KpiCard(
-        icon: Icons.room_service,
-        color: const Color(0xFF0EA5E9),
-        label: 'En service',
-        value: '${m.active.length}',
-      ),
-      _KpiCard(
-        icon: Icons.soup_kitchen,
-        color: const Color(0xFFF59E0B),
-        label: 'En cuisine',
-        value: '${m.inKitchen}',
-      ),
-      // Chiffre du jour en CDF et en USD (devise d'entrée de l'opération).
-      _KpiCard(
-        icon: Icons.payments,
-        color: const Color(0xFF16A34A),
-        label: 'Chiffre du jour (CDF)',
-        value: formatCurrency(revenueCdf, 'CDF'),
-      ),
-      _KpiCard(
-        icon: Icons.payments,
-        color: const Color(0xFF16A34A),
-        label: 'Chiffre du jour (USD)',
-        value: formatCurrency(revenueUsd, 'USD'),
-      ),
-      _KpiCard(
-        icon: Icons.receipt_long,
-        color: const Color(0xFF64748B),
-        label: 'Réglées (jour)',
-        value: '${m.paidTodayCount}',
-      ),
-      _KpiCard(
-        icon: Icons.timer_outlined,
-        color: const Color(0xFF8B5CF6),
-        label: 'Temps service moy.',
-        value: m.avgServiceMinutes > 0
-            ? '${m.avgServiceMinutes.round()} min'
-            : '—',
-      ),
-    ];
-    return LayoutBuilder(
-      builder: (context, c) {
-        // Autant de colonnes que la largeur en porte confortablement, sans
-        // descendre sous deux : une carte étirée sur tout un écran large est
-        // aussi illisible qu'une carte écrasée.
-        const double spacing = 16;
-        const double minCard = 240;
-        final int columns =
-            ((c.maxWidth + spacing) / (minCard + spacing)).floor().clamp(2, 6);
-        final double width =
-            (c.maxWidth - spacing * (columns - 1)) / columns;
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: [
-            for (final card in cards) SizedBox(width: width, child: card),
-          ],
-        );
-      },
+    final double revenueCdf = salesToday?.cdf ?? m.revenueToday;
+    final double revenueUsd = salesToday?.usd ?? 0.0;
+
+    return KpiBoard(
+      spacing: 16,
+      tiles: [
+        KpiTile(
+          weight: KpiWeight.pilote,
+          icon: Icons.payments,
+          color: const Color(0xFF16A34A),
+          label: 'Chiffre du jour',
+          value: formatCurrency(revenueCdf, 'CDF'),
+          secondary: revenueUsd > 0
+              ? 'dont ${formatCurrency(revenueUsd, 'USD')}'
+              : null,
+          trend: salesToday?.serieCa,
+          trendLabel: '7 derniers jours',
+        ),
+        KpiTile(
+          weight: KpiWeight.pilote,
+          icon: Icons.room_service,
+          color: const Color(0xFF0EA5E9),
+          label: 'En service',
+          value: '${m.active.length}',
+          secondary: m.inKitchen > 0
+              ? '${m.inKitchen} en cuisine'
+              : 'Rien en cuisine',
+          trendLabel: 'Commandes ouvertes en salle',
+        ),
+        KpiTile(
+          icon: Icons.receipt_long,
+          color: const Color(0xFF64748B),
+          label: 'Réglées (jour)',
+          value: '${m.paidTodayCount}',
+        ),
+        KpiTile(
+          icon: Icons.soup_kitchen,
+          color: const Color(0xFFF59E0B),
+          label: 'En cuisine',
+          value: '${m.inKitchen}',
+        ),
+        KpiTile(
+          icon: Icons.timer_outlined,
+          color: const Color(0xFF8B5CF6),
+          label: 'Temps service moy.',
+          value: m.avgServiceMinutes > 0
+              ? '${m.avgServiceMinutes.round()} min'
+              : '—',
+        ),
+      ],
     );
   }
 
@@ -461,59 +465,18 @@ class RestaurantDashboardScreen extends StatelessWidget {
   }
 }
 
-/// Carte d'indicateur (KPI) : icône colorée, valeur, libellé.
-class _KpiCard extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String label;
-  final String value;
-  const _KpiCard({
-    required this.icon,
-    required this.color,
-    required this.label,
-    required this.value,
+/// Ce que la lecture des ventes de la semaine rapporte : le chiffre du jour
+/// par devise de saisie, et les deux séries qui portent les courbes.
+class _ChiffreDuJour {
+  const _ChiffreDuJour({
+    required this.cdf,
+    required this.usd,
+    required this.serieCa,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: color.withValues(alpha: 0.16),
-              child: Icon(icon, color: color, size: 22),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    value,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleLarge
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    label,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  final double cdf;
+  final double usd;
+  final List<double> serieCa;
 }
 
 /// Clé de résolution d'un plat par NOM (repli quand `productId` ne matche aucun

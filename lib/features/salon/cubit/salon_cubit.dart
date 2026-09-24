@@ -6,6 +6,7 @@ import '../models/stylist.dart';
 import '../repositories/salon_service_repository.dart';
 import '../repositories/salon_stylist_cache.dart';
 import '../services/salon_api_service.dart';
+import 'package:wanzo/core/exceptions/api_exceptions.dart';
 
 /// État partagé du mode salon : la carte des prestations (offline-first) et la
 /// liste des coiffeurs (persistés côté backend, avec repli hors-ligne).
@@ -51,6 +52,22 @@ class SalonState extends Equatable {
 /// Pilote le mode salon : charge la carte (locale + backend optionnel) et les
 /// coiffeurs, gère la CRUD coiffeurs. Tolérant au hors-ligne : la carte locale
 /// et le dernier cache d'affichage restent servis si le réseau est indisponible.
+/// Ce que rend un enregistrement de salon.
+///
+/// Distinguer « enregistre » de « conserve hors ligne » evite le pire des deux
+/// mondes : un faux succes, ou un echec qui pousse a ressaisir ce qui est deja
+/// en file.
+class SalonSaveResult<T> {
+  const SalonSaveResult({this.value, this.horsLigne = false});
+
+  final T? value;
+
+  /// Vrai quand l'ecriture attend le retour du reseau.
+  final bool horsLigne;
+
+  bool get ok => value != null;
+}
+
 class SalonCubit extends Cubit<SalonState> {
   final SalonServiceRepository _repo;
   final SalonApiService _api;
@@ -120,36 +137,67 @@ class SalonCubit extends Cubit<SalonState> {
 
   // ── CRUD coiffeurs (backend) ─────────────────────────────────────────────
 
-  Future<Stylist?> createStylist(Stylist draft) async {
+  /// Ajoute un coiffeur.
+  ///
+  /// Hors ligne, l'ecriture est conservee par la file du client HTTP : le
+  /// coiffeur doit apparaitre TOUT DE SUITE, sinon on ne peut lui attribuer
+  /// aucune prestation sur le ticket en cours.
+  Future<SalonSaveResult<Stylist>> createStylist(Stylist draft) async {
     try {
       final created = await _api.createStylist(draft);
-      emit(state.copyWith(stylists: [...state.stylists, created], error: null));
-      return created;
+      final stylists = [...state.stylists, created];
+      emit(state.copyWith(stylists: stylists, error: null));
+      await _stylistCache.save(stylists);
+      return SalonSaveResult(value: created);
+    } on OfflineQueuedException {
+      final stylists = [...state.stylists, draft];
+      emit(state.copyWith(stylists: stylists, error: null));
+      await _stylistCache.save(stylists);
+      return SalonSaveResult(value: draft, horsLigne: true);
     } catch (e) {
       emit(state.copyWith(error: e.toString()));
-      return null;
+      return const SalonSaveResult();
     }
   }
 
-  Future<Stylist?> updateStylist(String id, Map<String, dynamic> payload) async {
+  /// Corrige un coiffeur. Meme traitement du hors ligne que [createStylist].
+  Future<SalonSaveResult<Stylist>> updateStylist(
+    String id,
+    Map<String, dynamic> payload, {
+    Stylist? local,
+  }) async {
     try {
       final updated = await _api.updateStylist(id, payload);
-      emit(state.copyWith(
-        stylists:
-            state.stylists.map((s) => s.id == id ? updated : s).toList(),
-      ));
-      return updated;
+      final stylists =
+          state.stylists.map((s) => s.id == id ? updated : s).toList();
+      emit(state.copyWith(stylists: stylists, error: null));
+      await _stylistCache.save(stylists);
+      return SalonSaveResult(value: updated);
+    } on OfflineQueuedException {
+      if (local == null) return const SalonSaveResult(horsLigne: true);
+      final stylists =
+          state.stylists.map((s) => s.id == id ? local : s).toList();
+      emit(state.copyWith(stylists: stylists, error: null));
+      await _stylistCache.save(stylists);
+      return SalonSaveResult(value: local, horsLigne: true);
     } catch (e) {
       emit(state.copyWith(error: e.toString()));
-      return null;
+      return const SalonSaveResult();
     }
   }
 
+  /// Retire un coiffeur. Le retrait est applique tout de suite ; hors ligne il
+  /// est conserve et rejoue, donc on ne le defait PAS comme on le ferait pour
+  /// un vrai echec.
   Future<void> deleteStylist(String id) async {
     final previous = state.stylists;
-    emit(state.copyWith(stylists: previous.where((s) => s.id != id).toList()));
+    final restants = previous.where((s) => s.id != id).toList();
+    emit(state.copyWith(stylists: restants));
     try {
       await _api.deleteStylist(id);
+      await _stylistCache.save(restants);
+    } on OfflineQueuedException {
+      await _stylistCache.save(restants);
     } catch (e) {
       emit(state.copyWith(error: e.toString(), stylists: previous));
     }
