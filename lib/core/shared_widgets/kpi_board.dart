@@ -76,6 +76,12 @@ class KpiBoard extends StatelessWidget {
     final pilotes = tiles.where((t) => t.weight == KpiWeight.pilote).toList();
     final suivis = tiles.where((t) => t.weight == KpiWeight.suivi).toList();
 
+    // La hauteur des vignettes suit la taille de police choisie dans le
+    // telephone. Fixe, elle debordait des l'echelle x1,3 (reglage courant sur
+    // Android) : seule la part texte grandit, l'icone et la courbe non.
+    final echelle = MediaQuery.textScalerOf(context).scale(14) / 14;
+    final surplus = (echelle - 1).clamp(0.0, 2.0);
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final largeur = constraints.maxWidth;
@@ -89,7 +95,7 @@ class KpiBoard extends StatelessWidget {
                 tuiles: pilotes,
                 minLargeur: 240,
                 maxLargeur: 380,
-                hauteur: 148,
+                hauteur: 148 + 64 * surplus,
               ),
             if (pilotes.isNotEmpty && suivis.isNotEmpty)
               SizedBox(height: spacing),
@@ -99,7 +105,7 @@ class KpiBoard extends StatelessWidget {
                 tuiles: suivis,
                 minLargeur: 148,
                 maxLargeur: 220,
-                hauteur: 98,
+                hauteur: 98 + 56 * surplus,
               ),
           ],
         );

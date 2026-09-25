@@ -135,7 +135,6 @@ class _Auth0RedirectScreenState extends State<Auth0RedirectScreen> {
     return Image.asset(
       'assets/images/logo.jpg',
       height: size,
-      color: Colors.white,
       errorBuilder: (_, __, ___) {
         return Icon(Icons.storefront, size: size, color: Colors.white);
       },

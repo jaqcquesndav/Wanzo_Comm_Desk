@@ -159,12 +159,10 @@ class _SplashScreenState extends State<SplashScreen>
                               child: Image.asset(
                                 'assets/images/splash_logo.jpg',
                                 height: logoSize,
-                                color: Colors.white,
                                 errorBuilder: (context, error, stackTrace) {
                                   return Image.asset(
                                     'assets/images/logo.jpg',
                                     height: logoSize,
-                                    color: Colors.white,
                                     errorBuilder: (_, __, ___) {
                                       return Icon(
                                         Icons.storefront,
