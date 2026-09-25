@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:wanzo/core/enums/currency_enum.dart';
+import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
 import 'package:wanzo/core/modules/activity_mode.dart';
 import 'package:wanzo/core/platform/image_picker/image_picker_service_factory.dart';
 import 'package:wanzo/core/platform/image_picker/image_picker_service_interface.dart';
@@ -108,6 +110,33 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   DateTime? _entryDate;
   DateTime? _exitDate;
   String _currency = 'CDF';
+
+  /// Taux central de la devise vers le CDF (CurrencySettings), 0 si inconnu.
+  /// Sert a pre-remplir le taux : un « 1 » par defaut faisait facturer des
+  /// dollars comme des francs tant que personne ne le corrigeait.
+  double _tauxCentral(String code) {
+    try {
+      final st = context.read<CurrencySettingsCubit>().state;
+      if (st.status != CurrencySettingsStatus.loaded &&
+          st.status != CurrencySettingsStatus.saved) {
+        return 0;
+      }
+      return switch (code) {
+        'USD' => st.settings.usdToCdfRate,
+        'FCFA' => st.settings.fcfaToCdfRate,
+        _ => 1.0,
+      };
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  void _appliquerTauxCentral() {
+    final t = _tauxCentral(_currency);
+    if (_currency != 'CDF' && t > 1) {
+      _rateCtrl.text = t == t.roundToDouble() ? t.toStringAsFixed(0) : t.toString();
+    }
+  }
   FabricProvidedBy? _fabric;
   bool _saving = false;
 
@@ -117,6 +146,21 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   void initState() {
     super.initState();
     final o = widget.order;
+    if (o == null) {
+      // Nouvel ordre : la devise proposee est celle du systeme (comptabilite),
+      // pas CDF ecrit en dur.
+      try {
+        final st = context.read<CurrencySettingsCubit>().state;
+        if (st.status == CurrencySettingsStatus.loaded ||
+            st.status == CurrencySettingsStatus.saved) {
+          final code = st.settings.activeCurrency.code;
+          if (code == 'CDF' || code == 'USD') _currency = code;
+        }
+      } catch (_) {
+        // Reglages indisponibles : on reste en CDF.
+      }
+      _appliquerTauxCentral();
+    }
     if (o != null) {
       _customerId = o.customerId;
       _vehicleId = o.vehicleId;
@@ -364,6 +408,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                         onChanged: (_) => setState(() {}),
                         decoration: InputDecoration(
                           labelText: 'Montant total',
+                          suffixText: _currency,
                           border: const OutlineInputBorder(),
                           // Le bareme connait le prix de cette prestation pour
                           // cette categorie de vehicule : inutile de le retaper.
@@ -389,7 +434,11 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                         controller: _advanceCtrl,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(labelText: 'Avance', border: OutlineInputBorder()),
+                        decoration: InputDecoration(
+                          labelText: 'Avance',
+                          suffixText: _currency,
+                          border: const OutlineInputBorder(),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -690,7 +739,10 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
         DropdownMenuItem(value: 'CDF', child: Text('CDF')),
         DropdownMenuItem(value: 'USD', child: Text('USD')),
       ],
-      onChanged: (v) => setState(() => _currency = v ?? 'CDF'),
+      onChanged: (v) => setState(() {
+        _currency = v ?? 'CDF';
+        _appliquerTauxCentral();
+      }),
     );
   }
 

@@ -6,6 +6,7 @@ import '../../../core/modules/module_registry.dart';
 import '../../../core/services/business_context_service.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../cubit/restaurant_orders_cubit.dart';
+import '../widgets/orders_auto_refresh.dart';
 import '../models/restaurant_order.dart';
 
 /// Écran cuisine (Kitchen Display System) — vue DESKTOP dédiée au personnel de
@@ -26,7 +27,10 @@ class RestaurantKitchenScreen extends StatelessWidget {
       ctx.currentContext?.userRole,
       '/restaurant/kitchen',
     );
-    return WanzoScaffold(
+    // L'ecran de cuisine reste ouvert sans qu'on y touche : il relit seul
+    // les commandes des autres postes.
+    return RestaurantOrdersAutoRefresh(
+      child: WanzoScaffold(
       currentIndex: index < 0 ? 0 : index,
       title: 'Cuisine — commandes en préparation',
       appBarActions: [
@@ -77,6 +81,7 @@ class RestaurantKitchenScreen extends StatelessWidget {
           );
         },
       ),
+    ),
     );
   }
 }

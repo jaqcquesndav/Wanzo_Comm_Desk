@@ -2,6 +2,16 @@ import 'package:equatable/equatable.dart';
 
 import 'menu_course.dart';
 
+/// Lecture tolerante d'un montant : le serveur renvoie ses colonnes `decimal`
+/// sous forme de TEXTE (« 8000.00 »). Un `as num` strict faisait echouer la
+/// lecture de CHAQUE plat, ecarte en silence : la carte du serveur arrivait
+/// toujours vide dans l'app, alors que le lien de table la montrait.
+double _montant(dynamic v) =>
+    v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
+
+double? _montantOuNul(dynamic v) =>
+    v == null ? null : (v is num ? v.toDouble() : double.tryParse(v.toString()));
+
 /// Une OPTION de modificateur (ex. « Bien cuit », « + Fromage »).
 ///
 /// [priceDeltaCdf] est un DELTA appliqué au prix de base du plat (0 = sans
@@ -13,32 +23,46 @@ class ModifierOption extends Equatable {
   /// Écart de prix en CDF ajouté au prix de base du plat (0 par défaut).
   final double priceDeltaCdf;
 
+  /// Supplement tel que saisi, dans la devise de saisie du plat. Nul pour une
+  /// option ancienne (saisie en CDF).
+  final double? priceDeltaInInputCurrency;
+
   const ModifierOption({
     required this.name,
     this.priceDeltaCdf = 0,
+    this.priceDeltaInInputCurrency,
   });
 
-  ModifierOption copyWith({String? name, double? priceDeltaCdf}) {
+  ModifierOption copyWith({
+    String? name,
+    double? priceDeltaCdf,
+    double? priceDeltaInInputCurrency,
+  }) {
     return ModifierOption(
       name: name ?? this.name,
       priceDeltaCdf: priceDeltaCdf ?? this.priceDeltaCdf,
+      priceDeltaInInputCurrency:
+          priceDeltaInInputCurrency ?? this.priceDeltaInInputCurrency,
     );
   }
 
   Map<String, dynamic> toJson() => {
     'name': name,
     'priceDeltaCdf': priceDeltaCdf,
+    if (priceDeltaInInputCurrency != null)
+      'priceDeltaInInputCurrency': priceDeltaInInputCurrency,
   };
 
   factory ModifierOption.fromJson(Map<String, dynamic> json) {
     return ModifierOption(
       name: (json['name'] ?? '').toString(),
-      priceDeltaCdf: (json['priceDeltaCdf'] as num?)?.toDouble() ?? 0,
+      priceDeltaCdf: _montant(json['priceDeltaCdf']),
+      priceDeltaInInputCurrency: _montantOuNul(json['priceDeltaInInputCurrency']),
     );
   }
 
   @override
-  List<Object?> get props => [name, priceDeltaCdf];
+  List<Object?> get props => [name, priceDeltaCdf, priceDeltaInInputCurrency];
 }
 
 /// Un GROUPE de modificateurs à demander au client quand le plat est commandé
@@ -131,6 +155,17 @@ class MenuItem extends Equatable {
 
   /// Prix de vente en CDF (base monétaire de l'app).
   final double priceCdf;
+
+  /// Devise dans laquelle le prix a ete saisi, et montant saisi. Le CDF reste
+  /// la base ; conserver l'origine evite qu'une carte tarifee en dollars ne
+  /// derive avec le taux. Nuls pour un plat ancien (saisi en CDF).
+  final String? priceInputCurrencyCode;
+  final double? priceInInputCurrency;
+
+  /// Prix tel qu'il a ete fixe, et sa devise : ce qu'on affiche sur la carte.
+  /// Un plat tarife 3 USD s'affiche 3 USD, et non sa contre-valeur du jour.
+  double get prixSaisi => priceInInputCurrency ?? priceCdf;
+  String get deviseSaisie => priceInputCurrencyCode ?? 'CDF';
   final String? description;
 
   /// Chemin local de la photo du plat (image_picker → fichier copié).
@@ -154,6 +189,8 @@ class MenuItem extends Equatable {
     required this.id,
     required this.name,
     required this.priceCdf,
+    this.priceInputCurrencyCode,
+    this.priceInInputCurrency,
     this.description,
     this.photoPath,
     this.photoUrl,
@@ -166,6 +203,8 @@ class MenuItem extends Equatable {
     String? id,
     String? name,
     double? priceCdf,
+    String? priceInputCurrencyCode,
+    double? priceInInputCurrency,
     String? description,
     String? photoPath,
     String? photoUrl,
@@ -177,6 +216,9 @@ class MenuItem extends Equatable {
       id: id ?? this.id,
       name: name ?? this.name,
       priceCdf: priceCdf ?? this.priceCdf,
+      priceInputCurrencyCode:
+          priceInputCurrencyCode ?? this.priceInputCurrencyCode,
+      priceInInputCurrency: priceInInputCurrency ?? this.priceInInputCurrency,
       description: description ?? this.description,
       photoPath: photoPath ?? this.photoPath,
       photoUrl: photoUrl ?? this.photoUrl,
@@ -190,6 +232,10 @@ class MenuItem extends Equatable {
     'id': id,
     'name': name,
     'priceCdf': priceCdf,
+    if (priceInputCurrencyCode != null)
+      'priceInputCurrencyCode': priceInputCurrencyCode,
+    if (priceInInputCurrency != null)
+      'priceInInputCurrency': priceInInputCurrency,
     if (description != null) 'description': description,
     if (photoPath != null) 'photoPath': photoPath,
     if (photoUrl != null) 'photoUrl': photoUrl,
@@ -203,7 +249,9 @@ class MenuItem extends Equatable {
     return MenuItem(
       id: json['id'] as String,
       name: json['name'] as String,
-      priceCdf: (json['priceCdf'] as num).toDouble(),
+      priceCdf: _montant(json['priceCdf']),
+      priceInputCurrencyCode: json['priceInputCurrencyCode'] as String?,
+      priceInInputCurrency: _montantOuNul(json['priceInInputCurrency']),
       description: json['description'] as String?,
       photoPath: json['photoPath'] as String?,
       photoUrl: json['photoUrl'] as String?,
@@ -222,6 +270,8 @@ class MenuItem extends Equatable {
     id,
     name,
     priceCdf,
+    priceInputCurrencyCode,
+    priceInInputCurrency,
     description,
     photoPath,
     photoUrl,

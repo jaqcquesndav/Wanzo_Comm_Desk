@@ -23,6 +23,86 @@ class RestaurantTable {
       active: json['active'] as bool? ?? true,
     );
   }
+  /// Pour garder le plan de salle sur l'appareil : un demarrage hors ligne
+  /// affichait un plan vide faute de tables en cache.
+  Map<String, dynamic> toJson() => {'id': id, 'label': label, 'active': active};
+}
+
+/// Commande passee par un CLIENT depuis le lien de table (page publique QR).
+///
+/// Elle attend qu'un poste la prenne en charge : elle devient alors une
+/// commande de salle ordinaire, que la cuisine prepare et que la caisse
+/// encaisse.
+class RestaurantWebOrder {
+  final String id;
+  final String? tableId;
+  final String? tableLabel;
+  final List<RestaurantWebOrderLine> lines;
+  final double totalCdf;
+  final String? customerContact;
+  final DateTime createdAt;
+
+  const RestaurantWebOrder({
+    required this.id,
+    required this.lines,
+    required this.totalCdf,
+    required this.createdAt,
+    this.tableId,
+    this.tableLabel,
+    this.customerContact,
+  });
+
+  static double _d(dynamic v) =>
+      v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
+
+  factory RestaurantWebOrder.fromJson(Map<String, dynamic> json) {
+    final brut = json['lines'];
+    return RestaurantWebOrder(
+      id: (json['id'] ?? '').toString(),
+      tableId: (json['tableId'] as String?)?.trim().isEmpty ?? true
+          ? null
+          : (json['tableId'] as String).trim(),
+      tableLabel: json['tableLabel'] as String?,
+      lines: brut is List
+          ? brut
+              .whereType<Map>()
+              .map((l) =>
+                  RestaurantWebOrderLine.fromJson(Map<String, dynamic>.from(l)))
+              .toList()
+          : const [],
+      totalCdf: _d(json['totalCdf']),
+      customerContact: json['customerContact'] as String?,
+      createdAt:
+          DateTime.tryParse('${json['createdAt']}')?.toLocal() ?? DateTime.now(),
+    );
+  }
+
+  int get itemCount => lines.fold<int>(0, (s, l) => s + l.quantity);
+}
+
+class RestaurantWebOrderLine {
+  final String menuItemId;
+  final String name;
+  final double unitPriceCdf;
+  final int quantity;
+  final String? note;
+
+  const RestaurantWebOrderLine({
+    required this.menuItemId,
+    required this.name,
+    required this.unitPriceCdf,
+    required this.quantity,
+    this.note,
+  });
+
+  factory RestaurantWebOrderLine.fromJson(Map<String, dynamic> json) =>
+      RestaurantWebOrderLine(
+        menuItemId: (json['menuItemId'] ?? '').toString(),
+        name: (json['name'] ?? '').toString(),
+        unitPriceCdf: RestaurantWebOrder._d(json['unitPriceCdf']),
+        quantity: (json['quantity'] as num?)?.toInt() ?? 1,
+        note: json['note'] as String?,
+      );
 }
 
 /// Lien PUBLIC signé d'une table : l'URL à encoder dans le QR (menu public +
@@ -94,6 +174,10 @@ class RestaurantApiService {
       'id': item.id,
       'name': item.name,
       'priceCdf': item.priceCdf,
+      if (item.priceInputCurrencyCode != null)
+        'priceInputCurrencyCode': item.priceInputCurrencyCode,
+      if (item.priceInInputCurrency != null)
+        'priceInInputCurrency': item.priceInInputCurrency,
       if (description != null && description.isNotEmpty)
         'description': description,
       if (photoUrl != null && photoUrl.isNotEmpty) 'photoUrl': photoUrl,
@@ -180,6 +264,38 @@ class RestaurantApiService {
       }
     }
     return items;
+  }
+
+  // ── Commandes des clients (lien de table) ─────────────────────────────────
+
+  /// Commandes envoyees par les clients et pas encore prises en charge.
+  Future<List<RestaurantWebOrder>> getPendingWebOrders() async {
+    final response = await _apiClient.get(
+      'restaurant/web-orders',
+      queryParameters: const {'status': 'sent'},
+      requiresAuth: true,
+    );
+    final commandes = <RestaurantWebOrder>[];
+    for (final raw in _asList(response)) {
+      if (raw is Map) {
+        try {
+          commandes.add(
+              RestaurantWebOrder.fromJson(Map<String, dynamic>.from(raw)));
+        } catch (_) {
+          // Commande illisible : ignoree, les autres restent visibles.
+        }
+      }
+    }
+    return commandes;
+  }
+
+  /// `open` = prise en charge par un poste ; `cancelled` = refusee.
+  Future<void> updateWebOrderStatus(String id, String status) async {
+    await _apiClient.patch(
+      'restaurant/web-orders/$id/status',
+      body: {'status': status},
+      requiresAuth: true,
+    );
   }
 
   // ── Tables ───────────────────────────────────────────────────────────────

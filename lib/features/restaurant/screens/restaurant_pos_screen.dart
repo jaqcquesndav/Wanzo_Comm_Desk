@@ -32,6 +32,7 @@ import 'package:wanzo/features/settings/models/settings.dart'
     as old_settings_model;
 
 import '../cubit/restaurant_orders_cubit.dart';
+import '../widgets/orders_auto_refresh.dart';
 import '../models/menu_course.dart';
 import '../models/menu_item.dart';
 import '../models/restaurant_order.dart';
@@ -287,7 +288,10 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
       ctx.currentContext?.userRole,
       '/restaurant/orders',
     );
-    return WanzoScaffold(
+    // La caisse reste ouverte tout le service : elle relit seule les
+    // commandes ouvertes, completees ou reglees sur les autres postes.
+    return RestaurantOrdersAutoRefresh(
+      child: WanzoScaffold(
       currentIndex: index < 0 ? 0 : index,
       title: 'Restaurant',
       // La caisse est une page poussée (depuis le tableau de bord / le board) :
@@ -369,7 +373,8 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
           },
         ),
       ),
-      );
+      ),
+    );
   }
 
   // ── Bandeau des commandes actives ───────────────────────────────────────
@@ -775,7 +780,7 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
                     ],
                     const SizedBox(height: 4),
                     Text(
-                      formatCurrency(item.priceCdf, 'CDF'),
+                      formatCurrency(item.prixSaisi, item.deviseSaisie),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.primary,
                         fontWeight: FontWeight.bold,
@@ -1479,7 +1484,7 @@ class _ModifierPickerDialogState extends State<_ModifierPickerDialog> {
                             style: theme.textTheme.titleLarge
                                 ?.copyWith(fontWeight: FontWeight.w700)),
                         const SizedBox(height: 2),
-                        Text(formatCurrency(widget.item.priceCdf, 'CDF'),
+                        Text(formatCurrency(widget.item.prixSaisi, widget.item.deviseSaisie),
                             style: theme.textTheme.bodyMedium?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant)),
                       ],

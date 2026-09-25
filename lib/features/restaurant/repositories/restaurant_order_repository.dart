@@ -46,5 +46,40 @@ class RestaurantOrderRepository {
   Future<void> delete(String id) async {
     final box = await _openBox();
     await box.delete(id);
+    await retirerEnAttente(id);
+  }
+
+  // ── Commandes pas encore confirmees par le serveur ─────────────────────────
+  //
+  // Une commande modifiee ici mais pas encore acceptee par le serveur ne doit
+  // pas etre ecrasee par la copie du serveur, plus ancienne, au chargement
+  // suivant : c'est ainsi que des plats deja saisis disparaissaient.
+
+  static const _syncBoxName = 'restaurant_orders_sync';
+  static const _cleEnAttente = 'en_attente';
+
+  Future<Box<String>> _openSyncBox() async => Hive.isBoxOpen(_syncBoxName)
+      ? Hive.box<String>(_syncBoxName)
+      : await Hive.openBox<String>(_syncBoxName);
+
+  Future<Set<String>> enAttente() async {
+    final brut = (await _openSyncBox()).get(_cleEnAttente);
+    if (brut == null || brut.isEmpty) return <String>{};
+    try {
+      return (jsonDecode(brut) as List).map((e) => e.toString()).toSet();
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  Future<void> _ecrireEnAttente(Set<String> ids) async =>
+      (await _openSyncBox()).put(_cleEnAttente, jsonEncode(ids.toList()));
+
+  Future<void> marquerEnAttente(String id) async =>
+      _ecrireEnAttente((await enAttente())..add(id));
+
+  Future<void> retirerEnAttente(String id) async {
+    final ids = await enAttente();
+    if (ids.remove(id)) await _ecrireEnAttente(ids);
   }
 }

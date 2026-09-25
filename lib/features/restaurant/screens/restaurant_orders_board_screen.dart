@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../widgets/web_orders_inbox.dart';
 import '../../../core/modules/module_registry.dart';
 import '../../../core/services/business_context_service.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
@@ -40,6 +42,16 @@ class RestaurantOrdersBoardScreen extends StatefulWidget {
 
 class _RestaurantOrdersBoardScreenState
     extends State<RestaurantOrdersBoardScreen> {
+  /// Les autres postes ouvrent, completent et reglent des commandes : sans
+  /// relecture reguliere, ce poste ne les voyait qu'au redemarrage (tables
+  /// libres alors qu'occupees, commandes absentes du kanban).
+  Timer? _minuterie;
+
+  void _rafraichirCommandes() {
+    if (!mounted) return;
+    context.read<RestaurantOrdersCubit>().load();
+  }
+
   // Plan de salle par défaut (prise de commande table-first).
   _OrdersView _view = _OrdersView.plan;
 
@@ -51,6 +63,17 @@ class _RestaurantOrdersBoardScreenState
   void initState() {
     super.initState();
     _loadMenu();
+    _rafraichirCommandes();
+    _minuterie = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => _rafraichirCommandes(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _minuterie?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadMenu() async {
@@ -122,6 +145,8 @@ class _RestaurantOrdersBoardScreenState
             ),
           ),
           const Divider(height: 1),
+          // Commandes passees par les clients depuis le lien de table.
+          const WebOrdersInbox(),
           Expanded(
             child: _view == _OrdersView.plan
                 ? const RestaurantFloorPlanView()

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -15,6 +16,9 @@ import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
+import 'package:wanzo/core/models/currency_settings_model.dart';
+import 'package:wanzo/core/enums/currency_enum.dart';
 
 import '../models/menu_course.dart';
 import '../models/menu_item.dart';
@@ -344,7 +348,7 @@ class _RestaurantMenuConfigScreenState
                       ],
                     ),
                     const SizedBox(height: 2),
-                    Text(formatCurrency(item.priceCdf, 'CDF'),
+                    Text(formatCurrency(item.prixSaisi, item.deviseSaisie),
                         style: TextStyle(
                             color: theme.colorScheme.primary,
                             fontWeight: FontWeight.w700,
@@ -489,6 +493,62 @@ class _DishFormDialogState extends State<_DishFormDialog> {
   /// de ceux du plat existant pour édition locale.
   late List<ModifierGroup> _groups;
 
+  // Devise de SAISIE du prix : la devise systeme par defaut. Le prix enregistre
+  // reste en CDF (base) ; le montant saisi et sa devise sont conserves pour
+  // qu'une carte tarifee en dollars ne derive pas avec le taux.
+  Currency _inputCurrency = Currency.CDF;
+  Map<Currency, double> _rates = {Currency.CDF: 1.0};
+  List<Currency> _currencies = const [Currency.CDF];
+
+  double rateOf(Currency c) => _rates[c] ?? 1.0;
+
+  void _initCurrencies(MenuItem? existing) {
+    final cubit = context.read<CurrencySettingsCubit>();
+    if (cubit.state.status == CurrencySettingsStatus.loaded ||
+        cubit.state.status == CurrencySettingsStatus.saved) {
+      _applyCurrencySettings(cubit.state.settings, existing);
+    } else {
+      cubit.loadSettings().then((_) {
+        if (!mounted) return;
+        final st = cubit.state;
+        if (st.status == CurrencySettingsStatus.loaded ||
+            st.status == CurrencySettingsStatus.saved) {
+          _applyCurrencySettings(st.settings, existing);
+        }
+      });
+    }
+  }
+
+  /// Meme source que le ticket et la boutique (CurrencySettings). Un plat deja
+  /// saisi rouvre dans SA devise, avec son montant d'origine.
+  void _applyCurrencySettings(CurrencySettings settings, MenuItem? existing) {
+    final rates = <Currency, double>{
+      Currency.CDF: 1.0,
+      Currency.USD: settings.usdToCdfRate,
+      Currency.FCFA: settings.fcfaToCdfRate,
+    };
+    final available = rates.keys.where((c) => (rates[c] ?? 0) > 0).toList();
+    var chosen = settings.activeCurrency;
+    if (existing != null) {
+      chosen = Currency.values.firstWhere(
+        (c) => c.code == (existing.priceInputCurrencyCode ?? 'CDF'),
+        orElse: () => Currency.CDF,
+      );
+    }
+    if (!available.contains(chosen)) available.add(chosen);
+    _rates = rates;
+    _currencies = available;
+    _inputCurrency = chosen;
+    if (existing != null) {
+      final shown = existing.priceInInputCurrency ??
+          (rateOf(chosen) > 0 ? existing.priceCdf / rateOf(chosen) : existing.priceCdf);
+      _priceController.text = shown == shown.roundToDouble()
+          ? shown.toStringAsFixed(0)
+          : shown.toStringAsFixed(2);
+    }
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
@@ -502,6 +562,7 @@ class _DishFormDialogState extends State<_DishFormDialog> {
     _photoPath = e?.photoPath;
     _photoUrl = e?.photoUrl;
     _groups = List<ModifierGroup>.from(e?.modifierGroups ?? const []);
+    _initCurrencies(e);
   }
 
   @override
@@ -604,7 +665,28 @@ class _DishFormDialogState extends State<_DishFormDialog> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    final price = double.tryParse(_priceController.text.trim()) ?? 0;
+    final entered = double.tryParse(_priceController.text.trim()) ?? 0;
+    final taux = rateOf(_inputCurrency);
+    // Le CDF reste la base enregistree ; la devise de saisie et son montant
+    // sont conserves.
+    final price = entered * taux;
+    // Si la devise du plat a change, les supplements saisis dans l'ancienne
+    // devise sont relus depuis leur valeur en CDF.
+    final deviseAvant = widget.existing?.priceInputCurrencyCode ?? 'CDF';
+    if (deviseAvant != _inputCurrency.code) {
+      _groups = [
+        for (final g in _groups)
+          g.copyWith(options: [
+            for (final o in g.options)
+              ModifierOption(
+                name: o.name,
+                priceDeltaCdf: o.priceDeltaCdf,
+                priceDeltaInInputCurrency:
+                    taux > 0 ? o.priceDeltaCdf / taux : o.priceDeltaCdf,
+              ),
+          ]),
+      ];
+    }
     final description = _descriptionController.text.trim();
     // La photo part avec le plat. Sans cela elle restait sur l'appareil
     // jusqu'au bouton Publier, et le lien de table montrait un plat sans image.
@@ -621,6 +703,8 @@ class _DishFormDialogState extends State<_DishFormDialog> {
       id: widget.existing?.id ?? const Uuid().v4(),
       name: _nameController.text.trim(),
       priceCdf: price,
+      priceInputCurrencyCode: _inputCurrency.code,
+      priceInInputCurrency: entered,
       description: description.isEmpty ? null : description,
       photoPath: _photoPath,
       photoUrl: _photoUrl,
@@ -639,7 +723,11 @@ class _DishFormDialogState extends State<_DishFormDialog> {
     final result = await showDialog<ModifierGroup>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => _GroupEditorDialog(existing: existing),
+      builder: (ctx) => _GroupEditorDialog(
+        existing: existing,
+        code: _inputCurrency.code,
+        taux: rateOf(_inputCurrency),
+      ),
     );
     if (result == null || !mounted) return;
     setState(() {
@@ -823,29 +911,67 @@ class _DishFormDialogState extends State<_DishFormDialog> {
                           : null,
                     ),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _priceController,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                            RegExp(r'^\d+\.?\d{0,2}')),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: TextFormField(
+                            controller: _priceController,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                  RegExp(r'^\d+\.?\d{0,2}')),
+                            ],
+                            decoration: InputDecoration(
+                              labelText: 'Prix (${_inputCurrency.code}) *',
+                              border: const OutlineInputBorder(),
+                              prefixIcon: const Icon(Icons.sell),
+                            ),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
+                                return 'Le prix est requis';
+                              }
+                              final price = double.tryParse(v.trim());
+                              if (price == null || price <= 0) {
+                                return 'Prix invalide';
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                        if (_currencies.length > 1) ...[
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: DropdownButtonFormField<Currency>(
+                              value: _inputCurrency,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Devise',
+                                border: OutlineInputBorder(),
+                              ),
+                              items: [
+                                for (final c in _currencies)
+                                  DropdownMenuItem(value: c, child: Text(c.code)),
+                              ],
+                              onChanged: (c) {
+                                if (c != null) setState(() => _inputCurrency = c);
+                              },
+                            ),
+                          ),
+                        ],
                       ],
-                      decoration: const InputDecoration(
-                        labelText: 'Prix (CDF) *',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.sell),
-                      ),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Le prix est requis';
-                        }
-                        final price = double.tryParse(v.trim());
-                        if (price == null || price <= 0) {
-                          return 'Prix invalide';
-                        }
-                        return null;
-                      },
                     ),
+                    if (_inputCurrency != Currency.CDF)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6, left: 4),
+                        child: Text(
+                          'Enregistré en CDF au taux central '
+                          '(1 ${_inputCurrency.code} = ${formatCurrency(rateOf(_inputCurrency), 'CDF')})',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _descriptionController,
@@ -934,7 +1060,12 @@ class _OptionDraft {
 /// [ModifierGroup] validé, ou `null` si annulé.
 class _GroupEditorDialog extends StatefulWidget {
   final ModifierGroup? existing;
-  const _GroupEditorDialog({this.existing});
+
+  /// Devise de saisie du plat, et son taux vers le CDF : les supplements se
+  /// saisissent dans la meme devise que le prix.
+  final String code;
+  final double taux;
+  const _GroupEditorDialog({this.existing, this.code = 'CDF', this.taux = 1});
 
   @override
   State<_GroupEditorDialog> createState() => _GroupEditorDialogState();
@@ -957,7 +1088,11 @@ class _GroupEditorDialogState extends State<_GroupEditorDialog> {
     _options = [
       if (g != null)
         for (final o in g.options)
-          _OptionDraft(name: o.name, delta: o.priceDeltaCdf),
+          _OptionDraft(
+            name: o.name,
+            delta: o.priceDeltaInInputCurrency ??
+                (widget.taux > 0 ? o.priceDeltaCdf / widget.taux : o.priceDeltaCdf),
+          ),
     ];
     if (_options.isEmpty) {
       _options.add(_OptionDraft());
@@ -981,7 +1116,8 @@ class _GroupEditorDialogState extends State<_GroupEditorDialog> {
       if (name.isEmpty) continue; // Ligne d'option vide → ignorée.
       options.add(ModifierOption(
         name: name,
-        priceDeltaCdf: double.tryParse(o.delta.text.trim()) ?? 0,
+        priceDeltaCdf: (double.tryParse(o.delta.text.trim()) ?? 0) * widget.taux,
+        priceDeltaInInputCurrency: double.tryParse(o.delta.text.trim()) ?? 0,
       ));
     }
     if (options.isEmpty) {
@@ -1125,8 +1261,8 @@ class _GroupEditorDialogState extends State<_GroupEditorDialog> {
                                   FilteringTextInputFormatter.allow(
                                       RegExp(r'^\d+\.?\d{0,2}')),
                                 ],
-                                decoration: const InputDecoration(
-                                  labelText: '+ CDF',
+                                decoration: InputDecoration(
+                                  labelText: '+ ${widget.code}',
                                   hintText: '0',
                                   isDense: true,
                                   border: OutlineInputBorder(),

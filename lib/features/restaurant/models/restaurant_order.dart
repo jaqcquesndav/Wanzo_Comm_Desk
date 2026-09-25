@@ -160,8 +160,14 @@ class RestaurantOrderLine extends Equatable {
     return RestaurantOrderLine(
       productId: json['productId'] as String,
       productName: json['productName'] as String,
-      unitPriceCdf: (json['unitPriceCdf'] as num).toDouble(),
-      quantity: (json['quantity'] as num).toInt(),
+      // Lecture tolerante : un montant peut arriver en texte (colonne decimal,
+      // autre version de l'app) ; un cast strict ecartait la commande entiere.
+      unitPriceCdf: json['unitPriceCdf'] is num
+          ? (json['unitPriceCdf'] as num).toDouble()
+          : double.tryParse('${json['unitPriceCdf']}') ?? 0,
+      quantity: json['quantity'] is num
+          ? (json['quantity'] as num).toInt()
+          : int.tryParse('${json['quantity']}') ?? 1,
       note: json['note'] as String?,
       fromStock: json['fromStock'] as bool? ?? false,
     );

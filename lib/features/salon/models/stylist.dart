@@ -79,6 +79,11 @@ class Stylist extends Equatable {
   /// Montant du loyer de fauteuil (mode `booth_rent`) — facultatif.
   final double? boothRentAmount;
 
+  /// Loyer tel que convenu, dans sa devise (le montant ci-dessus reste la base
+  /// en CDF). Nuls pour une fiche ancienne, saisie en CDF.
+  final String? boothRentCurrencyCode;
+  final double? boothRentInInputCurrency;
+
   /// Coiffeur actif (proposable à la sélection sur un ticket).
   final bool active;
 
@@ -90,6 +95,8 @@ class Stylist extends Equatable {
     this.serviceCommissionPct = 0,
     this.retailCommissionPct = 0,
     this.boothRentAmount,
+    this.boothRentCurrencyCode,
+    this.boothRentInInputCurrency,
     this.active = true,
   });
 
@@ -101,6 +108,8 @@ class Stylist extends Equatable {
     double? serviceCommissionPct,
     double? retailCommissionPct,
     double? boothRentAmount,
+    String? boothRentCurrencyCode,
+    double? boothRentInInputCurrency,
     bool? active,
   }) {
     return Stylist(
@@ -111,6 +120,9 @@ class Stylist extends Equatable {
       serviceCommissionPct: serviceCommissionPct ?? this.serviceCommissionPct,
       retailCommissionPct: retailCommissionPct ?? this.retailCommissionPct,
       boothRentAmount: boothRentAmount ?? this.boothRentAmount,
+      boothRentCurrencyCode: boothRentCurrencyCode ?? this.boothRentCurrencyCode,
+      boothRentInInputCurrency:
+          boothRentInInputCurrency ?? this.boothRentInInputCurrency,
       active: active ?? this.active,
     );
   }
@@ -124,6 +136,10 @@ class Stylist extends Equatable {
     'serviceCommissionPct': serviceCommissionPct,
     'retailCommissionPct': retailCommissionPct,
     if (boothRentAmount != null) 'boothRentAmount': boothRentAmount,
+    if (boothRentCurrencyCode != null)
+      'boothRentCurrencyCode': boothRentCurrencyCode,
+    if (boothRentInInputCurrency != null)
+      'boothRentInInputCurrency': boothRentInInputCurrency,
     'active': active,
   };
 
@@ -136,6 +152,9 @@ class Stylist extends Equatable {
       serviceCommissionPct: _numToDouble(json['serviceCommissionPct']),
       retailCommissionPct: _numToDouble(json['retailCommissionPct']),
       boothRentAmount: _numToDoubleOrNull(json['boothRentAmount']),
+      boothRentCurrencyCode: json['boothRentCurrencyCode'] as String?,
+      boothRentInInputCurrency:
+          _numToDoubleOrNull(json['boothRentInInputCurrency']),
       active: json['active'] as bool? ?? true,
     );
   }
@@ -149,6 +168,8 @@ class Stylist extends Equatable {
     serviceCommissionPct,
     retailCommissionPct,
     boothRentAmount,
+    boothRentCurrencyCode,
+    boothRentInInputCurrency,
     active,
   ];
 }

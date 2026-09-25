@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
+import 'package:wanzo/core/enums/currency_enum.dart';
 
 import 'package:wanzo/core/modules/module_registry.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
@@ -140,7 +142,7 @@ class _SalonStylistsScreenState extends State<SalonStylistsScreen> {
     final theme = Theme.of(context);
     final account = _accounts[s.id];
     final remuneration = s.payModel == StylistPayModel.boothRent
-        ? '${s.payModel.label} · ${formatCurrency(s.boothRentAmount ?? 0, 'CDF')}'
+        ? '${s.payModel.label} · ${formatCurrency(s.boothRentInInputCurrency ?? s.boothRentAmount ?? 0, s.boothRentCurrencyCode ?? 'CDF')}'
         : s.payModel.label;
     return DataRow(
       cells: [
@@ -324,6 +326,41 @@ class _StylistFormDialog extends StatefulWidget {
 }
 
 class _StylistFormDialogState extends State<_StylistFormDialog> {
+  // Le loyer se saisit dans la devise SYSTEME de la societe (politique
+  // bi-devise), et non en CDF ecrit en dur. Le CDF reste la base enregistree ;
+  // le montant convenu et sa devise sont conserves.
+  Currency _deviseLoyer = Currency.CDF;
+  double _tauxLoyer = 1.0;
+
+  void _initDeviseLoyer(Stylist? e) {
+    final st = context.read<CurrencySettingsCubit>().state;
+    if (st.status != CurrencySettingsStatus.loaded &&
+        st.status != CurrencySettingsStatus.saved) {
+      return;
+    }
+    final settings = st.settings;
+    final code = e?.boothRentCurrencyCode ?? settings.activeCurrency.code;
+    _deviseLoyer = Currency.values.firstWhere(
+      (c) => c.code == code,
+      orElse: () => Currency.CDF,
+    );
+    _tauxLoyer = switch (_deviseLoyer) {
+      Currency.USD => settings.usdToCdfRate,
+      Currency.FCFA => settings.fcfaToCdfRate,
+      _ => 1.0,
+    };
+    if (_tauxLoyer <= 0) {
+      _deviseLoyer = Currency.CDF;
+      _tauxLoyer = 1.0;
+    }
+    if (e?.boothRentAmount != null) {
+      final montant = e!.boothRentInInputCurrency ?? e.boothRentAmount! / _tauxLoyer;
+      _boothRentController.text = montant == montant.roundToDouble()
+          ? montant.toStringAsFixed(0)
+          : montant.toStringAsFixed(2);
+    }
+  }
+
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _phoneController;
@@ -350,6 +387,7 @@ class _StylistFormDialogState extends State<_StylistFormDialog> {
             : '');
     _payModel = e?.payModel ?? StylistPayModel.commission;
     _active = e?.active ?? true;
+    _initDeviseLoyer(e);
   }
 
   @override
@@ -366,7 +404,8 @@ class _StylistFormDialogState extends State<_StylistFormDialog> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     final phone = _phoneController.text.trim();
-    final booth = double.tryParse(_boothRentController.text.trim());
+    final loyerSaisi = double.tryParse(_boothRentController.text.trim());
+    final booth = loyerSaisi == null ? null : loyerSaisi * _tauxLoyer;
     final draft = Stylist(
       id: widget.existing?.id ?? '',
       name: _nameController.text.trim(),
@@ -378,6 +417,12 @@ class _StylistFormDialogState extends State<_StylistFormDialog> {
           double.tryParse(_retailCommController.text.trim()) ?? 0,
       boothRentAmount:
           _payModel == StylistPayModel.boothRent ? booth : null,
+      boothRentCurrencyCode: _payModel == StylistPayModel.boothRent &&
+              loyerSaisi != null
+          ? _deviseLoyer.code
+          : null,
+      boothRentInInputCurrency:
+          _payModel == StylistPayModel.boothRent ? loyerSaisi : null,
       active: _active,
     );
     final cubit = context.read<SalonCubit>();
@@ -515,8 +560,8 @@ class _StylistFormDialogState extends State<_StylistFormDialog> {
                           FilteringTextInputFormatter.allow(
                               RegExp(r'^\d+\.?\d{0,2}')),
                         ],
-                        decoration: const InputDecoration(
-                          labelText: 'Loyer du fauteuil (CDF)',
+                        decoration: InputDecoration(
+                          labelText: 'Loyer du fauteuil (${_deviseLoyer.code})',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.chair_alt),
                         ),

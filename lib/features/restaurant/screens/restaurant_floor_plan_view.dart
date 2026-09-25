@@ -1,3 +1,6 @@
+import 'package:hive/hive.dart';
+import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -41,6 +44,16 @@ class RestaurantFloorPlanView extends StatefulWidget {
 }
 
 class _RestaurantFloorPlanViewState extends State<RestaurantFloorPlanView> {
+  /// Les autres postes ouvrent, completent et reglent des commandes : sans
+  /// relecture reguliere, ce poste ne les voyait qu'au redemarrage (tables
+  /// libres alors qu'occupees, commandes absentes du kanban).
+  Timer? _minuterie;
+
+  void _rafraichirCommandes() {
+    if (!mounted) return;
+    context.read<RestaurantOrdersCubit>().load();
+  }
+
   final RestaurantApiService _api = RestaurantApiService();
 
   /// Cache mémoire du dernier plan connu (partagé entre instances/onglets) :
@@ -60,7 +73,18 @@ class _RestaurantFloorPlanViewState extends State<RestaurantFloorPlanView> {
     _tables = List<RestaurantTable>.from(_cachedTables);
     _loading = _tables.isEmpty;
     _loadMenu();
+    if (_tables.isEmpty) _chargerTablesGardees();
     _load(silent: _tables.isNotEmpty);
+    _minuterie = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => _rafraichirCommandes(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _minuterie?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadMenu() async {
@@ -69,7 +93,45 @@ class _RestaurantFloorPlanViewState extends State<RestaurantFloorPlanView> {
     setState(() => _menuById = map);
   }
 
+  /// Tables gardees sur l'appareil au dernier chargement reussi : un
+  /// demarrage hors ligne montre le plan au lieu d'un ecran vide.
+  static const _boiteTables = 'restaurant_tables_cache';
+
+  Future<void> _chargerTablesGardees() async {
+    try {
+      final box = Hive.isBoxOpen(_boiteTables)
+          ? Hive.box<String>(_boiteTables)
+          : await Hive.openBox<String>(_boiteTables);
+      final brut = box.get('tables');
+      if (brut == null || !mounted || _tables.isNotEmpty) return;
+      final tables = (jsonDecode(brut) as List)
+          .whereType<Map>()
+          .map((e) => RestaurantTable.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      setState(() {
+        _tables = tables;
+        _cachedTables = tables;
+        _loading = false;
+      });
+    } catch (_) {
+      // Cache illisible : le chargement reseau prendra le relais.
+    }
+  }
+
+  Future<void> _garderTables(List<RestaurantTable> tables) async {
+    try {
+      final box = Hive.isBoxOpen(_boiteTables)
+          ? Hive.box<String>(_boiteTables)
+          : await Hive.openBox<String>(_boiteTables);
+      await box.put(
+          'tables', jsonEncode(tables.map((t) => t.toJson()).toList()));
+    } catch (_) {
+      // Sans cache, le plan reste utilisable en ligne.
+    }
+  }
+
   Future<void> _load({bool silent = false}) async {
+    _rafraichirCommandes();
     if (!silent) {
       setState(() {
         _loading = true;
@@ -81,6 +143,7 @@ class _RestaurantFloorPlanViewState extends State<RestaurantFloorPlanView> {
       if (!mounted) return;
       final active = tables.where((t) => t.active).toList();
       _cachedTables = active;
+      unawaited(_garderTables(active));
       setState(() {
         _tables = active;
         _loading = false;
@@ -132,8 +195,17 @@ class _RestaurantFloorPlanViewState extends State<RestaurantFloorPlanView> {
   }
 
   /// Ouvre la caisse sur une commande donnée (pré-sélection via query param).
-  void _openPos(String orderId) {
-    context.push('/restaurant/orders?orderId=$orderId');
+  Future<void> _openPos(String orderId) async {
+    final cubit = context.read<RestaurantOrdersCubit>();
+    await context.push('/restaurant/orders?orderId=$orderId');
+    // Revenu sur le plan sans avoir rien commande : la commande ouverte au
+    // clic ne doit pas laisser la table « occupee » a 0 article.
+    final commande = cubit.state.byId(orderId);
+    if (commande != null &&
+        commande.lines.isEmpty &&
+        commande.status == RestaurantOrderStatus.open) {
+      await cubit.deleteOrder(orderId);
+    }
   }
 
   Future<void> _onTapTable(
