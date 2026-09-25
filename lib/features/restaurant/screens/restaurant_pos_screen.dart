@@ -8,6 +8,8 @@ import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/services/currency_display_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
+import 'package:wanzo/core/models/currency_settings_model.dart';
+import 'package:wanzo/core/enums/currency_enum.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/widgets/dish_thumb_grid.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
@@ -133,6 +135,16 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   /// (reçu / facture) une fois l'enregistrement confirmé.
   Sale? _pendingSale;
 
+  // Devise REELLEMENT encaissee. La carte est libellee en CDF (devise de base
+  // de la plateforme) ; le reglement, lui, peut se faire en devise, et doit
+  // etre enregistre comme tel : sinon un encaissement en dollars disparait de
+  // la comptabilite et le suivi de change est faux. Meme montage qu'au salon.
+  Currency _defaultCurrency = Currency.CDF;
+  Currency? _selectedTransactionCurrency;
+  double _transactionExchangeRate = 1.0; // devise choisie -> CDF
+  Map<Currency, double> _exchangeRates = const {};
+  List<Currency> _availableCurrencies = const [Currency.CDF];
+
   @override
   void initState() {
     super.initState();
@@ -141,10 +153,59 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     _loadMenu();
     CurrencyDisplayService.instance.dualCurrency.addListener(_onDualChanged);
     final cubit = context.read<CurrencySettingsCubit>();
-    if (cubit.state.status != CurrencySettingsStatus.loaded) {
+    if (cubit.state.status == CurrencySettingsStatus.loaded) {
+      _initialiserDevises(cubit.state.settings);
+    } else {
       cubit.loadSettings();
     }
   }
+
+  /// Devise active de la societe et taux de change, meme source de verite que
+  /// la boutique et le salon : Settings pour la devise active, CurrencySettings
+  /// pour les taux. Aucun taux n'est invente.
+  void _initialiserDevises(CurrencySettings settings) {
+    final active = _deviseActiveSociete(settings);
+    if (!mounted) return;
+    setState(() {
+      _defaultCurrency = active;
+      _exchangeRates = {
+        Currency.USD: settings.usdToCdfRate,
+        Currency.FCFA: settings.fcfaToCdfRate,
+        Currency.CDF: 1.0,
+      };
+      _availableCurrencies = _exchangeRates.keys
+          .where((k) => (_exchangeRates[k] ?? 0) > 0)
+          .toList();
+      if (!_availableCurrencies.contains(active)) {
+        _availableCurrencies.add(active);
+      }
+      _selectedTransactionCurrency = _availableCurrencies.contains(active)
+          ? active
+          : _availableCurrencies.first;
+      _transactionExchangeRate =
+          _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
+    });
+  }
+
+  Currency _deviseActiveSociete(CurrencySettings repli) {
+    final st = context.read<old_settings_bloc.SettingsBloc>().state;
+    if (st is old_settings_state.SettingsLoaded) {
+      return st.settings.activeCurrency;
+    } else if (st is old_settings_state.SettingsUpdated) {
+      return st.settings.activeCurrency;
+    }
+    return repli.activeCurrency;
+  }
+
+  /// Convertit un montant de base (CDF) vers la devise de reglement.
+  double _versDevise(double cdf) =>
+      _transactionExchangeRate <= 0 ? cdf : cdf / _transactionExchangeRate;
+
+  /// Convertit un montant saisi dans la devise de reglement vers la base CDF.
+  double _versCdf(double montant) => montant * _transactionExchangeRate;
+
+  String get _codeDevise =>
+      _selectedTransactionCurrency?.code ?? _defaultCurrency.code;
 
   void _onDualChanged() {
     if (!mounted) return;
@@ -853,8 +914,12 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   Widget _buildCheckout(RestaurantOrder order) {
     final theme = Theme.of(context);
     final total = order.totalCdf;
-    final cashGiven =
-        double.tryParse(_cashController.text.replaceAll(' ', '')) ?? 0;
+    // Espece SAISIE dans la devise de reglement puis ramenee en base CDF :
+    // sans cette conversion, 20 dollars poses sur le comptoir etaient lus
+    // comme 20 francs.
+    final cashGiven = _versCdf(
+      double.tryParse(_cashController.text.replaceAll(' ', '')) ?? 0,
+    );
     final change = cashGiven - total;
     final totalUsd = _usdHint(total);
     final changeUsd = _usdHint(change.abs());
@@ -896,6 +961,31 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
             ],
           ),
           const SizedBox(height: 16),
+          // Devise du REGLEMENT. Masquee tant qu'une seule devise a un taux
+          // reel : on ne propose pas un choix qui n'en est pas un.
+          if (_availableCurrencies.length > 1) ...[
+            Text('Devise du règlement', style: theme.textTheme.labelLarge),
+            const SizedBox(height: 8),
+            SegmentedButton<Currency>(
+              segments: [
+                for (final c in _availableCurrencies)
+                  ButtonSegment<Currency>(value: c, label: Text(c.code)),
+              ],
+              selected: {
+                _selectedTransactionCurrency ?? _defaultCurrency,
+              },
+              showSelectedIcon: false,
+              onSelectionChanged: (choix) {
+                final c = choix.first;
+                setState(() {
+                  _selectedTransactionCurrency = c;
+                  _transactionExchangeRate = _exchangeRates[c] ?? 1.0;
+                  _cashController.clear();
+                });
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
           Text('Règlement', style: theme.textTheme.labelLarge),
           const SizedBox(height: 8),
           PaymentMethodSelector<_PayMethod>(
@@ -912,7 +1002,7 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: InputDecoration(
-                labelText: 'Montant reçu (CDF)',
+                labelText: 'Montant reçu ($_codeDevise)',
                 isDense: true,
                 border:
                     OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -923,8 +1013,10 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
             if (_cashController.text.isNotEmpty) ...[
               Text(
                 change >= 0
-                    ? 'Monnaie : ${formatCurrency(change, 'CDF')}'
-                    : 'Manque : ${formatCurrency(-change, 'CDF')}',
+                    ? 'Monnaie : '
+                        '${formatCurrency(_versDevise(change), _codeDevise)}'
+                    : 'Manque : '
+                        '${formatCurrency(_versDevise(-change), _codeDevise)}',
                 style: theme.textTheme.titleSmall?.copyWith(
                   color: change >= 0
                       ? Colors.green.shade700
@@ -956,7 +1048,9 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.check),
-            label: Text('Valider · ${formatCurrency(total, 'CDF')}'),
+            label: Text(
+              'Valider · ${formatCurrency(_versDevise(total), _codeDevise)}',
+            ),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
             ),
@@ -1004,10 +1098,14 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
       items: items,
       totalAmountInCdf: total,
       paidAmountInCdf: paid,
-      transactionCurrencyCode: 'CDF',
-      transactionExchangeRate: 1.0,
-      totalAmountInTransactionCurrency: total,
-      paidAmountInTransactionCurrency: paid,
+      // La vente porte la devise REELLEMENT encaissee, avec le taux central
+      // fige au moment du reglement. Elle etait auparavant forcee en CDF, si
+      // bien qu'un encaissement en devise n'existait nulle part en aval :
+      // ni dans le chiffre par devise, ni en comptabilite.
+      transactionCurrencyCode: _codeDevise,
+      transactionExchangeRate: _transactionExchangeRate,
+      totalAmountInTransactionCurrency: _versDevise(total),
+      paidAmountInTransactionCurrency: _versDevise(paid),
       discountPercentage: 0,
       paymentMethod: _method.apiValue,
       status: completed ? SaleStatus.completed : SaleStatus.pending,

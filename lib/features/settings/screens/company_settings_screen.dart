@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'dart:io';
 import '../../../core/platform/image_picker/image_picker_service_factory.dart';
 import 'package:path_provider/path_provider.dart';
+
+import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:path/path.dart' as path;
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
@@ -37,6 +39,9 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
   late final TextEditingController _idNatNumberController;
 
   String? _companyLogo;
+
+  /// Vrai pendant le televersement du logo.
+  bool _logoEnCoursDEnvoi = false;
   late BusinessUnitType _businessUnitType;
   String? _businessUnitId;
   String? _businessUnitName;
@@ -68,14 +73,21 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
     _companyEmailController = TextEditingController(
       text: widget.settings.companyEmail,
     );
+    // Repli sur l'identite de l'entreprise recue via /auth/me : les pieces
+    // commerciales le faisaient deja, pas cette page, si bien que la facture
+    // portait le NIF et l'IdNat que le profil affichait vides.
+    final ctx = BusinessContextService();
+    String repli(String local, String? distant) =>
+        local.isNotEmpty ? local : (distant ?? '');
+
     _taxNumberController = TextEditingController(
-      text: widget.settings.taxIdentificationNumber,
+      text: repli(widget.settings.taxIdentificationNumber, ctx.companyTaxId),
     );
     _rccmNumberController = TextEditingController(
-      text: widget.settings.rccmNumber,
+      text: repli(widget.settings.rccmNumber, ctx.companyRccm),
     );
     _idNatNumberController = TextEditingController(
-      text: widget.settings.idNatNumber,
+      text: repli(widget.settings.idNatNumber, ctx.companyNationalId),
     );
 
     _companyLogo = widget.settings.companyLogo;
@@ -215,13 +227,21 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                           : null,
                 ),
                 child:
-                    _companyLogo == null || _companyLogo!.isEmpty
-                        ? Icon(
-                          _getIconForUnitType(_businessUnitType),
-                          size: isDesktop ? 70 : 60,
-                          color: Colors.grey,
+                    _logoEnCoursDEnvoi
+                        ? const Center(
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(strokeWidth: 2.5),
+                          ),
                         )
-                        : null,
+                        : (_companyLogo == null || _companyLogo!.isEmpty
+                            ? Icon(
+                              _getIconForUnitType(_businessUnitType),
+                              size: isDesktop ? 70 : 60,
+                              color: Colors.grey,
+                            )
+                            : null),
               ),
               if (_canEditCompany) ...[
                 const SizedBox(height: 12),
@@ -826,11 +846,46 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
 
       await pickedFile.copy(savedImagePath);
 
+      // La copie locale ne sert que de repli : un chemin d'appareil envoye au
+      // serveur comme s'il etait une URL ne survit ni a une reinstallation, ni
+      // au passage sur un autre poste, et aucune autre application ne peut le
+      // lire. On televerse donc, et on ne garde le chemin local que si le
+      // reseau ne repond pas (la prochaine sauvegarde en ligne corrigera).
+      String logoRetenu = savedImagePath;
+      if (mounted) {
+        setState(() => _logoEnCoursDEnvoi = true);
+      }
+      String? distant;
+      try {
+        distant = await ImageUploadService().uploadImage(
+          File(savedImagePath),
+          publicId: 'logos/company_${DateTime.now().millisecondsSinceEpoch}',
+        );
+      } catch (_) {
+        distant = null;
+      }
+      if (distant != null && distant.isNotEmpty) {
+        logoRetenu = distant;
+      }
+      if (!mounted) return;
+
       setState(() {
-        _companyLogo = savedImagePath;
+        _logoEnCoursDEnvoi = false;
+        _companyLogo = logoRetenu;
         _hasChanges = true;
       });
       _onFieldChanged();
+
+      if (distant == null || distant.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Logo enregistre sur cet appareil. Il sera envoye des le retour '
+              'du reseau, pour apparaitre dans les autres applications.',
+            ),
+          ),
+        );
+      }
 
       ScaffoldMessenger.of(
         context,
