@@ -138,6 +138,30 @@ class RestaurantApiService {
     return saved;
   }
 
+  /// Envoie UN plat au serveur, a sa place dans la carte.
+  ///
+  /// Passe par l'upsert en masse (un seul element) : le serveur y conserve
+  /// l'id choisi par l'appareil, donc un renvoi ne cree jamais de doublon.
+  /// Hors ligne, `ApiClient` met l'ecriture en file et leve
+  /// `OfflineQueuedException` : elle sera rejouee au retour du reseau.
+  Future<void> upsertMenuItem(MenuItem item, int position) async {
+    await _apiClient.post(
+      'restaurant/menu-items/bulk-upsert',
+      body: [_menuItemToApi(item, position)],
+      requiresAuth: true,
+    );
+  }
+
+  /// Retire UN plat du serveur. Sans cet appel, un plat supprime sur
+  /// l'appareil restait publie : visible sur le lien de table, et rapatrie
+  /// dans la carte a la synchronisation suivante.
+  Future<void> deleteMenuItem(String id) async {
+    await _apiClient.delete(
+      'restaurant/menu-items/$id',
+      requiresAuth: true,
+    );
+  }
+
   /// Récupère la carte publiée côté backend.
   Future<List<MenuItem>> getMenuItems() async {
     final response = await _apiClient.get(

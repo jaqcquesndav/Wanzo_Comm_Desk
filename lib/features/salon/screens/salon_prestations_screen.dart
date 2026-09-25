@@ -88,6 +88,7 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       await _api.bulkUpsertServices(_items);
+      await _repo.marquerToutPublie();
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(

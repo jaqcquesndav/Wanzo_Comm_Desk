@@ -94,11 +94,10 @@ class SalonCubit extends Cubit<SalonState> {
     // 2) Réconciliation backend (best-effort).
     List<SalonService> services = localServices;
     try {
-      final remote = await _api.getServices();
-      if (remote.isNotEmpty) {
-        await _repo.replaceAll(remote);
-        services = await _repo.loadAll();
-      }
+      // Reconciliation qui ne perd rien : ce qui attend part d'abord, et une
+      // prestation pas encore confirmee n'est plus ecrasee par le serveur
+      // (l'ancien remplacement integral effacait les prestations non publiees).
+      services = await _repo.loadAllSynced();
     } catch (_) {
       // Hors-ligne : on conserve la carte locale.
     }

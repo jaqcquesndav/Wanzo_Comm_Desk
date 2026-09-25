@@ -61,6 +61,13 @@ class _RestaurantMenuConfigScreenState
       _items = items;
       _loading = false;
     });
+    // Une photo prise hors ligne est restee sur l'appareil : on la televerse
+    // des que possible, sans attendre un bouton. Silencieux en cas d'echec.
+    if (_items.any((i) =>
+        (i.photoPath ?? '').isNotEmpty && (i.photoUrl ?? '').isEmpty)) {
+      await _uploadPendingPhotos();
+      if (mounted) setState(() {});
+    }
   }
 
   /// Publie la carte locale vers le backend (upsert en masse) afin que la page
@@ -94,7 +101,11 @@ class _RestaurantMenuConfigScreenState
           // continue avec les suivants.
         }
       }
+      // Sans ce televersement, aucune photo prise sur l'appareil
+      // n'atteignait le lien de table.
+      await _uploadPendingPhotos();
       await _api.bulkUpsertMenuItems(_items);
+      await _repo.marquerToutPublie();
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
@@ -413,6 +424,32 @@ class _RestaurantMenuConfigScreenState
 
   /// Ouvre le formulaire d'un plat en MODAL (Dialog centré) — convention
   /// desktop de l'app (cf. `FormNavigationService`), pas une feuille basse.
+  /// Televerse vers Cloudinary les photos restees sur l'appareil
+  /// (`photoPath` sans `photoUrl`) et enregistre l'URL obtenue, sans quoi le
+  /// lien de table n'affiche aucune image. Chaque plat est isole : un echec ne
+  /// bloque pas les autres, et le plat reste tel quel pour un prochain essai.
+  Future<void> _uploadPendingPhotos() async {
+    final uploader = ImageUploadService();
+    for (var i = 0; i < _items.length; i++) {
+      final item = _items[i];
+      final localPath = item.photoPath?.trim() ?? '';
+      final hasUrl = (item.photoUrl?.trim().isNotEmpty) ?? false;
+      if (localPath.isEmpty || hasUrl) continue;
+      final file = File(localPath);
+      if (!await file.exists()) continue;
+      try {
+        final url = await uploader.uploadImage(file);
+        if (url == null || url.isEmpty) continue;
+        final updated = item.copyWith(photoUrl: url);
+        await _repo.upsert(updated);
+        if (!mounted) return;
+        _items[i] = updated;
+      } catch (_) {
+        // Photo impossible a envoyer pour l'instant : on passe au plat suivant.
+      }
+    }
+  }
+
   Future<void> _openDishForm({MenuItem? existing}) async {
     final saved = await showDialog<bool>(
       context: context,
@@ -569,6 +606,17 @@ class _DishFormDialogState extends State<_DishFormDialog> {
     setState(() => _saving = true);
     final price = double.tryParse(_priceController.text.trim()) ?? 0;
     final description = _descriptionController.text.trim();
+    // La photo part avec le plat. Sans cela elle restait sur l'appareil
+    // jusqu'au bouton Publier, et le lien de table montrait un plat sans image.
+    // Hors ligne, on garde la photo locale : le prochain chargement la rattrape.
+    if ((_photoPath ?? '').isNotEmpty && (_photoUrl ?? '').isEmpty) {
+      try {
+        final url = await ImageUploadService().uploadImage(File(_photoPath!));
+        if (url != null && url.isNotEmpty) _photoUrl = url;
+      } catch (_) {
+        // Reseau indisponible : la photo reste locale pour l'instant.
+      }
+    }
     final item = MenuItem(
       id: widget.existing?.id ?? const Uuid().v4(),
       name: _nameController.text.trim(),
