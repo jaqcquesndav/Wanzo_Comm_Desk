@@ -37,6 +37,11 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
   // (`null`) tant que non chargé / indisponible — jamais de valeur fabriquée.
   double? _commissionsMonth;
 
+  /// Ce qui reste a verser a l'equipe sur le mois : commissions gagnees moins
+  /// avances et reglements deja faits. C'est lui qui bouge quand on paie ; le
+  /// total gagne, seul affiche jusqu'ici, ne bougeait jamais.
+  double? _resteAVerser;
+
   @override
   void initState() {
     super.initState();
@@ -49,6 +54,20 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
     _loadCommissions();
   }
 
+  /// Ouvre un ecran puis recharge le tableau au retour. Chaque ecran ouvert
+  /// d'ici peut changer les chiffres (ticket, avance, depense) ; avec un simple
+  /// `push`, le tableau restait fige tant qu'on ne changeait pas d'onglet.
+  Future<void> _ouvrir(String route) async {
+    await context.push(route);
+    if (!mounted) return;
+    _rafraichir();
+  }
+
+  Future<void> _rafraichir() async {
+    context.read<DashboardBloc>().add(LoadDashboardData(date: DateTime.now()));
+    await _loadCommissions();
+  }
+
   Future<void> _loadCommissions() async {
     final now = DateTime.now();
     final from = DateTime(now.year, now.month, 1);
@@ -59,12 +78,18 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
       setState(() {
         _commissionsMonth =
             rows.fold<double>(0, (sum, r) => sum + r.totalCommission);
+        // Un coiffeur trop paye ne compense pas ce qui est du aux autres.
+        _resteAVerser = rows.fold<double>(
+            0, (sum, r) => sum + (r.balance > 0 ? r.balance : 0));
       });
     } catch (_) {
       // Indisponible (réseau/backend) : on laisse `_commissionsMonth` à null →
       // état neutre « — » dans la grille (jamais de valeur fabriquée).
       if (!mounted) return;
-      setState(() => _commissionsMonth = null);
+      setState(() {
+        _commissionsMonth = null;
+        _resteAVerser = null;
+      });
     }
   }
 
@@ -84,7 +109,7 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
         IconButton(
           icon: const Icon(Icons.content_cut),
           tooltip: 'Composer la tarification',
-          onPressed: () => context.push('/salon/prestations'),
+          onPressed: () => _ouvrir('/salon/prestations'),
         ),
       ],
       floatingActionButton: FloatingActionButton(
@@ -126,7 +151,7 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
                   color: const Color(0xFF0EA5E9),
                   title: 'Nouveau ticket',
                   subtitle: 'Prestations + produits, sur un même ticket',
-                  onTap: () => context.push('/salon/sale'),
+                  onTap: () => _ouvrir('/salon/sale'),
                 ),
                 _actionTile(
                   context,
@@ -134,7 +159,7 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
                   color: const Color(0xFF8B5CF6),
                   title: 'Composer la tarification',
                   subtitle: 'Prestations, prix, durée, commission',
-                  onTap: () => context.push('/salon/prestations'),
+                  onTap: () => _ouvrir('/salon/prestations'),
                 ),
                 _actionTile(
                   context,
@@ -142,7 +167,7 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
                   color: const Color(0xFF197CA8),
                   title: 'Coiffeurs',
                   subtitle: 'Équipe et taux de commission',
-                  onTap: () => context.push('/salon/stylists'),
+                  onTap: () => _ouvrir('/salon/stylists'),
                 ),
                 _actionTile(
                   context,
@@ -150,7 +175,7 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
                   color: const Color(0xFF16A34A),
                   title: 'Performances',
                   subtitle: 'Commissions par coiffeur (paie)',
-                  onTap: () => context.push('/salon/performance'),
+                  onTap: () => _ouvrir('/salon/performance'),
                     ),
                   ],
                 ),
@@ -173,31 +198,31 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
           icon: Icons.receipt_long,
           label: 'Nouveau ticket',
           color: const Color(0xFF0EA5E9),
-          onTap: () => context.push('/salon/sale'),
+          onTap: () => _ouvrir('/salon/sale'),
         ),
         QuickActionItem(
           icon: Icons.content_cut,
           label: 'Tarification',
           color: const Color(0xFF8B5CF6),
-          onTap: () => context.push('/salon/prestations'),
+          onTap: () => _ouvrir('/salon/prestations'),
         ),
         QuickActionItem(
           icon: Icons.badge_outlined,
           label: 'Coiffeurs',
           color: const Color(0xFF197CA8),
-          onTap: () => context.push('/salon/stylists'),
+          onTap: () => _ouvrir('/salon/stylists'),
         ),
         QuickActionItem(
           icon: Icons.leaderboard_outlined,
           label: 'Performances',
           color: const Color(0xFF16A34A),
-          onTap: () => context.push('/salon/performance'),
+          onTap: () => _ouvrir('/salon/performance'),
         ),
         QuickActionItem(
           icon: Icons.money_off,
           label: 'Dépense',
           color: Colors.red,
-          onTap: () => context.push('/expenses/add'),
+          onTap: () => _ouvrir('/expenses/add'),
         ),
       ],
     );
@@ -227,8 +252,8 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
         // le KPI global, on l'utilise donc comme repère du nombre de tickets.
         final String clients =
             loaded ? '${dashState.clientsServedToday}' : '—';
-        final String commissions = _commissionsMonth != null
-            ? formatCurrency(_commissionsMonth!, 'CDF')
+        final String commissions = _resteAVerser != null
+            ? formatCurrency(_resteAVerser!, 'CDF')
             : '—';
 
         // La courbe des vignettes de pilotage vient des ventes réellement
@@ -255,10 +280,14 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
               weight: KpiWeight.pilote,
               icon: Icons.savings_outlined,
               color: const Color(0xFFF59E0B),
-              label: 'Commissions du mois',
+              label: 'Reste à verser (mois)',
               value: commissions,
-              trendLabel: 'À verser à l\'équipe',
-              onTap: () => context.push('/salon/performance'),
+              secondary: _commissionsMonth != null
+                  ? 'sur ${formatCurrency(_commissionsMonth!, 'CDF')} gagnées'
+                  : null,
+              trendLabel: 'Commissions de l\'équipe',
+              // On y va pour payer : l'ecran des coiffeurs, pas les statistiques.
+              onTap: () => _ouvrir('/salon/stylists'),
             ),
             KpiTile(
               icon: Icons.groups_outlined,
@@ -271,14 +300,14 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
               color: const Color(0xFF8B5CF6),
               label: 'Prestations',
               value: '${state.activeServices.length}',
-              onTap: () => context.push('/salon/prestations'),
+              onTap: () => _ouvrir('/salon/prestations'),
             ),
             KpiTile(
               icon: Icons.badge_outlined,
               color: const Color(0xFF197CA8),
               label: 'Coiffeurs',
               value: '${state.activeStylists.length}',
-              onTap: () => context.push('/salon/stylists'),
+              onTap: () => _ouvrir('/salon/stylists'),
             ),
           ],
         );

@@ -12,16 +12,34 @@ import 'package:wanzo/features/expenses/widgets/cash_out_voucher_sheet.dart';
 import 'package:wanzo/features/settings/bloc/settings_bloc.dart';
 import 'package:wanzo/features/settings/bloc/settings_state.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
+import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
 
 import '../models/stylist.dart';
 
 /// Ce que le formulaire rapporte : la dépense telle qu'elle a été enregistrée,
 /// et si elle est déjà partie au serveur ou seulement posée en local.
 class _AdvanceResult {
-  const _AdvanceResult(this.expense, this.reference, {required this.synchronise});
+  const _AdvanceResult(
+    this.expense,
+    this.reference, {
+    required this.synchronise,
+    required this.montantCdf,
+  });
 
   final Expense expense;
   final String reference;
+  final bool synchronise;
+
+  /// Montant verse ramene en CDF au taux fige : c'est ce qui vient en
+  /// deduction du solde du coiffeur, et ce que l'ecran applique aussitot.
+  final double montantCdf;
+}
+
+/// Ce que l'ecran appelant recoit apres un versement confirme.
+class VersementCoiffeur {
+  const VersementCoiffeur({required this.montantCdf, required this.synchronise});
+
+  final double montantCdf;
   final bool synchronise;
 }
 
@@ -33,14 +51,27 @@ class _AdvanceResult {
 /// formulaire reste court : un montant, une date, un motif, parce que c'est un
 /// geste de comptoir. À la validation, la caisse sort une pièce signée par le
 /// bénéficiaire, comme pour toute sortie d'espèces.
-Future<bool?> showAdvanceForm(BuildContext context, Stylist stylist) async {
+///
+/// Avec [soldeDu], le formulaire sert a REGLER les commissions : montant
+/// propose egal au reste a verser, motif et nature adaptes. La mecanique est
+/// la meme (une sortie de caisse rattachee au coiffeur), le serveur retranche
+/// toute somme versee, avance comme reglement.
+Future<VersementCoiffeur?> showAdvanceForm(
+  BuildContext context,
+  Stylist stylist, {
+  double? soldeDu,
+}) async {
   final resultat = await showDialog<_AdvanceResult>(
     context: context,
     barrierDismissible: false,
-    builder: (_) => _AdvanceDialog(stylist: stylist),
+    builder: (_) => _AdvanceDialog(stylist: stylist, soldeDu: soldeDu),
   );
   if (resultat == null) return null;
-  if (!context.mounted) return true;
+  final versement = VersementCoiffeur(
+    montantCdf: resultat.montantCdf,
+    synchronise: resultat.synchronise,
+  );
+  if (!context.mounted) return versement;
 
   // Le bon s'affiche depuis l'écran appelant, une fois la boîte refermée :
   // une feuille par-dessus une boîte de dialogue se ferme mal.
@@ -56,8 +87,12 @@ Future<bool?> showAdvanceForm(BuildContext context, Stylist stylist) async {
         amount: resultat.expense.amount,
         currencyCode: resultat.expense.currencyCode ?? Currency.CDF.code,
         paymentMethod: 'Espèces',
-        note: 'Avance à déduire des commissions de ${stylist.name}.'
-            '${resultat.synchronise ? '' : ' Enregistrée hors ligne, envoi au retour du réseau.'}',
+        note: (soldeDu != null
+                ? 'Règlement des commissions de ${stylist.name}.'
+                : 'Avance à déduire des commissions de ${stylist.name}.') +
+            (resultat.synchronise
+                ? ''
+                : ' Enregistrée hors ligne, envoi au retour du réseau.'),
       ),
       settings,
     );
@@ -71,7 +106,7 @@ Future<bool?> showAdvanceForm(BuildContext context, Stylist stylist) async {
       );
     }
   }
-  return true;
+  return versement;
 }
 
 Settings? _settingsCourants(BuildContext context) {
@@ -82,9 +117,14 @@ Settings? _settingsCourants(BuildContext context) {
 }
 
 class _AdvanceDialog extends StatefulWidget {
-  const _AdvanceDialog({required this.stylist});
+  const _AdvanceDialog({required this.stylist, this.soldeDu});
 
   final Stylist stylist;
+
+  /// Renseigne en mode reglement : le reste a verser, en CDF.
+  final double? soldeDu;
+
+  bool get _reglement => soldeDu != null;
 
   @override
   State<_AdvanceDialog> createState() => _AdvanceDialogState();
@@ -101,7 +141,12 @@ class _AdvanceDialogState extends State<_AdvanceDialog> {
   @override
   void initState() {
     super.initState();
-    _motifController.text = 'Avance ${widget.stylist.name}';
+    _motifController.text = widget._reglement
+        ? 'Règlement commissions ${widget.stylist.name}'
+        : 'Avance ${widget.stylist.name}';
+    if (widget._reglement && (widget.soldeDu ?? 0) > 0) {
+      _amountController.text = widget.soldeDu!.toStringAsFixed(0);
+    }
   }
 
   @override
@@ -109,6 +154,26 @@ class _AdvanceDialogState extends State<_AdvanceDialog> {
     _amountController.dispose();
     _motifController.dispose();
     super.dispose();
+  }
+
+  /// Taux central devise -> CDF, ou `null` si la devise est le CDF ou si
+  /// aucun taux reel n'est charge : le serveur retombe alors sur le taux
+  /// central de la societe. Aucun taux n'est invente ici.
+  double? _tauxVersCdf() {
+    if (_currency == Currency.CDF) return null;
+    try {
+      final st = context.read<CurrencySettingsCubit>().state;
+      if (st.status == CurrencySettingsStatus.loaded ||
+          st.status == CurrencySettingsStatus.saved) {
+        final r = _currency == Currency.USD
+            ? st.settings.usdToCdfRate
+            : st.settings.fcfaToCdfRate;
+        if (r > 1) return r;
+      }
+    } catch (_) {
+      // Cubit indisponible : le serveur resoudra le taux.
+    }
+    return null;
   }
 
   Future<void> _pickDate() async {
@@ -129,6 +194,7 @@ class _AdvanceDialogState extends State<_AdvanceDialog> {
     if (amount <= 0) return;
 
     setState(() => _saving = true);
+    final taux = _tauxVersCdf();
     final id = const Uuid().v4();
     final expense = Expense(
       id: id,
@@ -138,12 +204,17 @@ class _AdvanceDialogState extends State<_AdvanceDialog> {
       // Une avance relève de la masse salariale, précisée pour que les
       // rapports la distinguent d'une paie ou d'un journalier.
       category: ExpenseCategory.salaries,
-      subCategory: 'Avance prestataire',
+      subCategory: widget._reglement
+          ? 'Règlement commissions'
+          : 'Avance prestataire',
       performerId: widget.stylist.id,
       performerName: widget.stylist.name,
       beneficiary: widget.stylist.name,
       paymentMethod: 'cash',
       currencyCode: _currency.code,
+      // Taux fige au moment du versement : sans lui, le serveur devait deviner
+      // et une avance en dollars etait comptee pour son montant brut.
+      exchangeRate: taux,
       paidAmount: amount,
       paymentStatus: ExpensePaymentStatus.paid,
       attachmentUrls: const [],
@@ -188,6 +259,7 @@ class _AdvanceDialogState extends State<_AdvanceDialog> {
         expense,
         'BSC-${id.substring(0, 8).toUpperCase()}',
         synchronise: synchronise,
+        montantCdf: amount * (taux ?? 1.0),
       ),
     );
   }
@@ -196,7 +268,9 @@ class _AdvanceDialogState extends State<_AdvanceDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return AlertDialog(
-      title: Text('Avance à ${widget.stylist.name}'),
+      title: Text(widget._reglement
+          ? 'Régler ${widget.stylist.name}'
+          : 'Avance à ${widget.stylist.name}'),
       content: SizedBox(
         width: MediaQuery.of(context).size.width.clamp(280.0, 420.0),
         child: Form(

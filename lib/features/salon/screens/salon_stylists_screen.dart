@@ -189,6 +189,8 @@ class _SalonStylistsScreenState extends State<SalonStylistsScreen> {
                 showStylistStatement(context, s);
               } else if (v == 'advance') {
                 _recordAdvance(context, s);
+              } else if (v == 'settle') {
+                _recordAdvance(context, s, soldeDu: account?.balance);
               } else if (v == 'edit') {
                 _openForm(context, existing: s);
               } else if (v == 'toggle') {
@@ -204,6 +206,9 @@ class _SalonStylistsScreenState extends State<SalonStylistsScreen> {
                   value: 'statement', child: Text('Relevé de compte')),
               const PopupMenuItem(
                   value: 'advance', child: Text('Verser une avance')),
+              if (account != null && account.balance > 0)
+                const PopupMenuItem(
+                    value: 'settle', child: Text('Régler le solde')),
               const PopupMenuItem(value: 'edit', child: Text('Modifier')),
               PopupMenuItem(
                   value: 'toggle',
@@ -219,9 +224,28 @@ class _SalonStylistsScreenState extends State<SalonStylistsScreen> {
   /// Verser une avance : c'est une SORTIE DE FONDS pour le salon, donc une
   /// dépense, rattachée au coiffeur pour venir en déduction de ses commissions.
   /// On passe par le formulaire de dépense habituel, pré-rempli.
-  Future<void> _recordAdvance(BuildContext context, Stylist s) async {
-    final saved = await showAdvanceForm(context, s);
-    if (saved == true) await _loadAccounts();
+  ///
+  /// Avec [soldeDu], le meme formulaire REGLE les commissions. La ligne est mise
+  /// a jour aussitot : elle ne lisait que le serveur, si bien qu'hors ligne le
+  /// versement partait en file et le tableau gardait l'ancien solde, ce qui
+  /// poussait a payer deux fois. Le serveur, relu ensuite, fait foi.
+  Future<void> _recordAdvance(
+    BuildContext context,
+    Stylist s, {
+    double? soldeDu,
+  }) async {
+    final versement = await showAdvanceForm(context, s, soldeDu: soldeDu);
+    if (versement == null || !mounted) return;
+    final actuel = _accounts[s.id];
+    if (actuel != null) {
+      setState(() {
+        _accounts = {
+          ..._accounts,
+          s.id: actuel.avecVersement(versement.montantCdf),
+        };
+      });
+    }
+    if (versement.synchronise) await _loadAccounts();
   }
 
   Future<void> _confirmDelete(BuildContext context, Stylist s) async {

@@ -49,6 +49,21 @@ class StylistCommission {
     this.balance = 0,
   });
 
+  /// Le meme compte apres un versement de [montantCdf] : l'ecran l'applique
+  /// sans attendre le serveur, qui confirme ensuite.
+  StylistCommission avecVersement(double montantCdf) => StylistCommission(
+        stylistId: stylistId,
+        stylistName: stylistName,
+        serviceRevenue: serviceRevenue,
+        retailRevenue: retailRevenue,
+        servicesCount: servicesCount,
+        serviceCommission: serviceCommission,
+        retailCommission: retailCommission,
+        totalCommission: totalCommission,
+        advancesTotal: advancesTotal + montantCdf,
+        balance: balance - montantCdf,
+      );
+
   factory StylistCommission.fromJson(Map<String, dynamic> json) {
     // TypeORM renvoie les colonnes Postgres `numeric` comme des CHAÎNES JSON
     // (ex. "50.00") : accepter un num OU une chaîne numérique.

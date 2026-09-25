@@ -111,7 +111,7 @@ class StylistStatement {
           libelle: a.motif.isEmpty ? 'Avance' : a.motif,
           nature: (a.subCategory ?? '').isEmpty ? 'Avance' : a.subCategory!,
           credit: 0,
-          debit: a.amount,
+          debit: a.amountCdf,
           solde: 0,
         ),
     ];
@@ -204,6 +204,10 @@ class StylistAdvance {
   final double amount;
   final String? currencyCode;
 
+  /// Montant ramene en CDF par le serveur au taux fige du versement. Le compte
+  /// se tient en CDF : une avance en dollars s'y retranche pour sa contre-valeur.
+  final double amountCdf;
+
   const StylistAdvance({
     required this.id,
     required this.date,
@@ -211,7 +215,8 @@ class StylistAdvance {
     required this.amount,
     this.subCategory,
     this.currencyCode,
-  });
+    double? amountCdf,
+  }) : amountCdf = amountCdf ?? amount;
 
   factory StylistAdvance.fromJson(Map<String, dynamic> json) => StylistAdvance(
         id: (json['id'] ?? '').toString(),
@@ -220,5 +225,8 @@ class StylistAdvance {
         subCategory: json['subCategory'] as String?,
         amount: StylistStatement._d(json['amount']),
         currencyCode: json['currencyCode'] as String?,
+        amountCdf: json['amountCdf'] == null
+            ? null
+            : StylistStatement._d(json['amountCdf']),
       );
 }
