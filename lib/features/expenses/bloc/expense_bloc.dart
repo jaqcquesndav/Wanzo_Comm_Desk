@@ -118,12 +118,22 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
       );
 
       // Journal entry creation with detailed logging
+      // Seule la part PAYÉE à la création sort de la caisse ; une dépense à
+      // payer est une charge engagée, sans mouvement de caisse (chaque
+      // règlement ajoute ensuite son décaissement). Avant, la caisse sortait
+      // deux fois : à la création puis au règlement.
+      final montant = newExpense.amount.abs();
+      final dejaPaye = newExpense.paymentStatus == ExpensePaymentStatus.paid
+          ? montant
+          : (newExpense.paidAmount ?? 0).abs().clamp(0.0, montant).toDouble();
       final journalEntry = OperationJournalEntry(
         id: _uuid.v4(),
         date: newExpense.date,
-        type: OperationType.cashOut,
-        description: "Dépense: ${newExpense.motif}",
-        amount: -newExpense.amount.abs(), // Amount négatif pour cashOut
+        type: dejaPaye > 0 ? OperationType.cashOut : OperationType.other,
+        description: dejaPaye > 0
+            ? "Dépense: ${newExpense.motif}"
+            : "Dépense à payer: ${newExpense.motif}",
+        amount: -(dejaPaye > 0 ? dejaPaye : montant),
         paymentMethod: newExpense.paymentMethod,
         relatedDocumentId: newExpense.id,
         currencyCode: newExpense.effectiveCurrencyCode,
@@ -310,7 +320,7 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
             amount: -event.payment.amountInCdf.abs(),
             paymentMethod: event.payment.method,
             relatedDocumentId: event.expense.id,
-            currencyCode: event.payment.currencyCode,
+            currencyCode: 'CDF', // montant en CDF
             isDebit: true,
             isCredit: false,
             balanceAfter: 0.0,

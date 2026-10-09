@@ -77,7 +77,7 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
             amount: event.payment.amountInCdf,
             relatedDocumentId: event.sale.id,
             paymentMethod: event.payment.method,
-            currencyCode: event.payment.currencyCode,
+            currencyCode: 'CDF', // montant en CDF
             isDebit: true,
             isCredit: false,
             balanceAfter: 0,
@@ -221,9 +221,6 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
         saleType = OperationType.saleCash;
       }
 
-      // Déterminer la devise de la vente
-      String currencyCode = savedSale.currencyCode;
-
       // === ENREGISTREMENT DE LA VENTE (Chiffre d'affaires) ===
       // Cette opération enregistre le revenu de la vente dans le journal des ventes
       // Elle N'IMPACTE PAS la trésorerie directement
@@ -235,7 +232,7 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
           type: saleType,
           amount: savedSale.totalAmountInCdf, // Montant de la vente
           relatedDocumentId: savedSale.id,
-          currencyCode: currencyCode,
+          currencyCode: 'CDF', // montant en CDF : la devise doit suivre
           isDebit: false, // Revenus = crédit en comptabilité
           isCredit: true,
           balanceAfter: 0, // Sera calculé par le repository
@@ -247,8 +244,8 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
       // === ENCAISSEMENT (Impact trésorerie uniquement) ===
       // SEULEMENT si un paiement est effectué (comptant ou partiel)
       // Pour les ventes à crédit pur, il n'y a PAS d'encaissement immédiat
-      if (savedSale.paidAmountInCdf > 0 &&
-          saleType != OperationType.saleCredit) {
+      if (savedSale.paidAmountInCdf > 0) {
+        // Acompte d'une vente à crédit compris : il entre aussi en caisse.
         journalEntries.add(
           OperationJournalEntry(
             id: _uuid.v4(),
@@ -258,7 +255,7 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
             type: OperationType.cashIn,
             amount: savedSale.paidAmountInCdf, // Montant encaissé UNIQUEMENT
             relatedDocumentId: savedSale.id,
-            currencyCode: currencyCode,
+            currencyCode: 'CDF', // montant en CDF : la devise doit suivre
             isDebit: true, // Caisse = actif donc débit pour augmentation
             isCredit: false,
             balanceAfter: 0, // Sera calculé par le repository
