@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../widgets/product_import.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -185,6 +186,19 @@ class _InventoryScreenState extends State<InventoryScreen>
                             ? l10n.addServiceButton
                             : l10n.addProductButton),
                       ),
+                      // Import en masse (Excel ou CSV) et modèle à remplir.
+                      if (_tabController.index == 0) ...[
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () => importerProduits(context),
+                          icon: const Icon(Icons.upload_file, size: 18),
+                          label: const Text('Importer'),
+                        ),
+                        TextButton(
+                          onPressed: () => telechargerModeleImport(context),
+                          child: const Text('Modèle à remplir'),
+                        ),
+                      ],
                     ],
                   ),
                 ),

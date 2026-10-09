@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../widgets/stock_by_location_card.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -210,6 +211,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
         // En-tête avec statut et quantité
         _buildStockStatusCard(context, product),
         const SizedBox(height: WanzoSpacing.lg),
+
+        // Répartition par magasin / succursale / dépôt, et transfert.
+        StockByLocationCard(product: product),
 
         // Informations générales
         _buildSectionCard(
@@ -439,6 +443,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                 // En-tête avec statut stock
                 _buildStockStatusCard(context, product),
                 const SizedBox(height: WanzoSpacing.lg),
+
+                // Répartition par magasin / succursale / dépôt, et transfert.
+                StockByLocationCard(product: product),
 
                 // Informations générales
                 _buildSectionCard(
