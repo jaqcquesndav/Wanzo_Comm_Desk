@@ -179,6 +179,14 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   String _paymentMethod = 'Espèces';
   final List<SaleItem> _items = [];
   double _paidAmount = 0.0;
+  // Champ « Montant payé » : TOUJOURS le reflet de _paidAmount. Il
+  // affichait sa valeur initiale pendant que le montant enregistré
+  // changeait (articles, remise, mode) : une vente à crédit partait payée.
+  final _paidController = TextEditingController();
+  void _setPaid(double v) {
+    _paidAmount = v;
+    _paidController.text = v.toStringAsFixed(2);
+  }
   double _discountPercentage = 0.0; // Pourcentage de réduction (0-100)
 
   // Pour la recherche rapide de produits
@@ -206,6 +214,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   @override
   void initState() {
     super.initState();
+    _paidController.text = _paidAmount.toStringAsFixed(2);
     context.read<old_settings_bloc.SettingsBloc>().add(
       const old_settings_event.LoadSettings(),
     );
@@ -225,7 +234,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       _customerPhoneController.text = widget.initialCustomerPhone!;
     }
     if (widget.initialPaidAmount != null) {
-      _paidAmount = widget.initialPaidAmount!;
+      _setPaid(widget.initialPaidAmount!);
     }
     if (widget.initialPaymentMethod != null) {
       _paymentMethod = widget.initialPaymentMethod!;
@@ -320,6 +329,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     _customerNameController.dispose();
     _customerPhoneController.dispose();
     _notesController.dispose();
+    _paidController.dispose();
     _productSearchController.dispose();
     _servicesCubit.close();
     _productSearchFocusNode.dispose();
@@ -627,8 +637,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                                     _transactionExchangeRate =
                                         _exchangeRates[newValue] ?? 1.0;
                                     if (_paymentMethod != 'Crédit') {
-                                      _paidAmount =
-                                          _calculateTotalInTransactionCurrency();
+                                      _setPaid(_calculateTotalInTransactionCurrency());
                                     }
                                   });
                                 }
@@ -739,8 +748,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                                       }
                                       // Mettre à jour le montant payé si paiement complet
                                       if (_paymentMethod != 'Crédit') {
-                                        _paidAmount =
-                                            _calculateTotalInTransactionCurrency();
+                                        _setPaid(_calculateTotalInTransactionCurrency());
                                       }
                                     });
                                   },
@@ -808,8 +816,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                           ),
                           const SizedBox(height: WanzoSpacing.md),
                           TextFormField(
-                            key: ValueKey(_selectedTransactionCurrency),
-                            initialValue: _paidAmount.toStringAsFixed(2),
+                            controller: _paidController,
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
@@ -874,8 +881,10 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                               setState(() {
                                 _paymentMethod = value!;
                                 if (_paymentMethod != 'Crédit') {
-                                  _paidAmount =
-                                      _calculateTotalInTransactionCurrency();
+                                  _setPaid(_calculateTotalInTransactionCurrency());
+                                } else {
+                                  // Crédit : rien n'est encore payé (acompte à saisir).
+                                  _setPaid(0);
                                 }
                               });
                             },
@@ -1245,7 +1254,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       // Réinitialiser les détails de la vente
       _paymentMethod = 'Espèces'; // Valeur par défaut
       _items.clear();
-      _paidAmount = 0.0;
+      _setPaid(0.0);
       _discountPercentage = 0.0;
 
       // Conserver les paramètres de devise
@@ -2830,7 +2839,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       }
 
       if (_paymentMethod != 'Crédit') {
-        _paidAmount = _calculateTotalInTransactionCurrency();
+        _setPaid(_calculateTotalInTransactionCurrency());
       }
     });
   }
@@ -3079,8 +3088,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                               setState(() {
                                 _items[index] = updatedItem;
                                 if (_paymentMethod != 'Crédit') {
-                                  _paidAmount =
-                                      _calculateTotalInTransactionCurrency();
+                                  _setPaid(_calculateTotalInTransactionCurrency());
                                 }
                               });
 
@@ -3116,7 +3124,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     setState(() {
       _items.removeAt(index);
       if (_paymentMethod != 'Crédit') {
-        _paidAmount = _calculateTotalInTransactionCurrency();
+        _setPaid(_calculateTotalInTransactionCurrency());
       }
     });
   }
