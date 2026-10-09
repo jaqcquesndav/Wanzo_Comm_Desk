@@ -1,3 +1,5 @@
+import 'package:wanzo/core/exceptions/api_exceptions.dart' as api;
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
@@ -147,23 +149,24 @@ class SupplierRepository {
 
   /// Supprime un fournisseur (API + Local)
   Future<void> deleteSupplier(String id) async {
-    // Essayer d'abord l'API
+    // Le serveur D'ABORD : un refus (historique de ventes ou de dépenses) ou
+    // une coupure doit être dit à l'utilisateur. Avant, l'erreur était avalée
+    // et la fiche supprimée localement réapparaissait au prochain sync.
     if (_apiService != null) {
       try {
-        final apiResponse = await _apiService
-            .deleteSupplier(id)
-            .timeout(const Duration(seconds: 10));
-        if (apiResponse.success) {
-          debugPrint(
-            '✅ [SupplierRepository] Fournisseur supprimé via API: $id',
-          );
+        await _apiService.deleteSupplier(id).timeout(const Duration(seconds: 10));
+      } on api.ApiException catch (e) {
+        // 404 : fiche jamais envoyée au serveur (créée hors ligne).
+        if (e.statusCode != 404) {
+          if (e is api.NetworkException || e is api.TimeoutException || e.statusCode == null) {
+            throw Exception('Connexion requise pour supprimer un fournisseur.');
+          }
+          throw Exception(e.message);
         }
-      } catch (e) {
-        debugPrint('⚠️ [SupplierRepository] Erreur API delete: $e');
+      } on TimeoutException {
+        throw Exception('Connexion requise pour supprimer un fournisseur.');
       }
     }
-
-    // Toujours supprimer localement
     await _suppliersBox.delete(id);
   }
 

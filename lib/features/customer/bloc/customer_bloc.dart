@@ -119,7 +119,9 @@ class CustomerBloc extends Bloc<CustomerEvent, CustomerState> {
       // Recharge la liste des clients après suppression
       add(const LoadCustomers());
     } catch (e) {
-      emit(CustomerError('Erreur lors de la suppression du client: $e'));
+      emit(CustomerError(
+        '$e'.replaceFirst('Exception: ', ''),
+      ));
     }
   }
 

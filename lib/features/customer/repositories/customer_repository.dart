@@ -1,3 +1,5 @@
+import 'package:wanzo/core/exceptions/api_exceptions.dart' as api;
+import 'dart:async';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import '../models/customer.dart';
@@ -152,21 +154,24 @@ class CustomerRepository {
 
   /// Supprime un client (API + Local)
   Future<void> deleteCustomer(String id) async {
-    // Essayer d'abord l'API
+    // Le serveur D'ABORD : un refus (historique de ventes ou de dépenses) ou
+    // une coupure doit être dit à l'utilisateur. Avant, l'erreur était avalée
+    // et la fiche supprimée localement réapparaissait au prochain sync.
     if (_apiService != null) {
       try {
-        final apiResponse = await _apiService
-            .deleteCustomer(id)
-            .timeout(const Duration(seconds: 10));
-        if (apiResponse.success) {
-          Logger.info('✅ [CustomerRepository] Client supprimé via API: $id');
+        await _apiService.deleteCustomer(id).timeout(const Duration(seconds: 10));
+      } on api.ApiException catch (e) {
+        // 404 : fiche jamais envoyée au serveur (créée hors ligne).
+        if (e.statusCode != 404) {
+          if (e is api.NetworkException || e is api.TimeoutException || e.statusCode == null) {
+            throw Exception('Connexion requise pour supprimer un client.');
+          }
+          throw Exception(e.message);
         }
-      } catch (e) {
-        Logger.error('⚠️ [CustomerRepository] Erreur API delete', error: e);
+      } on TimeoutException {
+        throw Exception('Connexion requise pour supprimer un client.');
       }
     }
-
-    // Toujours supprimer localement
     await _customersBox.delete(id);
   }
 

@@ -123,7 +123,9 @@ class SupplierBloc extends Bloc<SupplierEvent, SupplierState> {
       // Recharge la liste des fournisseurs après suppression
       add(const LoadSuppliers());
     } catch (e) {
-      emit(SupplierError('Erreur lors de la suppression du fournisseur: $e'));
+      emit(SupplierError(
+        '$e'.replaceFirst('Exception: ', ''),
+      ));
     }
   }
 
