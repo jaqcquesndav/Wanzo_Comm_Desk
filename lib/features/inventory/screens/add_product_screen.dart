@@ -67,6 +67,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   bool _isEditing = false;
   Currency? _selectedInputCurrency;
+  bool _deviseInitialisee = false;
   Currency _appActiveCurrency = Currency.CDF; // Default to CDF
 
   // Expiration date fields
@@ -361,12 +362,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
             final settings = currencyState.settings;
             _appActiveCurrency = settings.activeCurrency;
 
-            // For new products, ensure _selectedInputCurrency reflects the loaded appActiveCurrency.
-            // For edited products, _selectedInputCurrency is set in initState from the product's data.
-            if (!_isEditing) {
+            // Devise par défaut d'un NOUVEL article : posée une seule fois. Ce
+            // code tourne à chaque reconstruction de l'écran : il remettait la
+            // devise de l'app à chaque frappe, si bien que l'USD choisi dans la
+            // liste repartait en CDF (prix en dollars enregistrés en francs).
+            if (!_isEditing && !_deviseInitialisee) {
               _selectedInputCurrency = _appActiveCurrency;
+              _deviseInitialisee = true;
             }
-            // Fallback if _selectedInputCurrency is still null for any reason.
             _selectedInputCurrency ??= _appActiveCurrency;
 
             return ResponsiveFormWrapper(

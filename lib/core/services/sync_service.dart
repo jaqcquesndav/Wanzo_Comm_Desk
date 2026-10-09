@@ -454,9 +454,20 @@ class SyncService {
                 localProduct.syncStatus == 'pending_update' ||
                 _hasPendingSalesForProduct(apiProduct.id);
 
+            // Modification locale pas encore acceptée par le serveur : on
+            // GARDE la version locale entière (nom, prix, devise, catalogue).
+            // Seul le stock était gardé : le reste repartait à l'ancienne
+            // version au clic sur « Sync ». Elle sera renvoyée au prochain sync.
+            if (localProduct.syncStatus == 'pending' ||
+                localProduct.syncStatus == 'pending_update') {
+              debugPrint(
+                '🔀 Produit ${apiProduct.id}: modification locale en attente conservée',
+              );
+              continue;
+            }
             if (hasPendingStockChanges) {
-              // Des ventes/changements locaux non synchronisés existent
-              // Garder le stock local (déjà déduit par les ventes offline)
+              // Des ventes locales non synchronisées existent : garder le
+              // stock local (déjà déduit par les ventes hors ligne).
               final mergedProduct = apiProduct.copyWith(
                 stockQuantity: localProduct.stockQuantity,
                 syncStatus:

@@ -107,28 +107,16 @@ class InventoryRepository {
   /// Ajouter un nouveau produit
   Future<Product> addProduct(Product product) async {
     final newProductId = _uuid.v4();
-    final newProduct = Product(
+    // Copie COMPLÈTE de ce que l'utilisateur a saisi : la reconstruction
+    // champ par champ oubliait la TVA, l'option catalogue, l'unité
+    // d'affaires, le type de stock, la sous-catégorie, l'expiration, le SKU,
+    // les fournisseurs (TVA à 0 % sur facture, case catalogue décochée,
+    // produit invisible aux autres unités).
+    final now = DateTime.now();
+    final newProduct = product.copyWith(
       id: newProductId,
-      name: product.name,
-      description: product.description,
-      barcode: product.barcode,
-      category: product.category,
-      costPriceInCdf: product.costPriceInCdf,
-      sellingPriceInCdf: product.sellingPriceInCdf,
-      stockQuantity:
-          product
-              .stockQuantity, // Utiliser la quantité saisie par l'utilisateur
-      unit: product.unit,
-      alertThreshold: product.alertThreshold,
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-      imagePath: product.imagePath,
-      imageUrl: product.imageUrl,
-      images: product.images,
-      inputCurrencyCode: product.inputCurrencyCode,
-      inputExchangeRate: product.inputExchangeRate,
-      costPriceInInputCurrency: product.costPriceInInputCurrency,
-      sellingPriceInInputCurrency: product.sellingPriceInInputCurrency,
+      createdAt: now,
+      updatedAt: now,
       syncStatus: 'pending', // Mark as pending sync
     );
 
@@ -169,7 +157,8 @@ class InventoryRepository {
           // Update local record with server ID and mark as synced
           final syncedProduct = createdProductFromApi.copyWith(
             syncStatus: 'synced',
-            stockQuantity: newProduct.stockQuantity + product.stockQuantity,
+            // Le stock initial n'est compté qu'une fois (il était doublé).
+            stockQuantity: newProduct.stockQuantity,
           );
 
           // Replace local entry with synced version using server ID
