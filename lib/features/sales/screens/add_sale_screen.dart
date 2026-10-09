@@ -424,6 +424,18 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     return 0.0;
   }
 
+  /// TVA incluse de la vente, en CDF (base de la facture et de la compta),
+  /// remise comprise. Calculée pour l'affichage mais jamais enregistrée :
+  /// la facture affichait toujours « TVA 0 % ».
+  double _tvaEnCdf() {
+    double tva = 0;
+    for (final item in _items) {
+      final rate = item.taxRate ?? 0;
+      if (rate > 0) tva += item.totalPriceInCdf * rate / (100 + rate);
+    }
+    return tva * (1 - _discountPercentage / 100);
+  }
+
   /// Calcule les infos TVA incluse à partir du total TTC des items
   Map<String, double> _calculateTVAInfo() {
     double totalTTC = 0;
@@ -1110,6 +1122,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       totalAmountInTransactionCurrency: totalInTransactionCurrency,
       paidAmountInTransactionCurrency: _paidAmount,
       discountPercentage: _discountPercentage,
+      taxAmount: _tvaEnCdf(),
       paymentMethod: _paymentMethod,
       status: _isPaidFully() ? SaleStatus.completed : SaleStatus.pending,
       notes: _notesController.text,
@@ -3192,6 +3205,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         totalAmountInTransactionCurrency: totalInTransactionCurrency,
         paidAmountInTransactionCurrency: _paidAmount,
         discountPercentage: _discountPercentage,
+        taxAmount: _tvaEnCdf(),
         paymentMethod: _paymentMethod,
         status: _isPaidFully() ? SaleStatus.completed : SaleStatus.pending,
         notes: _notesController.text,
