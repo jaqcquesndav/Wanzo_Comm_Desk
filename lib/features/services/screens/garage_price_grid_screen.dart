@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
+
+import '../../../core/enums/currency_enum.dart';
+import '../../../core/services/currency_service.dart';
 
 import '../config/garage_vehicle_categories.dart';
 import '../cubit/services_cubit.dart';
@@ -37,13 +41,38 @@ class _GaragePriceGridScreenState extends State<GaragePriceGridScreen> {
   final List<_GridRow> _rows = [];
   bool _saving = false;
 
+  /// Devise de SAISIE des prix, affichée et choisie. Les prix étaient lus
+  /// comme des francs quelle que soit l'intention : 21 tapé pour 21 \$
+  /// devenait 21 FC (ticket à 0,01 \$ en vente USD).
+  late final CurrencyService _devises = context.read<CurrencyService>();
+  late Currency _devise = _devises.currentSettings.activeCurrency;
+
   @override
   void initState() {
     super.initState();
     for (final s in widget.existing) {
-      _rows.add(_GridRow.fromService(s));
+      _rows.add(_GridRow.fromService(
+        s,
+        (cdf) => _devises.convertFromCdf(cdf, _devise),
+      ));
     }
     if (_rows.isEmpty) _seedStandardWorks();
+  }
+
+  /// Change la devise de saisie en convertissant les montants déjà tapés.
+  void _changerDevise(Currency nouvelle) {
+    if (nouvelle == _devise) return;
+    setState(() {
+      for (final r in _rows) {
+        for (final ctrl in r.prices.values) {
+          final v = double.tryParse(ctrl.text.trim().replaceAll(',', '.'));
+          if (v == null) continue;
+          final cdf = _devises.convertToCdf(v, _devise);
+          ctrl.text = _GridRow._texte(_devises.convertFromCdf(cdf, nouvelle));
+        }
+      }
+      _devise = nouvelle;
+    });
   }
 
   @override
@@ -81,7 +110,10 @@ class _GaragePriceGridScreenState extends State<GaragePriceGridScreen> {
         if (raw.isEmpty) continue; // case vide : prestation non pratiquée
         final value = double.tryParse(raw.replaceAll(',', '.'));
         if (value == null || value <= 0) continue;
-        tiers.add(c.toTier(priceCdf: value, isDefault: tiers.isEmpty));
+        tiers.add(c.toTier(
+          priceCdf: _devises.convertToCdf(value, _devise),
+          isDefault: tiers.isEmpty,
+        ));
       }
       // Une prestation sans aucun prix n'est pas encore un service.
       if (tiers.isEmpty) continue;
@@ -151,6 +183,25 @@ class _GaragePriceGridScreenState extends State<GaragePriceGridScreen> {
               style: theme.textTheme.bodySmall,
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+            child: Row(
+              children: [
+                Text('Prix en', style: theme.textTheme.labelLarge),
+                const SizedBox(width: 12),
+                SegmentedButton<Currency>(
+                  segments: [
+                    for (final c in Currency.values.where((c) =>
+                        c == Currency.CDF || _devises.getRateToCdf(c) > 0))
+                      ButtonSegment(value: c, label: Text(c.code)),
+                  ],
+                  selected: {_devise},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (v) => _changerDevise(v.first),
+                ),
+              ],
+            ),
+          ),
           SizedBox(
             height: 44,
             child: ListView(
@@ -189,7 +240,10 @@ class _GaragePriceGridScreenState extends State<GaragePriceGridScreen> {
                     const DataColumn(label: Text('Prestation')),
                     for (final c in columns)
                       DataColumn(
-                        label: Tooltip(message: c.hint, child: Text(c.label)),
+                        label: Tooltip(
+                          message: c.hint,
+                          child: Text('${c.label} (${_devise.code})'),
+                        ),
                       ),
                     const DataColumn(label: Text('')),
                   ],
@@ -273,16 +327,20 @@ class _GridRow {
       : name = TextEditingController(text: name ?? ''),
         category = TextEditingController(text: category ?? '');
 
-  factory _GridRow.fromService(ServiceItem s) {
+  factory _GridRow.fromService(
+    ServiceItem s,
+    double Function(double cdf) versSaisie,
+  ) {
     final row = _GridRow(name: s.name, category: s.category, id: s.id);
     for (final t in s.priceTiers) {
-      row.priceFor(t.code).text =
-          t.priceCdf == t.priceCdf.roundToDouble()
-              ? t.priceCdf.toInt().toString()
-              : t.priceCdf.toString();
+      row.priceFor(t.code).text = _texte(versSaisie(t.priceCdf));
     }
     return row;
   }
+
+  static String _texte(double v) => v == v.roundToDouble()
+      ? v.toInt().toString()
+      : v.toStringAsFixed(2);
 
   TextEditingController priceFor(String code) =>
       prices.putIfAbsent(code, () => TextEditingController());
