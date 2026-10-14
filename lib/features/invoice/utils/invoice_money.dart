@@ -82,4 +82,79 @@ class InvoiceMoney {
   /// imprimé et les totaux du pied de page racontent la même histoire.
   double linesTotal(Iterable<SaleItem> items) =>
       items.fold<double>(0.0, (sum, it) => sum + lineTotal(it));
+
+  /// Chiffres du pied d'une pièce (ticket, reçu, facture), TOUS dérivés de la
+  /// base CDF au taux figé de la vente. Avant, le total et le montant reçu
+  /// étaient lus bruts (champ en devise, repli sur la base CDF) sous
+  /// l'étiquette de la devise : un montant en francs sortait avec « $ » et la
+  /// monnaie se calculait entre deux devises (ticket « Espèces 126 $ ;
+  /// Monnaie 125,95 $ » pour un total de 0,05 $).
+  SaleFigures figures(Sale sale, {required bool showTax}) {
+    final lignes = linesTotal(sale.items);
+    final total = fromCdf(sale.totalAmountInCdf);
+    final recu = fromCdf(sale.paidAmountInCdf);
+    final tva = showTax ? fromCdf(sale.taxAmount ?? 0) : 0.0;
+    final remise = lignes - total;
+    return SaleFigures(
+      lines: lignes,
+      discount: remise > _seuil ? remise : 0,
+      total: total,
+      tax: tva > _seuil ? tva : 0,
+      received: recu,
+      change: recu - total > _seuil ? recu - total : 0,
+      due: total - recu > _seuil ? total - recu : 0,
+    );
+  }
+
+  /// Écart imprimable minimal dans la devise du document.
+  double get _seuil => isBase ? 0.5 : 0.005;
+
+  /// Le prix unitaire arrondi reproduit-il la ligne ? Sinon (prix à fractions
+  /// de centime) il faut l'imprimer plus précisément : « 5 x 0,01 $ = 0,04 $ ».
+  bool unitIsExact(SaleItem item) {
+    final pas = isBase ? 1.0 : 0.01;
+    final arrondi = (lineUnit(item) / pas).round() * pas;
+    return (arrondi * item.quantity - lineTotal(item)).abs() < pas / 2 + 1e-9;
+  }
+}
+
+/// Pied de pièce, dans la devise du document.
+class SaleFigures {
+  const SaleFigures({
+    required this.lines,
+    required this.discount,
+    required this.total,
+    required this.tax,
+    required this.received,
+    required this.change,
+    required this.due,
+  });
+
+  /// Somme des lignes, avant remise.
+  final double lines;
+  final double discount;
+
+  /// Total à payer, remise déduite, TVA incluse.
+  final double total;
+
+  /// TVA incluse dans le total (0 si non assujetti ou non affichée).
+  final double tax;
+  final double received;
+  final double change;
+  final double due;
+
+  double get totalHt => total - tax;
+}
+
+/// Libellé imprimé du règlement selon le mode réel (ASCII pour les
+/// imprimantes thermiques). « Especes » était imprimé pour tout paiement.
+String receiptPaymentLabel(String? paymentMethod) {
+  final pm = (paymentMethod ?? '').toLowerCase();
+  if (pm.contains('mobile') || pm.contains('momo')) return 'Mobile Money';
+  if (pm.contains('carte') || pm.contains('card')) return 'Carte';
+  if (pm.contains('virement') || pm.contains('transfer')) return 'Virement';
+  if (pm.contains('cheque') || pm.contains('chèque')) return 'Cheque';
+  if (pm.contains('cr') && pm.contains('dit')) return 'Acompte';
+  if (pm.isEmpty || pm.contains('esp') || pm == 'cash') return 'Especes';
+  return 'Recu';
 }

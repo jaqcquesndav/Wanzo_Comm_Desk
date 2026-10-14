@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
+import 'package:wanzo/features/sales/models/sale_item.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
 import '../features/invoice/utils/invoice_money.dart';
 
@@ -161,11 +162,11 @@ class ReceiptPrinterService {
     // sous le symbole d'une autre devise que la sienne.
     final money = InvoiceMoney.forSale(sale);
     final currency = money.currencyCode;
-    final totalInTx =
-        sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
-    final paidInTx =
-        sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf;
-    final change = paidInTx - totalInTx;
+    // Pied de pièce depuis la base CDF : jamais de montant réétiqueté.
+    final fig = money.figures(
+      sale,
+      showTax: settings.showTaxes && settings.isTaxSubject,
+    );
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(sale.date);
     final bytes = <int>[];
 
@@ -284,66 +285,37 @@ class ReceiptPrinterService {
       // Nom du produit tronqué dynamiquement selon la largeur du montant
       bytes.addAll(_escLine(_rowText(item.productName, amtStr)));
       bytes.addAll(
-        _escLine('  ${item.quantity} x ${_fmt(money.lineUnit(item), currency)}'),
+        _escLine('  ${item.quantity} x ${_fmtUnit(money, item, currency)}'),
       );
     }
     bytes.addAll(_escSeparator());
 
-    // ── Remise ───────────────────────────────────────────────────────────
-    if (sale.discountPercentage > 0) {
-      final subtotalBefore = totalInTx / (1 - sale.discountPercentage / 100);
-      final discountAmt = subtotalBefore - totalInTx;
-      bytes.addAll(
-        _escLine(_rowText('Sous-total', _fmt(subtotalBefore, currency))),
-      );
-      bytes.addAll(
-        _escLine(
-          _rowText(
-            'Remise(${sale.discountPercentage.toStringAsFixed(0)}%)',
-            '-${_fmt(discountAmt, currency)}',
-          ),
-        ),
-      );
+    // ── Remise, TVA, total : depuis la base CDF (voir InvoiceMoney.figures) ─
+    if (fig.discount > 0) {
+      bytes.addAll(_escLine(_rowText('Sous-total', _fmt(fig.lines, currency))));
+      bytes.addAll(_escLine(_rowText('Remise', '-${_fmt(fig.discount, currency)}')));
     }
-
-    // ── TVA (si activée dans les paramètres) ─────────────────────────────
-    if (settings.showTaxes && settings.defaultTaxRate > 0) {
-      double totalTVA = 0.0;
-      double rate = settings.defaultTaxRate;
-      for (final item in sale.items) {
-        final itemRate = item.taxRate ?? rate;
-        if (itemRate > 0) {
-          final itemTotal = money.lineTotal(item);
-          totalTVA += itemTotal * itemRate / (100 + itemRate);
-          rate = itemRate;
-        }
-      }
-      if (totalTVA > 0) {
-        final ht = totalInTx - totalTVA;
-        bytes.addAll(_escLine(_rowText('Total HT', _fmt(ht, currency))));
-        bytes.addAll(
-          _escLine(
-            _rowText(
-              'TVA (${rate.toStringAsFixed(0)}%)',
-              _fmt(totalTVA, currency),
-            ),
-          ),
-        );
-      }
+    if (fig.tax > 0) {
+      bytes.addAll(_escLine(_rowText('Total HT', _fmt(fig.totalHt, currency))));
+      bytes.addAll(_escLine(_rowText('TVA', _fmt(fig.tax, currency))));
     }
 
     // ── Total ────────────────────────────────────────────────────────────
     bytes.addAll(_escBold(true));
-    bytes.addAll(_escLine(_rowText('TOTAL', _fmt(totalInTx, currency))));
+    bytes.addAll(_escLine(_rowText('TOTAL', _fmt(fig.total, currency))));
     bytes.addAll(_escBold(false));
     bytes.addAll(_escSeparatorDouble());
 
     // ── Règlement ────────────────────────────────────────────────────────
     bytes.addAll(_escBold(true));
-    bytes.addAll(_escLine(_rowText('Especes:', _fmt(paidInTx, currency))));
+    bytes.addAll(_escLine(_rowText(
+        '${receiptPaymentLabel(sale.paymentMethod)}:', _fmt(fig.received, currency))));
     bytes.addAll(_escBold(false));
-    if (change > 0.005) {
-      bytes.addAll(_escLine(_rowText('Monnaie:', _fmt(change, currency))));
+    if (fig.change > 0) {
+      bytes.addAll(_escLine(_rowText('Monnaie:', _fmt(fig.change, currency))));
+    }
+    if (fig.due > 0) {
+      bytes.addAll(_escLine(_rowText('Reste a payer:', _fmt(fig.due, currency))));
     }
     bytes.addAll(_escSeparatorDouble());
 
@@ -538,11 +510,11 @@ class ReceiptPrinterService {
     // sous le symbole d'une autre devise que la sienne.
     final money = InvoiceMoney.forSale(sale);
     final currency = money.currencyCode;
-    final totalInTx =
-        sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
-    final paidInTx =
-        sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf;
-    final change = paidInTx - totalInTx;
+    // Pied de pièce depuis la base CDF : jamais de montant réétiqueté.
+    final fig = money.figures(
+      sale,
+      showTax: settings.showTaxes && settings.isTaxSubject,
+    );
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(sale.date);
 
     final ctx = BusinessContextService();
@@ -596,17 +568,30 @@ class ReceiptPrinterService {
     line('-' * _colWidth);
     for (final item in sale.items) {
       line(_rowText(item.productName, _fmt(money.lineTotal(item), currency)));
-      line('  ${item.quantity} x ${_fmt(money.lineUnit(item), currency)}');
+      line('  ${item.quantity} x ${_fmtUnit(money, item, currency)}');
     }
     line('-' * _colWidth);
     bold(true);
-    line(_rowText('TOTAL', _fmt(totalInTx, currency)));
+    if (fig.discount > 0) {
+      bold(false);
+      line(_rowText('Sous-total', _fmt(fig.lines, currency)));
+      line(_rowText('Remise', '-${_fmt(fig.discount, currency)}'));
+      bold(true);
+    }
+    if (fig.tax > 0) {
+      bold(false);
+      line(_rowText('Total HT', _fmt(fig.totalHt, currency)));
+      line(_rowText('TVA', _fmt(fig.tax, currency)));
+      bold(true);
+    }
+    line(_rowText('TOTAL', _fmt(fig.total, currency)));
     bold(false);
     line('=' * _colWidth);
     bold(true);
-    line(_rowText('Especes:', _fmt(paidInTx, currency)));
+    line(_rowText('${receiptPaymentLabel(sale.paymentMethod)}:', _fmt(fig.received, currency)));
     bold(false);
-    if (change > 0.005) line(_rowText('Monnaie:', _fmt(change, currency)));
+    if (fig.change > 0) line(_rowText('Monnaie:', _fmt(fig.change, currency)));
+    if (fig.due > 0) line(_rowText('Reste a payer:', _fmt(fig.due, currency)));
     line('=' * _colWidth);
 
     align('center');
@@ -697,11 +682,11 @@ class ReceiptPrinterService {
     // sous le symbole d'une autre devise que la sienne.
     final money = InvoiceMoney.forSale(sale);
     final currency = money.currencyCode;
-    final totalInTx =
-        sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
-    final paidInTx =
-        sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf;
-    final change = paidInTx - totalInTx;
+    // Pied de pièce depuis la base CDF : jamais de montant réétiqueté.
+    final fig = money.figures(
+      sale,
+      showTax: settings.showTaxes && settings.isTaxSubject,
+    );
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(sale.date);
 
     final ctx = BusinessContextService();
@@ -790,15 +775,24 @@ class ReceiptPrinterService {
                 children: [
                   rowLR(item.productName,
                       _fmt(money.lineTotal(item), currency)),
-                  pw.Text('  ${item.quantity} x ${_fmt(money.lineUnit(item), currency)}',
+                  pw.Text('  ${item.quantity} x ${_fmtUnit(money, item, currency)}',
                       style: pw.TextStyle(font: mono, fontSize: 8)),
                 ],
               ),
             ),
             pw.Divider(thickness: 0.5),
-            rowLR('TOTAL', _fmt(totalInTx, currency), strong: true),
-            rowLR('Especes', _fmt(paidInTx, currency)),
-            if (change > 0.005) rowLR('Monnaie', _fmt(change, currency)),
+            if (fig.discount > 0) ...[
+              rowLR('Sous-total', _fmt(fig.lines, currency)),
+              rowLR('Remise', '-${_fmt(fig.discount, currency)}'),
+            ],
+            if (fig.tax > 0) ...[
+              rowLR('Total HT', _fmt(fig.totalHt, currency)),
+              rowLR('TVA', _fmt(fig.tax, currency)),
+            ],
+            rowLR('TOTAL', _fmt(fig.total, currency), strong: true),
+            rowLR(receiptPaymentLabel(sale.paymentMethod), _fmt(fig.received, currency)),
+            if (fig.change > 0) rowLR('Monnaie', _fmt(fig.change, currency)),
+            if (fig.due > 0) rowLR('Reste a payer', _fmt(fig.due, currency)),
             pw.SizedBox(height: 6),
             pw.Center(
                 child: pw.Text('Merci pour votre achat !',
@@ -930,6 +924,13 @@ class ReceiptPrinterService {
   /// insécable (U+202F = 8239) comme séparateur de milliers. Ce caractère
   /// est > 0xFF → remplacé par '?' dans `_encodeWpc1252`. On le normalise
   /// en espace ordinaire avant encodage.
+  /// Prix unitaire imprimé : arrondi s'il reproduit la ligne, sinon précis.
+  String _fmtUnit(InvoiceMoney money, SaleItem item, String currency) {
+    final u = money.lineUnit(item);
+    if (money.unitIsExact(item)) return _fmt(u, currency);
+    return '${u.toStringAsFixed(4)} $currency';
+  }
+
   String _fmt(double amount, String currency) {
     // Règle unique de formatage déléguée à currency_formatter.dart.
     final formatted = formatCurrency(amount, currency)
