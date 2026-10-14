@@ -11,6 +11,8 @@ import 'package:wanzo/core/widgets/smart_image.dart'; // SmartImage for Cloudina
 import 'package:wanzo/features/customer/bloc/customer_bloc.dart';
 import 'package:wanzo/features/customer/models/customer.dart';
 import 'package:wanzo/features/customer/widgets/customer_picker_field.dart';
+import 'package:wanzo/features/inventory/widgets/restock_dialog.dart';
+import 'package:wanzo/core/services/form_navigation_service.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_bloc.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_event.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_state.dart';
@@ -226,6 +228,13 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     if (widget.initialItems != null) _items.addAll(widget.initialItems!);
     if (widget.initialCustomerId != null) {
       _linkedCustomerId = widget.initialCustomerId;
+      // Le sélecteur affiche ce client comme choisi (fiche client, atelier).
+      _foundCustomer = Customer(
+        id: widget.initialCustomerId!,
+        name: widget.initialCustomerName ?? '',
+        phoneNumber: widget.initialCustomerPhone ?? '',
+        createdAt: DateTime.now(),
+      );
     }
     if (widget.initialCustomerName != null) {
       _customerNameController.text = widget.initialCustomerName!;
@@ -374,11 +383,12 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
               final skuMatch =
                   product.sku?.toLowerCase().contains(normalizedQuery) ?? false;
 
-              // Ne montrer que les produits en stock
-              return (nameMatch || barcodeMatch || categoryMatch || skuMatch) &&
-                  product.stockQuantity > 0;
+              // Les produits en rupture restent visibles (badge « Rupture »
+              // et raccourci « Réapprovisionner »), après ceux en stock.
+              return nameMatch || barcodeMatch || categoryMatch || skuMatch;
             })
-            .toList();
+            .toList()
+          ..sort(_inStockFirst);
 
     final serviceMatches = _servicesCubit.search(normalizedQuery);
 
@@ -402,14 +412,68 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
           final barcodeMatch = product.barcode.toLowerCase().contains(normalizedQuery);
           final categoryMatch = product.category.displayName.toLowerCase().contains(normalizedQuery);
           final skuMatch = product.sku?.toLowerCase().contains(normalizedQuery) ?? false;
-          return (nameMatch || barcodeMatch || categoryMatch || skuMatch) && product.stockQuantity > 0;
+          return nameMatch || barcodeMatch || categoryMatch || skuMatch;
         })
-        .toList();
+        .toList()
+      ..sort(_inStockFirst);
 
     setState(() {
       _searchDisplayCount = (_searchDisplayCount + _searchPageSize).clamp(0, results.length);
       _searchResults = results.take(_searchDisplayCount).toList();
     });
+  }
+
+  /// Tri stable : produits en stock d'abord, ruptures ensuite.
+  static int _inStockFirst(Product a, Product b) {
+    final aOut = a.stockQuantity <= 0 ? 1 : 0;
+    final bOut = b.stockQuantity <= 0 ? 1 : 0;
+    return aOut - bOut;
+  }
+
+  /// Réapprovisionne un produit en rupture depuis la recherche de la vente.
+  Future<void> _restockFromSearch(Product product) async {
+    final done = await showRestockDialog(context, product);
+    if (done == true && mounted) {
+      // Le stock est rechargé par le bloc : on relance une recherche propre.
+      setState(() {
+        _productSearchController.clear();
+        _searchResults = [];
+        _serviceResults = [];
+        _showSearchResults = false;
+      });
+    }
+  }
+
+  /// Raccourci vers la création d'un produit (catalogue vide ou introuvable).
+  Widget _buildCreateProductShortcut(String message) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontStyle: FontStyle.italic,
+                color: Colors.grey[600],
+                fontSize: 13,
+              ),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () {
+              final bloc = context.read<InventoryBloc>();
+              FormNavigationService.instance.openProductForm(
+                context,
+                onSuccess: () => bloc.add(const LoadProducts()),
+              );
+            },
+            icon: const Icon(Icons.add_box_outlined, size: 18),
+            label: const Text('Créer un produit'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Retourne le taux de TVA applicable (produit > settings > 0)
@@ -932,7 +996,11 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                               const Icon(Icons.person),
                               const SizedBox(width: WanzoSpacing.sm),
                               Text(
-                                'Informations client (optionnel)',
+                                // Vente à crédit (non soldée) : le client est
+                                // obligatoire, c'est lui qui doit le reste.
+                                _isPaidFully()
+                                    ? 'Informations client (optionnel)'
+                                    : 'Client (obligatoire pour une vente à crédit)',
                                 style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(fontWeight: FontWeight.bold),
                               ),
@@ -949,6 +1017,10 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                             label: 'Nom du client',
                             hint: 'Rechercher ou creer un client',
                             initialCustomer: _foundCustomer,
+                            validator: (_) =>
+                                !_isPaidFully() && _linkedCustomerId == null
+                                    ? 'Vente à crédit : choisissez ou créez le client.'
+                                    : null,
                             onSelected: (customer) {
                               setState(() {
                                 _foundCustomer = customer;
@@ -1426,8 +1498,13 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   Widget _buildQuickAddSection() {
     return BlocBuilder<InventoryBloc, InventoryState>(
       builder: (context, state) {
-        if (state is! ProductsLoaded || state.products.isEmpty) {
+        if (state is! ProductsLoaded) {
           return const SizedBox.shrink();
+        }
+        if (state.products.isEmpty) {
+          return _buildCreateProductShortcut(
+            'Aucun produit au catalogue pour le moment.',
+          );
         }
 
         final allProducts = state.products;
@@ -1560,16 +1637,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             if (_productSearchController.text.isNotEmpty &&
                 _searchResults.isEmpty &&
                 _serviceResults.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  'Aucun produit ou service trouvé pour "${_productSearchController.text}"',
-                  style: TextStyle(
-                    fontStyle: FontStyle.italic,
-                    color: Colors.grey[600],
-                    fontSize: 13,
-                  ),
-                ),
+              _buildCreateProductShortcut(
+                'Aucun produit ou service trouvé pour "${_productSearchController.text}".',
               ),
 
             const SizedBox(height: 8),
@@ -1591,11 +1660,15 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             )
             : formatCurrency(product.sellingPriceInCdf, 'CDF');
 
-    final stockInfo = '${product.stockQuantity.toStringAsFixed(0)} en stock';
+    final isOutOfStock = product.stockQuantity <= 0;
+    final stockInfo = isOutOfStock
+        ? 'Rupture'
+        : '${product.stockQuantity.toStringAsFixed(0)} en stock';
     final isLowStock = product.stockQuantity <= product.alertThreshold;
 
     return InkWell(
-      onTap: () {
+      // Rupture : pas d'ajout au panier, seulement le réapprovisionnement.
+      onTap: isOutOfStock ? null : () {
         _quickAddProduct(product);
         // Fermer les résultats et vider la recherche après ajout
         setState(() {
@@ -1669,15 +1742,16 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                         stockInfo,
                         style: TextStyle(
                           fontSize: 11,
-                          color:
-                              isLowStock
+                          color: isOutOfStock
+                              ? Colors.red[700]
+                              : isLowStock
                                   ? Colors.orange[700]
                                   : Colors.grey[600],
                           fontWeight:
-                              isLowStock ? FontWeight.w500 : FontWeight.normal,
+                              isLowStock ? FontWeight.w600 : FontWeight.normal,
                         ),
                       ),
-                      if (isLowStock) ...[
+                      if (isLowStock && !isOutOfStock) ...[
                         const SizedBox(width: 4),
                         Icon(
                           Icons.warning_amber_rounded,
@@ -1707,6 +1781,20 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
+                if (isOutOfStock)
+                  TextButton.icon(
+                    onPressed: () => _restockFromSearch(product),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    icon: const Icon(Icons.add_shopping_cart, size: 14),
+                    label: const Text(
+                      'Réapprovisionner',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                  )
+                else
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -3177,6 +3265,20 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   }
 
   void _saveSale() {
+    // Le reste dû doit pouvoir être réclamé : pas de crédit sans client.
+    if (_items.isNotEmpty && !_isPaidFully() && _linkedCustomerId == null) {
+      _formKey.currentState!.validate();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Vente non soldée : choisissez le client ou créez-le '
+            '(bouton « Nouveau » du champ client).',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
     if (_formKey.currentState!.validate() && _items.isNotEmpty) {
       if (_selectedTransactionCurrency == null) {
         ScaffoldMessenger.of(context).showSnackBar(

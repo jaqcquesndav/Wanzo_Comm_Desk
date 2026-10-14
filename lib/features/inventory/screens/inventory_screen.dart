@@ -1,11 +1,11 @@
 import 'dart:async';
 import '../widgets/product_import.dart';
+import '../widgets/restock_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 // import 'package:intl/intl.dart'; // Replaced with currency_formatter
 import 'package:intl/intl.dart'; // Needed for date formatting in export
-import 'package:uuid/uuid.dart'; // Added for Uuid
 import 'package:get_it/get_it.dart';
 import 'package:wanzo/core/widgets/smart_image.dart'; // Added for smart image loading
 import '../../../constants/spacing.dart';
@@ -577,16 +577,17 @@ class _InventoryScreenState extends State<InventoryScreen>
                       }
                     });
               },
+              // Même formulaire que la création (dialogue sur desktop).
               onEdit: () {
-                context
-                    .push('/inventory/edit/${product.id}', extra: product)
-                    .then((_) {
-                      if (mounted) {
-                        context.read<InventoryBloc>().add(const LoadProducts());
-                      }
-                    });
+                final bloc = context.read<InventoryBloc>();
+                FormNavigationService.instance.openProductForm(
+                  context,
+                  product: product,
+                  onSuccess: () => bloc.add(const LoadProducts()),
+                );
               },
-              onAddStock: () => _showAddStockDialog(context, product, l10n),
+              // Ajout de stock = achat : stock et dépense (boîte partagée).
+              onAddStock: () => showRestockDialog(context, product),
             );
           },
         );
@@ -730,103 +731,6 @@ class _InventoryScreenState extends State<InventoryScreen>
     );
   }
 
-  /// Afficher la boîte de dialogue pour ajouter du stock
-  void _showAddStockDialog(
-    BuildContext context,
-    Product product,
-    AppLocalizations l10n,
-  ) {
-    final quantityController = TextEditingController();
-    final notesController = TextEditingController(); // For optional notes
-    final formKey = GlobalKey<FormState>();
-    // Default to purchase, could add a dropdown to select type if needed
-    StockTransactionType transactionType = StockTransactionType.purchase;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text(l10n.addStockDialogTitle(product.name)),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  "${l10n.currentStockLabel}: ${product.stockQuantity} ${_getUnitName(product.unit, l10n)}",
-                ),
-                TextFormField(
-                  controller: quantityController,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: l10n.quantityToAddLabel,
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return l10n.quantityValidationError;
-                    }
-                    if (double.tryParse(value) == null) {
-                      return l10n.invalidNumberValidationError;
-                    }
-                    // For purchase, quantity should be positive. For other types, it might vary.
-                    if (transactionType == StockTransactionType.purchase &&
-                        double.parse(value) <= 0) {
-                      return l10n.positiveQuantityValidationError;
-                    }
-                    return null;
-                  },
-                ), // Added closing parenthesis for the first TextFormField
-                TextFormField(
-                  controller: notesController,
-                  decoration: InputDecoration(
-                    labelText: l10n.notesLabelOptional,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(l10n.cancelButtonLabel),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (formKey.currentState!.validate()) {
-                  final quantity = double.parse(quantityController.text);
-                  final notes = notesController.text;
-
-                  // Cost for this transaction is the product's current cost price in CDF
-                  final unitCostInCdf = product.costPriceInCdf;
-                  final totalValueInCdf = unitCostInCdf * quantity;
-
-                  final transaction = StockTransaction(
-                    id: const Uuid().v4(), // Generate a unique ID
-                    productId: product.id,
-                    type: transactionType,
-                    quantity: quantity,
-                    date: DateTime.now(),
-                    notes:
-                        notes.isNotEmpty
-                            ? notes
-                            : l10n.stockAdjustmentDefaultNote,
-                    unitCostInCdf: unitCostInCdf,
-                    totalValueInCdf: totalValueInCdf,
-                  );
-                  context.read<InventoryBloc>().add(
-                    AddStockTransaction(transaction),
-                  );
-                  Navigator.pop(dialogContext);
-                }
-              },
-              child: Text(l10n.addButtonLabel),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   String _getCategoryName(ProductCategory category, AppLocalizations l10n) {
     switch (category) {
       case ProductCategory.food:
@@ -859,29 +763,6 @@ class _InventoryScreenState extends State<InventoryScreen>
         return 'Fruits';
       case ProductCategory.other:
         return l10n.productCategoryOther;
-    }
-  }
-
-  String _getUnitName(ProductUnit unit, AppLocalizations l10n) {
-    switch (unit) {
-      case ProductUnit.piece:
-        return l10n.productUnitPiece;
-      case ProductUnit.kg:
-        return l10n.productUnitKg;
-      case ProductUnit.g:
-        return l10n.productUnitG;
-      case ProductUnit.l:
-        return l10n.productUnitL;
-      case ProductUnit.ml:
-        return l10n.productUnitMl;
-      case ProductUnit.package:
-        return l10n.productUnitPackage;
-      case ProductUnit.box:
-        return l10n.productUnitBox;
-      case ProductUnit.other:
-        return l10n.productUnitOther;
-      // default case removed as all enum members should be covered
-      // If ProductUnit enum expands, this switch must be updated.
     }
   }
 

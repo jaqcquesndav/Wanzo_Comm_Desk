@@ -9,6 +9,7 @@ import '../../../constants/constants.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/enums/currency_enum.dart';
 import '../../../core/models/currency_settings_model.dart';
+import '../../../core/models/operation_payment.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/platform/image_picker/image_picker_service_factory.dart';
 import '../../../core/platform/image_picker/image_picker_service_interface.dart';
@@ -28,7 +29,19 @@ class AddExpenseScreen extends StatefulWidget {
   /// Si null, la navigation standard (context.pop) est utilisée.
   final VoidCallback? onSaved;
 
-  const AddExpenseScreen({super.key, this.onSaved});
+  /// Dépense à modifier (mode édition). Le montant déjà payé n'y est pas
+  /// modifiable : les règlements passent par « Régler ».
+  final Expense? expense;
+
+  /// Fournisseur pré-sélectionné (ex. « Passer commande » depuis sa fiche).
+  final Supplier? initialSupplier;
+
+  const AddExpenseScreen({
+    super.key,
+    this.onSaved,
+    this.expense,
+    this.initialSupplier,
+  });
 
   @override
   State<AddExpenseScreen> createState() => _AddExpenseScreenState();
@@ -81,18 +94,61 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   Map<Currency, double> _exchangeRates = {};
   List<Currency> _availableCurrencies = Currency.values;
 
-  final List<String> _paymentMethods = [
-    'Espèce',
-    'Mobile Money',
-    'Carte Bancaire',
-    'Chèque',
-    'Virement',
-    'Crédit',
-  ];
+  bool get _isEdit => widget.expense != null;
+
+  /// Ramène un ancien libellé de mode de paiement vers la liste partagée
+  /// (kPaymentMethodOptions). « Crédit » ou « N/A » ne sont pas des modes.
+  static String? _normalizeMethod(String? method) {
+    if (method == null) return null;
+    if (kPaymentMethodOptions.contains(method)) return method;
+    switch (method.trim().toLowerCase()) {
+      case 'espèce':
+      case 'espece':
+      case 'cash':
+        return 'Espèces';
+      case 'carte bancaire':
+        return 'Carte bancaire';
+      case 'virement':
+        return 'Virement bancaire';
+      case 'mobile money':
+        return 'Mobile Money';
+      case 'chèque':
+      case 'cheque':
+        return 'Chèque';
+    }
+    return null;
+  }
 
   @override
   void initState() {
     super.initState();
+    final e = widget.expense;
+    if (e != null) {
+      _descriptionController.text = e.motif;
+      _amountController.text = e.amount.toStringAsFixed(2);
+      _paidAmountController.text = (e.paidAmount ?? 0).toStringAsFixed(2);
+      _notesController.text = e.notes ?? '';
+      _beneficiaryController.text = e.beneficiary ?? '';
+      _supplierNameController.text = e.supplierName ?? '';
+      _selectedDate = e.date;
+      _selectedCategory = e.category;
+      _selectedSubCategory = e.subCategory;
+      _selectedPaymentMethod = _normalizeMethod(e.paymentMethod);
+      _linkedSupplierId = e.supplierId;
+      if (e.supplierId != null && e.supplierId!.isNotEmpty) {
+        _foundSupplier = Supplier(
+          id: e.supplierId!,
+          name: e.supplierName ?? '',
+          phoneNumber: '',
+          createdAt: DateTime.now(),
+        );
+      }
+    } else if (widget.initialSupplier != null) {
+      _foundSupplier = widget.initialSupplier;
+      _linkedSupplierId = widget.initialSupplier!.id;
+      _supplierNameController.text = widget.initialSupplier!.name;
+      _supplierPhoneController.text = widget.initialSupplier!.phoneNumber;
+    }
     _imagePickerService = ImagePickerServiceFactory.getInstance();
     final currencySettingsCubit = context.read<CurrencySettingsCubit>();
     final currentCurrencyState = currencySettingsCubit.state;
@@ -131,6 +187,17 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 ? _availableCurrencies.first
                 : settings.activeCurrency;
       }
+      // Édition : la devise d'origine de la dépense reste celle affichée.
+      final editCode = widget.expense?.currencyCode;
+      if (editCode != null) {
+        for (final c in Currency.values) {
+          if (c.code == editCode) {
+            _selectedTransactionCurrency = c;
+            if (!_availableCurrencies.contains(c)) _availableCurrencies.add(c);
+            break;
+          }
+        }
+      }
       _transactionExchangeRate =
           _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
     });
@@ -154,8 +221,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       return Colors.green;
     } else if (_calculatePaidAmount() > 0) {
       return Colors.orange;
-    } else if (_selectedPaymentMethod == 'Crédit') {
-      return Colors.blue;
     } else {
       return Colors.red;
     }
@@ -168,8 +233,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       return 'Payé intégralement';
     } else if (paid > 0 && paid < total) {
       return 'Partiellement payé (${formatCurrency(_calculateRemainingAmount(), _selectedTransactionCurrency?.code ?? "CDF")} restant)';
-    } else if (_selectedPaymentMethod == 'Crédit') {
-      return 'À crédit - Non payé';
     } else {
       return 'Non payé';
     }
@@ -182,8 +245,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       return ExpensePaymentStatus.paid;
     } else if (paid > 0 && paid < total) {
       return ExpensePaymentStatus.partial;
-    } else if (_selectedPaymentMethod == 'Crédit') {
-      return ExpensePaymentStatus.credit;
     } else {
       return ExpensePaymentStatus.unpaid;
     }
@@ -275,6 +336,37 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       }
 
       final paidAmount = double.tryParse(_paidAmountController.text) ?? 0.0;
+      // Un mode de paiement n'a de sens que pour la part réellement payée.
+      final method = paidAmount > 0 ? _selectedPaymentMethod : null;
+
+      final original = widget.expense;
+      if (original != null) {
+        // Édition : la part payée ne bouge pas ici (règlements via « Régler »).
+        final currencyCode = _selectedTransactionCurrency?.code ?? 'CDF';
+        final sameCurrency = currencyCode == original.effectiveCurrencyCode;
+        final updated = original.copyWith(
+          date: _selectedDate,
+          motif: _descriptionController.text,
+          amount: amount,
+          category: _selectedCategory,
+          subCategory: _selectedSubCategory,
+          paymentMethod: method,
+          currencyCode: currencyCode,
+          notes: _notesController.text,
+          beneficiary: _beneficiaryController.text,
+          supplierId: _linkedSupplierId,
+          supplierName: _supplierNameController.text,
+          exchangeRate:
+              _selectedTransactionCurrency != _defaultCurrency
+                  ? (sameCurrency && original.exchangeRate != null
+                      ? original.exchangeRate
+                      : _transactionExchangeRate)
+                  : null,
+          paymentStatus: _determinePaymentStatus(),
+        );
+        context.read<ExpenseBloc>().add(UpdateExpense(updated));
+        return;
+      }
 
       final newExpense = Expense(
         id: const Uuid().v4(),
@@ -283,7 +375,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         amount: amount,
         category: _selectedCategory,
         subCategory: _selectedSubCategory,
-        paymentMethod: _selectedPaymentMethod ?? 'N/A',
+        paymentMethod: method,
         attachmentUrls: [],
         currencyCode: _selectedTransactionCurrency?.code ?? 'CDF',
         notes: _notesController.text.isNotEmpty ? _notesController.text : null,
@@ -664,8 +756,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         // Paid Amount
                         TextFormField(
                           controller: _paidAmountController,
+                          // Édition : les règlements passent par « Régler ».
+                          readOnly: _isEdit,
                           decoration: InputDecoration(
                             labelText: 'Montant payé',
+                            helperText: _isEdit
+                                ? 'Pour un nouveau paiement, utilisez « Régler » sur la fiche.'
+                                : null,
                             prefixText:
                                 '${_selectedTransactionCurrency?.symbol ?? "CDF"} ',
                             filled: true,
@@ -801,79 +898,86 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   ),
                 ),
 
-                const SizedBox(height: WanzoSpacing.md),
-
-                // Méthode de paiement
-                Card(
-                  elevation: 1,
-                  margin: EdgeInsets.zero,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(WanzoRadius.sm),
-                    side: BorderSide(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.outline.withAlpha(100),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: WanzoSpacing.sm,
-                    ),
-                    child: DropdownButtonFormField<String>(
-                      value: _selectedPaymentMethod,
-                      decoration: InputDecoration(
-                        labelText: 'Méthode de Paiement',
-                        border: InputBorder.none,
-                        prefixIcon: Icon(
-                          Icons.payment,
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.primary.withAlpha(120),
-                        ),
+                // Mode de paiement : seulement pour la part réellement payée
+                // (jamais « Crédit » ni « N/A », ce ne sont pas des modes).
+                if (_calculatePaidAmount() > 0) ...[
+                  const SizedBox(height: WanzoSpacing.md),
+                  Card(
+                    elevation: 1,
+                    margin: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(WanzoRadius.sm),
+                      side: BorderSide(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.outline.withAlpha(100),
                       ),
-                      hint: const Text('Sélectionner une méthode'),
-                      items:
-                          _paymentMethods.map((String method) {
-                            IconData icon;
-                            switch (method) {
-                              case 'Espèce':
-                                icon = Icons.money;
-                                break;
-                              case 'Mobile Money':
-                                icon = Icons.phone_android;
-                                break;
-                              case 'Carte Bancaire':
-                                icon = Icons.credit_card;
-                                break;
-                              case 'Chèque':
-                                icon = Icons.account_balance_wallet;
-                                break;
-                              case 'Virement':
-                                icon = Icons.account_balance;
-                                break;
-                              default:
-                                icon = Icons.payment;
-                            }
-
-                            return DropdownMenuItem<String>(
-                              value: method,
-                              child: Row(
-                                children: [
-                                  Icon(icon, size: 18),
-                                  const SizedBox(width: WanzoSpacing.sm),
-                                  Text(method),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                      onChanged: (String? newValue) {
-                        setState(() {
-                          _selectedPaymentMethod = newValue;
-                        });
-                      },
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: WanzoSpacing.sm,
+                      ),
+                      child: DropdownButtonFormField<String>(
+                        value: kPaymentMethodOptions.contains(
+                                _selectedPaymentMethod)
+                            ? _selectedPaymentMethod
+                            : null,
+                        decoration: InputDecoration(
+                          labelText: 'Mode de paiement',
+                          border: InputBorder.none,
+                          prefixIcon: Icon(
+                            Icons.payment,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.primary.withAlpha(120),
+                          ),
+                        ),
+                        hint: const Text('Sélectionner un mode'),
+                        validator: (v) =>
+                            _calculatePaidAmount() > 0 && v == null
+                                ? 'Indiquez le mode de paiement.'
+                                : null,
+                        items: kPaymentMethodOptions.map((String method) {
+                          IconData icon;
+                          switch (method) {
+                            case 'Espèces':
+                              icon = Icons.money;
+                              break;
+                            case 'Mobile Money':
+                              icon = Icons.phone_android;
+                              break;
+                            case 'Carte bancaire':
+                              icon = Icons.credit_card;
+                              break;
+                            case 'Chèque':
+                              icon = Icons.account_balance_wallet;
+                              break;
+                            case 'Virement bancaire':
+                              icon = Icons.account_balance;
+                              break;
+                            default:
+                              icon = Icons.payment;
+                          }
+                          return DropdownMenuItem<String>(
+                            value: method,
+                            child: Row(
+                              children: [
+                                Icon(icon, size: 18),
+                                const SizedBox(width: WanzoSpacing.sm),
+                                Text(method),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (String? newValue) {
+                          setState(() {
+                            _selectedPaymentMethod = newValue;
+                          });
+                        },
+                      ),
                     ),
                   ),
-                ),
+                ],
 
                 const SizedBox(height: WanzoSpacing.md),
 
@@ -896,7 +1000,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                             ),
                             const SizedBox(width: WanzoSpacing.sm),
                             Text(
-                              'Informations fournisseur (optionnel)',
+                              _calculatePaidAmount() < _calculateTotalInTransactionCurrency()
+                                  ? 'Fournisseur'
+                                  : 'Fournisseur (optionnel)',
                               style: Theme.of(context).textTheme.titleMedium
                                   ?.copyWith(fontWeight: FontWeight.bold),
                             ),
@@ -912,6 +1018,14 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           label: 'Nom du fournisseur',
                           hint: 'Rechercher ou creer un fournisseur',
                           initialSupplier: _foundSupplier,
+                          // Une dépense à payer (en tout ou en partie) est une
+                          // dette : il faut savoir envers quel fournisseur.
+                          validator: (_) =>
+                              _calculatePaidAmount() <
+                                          _calculateTotalInTransactionCurrency() &&
+                                      _linkedSupplierId == null
+                                  ? 'Choisissez ou créez le fournisseur : la dépense n\x27est pas entièrement payée.'
+                                  : null,
                           onSelected: (supplier) {
                             setState(() {
                               _foundSupplier = supplier;
@@ -1245,7 +1359,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                   Icon(Icons.save, color: Colors.white),
                                   SizedBox(width: WanzoSpacing.sm),
                                   Text(
-                                    'Enregistrer la Dépense',
+                                    'Enregistrer la dépense',
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontSize: 16,
@@ -1266,7 +1380,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     // Mode modal : en-tête léger (pas de seconde AppBar dans le Dialog)
     if (widget.onSaved != null) {
       return ModalFormShell(
-        title: 'Nouvelle dépense',
+        title: _isEdit ? 'Modifier la dépense' : 'Nouvelle dépense',
         icon: Icons.receipt_long,
         child: bodyContent,
       );
@@ -1274,7 +1388,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
     // Mode page : WanzoScaffold avec navigation
     return WanzoScaffold(
-      title: 'Nouvelle Dépense',
+      title: _isEdit ? 'Modifier la dépense' : 'Nouvelle dépense',
       currentIndex: 0,
       body: bodyContent,
     );

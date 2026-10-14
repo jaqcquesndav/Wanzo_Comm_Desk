@@ -31,6 +31,7 @@ import '../../features/notifications/screens/notification_settings_screen.dart';
 import '../../features/contacts/screens/contacts_screen.dart';
 import '../../features/receivables/screens/receivables_screen.dart';
 import '../../features/expenses/screens/add_expense_screen.dart';
+import '../../features/expenses/models/expense.dart';
 import '../../features/expenses/screens/expenses_list_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
 import '../../features/operations/screens/operations_screen.dart';
@@ -325,8 +326,20 @@ class AppRouter {
           GoRoute(
             path: 'add',
             name: 'add_sale',
-            pageBuilder: (context, state) =>
-                _noAnim(state, const AddSaleScreen()),
+            pageBuilder: (context, state) {
+              // Fiche client : « Nouvelle vente » arrive avec le client.
+              final customer = state.extra is Customer
+                  ? state.extra as Customer
+                  : null;
+              return _noAnim(
+                state,
+                AddSaleScreen(
+                  initialCustomerId: customer?.id,
+                  initialCustomerName: customer?.name,
+                  initialCustomerPhone: customer?.phoneNumber,
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -339,8 +352,17 @@ class AppRouter {
           GoRoute(
             path: 'add',
             name: 'add_expense',
-            pageBuilder: (context, state) =>
-                _noAnim(state, const AddExpenseScreen()),
+            pageBuilder: (context, state) {
+              // extra : dépense à modifier, ou fournisseur pré-sélectionné.
+              final extra = state.extra;
+              return _noAnim(
+                state,
+                AddExpenseScreen(
+                  expense: extra is Expense ? extra : null,
+                  initialSupplier: extra is Supplier ? extra : null,
+                ),
+              );
+            },
           ),
         ],
       ),

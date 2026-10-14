@@ -82,45 +82,23 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     );
   }
 
-  /// Solde la dette d'un coup : une tranche égale au reste à payer.
+  /// Solde la dette : le dialogue de paiement, prérempli avec le reste à
+  /// payer, demande TOUJOURS le mode de règlement (jamais « N/A »).
   Future<void> _settleInFull(Expense expense) async {
     final remaining = expense.remainingAmount;
     if (remaining <= 0) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder:
-          (dialogContext) => AlertDialog(
-            title: const Text('Solder la dette'),
-            content: Text(
-              'Enregistrer un règlement de '
-              '${formatCurrency(remaining, expense.effectiveCurrencyCode)} '
-              'et solder cette dépense ?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Annuler'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('Confirmer'),
-              ),
-            ],
-          ),
+    final draft = await showRecordPaymentDialog(
+      context,
+      title: 'Solder la dette',
+      remainingAmount: remaining,
+      currencyCode: expense.effectiveCurrencyCode,
+      exchangeRate: expense.exchangeRate,
+      defaultMethod: expense.paymentMethod,
     );
-    if (confirmed != true || !mounted) return;
+    if (draft == null || !mounted) return;
     setState(() => _submitting = true);
     context.read<ExpenseBloc>().add(
-      RecordExpensePayment(
-        expense: expense,
-        payment: PaymentDraft(
-          amount: remaining,
-          currencyCode: expense.effectiveCurrencyCode,
-          exchangeRate: expense.exchangeRate,
-          method: expense.paymentMethod ?? 'Espèces',
-          paidAt: DateTime.now(),
-        ),
-      ),
+      RecordExpensePayment(expense: expense, payment: draft),
     );
   }
 
@@ -188,7 +166,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
               if (context.canPop()) {
                 context.pop();
               } else {
-                context.go('/operations');
+                context.go('/expenses');
               }
             },
           ),

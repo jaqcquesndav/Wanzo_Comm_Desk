@@ -11,6 +11,7 @@ import '../../../features/inventory/screens/add_product_screen.dart';
 import '../../../features/sales/screens/add_sale_screen.dart';
 import '../../../features/customer/models/customer.dart';
 import '../../../features/supplier/models/supplier.dart';
+import '../../../features/expenses/models/expense.dart';
 import '../../../features/inventory/models/product.dart';
 import '../../../features/services/models/service_item.dart';
 import '../../../features/services/screens/service_form_screen.dart';
@@ -86,7 +87,9 @@ class FormNavigationService {
         onSuccess: onSuccess,
       );
     } else {
-      final route = customer != null ? '/customers/edit' : '/customers/add';
+      // La route d'édition attend l'identifiant (edit/:customerId).
+      final route =
+          customer != null ? '/customers/edit/${customer.id}' : '/customers/add';
       if (customer != null) {
         final result = await context.push<bool>(route, extra: customer);
         if (result == true) onSuccess?.call();
@@ -114,7 +117,9 @@ class FormNavigationService {
         onSuccess: onSuccess,
       );
     } else {
-      final route = supplier != null ? '/suppliers/edit' : '/suppliers/add';
+      // La route d'édition attend l'identifiant (edit/:supplierId).
+      final route =
+          supplier != null ? '/suppliers/edit/${supplier.id}' : '/suppliers/add';
       if (supplier != null) {
         final result = await context.push<bool>(route, extra: supplier);
         if (result == true) onSuccess?.call();
@@ -151,23 +156,59 @@ class FormNavigationService {
     }
   }
 
-  // ===== EXPENSE =====
-
-  /// Ouvre le formulaire d'ajout de dépense
-  /// Formulaire COMPLET avec pièces jointes, multi-devises, liaison fournisseur
-  Future<bool?> openExpenseForm(
+  /// Ouvre le formulaire de vente avec le client déjà choisi (fiche client).
+  Future<bool?> openSaleFormPrefilled(
     BuildContext context, {
+    required Customer customer,
     VoidCallback? onSuccess,
   }) async {
     if (shouldUseModal(context)) {
       final result = await _showFormDialog(
         context,
-        builder: (onSaved) => AddExpenseScreen(onSaved: onSaved),
+        maxWidth: 900,
+        builder: (onSaved) => AddSaleScreen(
+          onSaved: onSaved,
+          initialCustomerId: customer.id,
+          initialCustomerName: customer.name,
+          initialCustomerPhone: customer.phoneNumber,
+        ),
+      );
+      if (result == true) onSuccess?.call();
+      return result;
+    }
+    final result = await context.push<bool>('/sales/add', extra: customer);
+    if (result == true) onSuccess?.call();
+    return result;
+  }
+
+  // ===== EXPENSE =====
+
+  /// Ouvre le formulaire d'ajout de dépense
+  /// Formulaire COMPLET avec pièces jointes, multi-devises, liaison fournisseur
+  /// [supplier] : fournisseur pré-sélectionné (« Passer commande »).
+  /// [expense] : dépense à modifier (mode édition).
+  Future<bool?> openExpenseForm(
+    BuildContext context, {
+    Supplier? supplier,
+    Expense? expense,
+    VoidCallback? onSuccess,
+  }) async {
+    if (shouldUseModal(context)) {
+      final result = await _showFormDialog(
+        context,
+        builder: (onSaved) => AddExpenseScreen(
+          onSaved: onSaved,
+          initialSupplier: supplier,
+          expense: expense,
+        ),
       );
       if (result == true) onSuccess?.call();
       return result;
     } else {
-      final result = await context.push<bool>('/expenses/add');
+      final result = await context.push<bool>(
+        '/expenses/add',
+        extra: expense ?? supplier,
+      );
       if (result == true) onSuccess?.call();
       return result;
     }
@@ -211,7 +252,9 @@ class FormNavigationService {
       if (result == true) onSuccess?.call();
       return result;
     } else {
-      final route = product != null ? '/inventory/edit' : '/inventory/add';
+      // La route d'édition attend l'identifiant (edit/:productId).
+      final route =
+          product != null ? '/inventory/edit/${product.id}' : '/inventory/add';
       if (product != null) {
         final result = await context.push<bool>(route, extra: product);
         if (result == true) onSuccess?.call();

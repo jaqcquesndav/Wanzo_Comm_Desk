@@ -1,5 +1,7 @@
 import 'dart:io';
 import '../widgets/stock_by_location_card.dart';
+import '../widgets/restock_dialog.dart';
+import '../../../core/services/form_navigation_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -1173,6 +1175,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
     Product product,
     bool isAddition,
   ) {
+    // Un ajout de stock est un achat : stock ET dépense, via la boîte
+    // partagée de réapprovisionnement.
+    if (isAddition) {
+      showRestockDialog(context, product);
+      return;
+    }
     final TextEditingController quantityController = TextEditingController();
 
     showDialog(
@@ -1186,7 +1194,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
               Text(
                 isAddition
                     ? 'Combien d\'unités souhaitez-vous ajouter au stock ?'
-                    : 'Combien d\'unités souhaitez-vous retirer du stock ?',
+                    : 'Combien d\'unités retirer (perte, casse, correction) ? '
+                        'Une vente se fait depuis le point de vente.',
               ),
               const SizedBox(height: WanzoSpacing.md),
               TextField(
@@ -1225,25 +1234,18 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
 
                   Navigator.pop(context);
 
-                  // Créer la transaction
+                  // Retrait manuel = ajustement (jamais une « vente » : elle
+                  // fausserait le chiffre d'affaires et le journal).
                   final transaction = StockTransaction(
                     id: '', // Sera généré par le repository
                     productId: product.id,
-                    type:
-                        isAddition
-                            ? StockTransactionType.purchase
-                            : StockTransactionType.sale,
+                    type: StockTransactionType.adjustment,
                     quantity: adjustedQuantity,
                     date: DateTime.now(),
-                    notes:
-                        isAddition
-                            ? 'Ajout manuel de stock'
-                            : 'Retrait manuel de stock',
-                    unitCostInCdf:
-                        product.costPriceInCdf, // Added required parameter
+                    notes: 'Retrait manuel de stock',
+                    unitCostInCdf: product.costPriceInCdf,
                     totalValueInCdf:
-                        product.costPriceInCdf *
-                        adjustedQuantity, // Added required parameter
+                        product.costPriceInCdf * adjustedQuantity.abs(),
                   );
 
                   context.read<InventoryBloc>().add(
@@ -1264,7 +1266,16 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
     final TextEditingController quantityController = TextEditingController();
     final TextEditingController notesController = TextEditingController();
 
-    StockTransactionType transactionType = StockTransactionType.purchase;
+    // Achat = « Réapprovisionner » (stock et dépense) ; vente = point de
+    // vente. Ici, seuls les autres mouvements manuels.
+    final allowedTypes = StockTransactionType.values
+        .where(
+          (t) =>
+              t != StockTransactionType.sale &&
+              t != StockTransactionType.purchase,
+        )
+        .toList();
+    StockTransactionType transactionType = StockTransactionType.adjustment;
 
     showDialog(
       context: context,
@@ -1290,7 +1301,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                         border: OutlineInputBorder(),
                       ),
                       items:
-                          StockTransactionType.values.map((type) {
+                          allowedTypes.map((type) {
                             return DropdownMenuItem<StockTransactionType>(
                               value: type,
                               child: Text(_getTransactionTypeName(type)),
@@ -1412,7 +1423,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
 
   /// Naviguer vers l'écran de modification du produit
   void _navigateToEditProduct(BuildContext context, Product product) {
-    context.push('/inventory/edit/${product.id}', extra: product);
+    // Même formulaire que la création (boîte de dialogue sur desktop).
+    FormNavigationService.instance.openProductForm(
+      context,
+      product: product,
+      onSuccess: () => context.read<InventoryBloc>().add(LoadProduct(product.id)),
+    );
   }
 
   /// Obtenir le nom de la catégorie
