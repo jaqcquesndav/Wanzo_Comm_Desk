@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../services/api_client.dart';
-import '../services/offline_write_queue.dart';
 
 /// Service pour gérer la connectivité réseau
 class ConnectivityService {
@@ -60,15 +59,10 @@ class ConnectivityService {
       if (_isConnected) {
         ApiClient().replayPendingWrites().then((report) {
           if (!report.isEmpty) {
-            debugPrint('[Connectivité] Écritures hors ligne rejouées : \$report');
+            debugPrint('[Connectivité] Écritures hors ligne rejouées : $report');
           }
         }).catchError((Object e) {
-          debugPrint('[Connectivité] Rejeu des écritures impossible : \$e');
-          return const OfflineReplayReport(
-            replayed: 0,
-            abandoned: 0,
-            remaining: 0,
-          );
+          debugPrint('[Connectivité] Rejeu des écritures impossible : $e');
         });
       }
       

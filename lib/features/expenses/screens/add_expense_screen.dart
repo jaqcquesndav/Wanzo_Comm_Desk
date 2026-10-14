@@ -9,6 +9,7 @@ import '../../../constants/constants.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/enums/currency_enum.dart';
 import '../../../core/models/currency_settings_model.dart';
+import '../../../core/services/currency_service.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/platform/image_picker/image_picker_service_factory.dart';
 import '../../../core/platform/image_picker/image_picker_service_interface.dart';
@@ -75,10 +76,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   late final ImagePickerServiceInterface _imagePickerService;
 
   // Currency settings
-  Currency _defaultCurrency = Currency.CDF;
   Currency? _selectedTransactionCurrency;
   double _transactionExchangeRate = 1.0;
   Map<Currency, double> _exchangeRates = {};
+
+  /// Devise fixée au premier chargement seulement : un rechargement des
+  /// réglages ne doit jamais écraser le choix de l'utilisateur.
+  bool _deviseInitialisee = false;
   List<Currency> _availableCurrencies = Currency.values;
 
   final List<String> _paymentMethods = [
@@ -105,14 +109,15 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   void _initializeCurrencySettings(CurrencySettings settings) {
     setState(() {
-      _defaultCurrency = settings.activeCurrency;
-      _selectedTransactionCurrency = settings.activeCurrency;
+      final premierChargement = !_deviseInitialisee;
+      if (premierChargement) {
+        _selectedTransactionCurrency = settings.activeCurrency;
+      }
       _exchangeRates = {
         Currency.USD: settings.usdToCdfRate,
         Currency.FCFA: settings.fcfaToCdfRate,
         Currency.CDF: 1.0,
       };
-      _transactionExchangeRate = _exchangeRates[settings.activeCurrency] ?? 1.0;
       _availableCurrencies =
           _exchangeRates.keys
               .where((k) => _exchangeRates[k] != null && _exchangeRates[k]! > 0)
@@ -124,15 +129,23 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       if (_availableCurrencies.isEmpty) {
         _availableCurrencies.add(settings.activeCurrency);
       }
-      if (_selectedTransactionCurrency == null ||
-          !_availableCurrencies.contains(_selectedTransactionCurrency)) {
+      if (premierChargement &&
+          (_selectedTransactionCurrency == null ||
+              !_availableCurrencies.contains(_selectedTransactionCurrency))) {
         _selectedTransactionCurrency =
             _availableCurrencies.isNotEmpty
                 ? _availableCurrencies.first
                 : settings.activeCurrency;
       }
+      // Le choix déjà fait reste proposé, même si son taux a disparu.
+      final choisie = _selectedTransactionCurrency;
+      if (choisie != null && !_availableCurrencies.contains(choisie)) {
+        _availableCurrencies.add(choisie);
+      }
+      // 0 = taux manquant : l'enregistrement sera refusé, jamais un 1 muet.
       _transactionExchangeRate =
-          _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
+          _exchangeRates[_selectedTransactionCurrency!] ?? 0;
+      _deviseInitialisee = true;
     });
   }
 
@@ -276,6 +289,17 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
       final paidAmount = double.tryParse(_paidAmountController.text) ?? 0.0;
 
+      // Devise toujours stockée avec son taux vers le CDF (1 pour CDF) ; une
+      // devise étrangère sans taux est refusée.
+      final devise = _selectedTransactionCurrency ?? Currency.CDF;
+      final taux = devise == Currency.CDF ? 1.0 : _transactionExchangeRate;
+      if (!(taux > 0)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(CurrencyService.missingRateMessage(devise.code))),
+        );
+        return;
+      }
+
       final newExpense = Expense(
         id: const Uuid().v4(),
         date: _selectedDate,
@@ -285,7 +309,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         subCategory: _selectedSubCategory,
         paymentMethod: _selectedPaymentMethod ?? 'N/A',
         attachmentUrls: [],
-        currencyCode: _selectedTransactionCurrency?.code ?? 'CDF',
+        currencyCode: devise.code,
         notes: _notesController.text.isNotEmpty ? _notesController.text : null,
         beneficiary:
             _beneficiaryController.text.isNotEmpty
@@ -297,10 +321,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 ? _supplierNameController.text
                 : null,
         paidAmount: paidAmount,
-        exchangeRate:
-            _selectedTransactionCurrency != _defaultCurrency
-                ? _transactionExchangeRate
-                : null,
+        exchangeRate: taux,
         paymentStatus: _determinePaymentStatus(),
       );
 
@@ -576,7 +597,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                 setState(() {
                                   _selectedTransactionCurrency = newValue;
                                   _transactionExchangeRate =
-                                      _exchangeRates[newValue] ?? 1.0;
+                                      _exchangeRates[newValue] ?? 0;
                                 });
                               }
                             },
@@ -584,7 +605,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           const SizedBox(height: WanzoSpacing.sm),
 
                           // Exchange Rate Display
-                          if (_selectedTransactionCurrency != _defaultCurrency)
+                          if ((_selectedTransactionCurrency ?? Currency.CDF) != Currency.CDF)
                             Container(
                               padding: const EdgeInsets.all(WanzoSpacing.sm),
                               decoration: BoxDecoration(
@@ -608,7 +629,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                   ),
                                   const SizedBox(width: WanzoSpacing.xs),
                                   Text(
-                                    'Taux: 1 ${_selectedTransactionCurrency?.code} = ${_transactionExchangeRate.toStringAsFixed(2)} ${_defaultCurrency.code}',
+                                    _transactionExchangeRate > 0
+                                        ? 'Taux: 1 ${_selectedTransactionCurrency?.code} = ${_transactionExchangeRate.toStringAsFixed(2)} CDF'
+                                        : CurrencyService.missingRateMessage(
+                                            _selectedTransactionCurrency?.code ?? '',
+                                          ),
                                     style: Theme.of(
                                       context,
                                     ).textTheme.bodySmall?.copyWith(
@@ -724,7 +749,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         const SizedBox(height: WanzoSpacing.md),
 
                         // Dual Currency Display (if non-CDF)
-                        if (_selectedTransactionCurrency != _defaultCurrency &&
+                        if ((_selectedTransactionCurrency ?? Currency.CDF) != Currency.CDF &&
                             _calculateTotalInTransactionCurrency() > 0)
                           Container(
                             padding: const EdgeInsets.all(WanzoSpacing.sm),
@@ -749,7 +774,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                 ),
                                 const SizedBox(width: WanzoSpacing.xs),
                                 Text(
-                                  'Équivalent: ${formatCurrency(_calculateTotalInTransactionCurrency() * _transactionExchangeRate, _defaultCurrency.code)}',
+                                  'Équivalent: ${formatCurrency(_calculateTotalInTransactionCurrency() * _transactionExchangeRate, 'CDF')}',
                                   style: Theme.of(
                                     context,
                                   ).textTheme.bodySmall?.copyWith(

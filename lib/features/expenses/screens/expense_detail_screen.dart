@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:wanzo/core/services/currency_service.dart';
 import 'package:intl/intl.dart';
 import 'package:wanzo/core/models/operation_payment.dart';
 import 'package:wanzo/features/expenses/bloc/expense_bloc.dart';
@@ -116,7 +117,10 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         payment: PaymentDraft(
           amount: remaining,
           currencyCode: expense.effectiveCurrencyCode,
-          exchangeRate: expense.exchangeRate,
+          // Ancienne dépense sans taux : taux central (sinon refusée).
+          exchangeRate: expense.exchangeRate ??
+              context.read<CurrencyService>().usableRateToCdfForCode(
+                  expense.effectiveCurrencyCode),
           method: expense.paymentMethod ?? 'Espèces',
           paidAt: DateTime.now(),
         ),

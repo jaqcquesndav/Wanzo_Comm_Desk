@@ -292,7 +292,8 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
                   quantity: item.quantity.toDouble(),
                   productId: productId,
                   productName: item.productName,
-                  currencyCode: savedSale.currencyCode,
+                  // Montant = costPriceInCdf x quantité : il est en CDF.
+                  currencyCode: 'CDF',
                   isDebit: true, // COGS = charge (débit)
                   isCredit: false,
                   balanceAfter: 0, // Sera calculé par le repository

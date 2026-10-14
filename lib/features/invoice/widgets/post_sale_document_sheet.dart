@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/widgets/desktop/adaptive_modal.dart';
 import 'package:wanzo/features/invoice/services/invoice_service.dart';
+import 'package:wanzo/features/invoice/utils/invoice_money.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
 import 'package:wanzo/services/receipt_printer_service.dart';
@@ -321,14 +322,12 @@ void showPostSaleDocumentSheet({
 
 /// Formate le montant de la vente pour l'en-tête de la feuille.
 String _formatSaleAmount(Sale sale) {
-  if (sale.transactionCurrencyCode != null &&
-      sale.totalAmountInTransactionCurrency != null) {
-    return formatCurrency(
-      sale.totalAmountInTransactionCurrency!,
-      sale.transactionCurrencyCode!,
-    );
-  }
-  return formatCurrency(sale.totalAmountInCdf, 'CDF');
+  // Devise de la pièce, montant depuis la base CDF (voir InvoiceMoney).
+  final money = InvoiceMoney.forSale(sale);
+  return formatCurrency(
+    money.fromCdf(sale.totalAmountInCdf),
+    money.currencyCode,
+  );
 }
 
 /// Option de document (rendu desktop) : icône colorée, titre, sous-titre.

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 
+import 'package:wanzo/core/services/currency_service.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/features/atelier/models/atelier_order.dart';
 import 'package:wanzo/features/atelier/models/customer_vehicle.dart';
@@ -74,9 +75,11 @@ class _VehicleSheetScreenState extends State<VehicleSheetScreen> {
     setState(() => _busy = true);
     try {
       if (share) {
-        await VehicleSheetPdf.shareSheet(_vehicle, _orders, customerName: widget.customerName, settings: _settings());
+        await VehicleSheetPdf.shareSheet(_vehicle, _orders,
+            customerName: widget.customerName, settings: _settings(), rateToCdf: _tauxCentral);
       } else {
-        await VehicleSheetPdf.printSheet(_vehicle, _orders, customerName: widget.customerName, settings: _settings());
+        await VehicleSheetPdf.printSheet(_vehicle, _orders,
+            customerName: widget.customerName, settings: _settings(), rateToCdf: _tauxCentral);
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export impossible : $e')));
@@ -85,7 +88,18 @@ class _VehicleSheetScreenState extends State<VehicleSheetScreen> {
     }
   }
 
-  double get _totalCdf => _orders.fold(0, (s, o) => s + o.totalAmount * o.exchangeRate);
+  /// Taux central d'une devise, null s'il manque (jamais 1 par défaut).
+  double? _tauxCentral(String code) {
+    try {
+      return context.read<CurrencyService>().usableRateToCdfForCode(code);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Total CDF et nombre de fiches sans taux exploitable (non comptées).
+  (double, int) get _totalCdf =>
+      VehicleSheetPdf.totalCdf(_orders, rateToCdf: _tauxCentral);
 
   DateTime? get _lastVisit => _orders.isEmpty ? null : (_orders.first.entryDate ?? _orders.first.createdAt);
 
@@ -217,7 +231,9 @@ class _VehicleSheetScreenState extends State<VehicleSheetScreen> {
                       style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
                   const Spacer(),
                   if (_orders.isNotEmpty)
-                    Text('Total ${formatCurrency(_totalCdf, 'CDF')}',
+                    Text(
+                        'Total ${formatCurrency(_totalCdf.$1, 'CDF')}'
+                        '${_totalCdf.$2 > 0 ? ' (hors ${_totalCdf.$2} sans taux)' : ''}',
                         style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.primary)),
                 ],
               ),

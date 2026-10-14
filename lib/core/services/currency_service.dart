@@ -115,6 +115,42 @@ class CurrencyService {
       // No default needed as all enum values are covered.
     }
   }
+
+  /// Vrai si [currency] a un taux exploitable (> 0). Toujours vrai pour CDF.
+  /// À vérifier AVANT [convertToCdf] / [convertFromCdf] sur une saisie : sans
+  /// taux, ces conversions renverraient le nombre tel quel (montant faux).
+  bool hasRate(Currency currency) => getRateToCdf(currency) > 0;
+
+  /// Taux exploitable d'un code devise vers le CDF (1 pour CDF), ou null si la
+  /// devise est inconnue ou sans taux. Jamais 1 par défaut pour une devise
+  /// étrangère.
+  double? usableRateToCdfForCode(String? code) {
+    final c = currencyFromCode(code);
+    if (c == null) return null;
+    final r = getRateToCdf(c);
+    return r > 0 ? r : null;
+  }
+
+  /// Devise d'un code saisi (XAF accepté pour FCFA), null si inconnue.
+  static Currency? currencyFromCode(String? code) {
+    switch ((code ?? '').trim().toUpperCase()) {
+      case 'CDF':
+      case 'FC':
+        return Currency.CDF;
+      case 'USD':
+      case r'$':
+        return Currency.USD;
+      case 'FCFA':
+      case 'XAF':
+        return Currency.FCFA;
+      default:
+        return null;
+    }
+  }
+
+  /// Message affiché quand le taux d'une devise manque.
+  static String missingRateMessage(String code) =>
+      'Taux $code non défini : renseignez-le dans Paramètres, Devises';
 }
 
 // How to use (conceptual):

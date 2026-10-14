@@ -5,8 +5,6 @@ import 'package:get_it/get_it.dart';
 import 'package:intl/intl.dart';
 import 'package:wanzo/l10n/app_localizations.dart'; // Import AppLocalizations
 import 'package:wanzo/core/services/currency_service.dart'; // Import CurrencyService
-import 'package:wanzo/core/utils/currency_formatter.dart'; // Added import
-import 'package:wanzo/core/enums/currency_enum.dart'; // Added import for Currency enum and extension
 import 'package:wanzo/core/services/form_navigation_service.dart';
 import 'package:wanzo/core/services/sync_service.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
@@ -287,8 +285,6 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final currencyService = context.read<CurrencyService>();
-              final String currencyCode =
-                  currencyService.currentSettings.activeCurrency.code;
               final theme = Theme.of(context);
               final dateFormat = DateFormat('dd/MM/yyyy');
 
@@ -421,9 +417,9 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                                     ),
                                     DataCell(
                                       Text(
-                                        formatCurrency(
+                                        // Base CDF convertie et libellée par CurrencyService.
+                                        currencyService.formatAmount(
                                           supplier.totalPurchases,
-                                          currencyCode,
                                         ),
                                         style: theme.textTheme.bodyMedium
                                             ?.copyWith(

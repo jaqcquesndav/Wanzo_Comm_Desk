@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:wanzo/core/enums/currency_enum.dart';
 import 'package:wanzo/core/models/operation_payment.dart';
 import 'package:wanzo/core/shared_widgets/payment_history_section.dart';
 import 'package:wanzo/core/shared_widgets/record_payment_dialog.dart';
@@ -21,8 +20,8 @@ import 'package:wanzo/features/settings/bloc/settings_state.dart'
     as old_settings_state;
 import 'package:wanzo/features/settings/models/settings.dart'
     as old_settings_model;
-import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
 import 'package:wanzo/features/invoice/services/invoice_service.dart';
+import 'package:wanzo/features/invoice/utils/invoice_money.dart';
 import 'package:wanzo/features/receivables/utils/receivables_utils.dart';
 import 'package:wanzo/features/receivables/widgets/overdue_chip.dart';
 import 'package:wanzo/services/receipt_printer_service.dart';
@@ -62,15 +61,9 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Access currency settings
-    final currencySettingsState = context.watch<CurrencySettingsCubit>().state;
-    final Currency appDefaultCurrency =
-        currencySettingsState
-            .settings
-            .activeCurrency; // Corrected: activeCurrency is the app's default/active
-    final String transactionCurrencyCode =
-        sale.transactionCurrencyCode ??
-        appDefaultCurrency.code; // Provide a default value
+    // Une seule devise de présentation : celle de la vente, tous les montants
+    // dérivés de la base CDF au taux figé (jamais la devise active de l'app).
+    final String transactionCurrencyCode = _money.currencyCode;
 
     Color statusColor;
     String statusText;
@@ -213,7 +206,6 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                     statusText,
                     statusIcon,
                     transactionCurrencyCode,
-                    appDefaultCurrency,
                   )
                   : _buildMobileLayout(
                     context,
@@ -221,7 +213,6 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                     statusText,
                     statusIcon,
                     transactionCurrencyCode,
-                    appDefaultCurrency,
                   ),
           // BottomNavigationBar uniquement pour mobile
           bottomNavigationBar:
@@ -238,14 +229,19 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
           sale.status == SaleStatus.partiallyPaid) &&
       sale.remainingAmountInCdf > 0.01;
 
-  /// Reste à payer exprimé dans la devise de la transaction.
+  /// Devise de présentation de la vente et conversion depuis la base CDF.
+  InvoiceMoney get _money => InvoiceMoney.forSale(sale);
+
+  /// Reste à payer dans la devise de la vente, dérivé de la base CDF.
   double get _remainingInTransactionCurrency {
-    final total =
-        sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
-    final paid = sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf;
-    final remaining = total - paid;
+    final remaining = _money.fromCdf(
+      sale.totalAmountInCdf - sale.paidAmountInCdf,
+    );
     return remaining > 0 ? remaining : 0;
   }
+
+  /// Taux figé transmis avec un règlement (null en CDF).
+  double? get _paymentRate => _money.isBase ? null : _money.rateToBase;
 
   /// Réactions du bloc : on reste sur l'écran et on informe l'utilisateur.
   /// Auparavant l'écran se fermait AVANT la réponse de l'API, donc un échec
@@ -283,12 +279,12 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
 
   /// Dialogue « Enregistrer un paiement » (règlement d'une créance client).
   Future<void> _showRecordPaymentDialog() async {
-    final currencyCode = sale.transactionCurrencyCode ?? 'CDF';
+    final currencyCode = _money.currencyCode;
     final draft = await showRecordPaymentDialog(
       context,
       remainingAmount: _remainingInTransactionCurrency,
       currencyCode: currencyCode,
-      exchangeRate: sale.transactionExchangeRate,
+      exchangeRate: _paymentRate,
       defaultMethod: sale.paymentMethod,
     );
     if (draft == null || !mounted) return;
@@ -300,7 +296,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
   Future<void> _settleInFull() async {
     final remaining = _remainingInTransactionCurrency;
     if (remaining <= 0) return;
-    final currencyCode = sale.transactionCurrencyCode ?? 'CDF';
+    final currencyCode = _money.currencyCode;
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
@@ -330,7 +326,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
         payment: PaymentDraft(
           amount: remaining,
           currencyCode: currencyCode,
-          exchangeRate: sale.transactionExchangeRate,
+          exchangeRate: _paymentRate,
           method: sale.paymentMethod ?? 'Espèces',
           paidAt: DateTime.now(),
         ),
@@ -344,7 +340,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
       loader: () => context.read<SalesRepository>().getSalePayments(sale.id),
       currencyCode: transactionCurrencyCode,
       fallbackPaidAmount:
-          sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf,
+          _money.fromCdf(sale.paidAmountInCdf),
       refreshToken: _paymentsToken,
     );
   }
@@ -356,7 +352,6 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
     String statusText,
     IconData statusIcon,
     String transactionCurrencyCode,
-    Currency appDefaultCurrency,
   ) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(WanzoSpacing.lg),
@@ -444,16 +439,16 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                                   DataCell(
                                     Text(
                                       formatCurrency(
-                                        item.unitPrice,
-                                        item.currencyCode,
+                                        _money.lineUnit(item),
+                                        _money.currencyCode,
                                       ),
                                     ),
                                   ),
                                   DataCell(
                                     Text(
                                       formatCurrency(
-                                        item.totalPrice,
-                                        item.currencyCode,
+                                        _money.lineTotal(item),
+                                        _money.currencyCode,
                                       ),
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
@@ -541,12 +536,12 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                           context,
                           "Total",
                           formatCurrency(
-                            sale.totalAmountInTransactionCurrency ?? 0.0,
+                            _money.fromCdf(sale.totalAmountInCdf),
                             transactionCurrencyCode,
                           ),
                           isLarge: true,
                         ),
-                        if (transactionCurrencyCode != appDefaultCurrency.code)
+                        if (!_money.isBase)
                           Padding(
                             padding: const EdgeInsets.only(
                               top: WanzoSpacing.xxs,
@@ -555,7 +550,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
                                 Text(
-                                  "(${formatCurrency(sale.totalAmountInCdf, appDefaultCurrency.code)})",
+                                  "(${formatCurrency(sale.totalAmountInCdf, 'CDF')})",
                                   style: Theme.of(context).textTheme.bodySmall
                                       ?.copyWith(color: Colors.grey[600]),
                                 ),
@@ -587,11 +582,11 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                           context,
                           "Payé",
                           formatCurrency(
-                            sale.paidAmountInTransactionCurrency ?? 0.0,
+                            _money.fromCdf(sale.paidAmountInCdf),
                             transactionCurrencyCode,
                           ),
                         ),
-                        if (transactionCurrencyCode != appDefaultCurrency.code)
+                        if (!_money.isBase)
                           Padding(
                             padding: const EdgeInsets.only(
                               top: WanzoSpacing.xxs,
@@ -600,7 +595,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
                                 Text(
-                                  "(${formatCurrency(sale.paidAmountInCdf, appDefaultCurrency.code)})",
+                                  "(${formatCurrency(sale.paidAmountInCdf, 'CDF')})",
                                   style: Theme.of(context).textTheme.bodySmall
                                       ?.copyWith(color: Colors.grey[600]),
                                 ),
@@ -613,8 +608,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                           context,
                           "Reste à payer",
                           formatCurrency(
-                            (sale.totalAmountInTransactionCurrency ?? 0.0) -
-                                (sale.paidAmountInTransactionCurrency ?? 0.0),
+                            _remainingInTransactionCurrency,
                             transactionCurrencyCode,
                           ),
                           valueColor: _getRemainingColor(),
@@ -639,7 +633,6 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
     String statusText,
     IconData statusIcon,
     String transactionCurrencyCode,
-    Currency appDefaultCurrency,
   ) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(WanzoSpacing.base),
@@ -731,14 +724,14 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                       ),
                       Text(
                         formatCurrency(
-                          sale.totalAmountInTransactionCurrency ?? 0.0,
+                          _money.fromCdf(sale.totalAmountInCdf),
                           transactionCurrencyCode,
                         ),
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                     ],
                   ),
-                  if (transactionCurrencyCode != appDefaultCurrency.code)
+                  if (!_money.isBase)
                     Padding(
                       padding: const EdgeInsets.only(
                         top: WanzoSpacing.xxs,
@@ -748,7 +741,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Text(
-                            "(${formatCurrency(sale.totalAmountInCdf, appDefaultCurrency.code)})",
+                            "(${formatCurrency(sale.totalAmountInCdf, 'CDF')})",
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: Colors.grey[600]),
                           ),
@@ -790,20 +783,20 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                       const Text("Payé"),
                       Text(
                         formatCurrency(
-                          sale.paidAmountInTransactionCurrency ?? 0.0,
+                          _money.fromCdf(sale.paidAmountInCdf),
                           transactionCurrencyCode,
                         ),
                       ),
                     ],
                   ),
-                  if (transactionCurrencyCode != appDefaultCurrency.code)
+                  if (!_money.isBase)
                     Padding(
                       padding: const EdgeInsets.only(top: WanzoSpacing.xxs),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Text(
-                            "(${formatCurrency(sale.paidAmountInCdf, appDefaultCurrency.code)})",
+                            "(${formatCurrency(sale.paidAmountInCdf, 'CDF')})",
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: Colors.grey[600]),
                           ),
@@ -823,8 +816,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                       ),
                       Text(
                         formatCurrency(
-                          (sale.totalAmountInTransactionCurrency ?? 0.0) -
-                              (sale.paidAmountInTransactionCurrency ?? 0.0),
+                          _remainingInTransactionCurrency,
                           transactionCurrencyCode,
                         ),
                         style: TextStyle(
@@ -857,10 +849,10 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                 return ListTile(
                   title: Text(item.productName),
                   subtitle: Text(
-                    "${item.quantity.toInt()} × ${formatCurrency(item.unitPrice, item.currencyCode)}",
+                    "${item.quantity.toInt()} × ${formatCurrency(_money.lineUnit(item), _money.currencyCode)}",
                   ),
                   trailing: Text(
-                    formatCurrency(item.totalPrice, item.currencyCode),
+                    formatCurrency(_money.lineTotal(item), _money.currencyCode),
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 );
@@ -1076,12 +1068,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
 
   /// Couleur pour le montant restant
   Color _getRemainingColor() {
-    return ((sale.totalAmountInTransactionCurrency ?? 0.0) -
-                        (sale.paidAmountInTransactionCurrency ?? 0.0))
-                    .abs() <
-                0.001 ||
-            (sale.paidAmountInTransactionCurrency ?? 0.0) >=
-                (sale.totalAmountInTransactionCurrency ?? 0.0)
+    return _remainingInTransactionCurrency <= (_money.isBase ? 0.5 : 0.005)
         ? Colors.green
         : Colors.red;
   }
@@ -1089,14 +1076,8 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
   bool get _hasTaxBreakdown =>
       (sale.amountHT ?? 0) > 0 || (sale.taxAmount ?? 0) > 0;
 
-  double _toTransactionCurrency(double amountInCdf) {
-    final code = sale.transactionCurrencyCode ?? 'CDF';
-    final rate = sale.transactionExchangeRate;
-    if (code == 'CDF' || rate == null || rate <= 0) {
-      return amountInCdf;
-    }
-    return amountInCdf / rate;
-  }
+  double _toTransactionCurrency(double amountInCdf) =>
+      _money.fromCdf(amountInCdf);
 
   /// Affiche une boîte de dialogue de confirmation pour supprimer la vente
   void _showDeleteConfirmation(BuildContext context) {
@@ -1358,9 +1339,9 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
             sale.invoiceNumber!.isNotEmpty)
         ? sale.invoiceNumber!
         : (sale.id.length >= 8 ? sale.id.substring(0, 8) : sale.id);
-    final currencyCode = sale.transactionCurrencyCode ?? 'CDF';
+    final currencyCode = _money.currencyCode;
     final amountText = formatCurrency(
-      sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf,
+      _money.fromCdf(sale.totalAmountInCdf),
       currencyCode,
     );
 

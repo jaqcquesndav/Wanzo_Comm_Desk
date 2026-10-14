@@ -2,6 +2,9 @@ import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import '../models/transaction.dart';
 import '../../expenses/repositories/expense_repository.dart';
+import '../../expenses/models/expense.dart';
+import '../../../core/enums/currency_enum.dart';
+import '../../../core/services/currency_service.dart';
 
 /// Repository pour la gestion des transactions financières
 class TransactionRepository {
@@ -91,12 +94,18 @@ class TransactionRepository {
     await _transactionsBox.delete(id);
   }
 
-  // Get total expenses for a date range
+  /// Total des dépenses d'une période, consolidé en CDF : chaque montant est
+  /// converti avec SA devise (et le taux figé de la dépense s'il existe)
+  /// avant d'être additionné. [currencyService] : taux de la société, sinon
+  /// les taux enregistrés localement.
   Future<double> getTotalExpensesForDateRange(
     DateTime startDate,
-    DateTime endDate,
-  ) async {
+    DateTime endDate, {
+    CurrencyService? currencyService,
+  }) async {
     try {
+      final rates = currencyService ?? await _loadLocalRates();
+
       // If expense repository is provided, use it directly for more accurate data
       if (_expenseRepository != null) {
         final expenses = await _expenseRepository.getExpensesByDateRange(
@@ -105,7 +114,7 @@ class TransactionRepository {
         );
         double total = 0.0;
         for (final expense in expenses) {
-          total += expense.amount;
+          total += _expenseInCdf(expense, rates);
         }
         return total;
       }
@@ -115,7 +124,7 @@ class TransactionRepository {
       double total = 0.0;
       for (final transaction in transactions) {
         if (transaction.isExpense) {
-          total += transaction.amount;
+          total += _amountInCdf(transaction.amount, transaction.currency, rates);
         }
       }
       return total;
@@ -126,9 +135,55 @@ class TransactionRepository {
     }
   }
 
+  /// Taux enregistrés localement (repli quand aucun service n'est fourni).
+  Future<CurrencyService> _loadLocalRates() async {
+    final local = CurrencyService();
+    await local.loadSettings();
+    return local;
+  }
+
+  /// Montant ramené en CDF avec le taux de SA devise ; devise inconnue exclue
+  /// (0) plutôt qu'additionnée telle quelle.
+  double _amountInCdf(double amount, String? code, CurrencyService rates) {
+    final currency = _currencyOfCode(code);
+    if (currency == null) return 0.0;
+    return rates.convertToCdf(amount, currency);
+  }
+
+  /// Dépense ramenée en CDF : taux figé de la dépense s'il existe, sinon taux
+  /// configuré de SA devise.
+  double _expenseInCdf(Expense expense, CurrencyService rates) {
+    final currency = _currencyOfCode(expense.currencyCode);
+    if (currency == Currency.CDF) return expense.amount;
+    final frozenRate = expense.exchangeRate;
+    // 1.0 est la valeur par défaut, pas un vrai taux d'une devise étrangère
+    if (frozenRate != null && frozenRate > 1.0) {
+      return expense.amount * frozenRate;
+    }
+    return _amountInCdf(expense.amount, expense.currencyCode, rates);
+  }
+
   /// Vider le cache local des transactions (à utiliser lors du changement de business unit)
   Future<void> clearLocalCache() async {
     await _transactionsBox.clear();
     print('Cache local des transactions vidé');
+  }
+}
+
+/// Devise d'un code (absent = CDF), null si inconnue.
+Currency? _currencyOfCode(String? code) {
+  switch ((code ?? 'CDF').trim().toUpperCase()) {
+    case '':
+    case 'CDF':
+    case 'FC':
+      return Currency.CDF;
+    case 'USD':
+    case r'$':
+      return Currency.USD;
+    case 'FCFA':
+    case 'XAF':
+      return Currency.FCFA;
+    default:
+      return null;
   }
 }

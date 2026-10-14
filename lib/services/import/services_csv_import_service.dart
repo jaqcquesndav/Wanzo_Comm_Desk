@@ -45,7 +45,7 @@ class ServicesCsvImportService {
   ];
 
   static Future<ServicesCsvImportResult?> pickAndParseCSV({
-    required double Function(String currencyCode) rateToCdf,
+    required double? Function(String currencyCode) rateToCdf,
     String? metier,
   }) async {
     try {
@@ -69,7 +69,7 @@ class ServicesCsvImportService {
 
   static ServicesCsvImportResult parseCSV(
     String csvContent, {
-    required double Function(String currencyCode) rateToCdf,
+    required double? Function(String currencyCode) rateToCdf,
     String? metier,
   }) {
     final rows = const CsvToListConverter().convert(csvContent);
@@ -131,14 +131,23 @@ class ServicesCsvImportService {
   static ServiceItem? _parseRow(
     Map<String, String> row,
     int line, {
-    required double Function(String currencyCode) rateToCdf,
+    required double? Function(String currencyCode) rateToCdf,
     String? metier,
     required int position,
   }) {
     final name = row['nom'] ?? '';
     if (name.isEmpty) return null;
-    final currency = (row['devise'] ?? 'CDF').toUpperCase().isEmpty ? 'CDF' : (row['devise'] ?? 'CDF').toUpperCase();
-    final rate = rateToCdf(currency);
+    var currency = (row['devise'] ?? '').trim().toUpperCase();
+    if (currency.isEmpty || currency == 'FC') currency = 'CDF';
+    if (currency == 'XAF') currency = 'FCFA';
+    // Devise inconnue ou sans taux : ligne refusée, jamais convertie à 1.
+    if (currency != 'CDF' && currency != 'USD' && currency != 'FCFA') {
+      throw 'devise « $currency » inconnue (CDF, USD, FCFA)';
+    }
+    final rate = currency == 'CDF' ? 1.0 : rateToCdf(currency);
+    if (rate == null || !(rate > 0)) {
+      throw 'Taux $currency non défini : renseignez-le dans Paramètres, Devises';
+    }
 
     final tiers = <ServicePriceTier>[];
     final rawTiers = row['paliers'] ?? '';

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+
+import 'package:wanzo/core/services/currency_service.dart';
 
 import 'package:wanzo/core/models/operation_payment.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
@@ -59,6 +62,25 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
   late String _method;
   late DateTime _paidAt;
 
+  /// Taux vers le CDF : celui de l'opération, sinon le taux central. Null pour
+  /// une devise étrangère sans taux : l'enregistrement est alors bloqué.
+  double? _rate;
+
+  bool get _isCdf => widget.currencyCode.toUpperCase() == 'CDF';
+
+  double? _resolveRate() {
+    if (_isCdf) return widget.exchangeRate;
+    final own = widget.exchangeRate;
+    if (own != null && own > 0) return own;
+    try {
+      return context
+          .read<CurrencyService>()
+          .usableRateToCdfForCode(widget.currencyCode);
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -75,6 +97,7 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
             ? proposed
             : kPaymentMethodOptions.first;
     _paidAt = DateTime.now();
+    _rate = _resolveRate();
   }
 
   @override
@@ -115,12 +138,13 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
 
   void _submit() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (!_isCdf && _rate == null) return;
     final amount = double.parse(_amountController.text.replaceAll(',', '.'));
     Navigator.of(context).pop(
       PaymentDraft(
         amount: amount,
         currencyCode: widget.currencyCode,
-        exchangeRate: widget.exchangeRate,
+        exchangeRate: _rate,
         method: _method,
         paidAt: _paidAt,
         reference: _referenceController.text,
@@ -151,6 +175,13 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              if (!_isCdf && _rate == null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  CurrencyService.missingRateMessage(widget.currencyCode),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
               const SizedBox(height: 16),
               TextFormField(
                 controller: _amountController,
@@ -227,7 +258,7 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
           child: const Text('Annuler'),
         ),
         ElevatedButton.icon(
-          onPressed: _submit,
+          onPressed: (!_isCdf && _rate == null) ? null : _submit,
           icon: const Icon(Icons.check, size: 18),
           label: const Text('Enregistrer'),
         ),

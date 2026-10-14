@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/enums/currency_enum.dart';
 import '../../../core/services/currency_service.dart';
+import '../../../core/utils/price_plausibility.dart';
 
 import '../config/garage_vehicle_categories.dart';
 import '../cubit/services_cubit.dart';
@@ -45,7 +46,10 @@ class _GaragePriceGridScreenState extends State<GaragePriceGridScreen> {
   /// comme des francs quelle que soit l'intention : 21 tapé pour 21 \$
   /// devenait 21 FC (ticket à 0,01 \$ en vente USD).
   late final CurrencyService _devises = context.read<CurrencyService>();
-  late Currency _devise = _devises.currentSettings.activeCurrency;
+  // Devise active sans taux : saisie en CDF, jamais des francs étiquetés $.
+  late Currency _devise = _devises.hasRate(_devises.currentSettings.activeCurrency)
+      ? _devises.currentSettings.activeCurrency
+      : Currency.CDF;
 
   @override
   void initState() {
@@ -62,6 +66,12 @@ class _GaragePriceGridScreenState extends State<GaragePriceGridScreen> {
   /// Change la devise de saisie en convertissant les montants déjà tapés.
   void _changerDevise(Currency nouvelle) {
     if (nouvelle == _devise) return;
+    if (!_devises.hasRate(nouvelle)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(CurrencyService.missingRateMessage(nouvelle.code)),
+      ));
+      return;
+    }
     setState(() {
       for (final r in _rows) {
         for (final ctrl in r.prices.values) {
@@ -97,6 +107,40 @@ class _GaragePriceGridScreenState extends State<GaragePriceGridScreen> {
       ];
 
   Future<void> _save() async {
+    // Garde-fou : un prix en CDF trop bas est souvent un montant en dollars
+    // saisi dans la mauvaise devise (21 FC au lieu de 21 $).
+    if (_devise == Currency.CDF) {
+      double? bas;
+      for (final r in _rows) {
+        if (r.name.text.trim().isEmpty) continue;
+        for (final c in _activeColumns) {
+          final v = double.tryParse(
+              (r.prices[c.code]?.text ?? '').trim().replaceAll(',', '.'));
+          if (v != null && prixAnormalementBas(v, 'CDF')) bas ??= v;
+        }
+      }
+      if (bas != null) {
+        final choix =
+            await verifierPrixSaisi(context, prix: bas, codeDevise: 'CDF');
+        if (!mounted || choix == ChoixDevisePrix.annule) return;
+        if (choix == ChoixDevisePrix.enDollars) {
+          if (!_devises.hasRate(Currency.USD)) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(CurrencyService.missingRateMessage('USD')),
+            ));
+            return;
+          }
+          setState(() => _devise = Currency.USD);
+        }
+      }
+    }
+    // Devise de saisie sans taux : refus, jamais une conversion au taux 1.
+    if (!_devises.hasRate(_devise)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(CurrencyService.missingRateMessage(_devise.code)),
+      ));
+      return;
+    }
     final cubit = ServicesCubit();
     final items = <ServiceItem>[];
 

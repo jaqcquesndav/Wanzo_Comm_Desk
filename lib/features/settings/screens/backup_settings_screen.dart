@@ -535,12 +535,8 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
     final cubit = ServicesCubit();
     try {
       final result = await ServicesCsvImportService.pickAndParseCSV(
-        rateToCdf: (code) {
-          for (final c in Currency.values) {
-            if (c.code == code) return currency.getRateToCdf(c);
-          }
-          return 1.0;
-        },
+        // Devise inconnue ou sans taux : null, la ligne est refusée.
+        rateToCdf: currency.usableRateToCdfForCode,
         metier: cubit.metierToStamp,
       );
       if (result == null || !context.mounted) return;
@@ -575,8 +571,13 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
   }
 
   Future<void> _handleCsvImport(BuildContext context) async {
-    final result = await CsvImportService.pickAndParseCSV(context);
-    if (result == null || !mounted) return;
+    final devises = context.read<CurrencyService>();
+    final result = await CsvImportService.pickAndParseCSV(
+      context,
+      rateToCdf: devises.usableRateToCdfForCode,
+      defaultCurrencyCode: devises.currentSettings.activeCurrency.code,
+    );
+    if (result == null || !context.mounted) return;
 
     if (result.products.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -600,7 +601,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       noun: 'produit(s)',
     );
 
-    if (confirm && mounted) {
+    if (confirm && context.mounted) {
       for (final product in result.products) {
         context.read<InventoryBloc>().add(AddProduct(product));
       }

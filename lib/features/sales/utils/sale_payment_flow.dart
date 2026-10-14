@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:wanzo/core/shared_widgets/record_payment_dialog.dart';
+import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/features/invoice/utils/invoice_money.dart';
 import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 
@@ -17,10 +19,13 @@ import 'package:wanzo/features/sales/models/sale.dart';
 ///
 /// Renvoie la vente à jour en cas de succès, sinon `null`.
 Future<Sale?> startSalePaymentFlow(BuildContext context, Sale sale) async {
-  final total = sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
-  final paid = sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf;
-  final remaining = total - paid;
-  final currencyCode = sale.transactionCurrencyCode ?? 'CDF';
+  // Reste dérivé de la base CDF au taux figé, libellé dans la devise de la
+  // vente (jamais un montant CDF sous un autre code).
+  final money = InvoiceMoney.forSale(sale);
+  final remaining = money.fromCdf(
+    sale.totalAmountInCdf - sale.paidAmountInCdf,
+  );
+  final currencyCode = money.currencyCode;
 
   if (remaining <= 0) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -33,7 +38,7 @@ Future<Sale?> startSalePaymentFlow(BuildContext context, Sale sale) async {
     context,
     remainingAmount: remaining,
     currencyCode: currencyCode,
-    exchangeRate: sale.transactionExchangeRate,
+    exchangeRate: money.isBase ? null : money.rateToBase,
     defaultMethod: sale.paymentMethod,
   );
   if (draft == null || !context.mounted) return null;
@@ -90,7 +95,6 @@ Future<Sale?> pickSaleToSettle(
   BuildContext context,
   List<Sale> outstandingSales, {
   String title = 'Quelle pièce régler ?',
-  String Function(double amountInCdf)? formatAmount,
 }) async {
   if (outstandingSales.isEmpty) return null;
   if (outstandingSales.length == 1) return outstandingSales.first;
@@ -131,7 +135,11 @@ Future<Sale?> pickSaleToSettle(
                   itemCount: outstandingSales.length,
                   itemBuilder: (context, index) {
                     final sale = outstandingSales[index];
-                    final due = sale.totalAmountInCdf - sale.paidAmountInCdf;
+                    // Chaque pièce dans sa propre devise, dérivée de sa base.
+                    final money = InvoiceMoney.forSale(sale);
+                    final due = money.fromCdf(
+                      sale.totalAmountInCdf - sale.paidAmountInCdf,
+                    );
                     final reference =
                         (sale.invoiceNumber != null &&
                                 sale.invoiceNumber!.isNotEmpty)
@@ -147,9 +155,7 @@ Future<Sale?> pickSaleToSettle(
                         '${sale.date.month.toString().padLeft(2, '0')}/${sale.date.year}',
                       ),
                       trailing: Text(
-                        formatAmount != null
-                            ? formatAmount(due)
-                            : '${due.toStringAsFixed(0)} CDF',
+                        formatCurrency(due, money.currencyCode),
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       onTap: () => Navigator.pop(sheetContext, sale),

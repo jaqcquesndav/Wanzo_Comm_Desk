@@ -18,6 +18,33 @@ import 'package:wanzo/features/settings/models/settings.dart';
 /// évolue automatiquement : chaque nouvelle intervention y figure à la
 /// prochaine génération. Mêmes dépendances que les factures et la fiche atelier.
 class VehicleSheetPdf {
+  /// Montant CDF d'une intervention : au taux de la fiche s'il est réel, sinon
+  /// au taux central [rateToCdf]. Null sans taux exploitable : une fiche en
+  /// devise au taux 1 ne doit pas compter des dollars comme des francs.
+  static double? montantCdf(AtelierOrder o,
+      {double? Function(String code)? rateToCdf}) {
+    if (o.currencyCode.toUpperCase() == 'CDF') return o.totalAmount;
+    if (o.exchangeRate > 1) return o.totalAmount * o.exchangeRate;
+    final t = rateToCdf?.call(o.currencyCode);
+    return (t != null && t > 0) ? o.totalAmount * t : null;
+  }
+
+  /// Total CDF des interventions et nombre de fiches écartées faute de taux.
+  static (double, int) totalCdf(Iterable<AtelierOrder> orders,
+      {double? Function(String code)? rateToCdf}) {
+    var total = 0.0;
+    var sansTaux = 0;
+    for (final o in orders) {
+      final m = montantCdf(o, rateToCdf: rateToCdf);
+      if (m == null) {
+        sansTaux++;
+      } else {
+        total += m;
+      }
+    }
+    return (total, sansTaux);
+  }
+
   static String _fmtDate(DateTime? d) => d == null ? '—' : DateFormat('dd/MM/yyyy').format(d);
 
   static ({String name, String address, String phone}) _issuer(Settings? settings) {
@@ -37,6 +64,7 @@ class VehicleSheetPdf {
     List<AtelierOrder> orders, {
     String? customerName,
     Settings? settings,
+    double? Function(String code)? rateToCdf,
   }) async {
     final doc = pw.Document();
     final regular = pw.Font.helvetica();
@@ -44,7 +72,7 @@ class VehicleSheetPdf {
     final issuer = _issuer(settings);
     final sorted = [...orders]..sort((a, b) => (a.entryDate ?? a.createdAt ?? DateTime(2000))
         .compareTo(b.entryDate ?? b.createdAt ?? DateTime(2000)));
-    final totalCdf = sorted.fold<double>(0, (s, o) => s + o.totalAmount * o.exchangeRate);
+    final (totalCdf, sansTaux) = VehicleSheetPdf.totalCdf(sorted, rateToCdf: rateToCdf);
 
     pw.Widget field(String label, String? value) => pw.Padding(
           padding: const pw.EdgeInsets.only(bottom: 3),
@@ -167,7 +195,9 @@ class VehicleSheetPdf {
           pw.SizedBox(height: 8),
           pw.Align(
             alignment: pw.Alignment.centerRight,
-            child: pw.Text('Total des interventions : ${formatCurrency(totalCdf, 'CDF')}',
+            child: pw.Text(
+                'Total des interventions : ${formatCurrency(totalCdf, 'CDF')}'
+                '${sansTaux > 0 ? ' (hors $sansTaux fiche(s) sans taux)' : ''}',
                 style: pw.TextStyle(font: bold, fontSize: 9)),
           ),
         ],
@@ -181,15 +211,17 @@ class VehicleSheetPdf {
 
   /// Impression ou export PDF via le dialogue système.
   static Future<void> printSheet(CustomerVehicle vehicle, List<AtelierOrder> orders,
-      {String? customerName, Settings? settings}) async {
-    final doc = await build(vehicle, orders, customerName: customerName, settings: settings);
+      {String? customerName, Settings? settings, double? Function(String code)? rateToCdf}) async {
+    final doc = await build(vehicle, orders,
+        customerName: customerName, settings: settings, rateToCdf: rateToCdf);
     await Printing.layoutPdf(onLayout: (_) async => doc.save(), name: _fileStem(vehicle));
   }
 
   /// Partage (WhatsApp, e-mail...) : la fiche téléchargeable remise au client.
   static Future<void> shareSheet(CustomerVehicle vehicle, List<AtelierOrder> orders,
-      {String? customerName, Settings? settings}) async {
-    final doc = await build(vehicle, orders, customerName: customerName, settings: settings);
+      {String? customerName, Settings? settings, double? Function(String code)? rateToCdf}) async {
+    final doc = await build(vehicle, orders,
+        customerName: customerName, settings: settings, rateToCdf: rateToCdf);
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/${_fileStem(vehicle)}.pdf');
     await file.writeAsBytes(await doc.save());

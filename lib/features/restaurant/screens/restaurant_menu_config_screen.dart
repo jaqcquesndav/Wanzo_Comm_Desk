@@ -16,6 +16,8 @@ import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/utils/price_plausibility.dart';
+import 'package:wanzo/core/services/currency_service.dart';
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
 import 'package:wanzo/core/models/currency_settings_model.dart';
 import 'package:wanzo/core/enums/currency_enum.dart';
@@ -500,7 +502,9 @@ class _DishFormDialogState extends State<_DishFormDialog> {
   Map<Currency, double> _rates = {Currency.CDF: 1.0};
   List<Currency> _currencies = const [Currency.CDF];
 
-  double rateOf(Currency c) => _rates[c] ?? 1.0;
+  // Taux manquant : 0 pour une devise étrangère (refusée à l'enregistrement),
+  // jamais 1.
+  double rateOf(Currency c) => _rates[c] ?? (c == Currency.CDF ? 1.0 : 0.0);
 
   void _initCurrencies(MenuItem? existing) {
     final cubit = context.read<CurrencySettingsCubit>();
@@ -664,6 +668,35 @@ class _DishFormDialogState extends State<_DishFormDialog> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    // Garde-fou : un prix en CDF trop bas est souvent un montant en dollars
+    // saisi dans la mauvaise devise (21 FC au lieu de 21 $).
+    if (_inputCurrency == Currency.CDF) {
+      final saisi = double.tryParse(_priceController.text.trim()) ?? 0;
+      final choix =
+          await verifierPrixSaisi(context, prix: saisi, codeDevise: 'CDF');
+      if (!mounted || choix == ChoixDevisePrix.annule) return;
+      if (choix == ChoixDevisePrix.enDollars) {
+        if (!(rateOf(Currency.USD) > 0)) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(CurrencyService.missingRateMessage('USD')),
+          ));
+          return;
+        }
+        setState(() {
+          _inputCurrency = Currency.USD;
+          if (!_currencies.contains(Currency.USD)) {
+            _currencies = [..._currencies, Currency.USD];
+          }
+        });
+      }
+    }
+    // Devise étrangère sans taux : refus, jamais une conversion au taux 1.
+    if (!(rateOf(_inputCurrency) > 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(CurrencyService.missingRateMessage(_inputCurrency.code)),
+      ));
+      return;
+    }
     setState(() => _saving = true);
     final entered = double.tryParse(_priceController.text.trim()) ?? 0;
     final taux = rateOf(_inputCurrency);

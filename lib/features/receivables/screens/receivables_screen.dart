@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/enums/currency_enum.dart';
 import '../../../core/services/business_context_service.dart';
 import '../../../core/services/currency_service.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
@@ -67,6 +68,11 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
     super.initState();
     _future = _loadReceivables();
   }
+
+  /// Agrégat de plusieurs ventes : somme des bases CDF, libellée en CDF
+  /// (jamais d'addition de montants convertis dans des devises différentes).
+  String _formatCdf(CurrencyService service, double amountInCdf) =>
+      service.formatAmount(amountInCdf, displayCurrency: Currency.CDF);
 
   void _reload() {
     setState(() {
@@ -238,7 +244,7 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
                 ),
               const Spacer(),
               Text(
-                'Total à recouvrer : ${currencyService.formatAmount(grandTotal)}',
+                'Total à recouvrer : ${_formatCdf(currencyService, grandTotal)}',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: theme.colorScheme.error,
@@ -253,7 +259,7 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
             searchHint: 'Rechercher un client...',
             searchFilter: (row, query) =>
                 row.customerName.toLowerCase().contains(query),
-            onRowTap: (row) => _openRow(context, row, currencyService),
+            onRowTap: (row) => _openRow(context, row),
             actions: [_buildSortControls(context)],
             exportConfig: DataTableExportConfig(
               title: 'Créances clients',
@@ -264,11 +270,11 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
                 return [
                   r.customerName,
                   r.invoicesCount,
-                  currencyService.formatAmount(r.buckets[0]),
-                  currencyService.formatAmount(r.buckets[1]),
-                  currencyService.formatAmount(r.buckets[2]),
-                  currencyService.formatAmount(r.buckets[3]),
-                  currencyService.formatAmount(r.totalDue),
+                  _formatCdf(currencyService, r.buckets[0]),
+                  _formatCdf(currencyService, r.buckets[1]),
+                  _formatCdf(currencyService, r.buckets[2]),
+                  _formatCdf(currencyService, r.buckets[3]),
+                  _formatCdf(currencyService, r.totalDue),
                 ];
               },
             ),
@@ -372,7 +378,7 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
       // La tranche 90j+ est mise en évidence (créance à risque).
       final isRisk = i == 3;
       return Text(
-        currencyService.formatAmount(amount),
+        _formatCdf(currencyService, amount),
         style: theme.textTheme.bodySmall?.copyWith(
           color: isRisk ? Colors.red : null,
           fontWeight: isRisk ? FontWeight.w600 : FontWeight.normal,
@@ -426,7 +432,7 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
         DataCell(bucketCell(3)),
         DataCell(
           Text(
-            currencyService.formatAmount(row.totalDue),
+            _formatCdf(currencyService, row.totalDue),
             style: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.bold,
               color: theme.colorScheme.error,
@@ -439,7 +445,7 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
               RowAction(
                 label: 'Régler',
                 icon: Icons.payments_outlined,
-                onSelected: () => _settle(context, row, currencyService),
+                onSelected: () => _settle(context, row),
               ),
               RowAction(
                 label: 'Relancer',
@@ -493,13 +499,12 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
   Future<void> _openRow(
     BuildContext context,
     _ReceivableRow row,
-    CurrencyService currencyService,
   ) async {
     if (row.customer != null) {
       _openCustomer(context, row);
       return;
     }
-    await _settle(context, row, currencyService);
+    await _settle(context, row);
   }
 
   void _openCustomer(BuildContext context, _ReceivableRow row) {
@@ -519,7 +524,6 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
   Future<void> _settle(
     BuildContext context,
     _ReceivableRow row,
-    CurrencyService currencyService,
   ) async {
     if (row.sales.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -530,7 +534,6 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
     final sale = await pickSaleToSettle(
       context,
       row.sales,
-      formatAmount: currencyService.formatAmount,
     );
     if (sale == null || !context.mounted) return;
     final updated = await startSalePaymentFlow(context, sale);
@@ -551,7 +554,7 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
     final message = buildReminderMessage(
       businessName: business,
       customerName: row.customerName,
-      amountDueText: currencyService.formatAmount(row.totalDue),
+      amountDueText: _formatCdf(currencyService, row.totalDue),
     );
     await launchWhatsAppOrSms(context, message: message, phone: row.phone);
   }

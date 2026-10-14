@@ -9,6 +9,7 @@ import '../../sales/repositories/sales_repository.dart';
 import '../../customer/repositories/customer_repository.dart';
 import '../../transactions/repositories/transaction_repository.dart';
 import '../../expenses/repositories/expense_repository.dart';
+import '../../expenses/models/expense.dart';
 
 /// Service API pour le Dashboard, standardisant les réponses au format ApiResponse<T>
 class DashboardApiService {
@@ -32,6 +33,22 @@ class DashboardApiService {
        _transactionRepository = transactionRepository,
        _expenseRepository = expenseRepository,
        _currencyService = currencyService;
+
+  /// Taux enregistrés localement, chargés une fois quand aucun service de
+  /// devise n'est injecté.
+  CurrencyService? _fallbackRates;
+
+  /// Service de taux à utiliser pour ramener un montant en CDF.
+  Future<CurrencyService> _rates() async {
+    final injected = _currencyService;
+    if (injected != null) return injected;
+    if (_fallbackRates == null) {
+      final local = CurrencyService();
+      await local.loadSettings();
+      _fallbackRates = local;
+    }
+    return _fallbackRates!;
+  }
 
   /// Récupère les données complètes du Dashboard pour une date spécifique
   Future<ApiResponse<DashboardData>> getDashboardData(DateTime date) async {
@@ -66,21 +83,12 @@ class DashboardApiService {
       // Montants à recevoir
       final receivables = await _salesRepository.getTotalReceivables();
 
-      // Dépenses du jour par devise
-      final expensesByDevise = await _getTotalExpensesByDevise(
-        todayStart,
-        todayEnd,
-      );
-      double expensesCdf = expensesByDevise['CDF'] ?? 0.0;
-      double expensesUsd = expensesByDevise['USD'] ?? 0.0;
-      // Total consolidé en CDF : la part USD est convertie au taux configuré
-      // localement (CurrencyService, offline). Sans service de devise, on ne
-      // fabrique aucun taux — le total se limite à la part CDF, les montants par
-      // devise restant exposés séparément (expensesCdf / expensesUsd).
-      double expenses = expensesCdf;
-      if (expensesUsd > 0 && _currencyService != null) {
-        expenses += _currencyService.convertToCdf(expensesUsd, Currency.USD);
-      }
+      // Dépenses du jour : sous-totaux par devise d'origine, et total consolidé
+      // en CDF où chaque dépense est convertie avec SA devise et son taux.
+      final expensesSummary = await _getExpensesSummary(todayStart, todayEnd);
+      final expensesCdf = expensesSummary.byCurrency['CDF'] ?? 0.0;
+      final expensesUsd = expensesSummary.byCurrency['USD'] ?? 0.0;
+      final expenses = expensesSummary.totalCdf;
 
       // Calculer les flux de trésorerie
       final cashFlowData = await _computeCashFlowData();
@@ -211,7 +219,9 @@ class DashboardApiService {
       final todayStart = DateTime(date.year, date.month, date.day);
       final todayEnd = DateTime(date.year, date.month, date.day, 23, 59, 59);
 
-      final expenses = await _getTotalExpenses(todayStart, todayEnd);
+      // Total consolidé en CDF (jamais une somme brute de devises)
+      final expenses =
+          (await _getExpensesSummary(todayStart, todayEnd)).totalCdf;
 
       return ApiResponse<double>(
         success: true,
@@ -229,13 +239,13 @@ class DashboardApiService {
     }
   }
 
-  /// Méthode helper pour récupérer les dépenses par devise
-  Future<Map<String, double>> _getTotalExpensesByDevise(
-    DateTime startDate,
-    DateTime endDate,
-  ) async {
+  /// Dépenses d'une période : sous-totaux par devise d'origine et total
+  /// consolidé en CDF (chaque dépense convertie avec sa propre devise).
+  Future<({Map<String, double> byCurrency, double totalCdf})>
+  _getExpensesSummary(DateTime startDate, DateTime endDate) async {
     try {
-      Map<String, double> expensesByDevise = {'CDF': 0.0, 'USD': 0.0};
+      final byCurrency = <String, double>{'CDF': 0.0, 'USD': 0.0};
+      double totalCdf = 0.0;
 
       // Essayer d'abord avec le ExpenseRepository si disponible
       if (_expenseRepository != null) {
@@ -243,58 +253,57 @@ class DashboardApiService {
           startDate,
           endDate,
         );
+        final rates = await _rates();
         for (final expense in expenses) {
-          final currency = expense.currencyCode ?? 'CDF';
-          expensesByDevise[currency] =
-              (expensesByDevise[currency] ?? 0.0) + expense.amount;
+          final currency = (expense.currencyCode ?? 'CDF').toUpperCase();
+          byCurrency[currency] = (byCurrency[currency] ?? 0.0) + expense.amount;
+          totalCdf += _expenseAmountInCdf(expense, rates);
         }
-        return expensesByDevise;
+        return (byCurrency: byCurrency, totalCdf: totalCdf);
       }
 
-      // Fallback sur le TransactionRepository - retourne uniquement le total en CDF
+      // Repli sur le TransactionRepository : total consolidé en CDF avec les
+      // mêmes taux
       final total = await _transactionRepository.getTotalExpensesForDateRange(
         startDate,
         endDate,
+        currencyService: await _rates(),
       );
-      expensesByDevise['CDF'] = total;
-      return expensesByDevise;
+      byCurrency['CDF'] = total;
+      return (byCurrency: byCurrency, totalCdf: total);
     } catch (e) {
       LoggingService.instance.error(
         'Erreur lors du calcul des dépenses',
         error: e,
       );
-      return {'CDF': 0.0, 'USD': 0.0}; // Valeur sûre en cas d'erreur
+      // Valeur sûre en cas d'erreur
+      return (
+        byCurrency: <String, double>{'CDF': 0.0, 'USD': 0.0},
+        totalCdf: 0.0,
+      );
     }
   }
 
-  /// Méthode helper pour récupérer les dépenses, avec gestion des erreurs
-  Future<double> _getTotalExpenses(DateTime startDate, DateTime endDate) async {
-    try {
-      // Essayer d'abord avec le ExpenseRepository si disponible
-      if (_expenseRepository != null) {
-        final expenses = await _expenseRepository.getExpensesByDateRange(
-          startDate,
-          endDate,
-        );
-        double total = 0.0;
-        for (final expense in expenses) {
-          total += expense.amount;
-        }
-        return total;
-      }
-
-      // Fallback sur le TransactionRepository
-      return await _transactionRepository.getTotalExpensesForDateRange(
-        startDate,
-        endDate,
-      );
-    } catch (e) {
-      LoggingService.instance.error(
-        'Erreur lors du calcul des dépenses',
-        error: e,
-      );
-      return 0.0; // Valeur sûre en cas d'erreur
+  /// Montant d'une dépense ramené en CDF : taux figé de la dépense s'il existe,
+  /// sinon taux configuré de SA devise. Devise inconnue : exclue (0), jamais
+  /// additionnée telle quelle.
+  double _expenseAmountInCdf(Expense expense, CurrencyService rates) {
+    final currency = _currencyOfCode(expense.currencyCode);
+    if (currency == Currency.CDF) return expense.amount;
+    final frozenRate = expense.exchangeRate;
+    // 1.0 est la valeur par défaut, pas un vrai taux d'une devise étrangère
+    if (frozenRate != null && frozenRate > 1.0) {
+      return expense.amount * frozenRate;
     }
+    if (currency == null) return 0.0;
+    return rates.convertToCdf(expense.amount, currency);
+  }
+
+  /// Montant d'une opération du journal ramené en CDF avec SA devise.
+  double _entryAmountInCdf(OperationJournalEntry entry, CurrencyService rates) {
+    final currency = _currencyOfCode(entry.currencyCode);
+    if (currency == null) return 0.0;
+    return rates.convertToCdf(entry.amount, currency);
   }
 
   /// Calcule les données de flux de trésorerie à partir du journal d'opérations Hive
@@ -322,6 +331,7 @@ class DashboardApiService {
 
       final box = Hive.box<OperationJournalEntry>(boxName);
       if (box.isEmpty) return result;
+      final rates = await _rates();
 
       final now = DateTime.now();
       final todayStart = DateTime(now.year, now.month, now.day);
@@ -330,14 +340,18 @@ class DashboardApiService {
       double cashBalanceUsd = 0.0;
 
       for (final entry in box.values) {
-        final isCdf = (entry.currencyCode ?? 'CDF') == 'CDF';
+        // Soldes et flux du jour tenus par devise : une devise autre que CDF
+        // ou USD n'est jamais rangée sous USD.
+        final currencyCode = (entry.currencyCode ?? 'CDF').toUpperCase();
+        final isCdf = currencyCode == 'CDF';
+        final isUsd = currencyCode == 'USD';
         final amount = entry.amount;
 
         // Solde de caisse global (toutes les opérations impactant la trésorerie)
         if (entry.type.impactsCash) {
           if (isCdf) {
             cashBalanceCdf += amount;
-          } else {
+          } else if (isUsd) {
             cashBalanceUsd += amount;
           }
         }
@@ -350,29 +364,23 @@ class DashboardApiService {
             if (amount > 0) {
               if (isCdf) {
                 result['cashInTodayCdf'] = result['cashInTodayCdf']! + amount;
-              } else {
+              } else if (isUsd) {
                 result['cashInTodayUsd'] = result['cashInTodayUsd']! + amount;
               }
             } else {
               if (isCdf) {
                 result['cashOutTodayCdf'] =
                     result['cashOutTodayCdf']! + amount.abs();
-              } else {
+              } else if (isUsd) {
                 result['cashOutTodayUsd'] =
                     result['cashOutTodayUsd']! + amount.abs();
               }
             }
           }
 
-          // Flux par catégorie (en CDF). La part non-CDF est convertie au taux
-          // configuré localement (CurrencyService, offline). Sans service de
-          // devise, on ne fabrique aucun taux : la part non-CDF est ignorée
-          // dans le total consolidé plutôt que fusionnée avec un faux taux.
-          final amountCdf = isCdf
-              ? amount
-              : (_currencyService != null
-                  ? _currencyService.convertToCdf(amount, Currency.USD)
-                  : 0.0);
+          // Flux par catégorie, consolidés en CDF : chaque opération est
+          // convertie avec SA devise avant d'être additionnée.
+          final amountCdf = _entryAmountInCdf(entry, rates);
           switch (entry.type.cashFlowCategory) {
             case CashFlowCategory.exploitation:
               result['exploitationFlowsCdf'] =
@@ -412,5 +420,23 @@ class DashboardApiService {
     }
 
     return result;
+  }
+}
+
+/// Devise d'un code (absent = CDF), null si inconnue.
+Currency? _currencyOfCode(String? code) {
+  switch ((code ?? 'CDF').trim().toUpperCase()) {
+    case '':
+    case 'CDF':
+    case 'FC':
+      return Currency.CDF;
+    case 'USD':
+    case r'$':
+      return Currency.USD;
+    case 'FCFA':
+    case 'XAF':
+      return Currency.FCFA;
+    default:
+      return null;
   }
 }

@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:wanzo/core/enums/currency_enum.dart';
+import 'package:wanzo/core/services/currency_service.dart';
 import 'package:wanzo/features/expenses/bloc/expense_bloc.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
 import 'package:wanzo/features/expenses/widgets/cash_out_voucher_sheet.dart';
@@ -193,8 +194,21 @@ class _AdvanceDialogState extends State<_AdvanceDialog> {
     final amount = double.tryParse(_amountController.text.trim()) ?? 0;
     if (amount <= 0) return;
 
+    // Sans taux reel, une avance en devise serait comptee pour son montant
+    // brut en francs : on refuse plutot que de deviner.
+    final double? taux =
+        _currency == Currency.CDF ? 1.0 : _tauxVersCdf();
+    if (taux == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(CurrencyService.missingRateMessage(_currency.code)),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
-    final taux = _tauxVersCdf();
     final id = const Uuid().v4();
     final expense = Expense(
       id: id,
@@ -259,7 +273,7 @@ class _AdvanceDialogState extends State<_AdvanceDialog> {
         expense,
         'BSC-${id.substring(0, 8).toUpperCase()}',
         synchronise: synchronise,
-        montantCdf: amount * (taux ?? 1.0),
+        montantCdf: amount * taux,
       ),
     );
   }

@@ -8,6 +8,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:wanzo/core/enums/currency_enum.dart';
+import 'package:wanzo/core/services/currency_service.dart';
 import 'package:wanzo/features/dashboard/models/operation_journal_entry.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
 import 'package:wanzo/core/modules/mode_vocabulary.dart';
@@ -21,24 +22,30 @@ import 'package:wanzo/core/modules/mode_vocabulary.dart';
 /// affiche le solde courant de SA propre catégorie comptable.
 class JournalService {
   /// Génère un PDF du journal avec UN tableau principal unique
-  /// et des soldes cohérents par catégorie comptable
+  /// et des soldes cohérents par catégorie comptable.
+  ///
+  /// Totaux et soldes consolidés en CDF, chaque montant converti avec SA
+  /// devise ([currencyService], sinon taux enregistrés localement).
   Future<File?> generateJournalPdf(
     List<OperationJournalEntry> entries,
     DateTime startDate,
     DateTime endDate,
-    double openingBalance, // Solde d'ouverture de TRÉSORERIE
+    double openingBalance, // Solde d'ouverture de la caisse CDF
     AppLocalizations l10n,
-    Settings settings,
-  ) async {
+    Settings settings, {
+    CurrencyService? currencyService,
+  }) async {
     pw.RichText.debug = true;
 
     final pdf = pw.Document();
     final font = await PdfGoogleFonts.robotoRegular();
     final boldFont = await PdfGoogleFonts.robotoBold();
+    final rates = await _loadRates(currencyService);
 
+    // Totaux et soldes consolidés : toujours libellés en CDF (devise de base)
     final currencyFormat = NumberFormat.currency(
       locale: l10n.localeName,
-      name: settings.activeCurrency.code,
+      name: Currency.CDF.code,
     );
 
     final dateFormat = DateFormat.yMMMd(l10n.localeName);
@@ -48,13 +55,15 @@ class JournalService {
     final sortedEntries = List<OperationJournalEntry>.from(entries);
     sortedEntries.sort((a, b) => a.date.compareTo(b.date));
 
-    // Catégoriser pour les totaux
-    final cashOperations = entries.where((e) => e.type.impactsCash).toList();
+    // Catégoriser pour les totaux (ordre chronologique)
+    final cashOperations =
+        sortedEntries.where((e) => e.type.impactsCash).toList();
     final salesOperations =
-        entries.where((e) => e.type.isSalesOperation).toList();
-    final stockOperations = entries.where((e) => e.type.impactsStock).toList();
+        sortedEntries.where((e) => e.type.isSalesOperation).toList();
+    final stockOperations =
+        sortedEntries.where((e) => e.type.impactsStock).toList();
 
-    // Calculer les totaux PAR CATÉGORIE
+    // Calculer les totaux PAR CATÉGORIE, en contre-valeur CDF
     double totalCashIn = 0.0;
     double totalCashOut = 0.0;
     double totalSales = 0.0;
@@ -63,23 +72,36 @@ class JournalService {
 
     for (final op in cashOperations) {
       if (op.amount > 0) {
-        totalCashIn += op.amount;
+        totalCashIn += _entryToCdf(rates, op, op.amount);
       } else {
-        totalCashOut += op.amount.abs();
+        totalCashOut += _entryToCdf(rates, op, op.amount.abs());
       }
     }
     for (final op in salesOperations) {
-      totalSales += op.amount.abs();
+      totalSales += _entryToCdf(rates, op, op.amount.abs());
     }
     for (final op in stockOperations) {
       if (op.type == OperationType.stockIn) {
-        totalStockIn += op.amount.abs();
+        totalStockIn += _entryToCdf(rates, op, op.amount.abs());
       } else {
-        totalStockOut += op.amount.abs();
+        totalStockOut += _entryToCdf(rates, op, op.amount.abs());
       }
     }
 
-    final closingCashBalance = openingBalance + totalCashIn - totalCashOut;
+    // Ouverture de caisse consolidée : soldes de chaque devise avant la
+    // première opération, convertis un à un (le solde CDF reçu sert de repli).
+    final openingCashByCurrency =
+        cashOperations.isNotEmpty
+            ? (_balancesBefore(
+                  cashOperations.first,
+                  cashOperations.first.cashBalancesByCurrency,
+                ) ??
+                <String, double>{})
+            : <String, double>{};
+    openingCashByCurrency.putIfAbsent(Currency.CDF.code, () => openingBalance);
+    final openingCashCdf = _sumToCdf(rates, openingCashByCurrency);
+
+    final closingCashBalance = openingCashCdf + totalCashIn - totalCashOut;
 
     pdf.addPage(
       pw.MultiPage(
@@ -132,7 +154,7 @@ class JournalService {
                 font: font,
                 boldFont: boldFont,
                 currencyFormat: currencyFormat,
-                openingBalance: openingBalance,
+                openingBalance: openingCashCdf,
                 closingCashBalance: closingCashBalance,
                 totalCashIn: totalCashIn,
                 totalCashOut: totalCashOut,
@@ -147,7 +169,8 @@ class JournalService {
               // ═══════════════════════════════════════════
               _buildUnifiedTable(
                 sortedEntries,
-                openingBalance,
+                openingCashCdf,
+                rates,
                 font,
                 boldFont,
                 currencyFormat,
@@ -198,6 +221,7 @@ class JournalService {
   pw.Widget _buildUnifiedTable(
     List<OperationJournalEntry> operations,
     double openingCashBalance,
+    CurrencyService rates,
     pw.Font font,
     pw.Font boldFont,
     NumberFormat currencyFormat,
@@ -206,7 +230,8 @@ class JournalService {
     AppLocalizations l10n,
     Settings settings,
   ) {
-    // Soldes courants par catégorie
+    // Soldes courants par catégorie, consolidés en CDF : instantané par devise
+    // s'il existe, sinon cumul des montants convertis avec SA devise
     double runningCashBalance = openingCashBalance;
     double runningSalesTotal = 0.0;
     double runningStockValue = 0.0;
@@ -236,7 +261,7 @@ class JournalService {
         'Description',
         'Débit',
         'Crédit',
-        'Solde',
+        'Solde (CDF)',
       ],
       data: <List<String>>[
         // Ligne d'ouverture
@@ -255,7 +280,7 @@ class JournalService {
           final entry = e.value;
           final entryCurrencyFormat = NumberFormat.currency(
             locale: l10n.localeName,
-            name: entry.currencyCode ?? settings.activeCurrency.code,
+            name: entry.currencyCode ?? Currency.CDF.code,
           );
 
           // Catégorie comptable
@@ -264,26 +289,25 @@ class JournalService {
           // Calculer le solde courant de la catégorie
           String soldeText;
           if (entry.type.impactsCash) {
-            runningCashBalance += entry.amount;
-            soldeText = entryCurrencyFormat.format(
-              entry.cashBalance ?? runningCashBalance,
-            );
+            runningCashBalance =
+                _snapshotToCdf(rates, entry.cashBalancesByCurrency) ??
+                runningCashBalance + _entryToCdf(rates, entry, entry.amount);
+            soldeText = currencyFormat.format(runningCashBalance);
           } else if (entry.type.isSalesOperation) {
-            runningSalesTotal += entry.amount.abs();
-            soldeText = entryCurrencyFormat.format(
-              entry.salesBalance ?? runningSalesTotal,
-            );
+            runningSalesTotal += _entryToCdf(rates, entry, entry.amount.abs());
+            soldeText = currencyFormat.format(runningSalesTotal);
           } else if (entry.type.impactsStock) {
-            if (entry.type == OperationType.stockIn) {
-              runningStockValue += entry.amount.abs();
-            } else {
-              runningStockValue -= entry.amount.abs();
-            }
-            soldeText = entryCurrencyFormat.format(
-              entry.stockValue ?? runningStockValue,
-            );
+            final amountCdf = _entryToCdf(rates, entry, entry.amount.abs());
+            runningStockValue =
+                _snapshotToCdf(rates, entry.stockValuesByCurrency) ??
+                (entry.type == OperationType.stockIn
+                    ? runningStockValue + amountCdf
+                    : runningStockValue - amountCdf);
+            soldeText = currencyFormat.format(runningStockValue);
           } else {
-            soldeText = entryCurrencyFormat.format(entry.amount);
+            soldeText = currencyFormat.format(
+              _entryToCdf(rates, entry, entry.amount),
+            );
           }
 
           // Débit / Crédit
@@ -372,7 +396,7 @@ class JournalService {
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.Text(
-            'RÉSUMÉ PAR CATÉGORIE COMPTABLE',
+            'RÉSUMÉ PAR CATÉGORIE COMPTABLE (CONTRE-VALEUR CDF)',
             style: pw.TextStyle(font: boldFont, fontSize: 12),
           ),
           pw.Divider(thickness: 1, color: PdfColors.grey400),
@@ -497,9 +521,78 @@ class JournalService {
     );
   }
 
+  // ==========================================================================
+  // DEVISES : totaux et soldes consolidés en CDF, chaque montant converti avec
+  // SA devise. Débit et crédit restent dans la devise de l'opération.
+  // ==========================================================================
+
+  /// Taux à utiliser : service fourni, sinon taux enregistrés localement.
+  Future<CurrencyService> _loadRates(CurrencyService? provided) async {
+    if (provided != null) return provided;
+    final local = CurrencyService();
+    await local.loadSettings();
+    return local;
+  }
+
+  /// Montant ramené en CDF avec le taux de SA devise ; devise inconnue exclue.
+  double _toCdf(CurrencyService rates, String? code, double amount) {
+    final currency = _currencyOfCode(code);
+    if (currency == null) return 0.0;
+    return rates.convertToCdf(amount, currency);
+  }
+
+  /// Montant d'une opération ramené en CDF avec SA devise.
+  double _entryToCdf(
+    CurrencyService rates,
+    OperationJournalEntry entry,
+    double amount,
+  ) => _toCdf(rates, entry.currencyCode, amount);
+
+  /// Somme de soldes par devise, chacun converti en CDF.
+  double _sumToCdf(CurrencyService rates, Map<String, double> byCurrency) =>
+      byCurrency.entries.fold<double>(
+        0.0,
+        (sum, e) => sum + _toCdf(rates, e.key, e.value),
+      );
+
+  /// Instantané par devise consolidé en CDF, null s'il est absent.
+  double? _snapshotToCdf(CurrencyService rates, Map<String, double>? snapshot) =>
+      snapshot == null || snapshot.isEmpty ? null : _sumToCdf(rates, snapshot);
+
+  /// Soldes par devise juste avant [entry] : instantané après l'opération,
+  /// moins son propre montant dans sa devise. Null sans instantané.
+  Map<String, double>? _balancesBefore(
+    OperationJournalEntry entry,
+    Map<String, double>? snapshot,
+  ) {
+    if (snapshot == null || snapshot.isEmpty) return null;
+    final result = Map<String, double>.from(snapshot);
+    final code = entry.currencyCode ?? Currency.CDF.code;
+    result[code] = (result[code] ?? 0.0) - entry.amount;
+    return result;
+  }
+
   // Placeholder for printJournalPdf
   Future<void> printJournalPdf(File pdfFile) async {
     // ignore: avoid_print
     debugPrint("Printing PDF: ${pdfFile.path}");
+  }
+}
+
+/// Devise d'un code (absent = CDF), null si inconnue.
+Currency? _currencyOfCode(String? code) {
+  switch ((code ?? 'CDF').trim().toUpperCase()) {
+    case '':
+    case 'CDF':
+    case 'FC':
+      return Currency.CDF;
+    case 'USD':
+    case r'$':
+      return Currency.USD;
+    case 'FCFA':
+    case 'XAF':
+      return Currency.FCFA;
+    default:
+      return null;
   }
 }

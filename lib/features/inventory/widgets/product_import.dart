@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/enums/currency_enum.dart';
 import '../../../core/services/currency_service.dart';
+import '../../../core/utils/price_plausibility.dart';
 import '../bloc/inventory_bloc.dart';
 import '../bloc/inventory_event.dart';
 import '../models/product.dart';
@@ -76,6 +77,34 @@ Future<void> importerProduits(BuildContext context) async {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('${analyse.produits.length} article(s) prêt(s) à être créé(s).'),
+            if (analyse.parDevise.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              // Devise dans laquelle les prix du fichier sont lus.
+              Text(
+                'Prix lus en : ${analyse.parDevise.entries.map((e) => '${e.key} (${e.value})').join(', ')}. '
+                'Colonne devise vide : ${devises.currentSettings.activeCurrency.code}.',
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+            ],
+            if (analyse.alertes.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text('${analyse.alertes.length} prix à vérifier :',
+                  style: Theme.of(ctx).textTheme.titleSmall?.copyWith(color: Colors.orange.shade800)),
+              const SizedBox(height: 4),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 140),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final e in analyse.alertes)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Text(e, style: Theme.of(ctx).textTheme.bodySmall),
+                      ),
+                  ],
+                ),
+              ),
+            ],
             if (analyse.ecarts.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text('${analyse.ecarts.length} ligne(s) écartée(s) :',
@@ -148,6 +177,12 @@ Future<void> telechargerModeleImport(BuildContext context) async {
 class _Analyse {
   final List<Product> produits = [];
   final List<String> ecarts = [];
+
+  /// Prix suspects (importés quand même, mais signalés avant validation).
+  final List<String> alertes = [];
+
+  /// Nombre d'articles retenus par devise de saisie.
+  final Map<String, int> parDevise = {};
 }
 
 _Analyse _analyser(List<List<String>> lignes, Set<String> existants, CurrencyService devises) {
@@ -204,18 +239,24 @@ _Analyse _analyser(List<List<String>> lignes, Set<String> existants, CurrencySer
       a.ecarts.add('$ref : montant ou quantité négatif.');
       continue;
     }
+    // Devise vide : celle de l'application, jamais un CDF implicite.
     final codeDevise = cellule(l, iDevise).toUpperCase();
     final devise = codeDevise.isEmpty
-        ? Currency.CDF
-        : Currency.values.where((c) => c.code == codeDevise).firstOrNull;
+        ? devises.currentSettings.activeCurrency
+        : CurrencyService.currencyFromCode(codeDevise);
     if (devise == null) {
-      a.ecarts.add('$ref : devise « $codeDevise » inconnue (CDF, USD…).');
+      a.ecarts.add('$ref : devise « $codeDevise » inconnue (CDF, USD, FCFA).');
+      continue;
+    }
+    if (!devises.hasRate(devise)) {
+      a.ecarts.add('$ref : ${CurrencyService.missingRateMessage(devise.code)}.');
       continue;
     }
     final taux = devises.getRateToCdf(devise);
-    if (devise != Currency.CDF && !(taux > 0)) {
-      a.ecarts.add('$ref : aucun taux $codeDevise défini dans les paramètres.');
-      continue;
+    a.parDevise[devise.code] = (a.parDevise[devise.code] ?? 0) + 1;
+    if (prixAnormalementBas(vente, devise.code)) {
+      a.alertes.add('$ref : « $nom » à ${libellePrix(vente, devise.code)}, '
+          'prix anormalement bas (saisi en dollars au lieu de francs ?).');
     }
     a.produits.add(Product(
       id: const Uuid().v4(),

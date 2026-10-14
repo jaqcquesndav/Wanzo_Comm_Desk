@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:wanzo/core/enums/currency_enum.dart';
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
+import 'package:wanzo/core/services/currency_service.dart';
 import 'package:wanzo/core/modules/activity_mode.dart';
 import 'package:wanzo/core/platform/image_picker/image_picker_service_factory.dart';
 import 'package:wanzo/core/platform/image_picker/image_picker_service_interface.dart';
@@ -63,7 +64,8 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   final _modelCtrl = TextEditingController();
   final _totalCtrl = TextEditingController(text: '0');
   final _advanceCtrl = TextEditingController(text: '0');
-  final _rateCtrl = TextEditingController(text: '1');
+  // Vide au depart : rempli par le taux central, jamais un 1 implicite.
+  final _rateCtrl = TextEditingController();
   // ── Fiche appareil (atelier de maintenance) ──
   String? _specialty; // Domaine : Informatique, Automobile, Thermique…
   final _devTypeCtrl = TextEditingController();
@@ -115,27 +117,28 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   /// Sert a pre-remplir le taux : un « 1 » par defaut faisait facturer des
   /// dollars comme des francs tant que personne ne le corrigeait.
   double _tauxCentral(String code) {
+    if (code == 'CDF') return 1.0;
     try {
-      final st = context.read<CurrencySettingsCubit>().state;
-      if (st.status != CurrencySettingsStatus.loaded &&
-          st.status != CurrencySettingsStatus.saved) {
-        return 0;
-      }
-      return switch (code) {
-        'USD' => st.settings.usdToCdfRate,
-        'FCFA' => st.settings.fcfaToCdfRate,
-        _ => 1.0,
-      };
+      return context.read<CurrencyService>().usableRateToCdfForCode(code) ?? 0;
     } catch (_) {
       return 0;
     }
   }
 
+  /// Taux de la fiche (1 pour CDF), null s'il manque ou n'est pas positif.
+  double? get _tauxSaisi {
+    if (_currency == 'CDF') return 1.0;
+    final t = double.tryParse(_rateCtrl.text.trim().replaceAll(',', '.'));
+    return (t != null && t > 0) ? t : null;
+  }
+
   void _appliquerTauxCentral() {
+    if (_currency == 'CDF') return;
     final t = _tauxCentral(_currency);
-    if (_currency != 'CDF' && t > 1) {
-      _rateCtrl.text = t == t.roundToDouble() ? t.toStringAsFixed(0) : t.toString();
-    }
+    // Sans taux central, le champ reste vide et le validateur bloque.
+    _rateCtrl.text = t > 0
+        ? (t == t.roundToDouble() ? t.toStringAsFixed(0) : t.toString())
+        : '';
   }
   FabricProvidedBy? _fabric;
   bool _saving = false;
@@ -174,6 +177,8 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       _entryDate = o.entryDate;
       _exitDate = o.exitDate;
       _currency = o.currencyCode;
+      // Ancienne fiche en devise au taux 1 (bug) : on repart du taux central.
+      if (_currency != 'CDF' && !(o.exchangeRate > 1)) _appliquerTauxCentral();
       _fabric = o.fabricProvidedBy;
       final m = o.maintenanceDetails;
       if (m != null) {
@@ -460,8 +465,13 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     decoration: InputDecoration(
                       labelText: 'Taux de change (1 $_currency = ? CDF)',
+                      suffixText: 'CDF',
                       border: const OutlineInputBorder(),
                     ),
+                    // Une devise étrangère sans taux n'est jamais enregistrée.
+                    validator: (_) => _currency != 'CDF' && _tauxSaisi == null
+                        ? CurrencyService.missingRateMessage(_currency)
+                        : null,
                   ),
                 ],
                 if (_isConfection) ...[
@@ -625,7 +635,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                   dense: true,
                   title: Text(s.name),
                   subtitle: Text(t.label),
-                  trailing: Text(_fmtTierPrice(t.priceCdf),
+                  trailing: Text('${_fmtTierPrice(t.priceCdf)} CDF',
                       style: const TextStyle(fontWeight: FontWeight.w600)),
                   onTap: () =>
                       Navigator.of(ctx).pop(_GridPick(s.name, t.priceCdf)),
@@ -634,10 +644,21 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       ),
     );
     if (picked == null || !mounted) return;
+    // Le bareme est en CDF : on le convertit dans la devise de la fiche.
+    final taux = _tauxSaisi;
+    if (taux == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(CurrencyService.missingRateMessage(_currency)),
+      ));
+      return;
+    }
+    final montant = picked.priceCdf / taux;
     setState(() {
-      _totalCtrl.text = picked.priceCdf == picked.priceCdf.roundToDouble()
-          ? picked.priceCdf.toInt().toString()
-          : picked.priceCdf.toString();
+      _totalCtrl.text = _currency == 'CDF'
+          ? (montant == montant.roundToDouble()
+              ? montant.toInt().toString()
+              : montant.toString())
+          : montant.toStringAsFixed(2);
       if (_labelCtrl.text.trim().isEmpty) _labelCtrl.text = picked.name;
     });
   }
@@ -1478,6 +1499,13 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    final taux = _tauxSaisi;
+    if (taux == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(CurrencyService.missingRateMessage(_currency)),
+      ));
+      return;
+    }
     setState(() => _saving = true);
     _lastMetier = _metier;
     final cubit = context.read<AtelierOrdersCubit>();
@@ -1499,7 +1527,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       totalAmount: double.tryParse(_totalCtrl.text) ?? 0,
       advanceAmount: double.tryParse(_advanceCtrl.text) ?? 0,
       currencyCode: _currency,
-      exchangeRate: _currency == 'CDF' ? 1 : (double.tryParse(_rateCtrl.text) ?? 1),
+      exchangeRate: taux,
       fabricProvidedBy: _isConfection ? _fabric : null,
     );
 

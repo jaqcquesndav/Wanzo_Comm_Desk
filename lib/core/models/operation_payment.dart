@@ -54,10 +54,18 @@ class PaymentDraft {
   });
 
   /// Montant de la tranche converti en CDF (devise d'ancrage comptable).
+  ///
+  /// Sans taux exploitable pour une devise étrangère, la tranche est refusée
+  /// (StateError) : renvoyer le montant tel quel compterait des dollars comme
+  /// des francs. Le dialogue de règlement fournit toujours le taux central.
   double get amountInCdf {
-    if (currencyCode == 'CDF') return amount;
+    if (currencyCode.toUpperCase() == 'CDF') return amount;
     final rate = exchangeRate;
-    if (rate == null || rate <= 0) return amount;
+    if (rate == null || rate <= 0) {
+      throw StateError(
+        'Taux $currencyCode non défini : renseignez-le dans Paramètres, Devises',
+      );
+    }
     return amount * rate;
   }
 

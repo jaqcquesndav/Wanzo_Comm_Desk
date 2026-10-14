@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../utils/open_journal_operation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:wanzo/core/services/currency_service.dart';
 import 'package:intl/intl.dart';
 import 'package:wanzo/l10n/app_localizations.dart'; // Corrected import path
 
@@ -244,6 +245,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         operations: journalState.operations,
         filter: activeFilter,
         currentUser: currentUser,
+        currencyService: _currencyServiceOf(context),
       );
 
       // Fermeture de l'indicateur de chargement
@@ -446,6 +448,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     Settings settings,
   ) async {
     final journalState = _operationJournalBloc.state;
+    final currencyService = _currencyServiceOf(context);
 
     if (journalState is OperationJournalLoaded) {
       if (_selectedStartDate == null || _selectedEndDate == null) {
@@ -458,6 +461,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             journalState.openingCashBalances['CDF'] ?? 0.0,
             l10n,
             settings,
+            currencyService: currencyService,
           );
           if (!mounted) return;
           // Utiliser le context actuel car mounted a été vérifié
@@ -480,6 +484,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           journalState.openingCashBalances['CDF'] ?? 0.0,
           l10n,
           settings,
+          currencyService: currencyService,
         );
         if (!mounted) return;
         ScaffoldMessenger.of(this.context).showSnackBar(
@@ -1529,5 +1534,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     context.read<OperationJournalBloc>().add(
       LoadOperationsWithFilter(filter: filter),
     );
+  }
+}
+
+/// Taux de la société fournis par l'application (null s'ils sont absents) :
+/// les PDF du journal consolident leurs totaux en CDF avec ces taux.
+CurrencyService? _currencyServiceOf(BuildContext context) {
+  try {
+    return context.read<CurrencyService>();
+  } catch (_) {
+    return null;
   }
 }

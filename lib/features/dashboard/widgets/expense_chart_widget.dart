@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:wanzo/utils/theme.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
+import 'package:wanzo/features/sales/models/sale_item.dart';
+import 'package:wanzo/core/services/currency_service.dart';
+import 'package:wanzo/core/enums/currency_enum.dart';
 import 'package:wanzo/features/dashboard/models/chart_period.dart';
 import 'package:wanzo/features/dashboard/models/chart_filter.dart';
 import 'package:wanzo/core/modules/mode_vocabulary.dart';
@@ -45,6 +49,11 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
   ChartViewMode _selectedViewMode =
       ChartViewMode.accounting; // Vue comptable par défaut
 
+  /// Taux de change de l'application (résolus dans [build]). Les ventes sont
+  /// déjà en CDF ; chaque dépense est ramenée en CDF avec SA devise avant
+  /// toute somme ou tout tracé.
+  CurrencyService? _rates;
+
   /// Couleur pour les revenus/encaissements selon le mode de vue
   Color get _incomeColor =>
       _selectedViewMode == ChartViewMode.accounting
@@ -60,6 +69,13 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    // Taux de l'application pour convertir les dépenses en CDF
+    try {
+      _rates = RepositoryProvider.of<CurrencyService>(context);
+    } catch (_) {
+      _rates = null;
+    }
 
     // Données comptables (toutes les ventes et dépenses)
     final dailySales = _aggregateSalesByPeriod();
@@ -1170,7 +1186,7 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     for (final expense in widget.expenses) {
       if (expense.date.isAfter(startOfYear.subtract(const Duration(days: 1))) &&
           expense.date.isBefore(now.add(const Duration(days: 1)))) {
-        cumulativeExpenses += expense.amount;
+        cumulativeExpenses += _expenseInCdf(expense, expense.amount);
       }
     }
 
@@ -1195,7 +1211,8 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     final expensesByCategory = <ExpenseCategory, double>{};
     for (final expense in widget.expenses) {
       expensesByCategory[expense.category] =
-          (expensesByCategory[expense.category] ?? 0) + expense.amount;
+          (expensesByCategory[expense.category] ?? 0) +
+          _expenseInCdf(expense, expense.amount);
     }
     final topCategories =
         expensesByCategory.entries.toList()
@@ -1414,7 +1431,10 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
         continue;
       }
 
-      final paid = expense.paidAmount ?? expense.amount;
+      final paid = _expenseInCdf(
+        expense,
+        expense.paidAmount ?? expense.amount,
+      );
       if (paid <= 0) continue;
       final channel = _resolveTreasuryChannel(expense.paymentMethod);
       balances[channel] = (balances[channel] ?? 0.0) - paid;
@@ -1630,7 +1650,7 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
         double filteredAmount = 0.0;
         for (final item in sale.items) {
           if (_selectedSalesFilter.matchesItem(item)) {
-            filteredAmount += item.totalPrice;
+            filteredAmount += _itemInCdf(item);
           }
         }
         if (filteredAmount > 0) {
@@ -1657,7 +1677,9 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
         // Appliquer le filtre de catégorie de dépense
         if (_selectedExpenseFilter.matchesCategory(expense.category)) {
           final dateKey = _getDateKey(expense.date);
-          aggregated[dateKey] = (aggregated[dateKey] ?? 0) + expense.amount;
+          aggregated[dateKey] =
+              (aggregated[dateKey] ?? 0) +
+              _expenseInCdf(expense, expense.amount);
         }
       }
     }
@@ -1709,11 +1731,13 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
             expense.paymentStatus == ExpensePaymentStatus.partial;
 
         if (isPaidOrPartial) {
-          final double paidAmount =
-              expense.paidAmount ??
-              (expense.paymentStatus == ExpensePaymentStatus.paid
-                  ? expense.amount
-                  : 0);
+          final double paidAmount = _expenseInCdf(
+            expense,
+            expense.paidAmount ??
+                (expense.paymentStatus == ExpensePaymentStatus.paid
+                    ? expense.amount
+                    : 0),
+          );
           if (paidAmount > 0) {
             final dateKey = _getDateKey(expense.date);
             aggregated[dateKey] = (aggregated[dateKey] ?? 0) + paidAmount;
@@ -1823,6 +1847,35 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     }
   }
 
+  /// Montant d'une dépense ramené en CDF : taux figé de la dépense s'il existe,
+  /// sinon taux configuré de SA devise. Sans taux exploitable, la dépense est
+  /// exclue (0) plutôt qu'additionnée dans une autre devise.
+  double _expenseInCdf(Expense expense, double amount) {
+    final currency = _currencyOfCode(expense.currencyCode);
+    if (currency == Currency.CDF) return amount;
+    final frozenRate = expense.exchangeRate;
+    // 1.0 est la valeur par défaut, pas un vrai taux d'une devise étrangère
+    if (frozenRate != null && frozenRate > 1.0) return amount * frozenRate;
+    final rates = _rates;
+    if (currency == null || rates == null) return 0.0;
+    return rates.convertToCdf(amount, currency);
+  }
+
+  /// Montant d'une ligne de vente en CDF : contre-valeur figée de la ligne,
+  /// sinon son prix converti avec SA devise (jamais le prix brut en USD).
+  double _itemInCdf(SaleItem item) {
+    if (item.totalPriceInCdf != 0) return item.totalPriceInCdf;
+    final currency = _currencyOfCode(item.currencyCode);
+    if (currency == Currency.CDF) return item.totalPrice;
+    // 1.0 est la valeur par défaut, pas un vrai taux d'une devise étrangère
+    if (item.exchangeRate > 1.0) return item.totalPrice * item.exchangeRate;
+    final rates = _rates;
+    if (currency == null || rates == null) return 0.0;
+    return rates.convertToCdf(item.totalPrice, currency);
+  }
+
+  /// Montants affichés : toujours en CDF (devise de base), jamais sous le
+  /// libellé d'une autre devise.
   String _formatAmount(double amount) {
     if (amount >= 1000000) {
       return '${(amount / 1000000).toStringAsFixed(1)}M CDF';
@@ -1839,5 +1892,23 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
       return '${(amount / 1000).toStringAsFixed(0)}K';
     }
     return amount.toStringAsFixed(0);
+  }
+}
+
+/// Devise d'un code (absent = CDF), null si inconnue.
+Currency? _currencyOfCode(String? code) {
+  switch ((code ?? 'CDF').trim().toUpperCase()) {
+    case '':
+    case 'CDF':
+    case 'FC':
+      return Currency.CDF;
+    case 'USD':
+    case r'$':
+      return Currency.USD;
+    case 'FCFA':
+    case 'XAF':
+      return Currency.FCFA;
+    default:
+      return null;
   }
 }

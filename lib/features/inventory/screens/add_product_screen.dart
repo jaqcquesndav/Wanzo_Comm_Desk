@@ -22,6 +22,7 @@ import '../models/product.dart';
 import 'package:wanzo/core/enums/currency_enum.dart'; // Added
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart'; // Changed
 import 'package:wanzo/core/services/currency_service.dart'; // Added
+import 'package:wanzo/core/utils/price_plausibility.dart';
 import 'package:wanzo/l10n/app_localizations.dart'; // Updated import
 import 'package:wanzo/features/auth/bloc/auth_bloc.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
@@ -1031,7 +1032,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     );
   }
 
-  void _submitForm(BuildContext context) {
+  Future<void> _submitForm(BuildContext context) async {
     final currencyService = context.read<CurrencyService>();
 
     final costPriceInput = double.tryParse(_costPriceController.text) ?? 0.0;
@@ -1041,7 +1042,37 @@ class _AddProductScreenState extends State<AddProductScreen> {
         double.tryParse(_stockQuantityController.text) ??
         (widget.product?.stockQuantity ?? 0);
 
-    final inputCurrency = _selectedInputCurrency ?? _appActiveCurrency;
+    var inputCurrency = _selectedInputCurrency ?? _appActiveCurrency;
+
+    // Garde-fou : un prix de vente en CDF trop bas est souvent un montant en
+    // dollars saisi dans la mauvaise devise (21 FC au lieu de 21 $).
+    if (inputCurrency == Currency.CDF) {
+      final choix = await verifierPrixSaisi(
+        context,
+        prix: sellingPriceInput,
+        codeDevise: 'CDF',
+      );
+      if (!context.mounted || choix == ChoixDevisePrix.annule) return;
+      if (choix == ChoixDevisePrix.enDollars) {
+        if (!currencyService.hasRate(Currency.USD)) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(CurrencyService.missingRateMessage('USD')),
+          ));
+          return;
+        }
+        inputCurrency = Currency.USD;
+        setState(() => _selectedInputCurrency = Currency.USD);
+      }
+    }
+    // Devise étrangère sans taux : refus, jamais une conversion au taux 1.
+    if (!currencyService.hasRate(inputCurrency)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(CurrencyService.missingRateMessage(inputCurrency.code)),
+        ),
+      );
+      return;
+    }
 
     // Get the exchange rate from the input currency to CDF
     // This uses the getRateToCdf method which relies on the loaded _currentSettings in CurrencyService

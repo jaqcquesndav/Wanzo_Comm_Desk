@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import 'package:wanzo/core/enums/currency_enum.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/services/currency_service.dart';
+import 'package:wanzo/core/utils/price_plausibility.dart';
 import 'package:wanzo/core/widgets/desktop/modal_form_shell.dart';
 
 import '../config/service_suggestions.dart';
@@ -115,6 +116,9 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
     super.initState();
     _currency = context.read<CurrencyService>();
     _inputCurrency = _currency.currentSettings.activeCurrency;
+    // Devise active sans taux : on saisit en CDF plutôt que d'afficher des
+    // francs sous une étiquette en dollars.
+    if (!_currency.hasRate(_inputCurrency)) _inputCurrency = Currency.CDF;
     final s = widget.service;
     if (s != null) {
       _nameCtrl.text = s.name;
@@ -174,6 +178,38 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    // Garde-fou : un prix en CDF trop bas est souvent un montant en dollars
+    // saisi dans la mauvaise devise (21 FC au lieu de 21 $).
+    if (_inputCurrency == Currency.CDF) {
+      final bas = _tiers
+          .map((r) => _parsePrice(r.price.text))
+          .whereType<double>()
+          .where((p) => prixAnormalementBas(p, 'CDF'));
+      if (bas.isNotEmpty) {
+        final choix = await verifierPrixSaisi(
+          context,
+          prix: bas.first,
+          codeDevise: 'CDF',
+        );
+        if (!mounted || choix == ChoixDevisePrix.annule) return;
+        if (choix == ChoixDevisePrix.enDollars) {
+          if (!_currency.hasRate(Currency.USD)) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(CurrencyService.missingRateMessage('USD')),
+            ));
+            return;
+          }
+          setState(() => _inputCurrency = Currency.USD);
+        }
+      }
+    }
+    // Devise de saisie sans taux : refus, jamais une conversion au taux 1.
+    if (!_currency.hasRate(_inputCurrency)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(CurrencyService.missingRateMessage(_inputCurrency.code)),
+      ));
+      return;
+    }
     final tiers = <ServicePriceTier>[];
     for (var i = 0; i < _tiers.length; i++) {
       final row = _tiers[i];
@@ -314,6 +350,12 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
                 ],
                 onChanged: (c) {
                   if (c == null || c == _inputCurrency) return;
+                  if (!_currency.hasRate(c)) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(CurrencyService.missingRateMessage(c.code)),
+                    ));
+                    return;
+                  }
                   setState(() {
                     // Reconvertit les montants déjà saisis dans la nouvelle devise.
                     for (final r in _tiers) {

@@ -67,8 +67,152 @@ class _IssuerIdentity {
   }
 }
 
+/// Ligne du pied d'une pièce, montant signé dans la devise du document.
+class InvoiceFooterLine {
+  const InvoiceFooterLine(this.label, this.amount, {this.strong = false});
+
+  final String label;
+
+  /// Montant signé : une remise est négative.
+  final double amount;
+  final bool strong;
+}
+
+/// Pied d'une facture ou d'un reçu PDF. TOUS les montants viennent de la base
+/// CDF au taux figé de la vente (InvoiceMoney.figures) : lignes, remise, TVA
+/// et total s'additionnent sur le papier, et rien n'est réétiqueté.
+class InvoiceFooter {
+  const InvoiceFooter._(
+    this.currencyCode,
+    this.figures,
+    this.totals,
+    this.settlement,
+  );
+
+  final String currencyCode;
+  final SaleFigures figures;
+
+  /// Sous-total et remise, HT et TVA, puis total à payer.
+  final List<InvoiceFooterLine> totals;
+
+  /// Payé, monnaie rendue, solde dû.
+  final List<InvoiceFooterLine> settlement;
+
+  factory InvoiceFooter.of(Sale sale, Settings settings) {
+    final money = InvoiceMoney.forSale(sale);
+    // La TVA n'apparaît que si l'entreprise est assujettie (régime NORMAL) ET
+    // que l'affichage des taxes est activé. En régime minimal/SMT : aucune TVA.
+    final f = money.figures(
+      sale,
+      showTax: settings.showTaxes && settings.isTaxSubject,
+    );
+    // Taux arrondi au centième : « 16 % » et non « 15.999 % ».
+    final taux =
+        f.totalHt > 0 ? (f.tax / f.totalHt * 10000).round() / 100 : 0.0;
+    final tauxLabel = taux == taux.roundToDouble()
+        ? taux.toStringAsFixed(0)
+        : taux.toStringAsFixed(2);
+    return InvoiceFooter._(
+      money.currencyCode,
+      f,
+      [
+        if (f.discount > 0) ...[
+          InvoiceFooterLine('Sous-total', f.lines),
+          InvoiceFooterLine('Remise', -f.discount),
+        ],
+        if (f.tax > 0) ...[
+          InvoiceFooterLine('Total HT', f.totalHt),
+          InvoiceFooterLine('TVA ($tauxLabel%)', f.tax),
+        ],
+        InvoiceFooterLine('Total à payer', f.total, strong: true),
+      ],
+      [
+        if (f.received > 0) InvoiceFooterLine('Montant payé', f.received),
+        if (f.change > 0) InvoiceFooterLine('Monnaie rendue', f.change),
+        if (f.due > 0) InvoiceFooterLine('Solde dû', f.due),
+      ],
+    );
+  }
+
+  /// Montant signé formaté (« -1 500 FC » pour une remise).
+  String format(double amount) => amount < 0
+      ? '-${formatCurrency(-amount, currencyCode)}'
+      : formatCurrency(amount, currencyCode);
+}
+
+
 /// Service pour générer et imprimer des factures et tickets de caisse
 class InvoiceService {
+  /// Ligne du pied de facture A4.
+  pw.Widget _invoiceFooterRow(
+    InvoiceFooter footer,
+    InvoiceFooterLine l,
+    pw.Font regularFont,
+    pw.Font boldFont, {
+    bool settlement = false,
+  }) {
+    final style = settlement
+        ? pw.TextStyle(font: regularFont, fontSize: 10)
+        : pw.TextStyle(font: boldFont, fontSize: l.strong ? 12 : null);
+    final row = pw.Row(
+      mainAxisSize: pw.MainAxisSize.min,
+      children: [
+        pw.Container(
+          width: 150,
+          child: pw.Text('${l.label}:', style: style),
+        ),
+        pw.Container(
+          width: 120,
+          child: pw.Text(
+            footer.format(l.amount),
+            style: settlement || l.strong ? style : null,
+            textAlign: pw.TextAlign.right,
+          ),
+        ),
+      ],
+    );
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(top: 5),
+      child: l.strong
+          ? pw.Container(
+              padding: const pw.EdgeInsets.all(5),
+              color: PdfColors.grey300,
+              child: row,
+            )
+          : row,
+    );
+  }
+
+  /// Ligne du pied de reçu (ticket PDF 80 mm).
+  pw.Widget _receiptFooterRow(
+    InvoiceFooter footer,
+    InvoiceFooterLine l,
+    pw.Font regularFont,
+    pw.Font boldFont,
+  ) {
+    final style = pw.TextStyle(
+      font: l.strong ? boldFont : regularFont,
+      fontSize: l.strong ? 10 : 8,
+    );
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(top: 2),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.end,
+        children: [
+          pw.Text('${l.label}: ', style: style),
+          pw.SizedBox(
+            width: 80,
+            child: pw.Text(
+              footer.format(l.amount),
+              style: style,
+              textAlign: pw.TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Génère un PDF pour une vente et retourne le chemin du fichier
   Future<String> generateInvoicePdf(Sale sale, Settings settings) async {
     final pdf = pw.Document();
@@ -115,26 +259,9 @@ class InvoiceService {
         .replaceAll('{MONTH}', sale.date.month.toString().padLeft(2, '0'))
         .replaceAll('{SEQ}', sale.id.substring(0, 8));
 
-    // Montants figés dans la devise de la vente : une vente en USD doit produire
-    // une facture en USD, pas en CDF (même logique que receipt_printer_service).
-    final total = sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
-    final paidTx = sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf;
-    final remainingTx = total - paidTx;
-    // HT et TVA sont stockés en CDF : on les ramène au prorata dans la devise de
-    // la vente pour rester cohérent avec le total affiché.
-    final txRatio =
-        sale.totalAmountInCdf > 0 ? total / sale.totalAmountInCdf : 1.0;
-    // La TVA n'apparaît que si l'entreprise est assujettie (régime NORMAL) ET que
-    // l'affichage des taxes est activé. En régime minimal/SMT : aucune TVA.
-    final showTax = settings.showTaxes && settings.isTaxSubject;
-    final taxAmount = showTax ? (sale.taxAmount ?? 0.0) * txRatio : 0.0;
-    final subtotal = total - taxAmount;
-    final effectiveTaxRate =
-        subtotal > 0 ? (taxAmount / subtotal) * 100 : settings.defaultTaxRate;
-    final taxRateLabel =
-        effectiveTaxRate.truncateToDouble() == effectiveTaxRate
-            ? effectiveTaxRate.toStringAsFixed(0)
-            : effectiveTaxRate.toStringAsFixed(2);
+    // Pied de pièce depuis la base CDF au taux figé de la vente : lignes,
+    // remise, TVA et totaux s'additionnent (voir InvoiceFooter).
+    final footer = InvoiceFooter.of(sale, settings);
 
     pdf.addPage(
       pw.Page(
@@ -336,137 +463,25 @@ class InvoiceService {
 
               pw.SizedBox(height: 10),
 
+              // Pied de facture : chaque montant vient de la base CDF.
               pw.Container(
                 alignment: pw.Alignment.centerRight,
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
-                    pw.Row(
-                      mainAxisSize: pw.MainAxisSize.min,
-                      children: [
-                        pw.Container(
-                          width: 150,
-                          child: pw.Text(
-                            'Sous-total:',
-                            style: pw.TextStyle(font: boldFont),
-                          ),
-                        ),
-                        pw.Container(
-                          width: 120,
-                          child: pw.Text(
-                            formatCurrency(subtotal, currencyCode),
-                            textAlign: pw.TextAlign.right,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (settings.showTaxes) ...[
-                      pw.SizedBox(height: 5),
-                      pw.Row(
-                        mainAxisSize: pw.MainAxisSize.min,
-                        children: [
-                          pw.Container(
-                            width: 150,
-                            child: pw.Text(
-                              'TVA ($taxRateLabel%):',
-                              style: pw.TextStyle(font: boldFont),
-                            ),
-                          ),
-                          pw.Container(
-                            width: 120,
-                            child: pw.Text(
-                              formatCurrency(taxAmount, currencyCode),
-                              textAlign: pw.TextAlign.right,
-                            ),
-                          ),
-                        ],
+                    for (final l in footer.totals)
+                      _invoiceFooterRow(footer, l, regularFont, boldFont),
+                    for (final l in footer.settlement)
+                      _invoiceFooterRow(
+                        footer,
+                        l,
+                        regularFont,
+                        boldFont,
+                        settlement: true,
                       ),
-                    ],
-                    pw.SizedBox(height: 5),
-                    pw.Container(
-                      padding: const pw.EdgeInsets.all(5),
-                      color: PdfColors.grey300,
-                      child: pw.Row(
-                        mainAxisSize: pw.MainAxisSize.min,
-                        children: [
-                          pw.Container(
-                            width: 150,
-                            child: pw.Text(
-                              'Total à payer:',
-                              style: pw.TextStyle(font: boldFont, fontSize: 12),
-                            ),
-                          ),
-                          pw.Container(
-                            width: 120,
-                            child: pw.Text(
-                              formatCurrency(total, currencyCode),
-                              style: pw.TextStyle(font: boldFont, fontSize: 12),
-                              textAlign: pw.TextAlign.right,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ],
                 ),
               ),
-
-              // Display payment status if applicable
-              if (paidTx > 0) ...[
-                pw.SizedBox(height: 5),
-                pw.Row(
-                  mainAxisSize: pw.MainAxisSize.min,
-                  mainAxisAlignment:
-                      pw
-                          .MainAxisAlignment
-                          .end, // Align to the right with other totals
-                  children: [
-                    pw.Container(
-                      width: 150,
-                      child: pw.Text(
-                        'Montant Payé:',
-                        style: pw.TextStyle(font: regularFont, fontSize: 10),
-                      ),
-                    ),
-                    pw.Container(
-                      width: 120,
-                      child: pw.Text(
-                        formatCurrency(paidTx, currencyCode),
-                        style: pw.TextStyle(font: regularFont, fontSize: 10),
-                        textAlign: pw.TextAlign.right,
-                      ),
-                    ),
-                  ],
-                ),
-                if (remainingTx > 0) ...[
-                  pw.SizedBox(height: 5),
-                  pw.Row(
-                    mainAxisSize: pw.MainAxisSize.min,
-                    mainAxisAlignment:
-                        pw.MainAxisAlignment.end, // Align to the right
-                    children: [
-                      pw.Container(
-                        width: 150,
-                        child: pw.Text(
-                          'Solde Dû:',
-                          style: pw.TextStyle(font: regularFont, fontSize: 10),
-                        ),
-                      ),
-                      pw.Container(
-                        width: 120,
-                        child: pw.Text(
-                          formatCurrency(
-                            remainingTx,
-                            currencyCode,
-                          ),
-                          style: pw.TextStyle(font: regularFont, fontSize: 10),
-                          textAlign: pw.TextAlign.right,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
 
               pw.SizedBox(height: 30),
 
@@ -589,26 +604,9 @@ class InvoiceService {
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
     final formattedDate = dateFormat.format(sale.date);
 
-    // Montants figés dans la devise de la vente : une vente en USD doit produire
-    // une facture en USD, pas en CDF (même logique que receipt_printer_service).
-    final total = sale.totalAmountInTransactionCurrency ?? sale.totalAmountInCdf;
-    final paidTx = sale.paidAmountInTransactionCurrency ?? sale.paidAmountInCdf;
-    final remainingTx = total - paidTx;
-    // HT et TVA sont stockés en CDF : on les ramène au prorata dans la devise de
-    // la vente pour rester cohérent avec le total affiché.
-    final txRatio =
-        sale.totalAmountInCdf > 0 ? total / sale.totalAmountInCdf : 1.0;
-    // La TVA n'apparaît que si l'entreprise est assujettie (régime NORMAL) ET que
-    // l'affichage des taxes est activé. En régime minimal/SMT : aucune TVA.
-    final showTax = settings.showTaxes && settings.isTaxSubject;
-    final taxAmount = showTax ? (sale.taxAmount ?? 0.0) * txRatio : 0.0;
-    final subtotal = total - taxAmount;
-    final effectiveTaxRate =
-        subtotal > 0 ? (taxAmount / subtotal) * 100 : settings.defaultTaxRate;
-    final taxRateLabel =
-        effectiveTaxRate.truncateToDouble() == effectiveTaxRate
-            ? effectiveTaxRate.toStringAsFixed(0)
-            : effectiveTaxRate.toStringAsFixed(2);
+    // Pied de pièce depuis la base CDF au taux figé de la vente : lignes,
+    // remise, TVA et totaux s'additionnent (voir InvoiceFooter).
+    final footer = InvoiceFooter.of(sale, settings);
     final ticketWidth = PdfPageFormat(
       80 * PdfPageFormat.mm,
       500 * PdfPageFormat.mm, // Increased height for potentially long receipts
@@ -788,131 +786,12 @@ class InvoiceService {
               ), // Garder ce Divider
               pw.SizedBox(height: 3),
 
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.end,
-                children: [
-                  pw.Text(
-                    'Sous-total: ',
-                    style: pw.TextStyle(font: regularFont, fontSize: 8),
-                  ),
-                  pw.SizedBox(
-                    width: 60, // Adjust width as needed
-                    child: pw.Text(
-                      formatCurrency(subtotal, currencyCode),
-                      style: pw.TextStyle(font: regularFont, fontSize: 8),
-                      textAlign: pw.TextAlign.right,
-                    ),
-                  ),
-                ],
-              ),
-
-              if (settings.showTaxes) ...[
-                pw.SizedBox(height: 2),
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.end,
-                  children: [
-                    pw.Text(
-                      'TVA ($taxRateLabel%): ',
-                      style: pw.TextStyle(font: regularFont, fontSize: 8),
-                    ),
-                    pw.SizedBox(
-                      width: 60, // Adjust width as needed
-                      child: pw.Text(
-                        formatCurrency(taxAmount, currencyCode),
-                        style: pw.TextStyle(font: regularFont, fontSize: 8),
-                        textAlign: pw.TextAlign.right,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-
-              pw.SizedBox(height: 3),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.end,
-                children: [
-                  pw.Text(
-                    'TOTAL: ',
-                    style: pw.TextStyle(font: boldFont, fontSize: 10),
-                  ),
-                  pw.SizedBox(
-                    width: 60, // Adjust width as needed
-                    child: pw.Text(
-                      formatCurrency(total, currencyCode),
-                      style: pw.TextStyle(font: boldFont, fontSize: 10),
-                      textAlign: pw.TextAlign.right,
-                    ),
-                  ),
-                ],
-              ),
-
-              pw.SizedBox(height: 10),
-
-              // Montant Reçu
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.end,
-                children: [
-                  pw.Text(
-                    'Montant Reçu: ',
-                    style: pw.TextStyle(font: boldFont, fontSize: 10),
-                  ),
-                  pw.SizedBox(
-                    width: 80, // Adjusted width
-                    child: pw.Text(
-                      formatCurrency(paidTx, currencyCode),
-                      style: pw.TextStyle(font: boldFont, fontSize: 10),
-                      textAlign: pw.TextAlign.right,
-                    ),
-                  ),
-                ],
-              ),
-              pw.SizedBox(height: 3),
-              // Total Vente (for context)
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.end,
-                children: [
-                  pw.Text(
-                    'Total Vente: ',
-                    style: pw.TextStyle(font: regularFont, fontSize: 8),
-                  ),
-                  pw.SizedBox(
-                    width: 80, // Adjusted width
-                    child: pw.Text(
-                      formatCurrency(
-                        total,
-                        currencyCode,
-                      ), // 'total' is the full sale amount calculated in this function
-                      style: pw.TextStyle(font: regularFont, fontSize: 8),
-                      textAlign: pw.TextAlign.right,
-                    ),
-                  ),
-                ],
-              ),
-
-              // Solde Restant (if any)
-              if (remainingTx > 0) ...[
-                pw.SizedBox(height: 3),
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.end,
-                  children: [
-                    pw.Text(
-                      'Solde Restant: ',
-                      style: pw.TextStyle(font: regularFont, fontSize: 8),
-                    ),
-                    pw.SizedBox(
-                      width: 80, // Adjusted width
-                      child: pw.Text(
-                        formatCurrency(
-                          remainingTx,
-                          currencyCode,
-                        ),
-                        style: pw.TextStyle(font: regularFont, fontSize: 8),
-                        textAlign: pw.TextAlign.right,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              // Pied de reçu : chaque montant vient de la base CDF.
+              for (final l in footer.totals)
+                _receiptFooterRow(footer, l, regularFont, boldFont),
+              pw.SizedBox(height: 8),
+              for (final l in footer.settlement)
+                _receiptFooterRow(footer, l, regularFont, boldFont),
 
               pw.SizedBox(height: 10),
 

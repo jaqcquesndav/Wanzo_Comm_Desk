@@ -54,7 +54,14 @@ class CsvImportService {
   ];
 
   /// Ouvre le sélecteur de fichier et parse le CSV
-  static Future<CsvImportResult?> pickAndParseCSV(BuildContext context) async {
+  ///
+  /// [rateToCdf] donne le taux central d'un code devise (null si inconnu ou
+  /// non défini) ; [defaultCurrencyCode] s'applique quand « devise » est vide.
+  static Future<CsvImportResult?> pickAndParseCSV(
+    BuildContext context, {
+    double? Function(String currencyCode)? rateToCdf,
+    String defaultCurrencyCode = 'CDF',
+  }) async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -67,7 +74,11 @@ class CsvImportService {
       final file = File(result.files.single.path!);
       final csvString = await file.readAsString();
 
-      return parseCSV(csvString);
+      return parseCSV(
+        csvString,
+        rateToCdf: rateToCdf,
+        defaultCurrencyCode: defaultCurrencyCode,
+      );
     } catch (e) {
       debugPrint('Erreur import CSV: $e');
       return CsvImportResult(
@@ -80,11 +91,20 @@ class CsvImportService {
   }
 
   /// Parse un contenu CSV en liste de Product
-  static CsvImportResult parseCSV(String csvContent) {
+  static CsvImportResult parseCSV(
+    String csvContent, {
+    double? Function(String currencyCode)? rateToCdf,
+    String defaultCurrencyCode = 'CDF',
+  }) {
     final products = <Product>[];
     final errors = <String>[];
 
-    final rows = const CsvToListConverter().convert(csvContent);
+    // Fin de ligne normalisee : le convertisseur attend CRLF par defaut, si
+    // bien qu'un fichier en LF (dont notre propre modele) ne donnait qu'une
+    // ligne d'en-tete et aucun article, sans la moindre erreur.
+    final rows = const CsvToListConverter(eol: '\n').convert(
+      csvContent.replaceAll('\r\n', '\n').replaceAll('\r', '\n'),
+    );
     if (rows.isEmpty) {
       return CsvImportResult(
         products: [],
@@ -123,7 +143,12 @@ class CsvImportService {
           rowMap[headers[j]] = row[j].toString().trim();
         }
 
-        final product = _parseRow(rowMap, i + 1);
+        final product = _parseRow(
+          rowMap,
+          i + 1,
+          rateToCdf: rateToCdf,
+          defaultCurrencyCode: defaultCurrencyCode,
+        );
         if (product != null) {
           products.add(product);
         } else {
@@ -142,7 +167,12 @@ class CsvImportService {
     );
   }
 
-  static Product? _parseRow(Map<String, String> row, int lineNumber) {
+  static Product? _parseRow(
+    Map<String, String> row,
+    int lineNumber, {
+    double? Function(String currencyCode)? rateToCdf,
+    String defaultCurrencyCode = 'CDF',
+  }) {
     final name = row['nom'];
     if (name == null || name.isEmpty) return null;
 
@@ -151,19 +181,16 @@ class CsvImportService {
     final costPrice = double.tryParse(row['prix_achat'] ?? '') ?? 0.0;
     final sellingPrice = double.tryParse(row['prix_vente'] ?? '') ?? 0.0;
     final quantity = double.tryParse(row['quantite'] ?? '') ?? 0.0;
-    final currency = (row['devise'] ?? 'CDF').toUpperCase();
-    final exchangeRate = double.tryParse(row['taux_change'] ?? '') ?? 1.0;
+    final currency = normalizeCurrencyCode(row['devise'], defaultCurrencyCode);
+    final exchangeRate = resolveRateToCdf(
+      currency: currency,
+      fileRate: row['taux_change'],
+      rateToCdf: rateToCdf,
+    );
 
-    // Calculer les prix en CDF selon la devise
-    double costPriceInCdf;
-    double sellingPriceInCdf;
-    if (currency == 'CDF') {
-      costPriceInCdf = costPrice;
-      sellingPriceInCdf = sellingPrice;
-    } else {
-      costPriceInCdf = costPrice * exchangeRate;
-      sellingPriceInCdf = sellingPrice * exchangeRate;
-    }
+    // Prix en CDF au taux retenu (jamais un taux 1 implicite).
+    final costPriceInCdf = costPrice * exchangeRate;
+    final sellingPriceInCdf = sellingPrice * exchangeRate;
 
     final now = DateTime.now();
     final tags =
@@ -193,6 +220,37 @@ class CsvImportService {
       tags: tags,
       syncStatus: 'pending',
     );
+  }
+
+  /// Code devise normalisé (XAF lu comme FCFA) ; vide = [fallback].
+  /// Lève un message si la devise est inconnue.
+  static String normalizeCurrencyCode(String? raw, String fallback) {
+    var code = (raw ?? '').trim().toUpperCase();
+    if (code.isEmpty) code = fallback.trim().toUpperCase();
+    if (code.isEmpty || code == 'FC') return 'CDF';
+    if (code == 'XAF') return 'FCFA';
+    if (code == r'$') return 'USD';
+    if (code != 'CDF' && code != 'USD' && code != 'FCFA') {
+      throw 'devise « $code » inconnue (CDF, USD, FCFA)';
+    }
+    return code;
+  }
+
+  /// Taux vers le CDF d'une ligne : 1 pour CDF, sinon celui du fichier s'il
+  /// est renseigné (> 1 : un « 1 » recopié du modèle n'est pas un taux), sinon
+  /// le taux central. Sans taux exploitable, la ligne est refusée.
+  static double resolveRateToCdf({
+    required String currency,
+    String? fileRate,
+    double? Function(String currencyCode)? rateToCdf,
+  }) {
+    if (currency == 'CDF') return 1.0;
+    final fromFile =
+        double.tryParse((fileRate ?? '').trim().replaceAll(',', '.'));
+    if (fromFile != null && fromFile > 1) return fromFile;
+    final central = rateToCdf?.call(currency);
+    if (central != null && central > 0) return central;
+    throw 'Taux $currency non défini : renseignez-le dans Paramètres, Devises';
   }
 
   static ProductCategory _parseCategory(String value) {

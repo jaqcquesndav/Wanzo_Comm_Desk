@@ -308,7 +308,6 @@ class CustomerDetailsScreen extends StatelessWidget {
                                           () => _settleReceivable(
                                             context,
                                             unpaid.toList(),
-                                            currencyService,
                                           ),
                                     ),
                                     ElevatedButton.icon(
@@ -838,12 +837,10 @@ class CustomerDetailsScreen extends StatelessWidget {
   Future<void> _settleReceivable(
     BuildContext context,
     List<Sale> unpaidSales,
-    CurrencyService currencyService,
   ) async {
     final sale = await pickSaleToSettle(
       context,
       unpaidSales,
-      formatAmount: currencyService.formatAmount,
     );
     if (sale == null || !context.mounted) return;
     final updated = await startSalePaymentFlow(context, sale);

@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:wanzo/core/enums/currency_enum.dart'; // Corrected: Currency is the enum name
 import 'package:wanzo/core/models/currency_settings_model.dart';
+import 'package:wanzo/core/services/currency_service.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/utils/price_plausibility.dart';
 import 'package:wanzo/core/widgets/desktop/responsive_form_container.dart';
 import 'package:wanzo/core/widgets/desktop/adaptive_modal.dart';
 import 'package:wanzo/core/widgets/desktop/modal_form_shell.dart';
@@ -15,6 +17,8 @@ import 'package:wanzo/features/inventory/bloc/inventory_bloc.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_event.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_state.dart';
 import 'package:wanzo/features/inventory/models/product.dart';
+import 'package:wanzo/features/inventory/repositories/inventory_repository.dart';
+import 'package:wanzo/features/inventory/screens/add_product_screen.dart';
 import 'package:wanzo/features/invoice/services/invoice_service.dart';
 import 'package:wanzo/features/invoice/widgets/post_sale_document_sheet.dart';
 import 'package:wanzo/services/receipt_printer_service.dart';
@@ -211,6 +215,124 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       {}; // Stores rate_to_CDF for each currency
   List<Currency> _availableCurrencies = Currency.values;
 
+  /// Devise de la transaction fixée au premier chargement des réglages
+  /// seulement : un rechargement (taux synchronisés, retour des paramètres)
+  /// ne doit jamais écraser le choix de l'utilisateur.
+  bool _deviseInitialisee = false;
+
+  /// Taux vers le CDF d'une devise (1 pour CDF), null s'il manque.
+  double? _tauxVersCdf(Currency? c) {
+    if (c == null || c == Currency.CDF) return 1.0;
+    final t = _exchangeRates[c];
+    return (t != null && t > 0) ? t : null;
+  }
+
+  /// Convertit [montant] d'une devise à l'autre via le CDF ; null sans taux.
+  double? _convertirMontant(double montant, Currency? de, Currency? vers) {
+    if (de == vers) return montant;
+    final tDe = _tauxVersCdf(de);
+    final tVers = _tauxVersCdf(vers);
+    if (tDe == null || tVers == null) return null;
+    return montant * tDe / tVers;
+  }
+
+  /// Acompte prérempli (atelier, réservation) : exprimé dans la devise du
+  /// préremplissage, il est converti dans la devise de la transaction.
+  void _appliquerAcompteInitial() {
+    final initial = widget.initialPaidAmount;
+    final cible = _selectedTransactionCurrency;
+    if (initial == null || cible == null) return;
+    final code = widget.initialCurrencyCode;
+    final source = code == null ? cible : CurrencyService.currencyFromCode(code);
+    final converti =
+        source == null ? null : _convertirMontant(initial, source, cible);
+    if (converti != null) {
+      _setPaid(converti);
+      return;
+    }
+    _setPaid(0);
+    final message =
+        CurrencyService.missingRateMessage((code ?? cible.code).toUpperCase());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Acompte de ${formatCurrency(initial, code ?? cible.code)} non repris. $message',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    });
+  }
+
+  /// Garde-fou avant validation : un prix de ligne anormalement bas (dollars
+  /// enregistrés comme francs) ou un montant reçu disproportionné demande
+  /// confirmation. Renvoie false si la vente ne doit pas partir.
+  Future<bool> _verifierVraisemblance(double total) async {
+    final devise = _selectedTransactionCurrency?.code ?? 'CDF';
+    final enCdf = devise == 'CDF';
+    final stock = context.read<InventoryRepository>();
+    // Lignes suspectes relevées avant tout dialogue.
+    final suspects = <(SaleItem, double, Product?)>[];
+    for (final item in _items) {
+      final prix = enCdf
+          ? item.unitPriceInCdf
+          : _convertFromCdfToTransactionCurrency(item.unitPriceInCdf);
+      final estArticle = item.itemType == SaleItemType.product;
+      // En CDF, seuls les articles du stock sont contrôlés (une prestation
+      // peut valoir quelques francs) ; en devise, toutes les lignes.
+      final suspect = enCdf
+          ? estArticle && prixAnormalementBas(prix, 'CDF')
+          : prixAnormalementBas(prix, devise);
+      if (!suspect) continue;
+      final produit = estArticle && item.productId != null
+          ? stock.getProductById(item.productId!)
+          : null;
+      suspects.add((item, prix, produit));
+    }
+    for (final (item, prix, produit) in suspects) {
+      if (!mounted) return false;
+      final choix = await confirmerPrixVenteBas(
+        context,
+        article: item.productName,
+        prix: prix,
+        codeDevise: devise,
+        peutCorriger: produit != null,
+      );
+      if (choix == ChoixPrixVente.continuer) continue;
+      if (choix == ChoixPrixVente.corriger && produit != null) {
+        if (!mounted) return false;
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => AddProductScreen(product: produit)),
+        );
+      }
+      return false;
+    }
+    if (!enCdf && prixAnormalementBas(total, devise)) {
+      if (!mounted) return false;
+      final choix = await confirmerPrixVenteBas(
+        context,
+        article: 'le total de la vente',
+        prix: total,
+        codeDevise: devise,
+        peutCorriger: false,
+      );
+      if (choix != ChoixPrixVente.continuer) return false;
+    }
+    if (encaissementDisproportionne(recu: _paidAmount, total: total)) {
+      if (!mounted) return false;
+      final ok = await confirmerEncaissementDisproportionne(
+        context,
+        recu: _paidAmount,
+        total: total,
+        codeDevise: devise,
+      );
+      if (!ok) return false;
+    }
+    return mounted;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -261,52 +383,48 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     final activeCurrency = _resolveCompanyActiveCurrency(settings);
     setState(() {
       _defaultCurrency = activeCurrency;
-      _selectedTransactionCurrency = activeCurrency;
-      // The following lines correctly initialize _exchangeRates
       _exchangeRates = {
         Currency.USD: settings.usdToCdfRate,
         Currency.FCFA: settings.fcfaToCdfRate,
         Currency.CDF: 1.0, // CDF to CDF is always 1.0
       };
 
-      _transactionExchangeRate = _exchangeRates[activeCurrency] ?? 1.0;
-
+      // Devises proposées : celles qui ont un taux exploitable.
       _availableCurrencies =
           _exchangeRates.keys
-              .where((k) => _exchangeRates[k] != null && _exchangeRates[k]! > 0)
+              .where((k) => (_exchangeRates[k] ?? 0) > 0)
               .toList();
-
-      // Ensure default currency is always available if it has a rate
-      if (!_availableCurrencies.contains(activeCurrency) &&
-          (_exchangeRates[activeCurrency] ?? 0) > 0) {
-        _availableCurrencies.add(activeCurrency);
-      }
-      // If no currencies are available (e.g. all rates are 0 or null), add default as a fallback
       if (_availableCurrencies.isEmpty) {
-        _availableCurrencies.add(activeCurrency);
+        _availableCurrencies.add(Currency.CDF);
       }
 
-      if (_selectedTransactionCurrency == null ||
-          !_availableCurrencies.contains(_selectedTransactionCurrency)) {
-        _selectedTransactionCurrency =
-            _availableCurrencies.isNotEmpty
-                ? _availableCurrencies.first
-                : activeCurrency;
-      }
-
-      // Devise imposée par le préremplissage (ex. commande atelier en USD/CDF).
-      if (widget.initialCurrencyCode != null) {
-        for (final c in Currency.values) {
-          if (c.code == widget.initialCurrencyCode &&
-              _availableCurrencies.contains(c)) {
-            _selectedTransactionCurrency = c;
-            break;
-          }
+      // Premier chargement seulement : devise active, ou celle imposée par
+      // le préremplissage (commande atelier, réservation), puis l'acompte
+      // prérempli converti dans cette devise.
+      if (!_deviseInitialisee) {
+        _deviseInitialisee = true;
+        var choix =
+            _availableCurrencies.contains(activeCurrency)
+                ? activeCurrency
+                : _availableCurrencies.first;
+        final imposee = CurrencyService.currencyFromCode(
+          widget.initialCurrencyCode,
+        );
+        if (imposee != null && _availableCurrencies.contains(imposee)) {
+          choix = imposee;
         }
+        _selectedTransactionCurrency = choix;
+        _appliquerAcompteInitial();
       }
 
+      // La devise choisie reste proposée même si son taux a disparu (la
+      // validation la refusera alors, jamais au taux 1).
+      final choisie = _selectedTransactionCurrency;
+      if (choisie != null && !_availableCurrencies.contains(choisie)) {
+        _availableCurrencies.add(choisie);
+      }
       _transactionExchangeRate =
-          _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
+          _exchangeRates[_selectedTransactionCurrency!] ?? 0;
     });
   }
 
@@ -633,11 +751,15 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                               onChanged: (Currency? newValue) {
                                 if (newValue != null) {
                                   setState(() {
+                                    final ancienne = _selectedTransactionCurrency;
                                     _selectedTransactionCurrency = newValue;
                                     _transactionExchangeRate =
-                                        _exchangeRates[newValue] ?? 1.0;
+                                        _exchangeRates[newValue] ?? 0;
                                     if (_paymentMethod != 'Crédit') {
                                       _setPaid(_calculateTotalInTransactionCurrency());
+                                    } else {
+                                      // Acompte déjà saisi : converti dans la nouvelle devise.
+                                      _setPaid(_convertirMontant(_paidAmount, ancienne, newValue) ?? 0);
                                     }
                                   });
                                 }
@@ -1110,7 +1232,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     }
 
     final totalInTransactionCurrency = _calculateTotalInTransactionCurrency();
-    final currentRate = _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
+    final currentRate = _exchangeRates[_selectedTransactionCurrency!] ?? 0;
     final totalInCdf = totalInTransactionCurrency * currentRate;
     final paidInCdf = _paidAmount * currentRate;
 
@@ -1262,7 +1384,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       _exchangeRates = currentExchangeRates;
       // S'assurer que le taux de change est correctement mis à jour
       _transactionExchangeRate =
-          _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
+          _exchangeRates[_selectedTransactionCurrency!] ?? 0;
     });
 
     // Recharger les produits disponibles
@@ -1753,7 +1875,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       return;
     }
 
-    final exchangeRate = _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
+    final exchangeRate = _exchangeRates[_selectedTransactionCurrency!] ?? 0;
     final unitPrice = tier.priceCdf / exchangeRate;
     final label = service.hasMultipleTiers ? '${service.name} (${tier.label})' : service.name;
 
@@ -1803,7 +1925,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       return;
     }
 
-    final exchangeRate = _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
+    final exchangeRate = _exchangeRates[_selectedTransactionCurrency!] ?? 0;
     final unitPriceInTransactionCurrency =
         product.sellingPriceInCdf / exchangeRate;
 
@@ -1906,7 +2028,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
               // Puis convertir de CDF à la devise sélectionnée
               double exchangeRateToSelected =
-                  _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
+                  _exchangeRates[_selectedTransactionCurrency!] ?? 0;
               if (exchangeRateToSelected > 0) {
                 displayUnitPrice = amountInCdf / exchangeRateToSelected;
               }
@@ -2815,20 +2937,14 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             existingItem.unitPriceInCdf * updatedQuantity;
 
         // Créer un nouvel item avec la quantité mise à jour
-        final updatedItem = SaleItem(
-          productId: existingItem.productId,
-          serviceId: existingItem.serviceId,
-          priceTierCode: existingItem.priceTierCode,
-          productName: existingItem.productName,
+        // copyWith : la ligne fusionnee garde sa TVA, ses notes et le reste.
+        final updatedItem = existingItem.copyWith(
           quantity: updatedQuantity,
-          unitPrice: existingItem.unitPrice,
           totalPrice: updatedTotalPrice,
-          currencyCode: existingItem.currencyCode,
-          exchangeRate: existingItem.exchangeRate,
-          unitPriceInCdf: existingItem.unitPriceInCdf,
           totalPriceInCdf: updatedTotalPriceInCdf,
-          itemType: existingItem.itemType,
-          taxRate: existingItem.taxRate,
+          taxAmount: existingItem.taxRate != null
+              ? updatedTotalPrice * existingItem.taxRate! / 100
+              : null,
         );
 
         // Remplacer l'ancien item par le nouveau
@@ -2872,10 +2988,12 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     }
     final notesController = TextEditingController(text: currentNotes);
 
-    final currencyCode =
-        _selectedTransactionCurrency?.code ?? _defaultCurrency.code;
+    // Le prix édité est celui de la LIGNE, dans sa propre devise (converti en
+    // CDF avec son propre taux) : afficher la devise de la transaction ferait
+    // enregistrer des dollars comme des francs.
+    final currencyCode = item.currencyCode.toUpperCase();
     final currencySymbol =
-        _selectedTransactionCurrency?.symbol ?? _defaultCurrency.symbol;
+        CurrencyService.currencyFromCode(currencyCode)?.symbol ?? currencyCode;
 
     AdaptiveModal.show<void>(
       context: context,
@@ -3176,7 +3294,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     return (_paidAmount - total).abs() < 0.001 || _paidAmount >= total;
   }
 
-  void _saveSale() {
+  Future<void> _saveSale() async {
     if (_formKey.currentState!.validate() && _items.isNotEmpty) {
       if (_selectedTransactionCurrency == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3189,7 +3307,23 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       }
 
       final totalInTransactionCurrency = _calculateTotalInTransactionCurrency();
-      final currentRate = _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
+      // Devise étrangère sans taux : vente refusée, jamais au taux 1.
+      final currentRate = _tauxVersCdf(_selectedTransactionCurrency);
+      if (currentRate == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              CurrencyService.missingRateMessage(
+                _selectedTransactionCurrency!.code,
+              ),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      if (!await _verifierVraisemblance(totalInTransactionCurrency)) return;
+      if (!mounted) return;
       final totalInCdf = totalInTransactionCurrency * currentRate;
       final paidInCdf = _paidAmount * currentRate;
 
