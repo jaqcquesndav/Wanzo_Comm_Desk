@@ -257,6 +257,9 @@ class SalesApiService {
         'sales',
         body: body,
         requiresAuth: true,
+        // Hors ligne : la vente reste `pending` et la synchro la crée ;
+        // la mettre aussi en file la créerait deux fois.
+        queueOffline: false,
       );
 
       if (response != null && response['data'] != null) {

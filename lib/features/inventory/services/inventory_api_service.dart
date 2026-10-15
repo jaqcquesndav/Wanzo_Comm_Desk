@@ -39,9 +39,12 @@ abstract class InventoryApiService {
     String? dateTo,
   });
 
+  /// [expenseId] : dépense d'achat qui porte cet approvisionnement (achat et
+  /// dette déjà comptabilisés par elle, le serveur ne passe que 311 / 6031).
   Future<ApiResponse<StockTransaction>> createStockTransaction(
-    StockTransaction transaction,
-  );
+    StockTransaction transaction, {
+    String? expenseId,
+  });
 
   Future<ApiResponse<StockTransaction>> getStockTransactionById(String id);
 
@@ -184,6 +187,9 @@ class InventoryApiServiceImpl implements InventoryApiService {
         'products',
         body: productBody,
         requiresAuth: true,
+        // Hors ligne : le produit reste `pending` et la synchro le crée ;
+        // le mettre aussi en file le créerait deux fois.
+        queueOffline: false,
       );
 
       // Gérer les différents formats de réponse
@@ -268,6 +274,9 @@ class InventoryApiServiceImpl implements InventoryApiService {
         'products',
         body: productJson,
         requiresAuth: true,
+        // Hors ligne : le produit reste `pending` et la synchro le crée ;
+        // le mettre aussi en file le créerait deux fois.
+        queueOffline: false,
       );
 
       Map<String, dynamic>? productDataJson;
@@ -613,76 +622,57 @@ class InventoryApiServiceImpl implements InventoryApiService {
     }
   }
 
-  /// Convertit notre StockTransactionType vers le type backend (stockIn/stockOut)
-  String _mapToBackendOperationType(StockTransactionType type) {
-    switch (type) {
-      // Entrées de stock → stockIn
-      case StockTransactionType.purchase:
-      case StockTransactionType.transferIn:
-      case StockTransactionType.returned:
-      case StockTransactionType.initialStock:
-        return 'stockIn';
-      // Sorties de stock → stockOut
-      case StockTransactionType.sale:
-      case StockTransactionType.transferOut:
-      case StockTransactionType.damaged:
-      case StockTransactionType.lost:
-        return 'stockOut';
-      // Ajustements : dépend de la quantité (positif = in, négatif = out)
-      case StockTransactionType.adjustment:
-        return 'stockIn'; // Sera déterminé par le signe de la quantité
-    }
+  /// Corps accepté par `POST stock-transactions` (liste blanche du serveur :
+  /// tout autre champ est retiré). Le sens vient du type, sauf pour un
+  /// ajustement dont le signe est gardé (négatif = sortie).
+  static Map<String, dynamic> stockTransactionPayload(
+    StockTransaction transaction, {
+    String? expenseId,
+  }) {
+    final quantite = transaction.type == StockTransactionType.adjustment
+        ? transaction.quantity
+        : transaction.quantity.abs();
+    final notes = transaction.notes?.trim();
+    final reference = transaction.referenceId;
+    final emplacement = transaction.locationId;
+    return {
+      'productId': transaction.productId,
+      'type': transaction.type.name,
+      'quantity': quantite,
+      'date': transaction.date.toUtc().toIso8601String(),
+      if (reference != null && reference.isNotEmpty) 'referenceId': reference,
+      if (notes != null && notes.isNotEmpty) 'notes': notes,
+      if (transaction.unitCostInCdf > 0)
+        'unitCostPrice': transaction.unitCostInCdf,
+      if (emplacement != null && emplacement.isNotEmpty)
+        'locationId': emplacement,
+      if (expenseId != null && expenseId.isNotEmpty) 'expenseId': expenseId,
+    };
   }
 
   @override
   Future<ApiResponse<StockTransaction>> createStockTransaction(
-    StockTransaction transaction,
-  ) async {
+    StockTransaction transaction, {
+    String? expenseId,
+  }) async {
     try {
-      // Mapper le type de transaction vers le format backend
-      String backendType = _mapToBackendOperationType(transaction.type);
-
-      // Pour les ajustements, vérifier le signe de la quantité
-      if (transaction.type == StockTransactionType.adjustment) {
-        backendType = transaction.quantity >= 0 ? 'stockIn' : 'stockOut';
-      }
-
-      // Construire le payload selon le format attendu par le backend
-      final payload = {
-        'type': backendType,
-        'productId': transaction.productId,
-        'quantity': transaction.quantity.abs(), // Toujours positif côté backend
-        'amount':
-            transaction
-                .totalValueInCdf, // Backend utilise 'amount' au lieu de 'totalValueInCdf'
-        'unitCost': transaction.unitCostInCdf,
-        'notes': transaction.notes ?? '',
-        'referenceId': transaction.referenceId,
-        'date': transaction.date.toIso8601String(),
-        // Champs Business Unit pour l'isolation multi-tenant
-        'companyId': transaction.companyId,
-        'businessUnitId': transaction.businessUnitId,
-        'businessUnitCode': transaction.businessUnitCode,
-        'businessUnitType': transaction.businessUnitType?.name,
-        // Conserver le type original pour référence
-        'originalType': transaction.type.name,
-      };
-
-      debugPrint('📤 Envoi opération stock au backend: $payload');
-
       final response = await _apiClient.post(
-        'journal/operations', // Endpoint correct selon le backend
-        body: payload,
+        'stock-transactions',
+        body: stockTransactionPayload(transaction, expenseId: expenseId),
         requiresAuth: true,
       );
-
-      debugPrint('📥 Réponse backend: $response');
-
-      // Retourner la transaction originale comme succès
+      // Réponse enveloppée {success, data} : on garde le mouvement local
+      // (montants CDF, unité d'affaires) avec l'identifiant du serveur.
+      final data = response is Map && response['data'] is Map
+          ? response['data'] as Map
+          : response;
+      final serverId = data is Map ? data['id']?.toString() : null;
       return ApiResponse<StockTransaction>(
         success: true,
-        data: transaction,
-        message: 'Stock operation synced successfully',
+        data: serverId != null && serverId.isNotEmpty
+            ? transaction.copyWith(id: serverId)
+            : transaction,
+        message: 'Stock transaction created successfully',
         statusCode: 201,
       );
     } on ApiException catch (e) {
@@ -692,6 +682,8 @@ class InventoryApiServiceImpl implements InventoryApiService {
         data: null,
         message: e.message,
         statusCode: e.statusCode ?? 500,
+        // Hors ligne : l'envoi est mis en file et rejoué (pas un refus).
+        error: e,
       );
     } catch (e) {
       debugPrint('❌ Error creating stock transaction: $e');

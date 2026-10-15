@@ -5,6 +5,8 @@ import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import '../models/supplier.dart';
 import '../services/supplier_api_service.dart';
+import '../utils/supplier_purchases.dart';
+import '../../expenses/repositories/expense_repository.dart';
 
 /// Repository pour la gestion des fournisseurs (API-First + Offline Fallback)
 class SupplierRepository {
@@ -14,8 +16,14 @@ class SupplierRepository {
   final _uuid = const Uuid();
   final SupplierApiService? _apiService;
 
-  SupplierRepository({SupplierApiService? apiService})
-    : _apiService = apiService;
+  /// Dépenses : source des achats par fournisseur (classement).
+  final ExpenseRepository? _expenseRepository;
+
+  SupplierRepository({
+    SupplierApiService? apiService,
+    ExpenseRepository? expenseRepository,
+  }) : _apiService = apiService,
+       _expenseRepository = expenseRepository;
 
   /// Initialise le repository
   Future<void> init() async {
@@ -220,12 +228,18 @@ class SupplierRepository {
     }).toList();
   }
 
-  /// Récupère les principaux fournisseurs (par montant d'achat)
+  /// Principaux fournisseurs : classés par achats (leurs dépenses) ramenés
+  /// en CDF au taux figé de chaque dépense. Le champ `totalPurchases` n'est
+  /// tenu à jour nulle part : il ne sert pas.
   Future<List<Supplier>> getTopSuppliers({int limit = 5}) async {
-    final suppliers =
-        _suppliersBox.values.toList()
-          ..sort((a, b) => b.totalPurchases.compareTo(a.totalPurchases));
-
+    final suppliers = _suppliersBox.values.toList();
+    final depenses = _expenseRepository;
+    if (depenses == null) return suppliers.take(limit).toList();
+    final totaux = <String, double>{
+      for (final s in suppliers)
+        s.id: (await SupplierPurchases.load(depenses, s.id)).totalCdf,
+    };
+    suppliers.sort((a, b) => totaux[b.id]!.compareTo(totaux[a.id]!));
     return suppliers.take(limit).toList();
   }
 

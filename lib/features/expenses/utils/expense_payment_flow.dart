@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:wanzo/core/shared_widgets/record_payment_dialog.dart';
+import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/features/expenses/bloc/expense_bloc.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
 
@@ -83,7 +84,6 @@ Future<Expense?> pickExpenseToSettle(
   BuildContext context,
   List<Expense> unpaidExpenses, {
   String title = 'Quelle dette régler ?',
-  String Function(double amount)? formatAmount,
 }) async {
   if (unpaidExpenses.isEmpty) return null;
   if (unpaidExpenses.length == 1) return unpaidExpenses.first;
@@ -132,11 +132,13 @@ Future<Expense?> pickExpenseToSettle(
                         '${expense.date.month.toString().padLeft(2, '0')}/'
                         '${expense.date.year}',
                       ),
+                      // Chaque dette dans sa propre devise (jamais un
+                      // montant converti sous un autre code).
                       trailing: Text(
-                        formatAmount != null
-                            ? formatAmount(expense.remainingAmount)
-                            : '${expense.remainingAmount.toStringAsFixed(0)} '
-                                '${expense.effectiveCurrencyCode}',
+                        formatCurrency(
+                          expense.remainingAmount,
+                          expense.effectiveCurrencyCode,
+                        ),
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       onTap: () => Navigator.pop(sheetContext, expense),

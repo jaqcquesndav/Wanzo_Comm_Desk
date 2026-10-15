@@ -322,7 +322,7 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
 
               // Décrément LOCAL uniquement : le backend décrémente déjà le stock
               // à la création de la vente (évite le DOUBLE décrément).
-              await _inventoryRepository.addStockTransaction(stockTransaction, pushToApi: false);
+              await _inventoryRepository.addStockTransaction(stockTransaction);
               debugPrint(
                 'Stock mis à jour pour le produit $productId: -${item.quantity}',
               );
@@ -448,7 +448,7 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
 
             // Restock LOCAL uniquement : le backend restocke via la suppression
             // de la vente (évite le double).
-            await _inventoryRepository.addStockTransaction(stockTransaction, pushToApi: false);
+            await _inventoryRepository.addStockTransaction(stockTransaction);
           } catch (e) {
             if (kDebugMode) {
               print(

@@ -4,7 +4,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:intl/intl.dart';
 import 'package:wanzo/l10n/app_localizations.dart'; // Import AppLocalizations
-import 'package:wanzo/core/services/currency_service.dart'; // Import CurrencyService
+import '../../expenses/repositories/expense_repository.dart';
+import '../utils/supplier_purchases.dart';
 import 'package:wanzo/core/services/form_navigation_service.dart';
 import 'package:wanzo/core/services/sync_service.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
@@ -284,7 +285,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final currencyService = context.read<CurrencyService>();
+              final depenses = context.read<ExpenseRepository>();
               final theme = Theme.of(context);
               final dateFormat = DateFormat('dd/MM/yyyy');
 
@@ -338,6 +339,11 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                                 final categoryColor = _getCategoryColor(
                                   context,
                                   supplier.category,
+                                );
+                                // Achats tirés des dépenses (même calcul que la fiche).
+                                final achats = SupplierPurchases.load(
+                                  depenses,
+                                  supplier.id,
                                 );
 
                                 return DataRow(
@@ -416,26 +422,35 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                                       ),
                                     ),
                                     DataCell(
-                                      Text(
-                                        // Base CDF convertie et libellée par CurrencyService.
-                                        currencyService.formatAmount(
-                                          supplier.totalPurchases,
+                                      FutureBuilder<SupplierPurchases>(
+                                        future: achats,
+                                        builder: (context, snap) => Text(
+                                          snap.data?.totalLabel(
+                                                separator: ' / ',
+                                              ) ??
+                                              '-',
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.bold,
+                                                color:
+                                                    theme.colorScheme.primary,
+                                              ),
                                         ),
-                                        style: theme.textTheme.bodyMedium
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.bold,
-                                              color: theme.colorScheme.primary,
-                                            ),
                                       ),
                                     ),
                                     DataCell(
-                                      Text(
-                                        supplier.lastPurchaseDate != null
-                                            ? dateFormat.format(
-                                              supplier.lastPurchaseDate!,
-                                            )
-                                            : '-',
-                                        style: theme.textTheme.bodySmall,
+                                      FutureBuilder<SupplierPurchases>(
+                                        future: achats,
+                                        builder: (context, snap) {
+                                          final dernier =
+                                              snap.data?.dernierAchat;
+                                          return Text(
+                                            dernier != null
+                                                ? dateFormat.format(dernier)
+                                                : '-',
+                                            style: theme.textTheme.bodySmall,
+                                          );
+                                        },
                                       ),
                                     ),
                                     DataCell(

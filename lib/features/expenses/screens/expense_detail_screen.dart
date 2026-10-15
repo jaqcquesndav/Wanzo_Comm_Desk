@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:wanzo/core/services/currency_service.dart';
 import 'package:intl/intl.dart';
-import 'package:wanzo/core/models/operation_payment.dart';
 import 'package:wanzo/features/expenses/bloc/expense_bloc.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
 import 'package:wanzo/features/expenses/repositories/expense_repository.dart';
@@ -12,6 +10,7 @@ import 'package:wanzo/core/shared_widgets/record_payment_dialog.dart';
 import 'package:wanzo/core/shared_widgets/responsive_action_bar.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_app_bar.dart';
 import 'package:wanzo/core/shared_widgets/smart_attachment.dart';
+import 'package:wanzo/core/services/form_navigation_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart'; // Pour les permissions
 
@@ -36,6 +35,9 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
   /// Un règlement est en cours d'envoi (voile de chargement).
   bool _submitting = false;
+
+  /// Une suppression est en cours : au succès on quitte la fiche.
+  bool _deleting = false;
 
   /// Change à chaque règlement pour recharger l'historique des tranches.
   int _paymentsToken = 0;
@@ -83,48 +85,23 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     );
   }
 
-  /// Solde la dette d'un coup : une tranche égale au reste à payer.
+  /// Solde la dette : le dialogue de paiement, prérempli avec le reste à
+  /// payer, demande TOUJOURS le mode de règlement (jamais « N/A »).
   Future<void> _settleInFull(Expense expense) async {
     final remaining = expense.remainingAmount;
     if (remaining <= 0) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder:
-          (dialogContext) => AlertDialog(
-            title: const Text('Solder la dette'),
-            content: Text(
-              'Enregistrer un règlement de '
-              '${formatCurrency(remaining, expense.effectiveCurrencyCode)} '
-              'et solder cette dépense ?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Annuler'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('Confirmer'),
-              ),
-            ],
-          ),
+    final draft = await showRecordPaymentDialog(
+      context,
+      title: 'Solder la dette',
+      remainingAmount: remaining,
+      currencyCode: expense.effectiveCurrencyCode,
+      exchangeRate: expense.exchangeRate,
+      defaultMethod: expense.paymentMethod,
     );
-    if (confirmed != true || !mounted) return;
+    if (draft == null || !mounted) return;
     setState(() => _submitting = true);
     context.read<ExpenseBloc>().add(
-      RecordExpensePayment(
-        expense: expense,
-        payment: PaymentDraft(
-          amount: remaining,
-          currencyCode: expense.effectiveCurrencyCode,
-          // Ancienne dépense sans taux : taux central (sinon refusée).
-          exchangeRate: expense.exchangeRate ??
-              context.read<CurrencyService>().usableRateToCdfForCode(
-                  expense.effectiveCurrencyCode),
-          method: expense.paymentMethod ?? 'Espèces',
-          paidAt: DateTime.now(),
-        ),
-      ),
+      RecordExpensePayment(expense: expense, payment: draft),
     );
   }
 
@@ -153,11 +130,20 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(state.message), backgroundColor: Colors.green),
       );
+      if (_deleting) {
+        // La dépense n'existe plus : retour à la liste.
+        _deleting = false;
+        _leave();
+        return;
+      }
       // `ExpenseOperationSuccess` est suivi d'un `LoadExpenses` (état de
       // liste) que cet écran ne sait pas afficher : on redemande la dépense.
       context.read<ExpenseBloc>().add(LoadExpenseById(widget.expenseId));
     } else if (state is ExpenseError) {
-      setState(() => _submitting = false);
+      setState(() {
+        _submitting = false;
+        _deleting = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(state.message),
@@ -166,6 +152,58 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         ),
       );
     }
+  }
+
+  /// Retour sûr : pile vide (lien direct) => liste des dépenses.
+  void _leave() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/expenses');
+    }
+  }
+
+  /// Modifier : même formulaire que la création (dialogue sur grand écran).
+  Future<void> _edit(Expense expense) async {
+    await FormNavigationService.instance.openExpenseForm(
+      context,
+      expense: expense,
+    );
+    if (mounted) {
+      context.read<ExpenseBloc>().add(LoadExpenseById(widget.expenseId));
+    }
+  }
+
+  Future<void> _confirmDelete(Expense expense) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Supprimer la dépense'),
+        content: Text(
+          (expense.paidAmount ?? 0) > 0
+              ? 'Supprimer « ${expense.motif} » ? Les règlements déjà '
+                  'enregistrés seront annulés au journal.'
+              : 'Supprimer « ${expense.motif} » ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _deleting = true);
+    context.read<ExpenseBloc>().add(DeleteExpense(expense.id));
   }
 
   // Vérifier et demander les permissions nécessaires au démarrage
@@ -188,13 +226,36 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         return Scaffold(
           appBar: WanzoAppBar(
             title: 'Détails de la Dépense',
-            onBackPressed: () {
-              if (context.canPop()) {
-                context.pop();
-              } else {
-                context.go('/operations');
-              }
-            },
+            onBackPressed: _leave,
+            additionalActions: [
+              if (_expense != null)
+                PopupMenuButton<String>(
+                  tooltip: 'Actions',
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: (value) {
+                    final current = _expense;
+                    if (current == null) return;
+                    if (value == 'edit') _edit(current);
+                    if (value == 'delete') _confirmDelete(current);
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'edit',
+                      child: ListTile(
+                        leading: Icon(Icons.edit_outlined),
+                        title: Text('Modifier'),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: ListTile(
+                        leading: Icon(Icons.delete_outline, color: Colors.red),
+                        title: Text('Supprimer'),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
           ),
           body: Stack(
             children: [
@@ -392,12 +453,30 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
               expense.category.displayName,
               Icons.category,
             ),
-            _buildDetailItem(
-              context,
-              'Méthode de paiement',
-              expense.paymentMethod ?? 'Non spécifiée',
-              Icons.payment,
-            ),
+            if ((expense.supplierName ?? '').isNotEmpty ||
+                (expense.supplierId ?? '').isNotEmpty)
+              _buildDetailItem(
+                context,
+                'Fournisseur',
+                (expense.supplierName ?? '').isNotEmpty
+                    ? expense.supplierName!
+                    : 'Fournisseur lié',
+                Icons.local_shipping_outlined,
+                onTap: (expense.supplierId ?? '').isEmpty
+                    ? null
+                    : () => context.push(
+                          '/suppliers/detail/${expense.supplierId}',
+                        ),
+              ),
+            // Le mode n'existe que pour une part réellement payée.
+            if ((expense.paidAmount ?? 0) > 0 ||
+                expense.paymentStatus == ExpensePaymentStatus.paid)
+              _buildDetailItem(
+                context,
+                'Méthode de paiement',
+                expense.paymentMethod ?? 'Non spécifiée',
+                Icons.payment,
+              ),
             if (expense.beneficiary != null && expense.beneficiary!.isNotEmpty)
               _buildDetailItem(
                 context,
@@ -727,34 +806,43 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     BuildContext context,
     String label,
     String value,
-    IconData icon,
-  ) {
+    IconData icon, {
+    VoidCallback? onTap,
+  }) {
+    final row = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: Colors.grey[600]),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: onTap != null ? Theme.of(context).primaryColor : null,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (onTap != null) Icon(Icons.chevron_right, color: Colors.grey[500]),
+      ],
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 20, color: Colors.grey[600]),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(value, style: const TextStyle(fontSize: 16)),
-              ],
-            ),
-          ),
-        ],
-      ),
+      child: onTap == null ? row : InkWell(onTap: onTap, child: row),
     );
   }
 }

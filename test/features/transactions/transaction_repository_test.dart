@@ -1,108 +1,89 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mockito/mockito.dart';
+import 'package:hive/hive.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:wanzo/core/services/currency_service.dart';
 import 'package:wanzo/features/transactions/repositories/transaction_repository.dart';
 import 'package:wanzo/features/expenses/repositories/expense_repository.dart';
-import 'package:wanzo/features/transactions/models/transaction.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
-import 'package:hive/hive.dart';
 
-// Manual mock implementations
 class MockExpenseRepository extends Mock implements ExpenseRepository {}
 
-class MockBox<T> extends Mock implements Box<T> {}
-
 void main() {
-  // ignore: unused_local_variable
-  late TransactionRepository transactionRepository;
-  late MockExpenseRepository mockExpenseRepository;
-  // ignore: unused_local_variable
-  late MockBox<Transaction> mockTransactionsBox;
+  final debut = DateTime(2025, 6, 1);
+  final fin = DateTime(2025, 6, 7);
+  // Taux par défaut (sans préférences enregistrées) : 1 USD = 2800 CDF.
+  final taux = CurrencyService();
 
-  setUp(() {
-    mockExpenseRepository = MockExpenseRepository();
-    mockTransactionsBox = MockBox<Transaction>();
+  group('TransactionRepository.getTotalExpensesForDateRange', () {
+    late MockExpenseRepository depenses;
 
-    transactionRepository = TransactionRepository(
-      expenseRepository: mockExpenseRepository,
-    );
-    // Similar to the CustomerRepository test, we can't easily inject the box
-  });
+    setUp(() => depenses = MockExpenseRepository());
 
-  group('TransactionRepository', () {
-    group('getTotalExpensesForDateRange', () {
-      final testStartDate = DateTime(2025, 6, 1);
-      final testEndDate = DateTime(2025, 6, 7);
-      test('uses ExpenseRepository when available', () async {
-        // Arrange
-        final mockExpenses = [
+    test('additionne les dépenses, chacune ramenée en CDF', () async {
+      when(() => depenses.getExpensesByDateRange(debut, fin)).thenAnswer(
+        (_) async => [
           Expense(
             id: '1',
             amount: 1000,
             date: DateTime(2025, 6, 3),
             category: ExpenseCategory.rent,
-            motif: 'Office rent',
+            motif: 'Loyer',
           ),
           Expense(
             id: '2',
-            amount: 500,
+            amount: 2,
             date: DateTime(2025, 6, 5),
             category: ExpenseCategory.utilities,
-            motif: 'Electricity',
+            motif: 'Electricite',
+            currencyCode: 'USD',
           ),
-        ];
+        ],
+      );
+      final repo = TransactionRepository(expenseRepository: depenses);
 
-        when(
-          mockExpenseRepository.getExpensesByDateRange(
-            testStartDate,
-            testEndDate,
-          ),
-        ).thenAnswer((_) async => mockExpenses);
-
-        // Act & Assert
-        // We can't test the actual implementation since we can't inject the box
-        // This test is more of a documentation of expected behavior
-        expect(
-          true,
-          isTrue,
-          reason: 'This test requires implementation-specific testing',
-        );
-      });
-
-      test(
-        'falls back to Transactions when ExpenseRepository is unavailable',
-        () async {
-          // Arrange
-          // We would need to set up test conditions for when the ExpenseRepository is null
-
-          // Act & Assert
-          // We can't test the actual implementation since we can't inject the box
-          // This test is more of a documentation of expected behavior
-          expect(
-            true,
-            isTrue,
-            reason: 'This test requires implementation-specific testing',
-          );
-        },
+      final total = await repo.getTotalExpensesForDateRange(
+        debut,
+        fin,
+        currencyService: taux,
       );
 
-      test('handles errors gracefully and returns 0.0 on exception', () async {
-        // Arrange
-        when(
-          mockExpenseRepository.getExpensesByDateRange(
-            testStartDate,
-            testEndDate,
-          ),
-        ).thenThrow(Exception('Database error'));
+      expect(total, 1000 + 2 * 2800);
+    });
 
-        // Act & Assert
-        // We can't test the actual implementation since we can't inject the box
-        // This test is more of a documentation of expected behavior
-        expect(
-          true,
-          isTrue,
-          reason: 'This test requires implementation-specific testing',
-        );
+    test('une erreur de lecture rend 0, jamais une exception', () async {
+      when(
+        () => depenses.getExpensesByDateRange(debut, fin),
+      ).thenThrow(Exception('Database error'));
+      final repo = TransactionRepository(expenseRepository: depenses);
+
+      final total = await repo.getTotalExpensesForDateRange(
+        debut,
+        fin,
+        currencyService: taux,
+      );
+
+      expect(total, 0.0);
+    });
+
+    test('sans dépôt de dépenses : repli sur les transactions locales', () async {
+      final dossier = await Directory.systemTemp.createTemp('transactions_');
+      Hive.init(dossier.path);
+      addTearDown(() async {
+        await Hive.close();
+        await dossier.delete(recursive: true);
       });
+      final repo = TransactionRepository();
+      await repo.init();
+
+      final total = await repo.getTotalExpensesForDateRange(
+        debut,
+        fin,
+        currencyService: taux,
+      );
+
+      expect(total, 0.0);
     });
   });
 }

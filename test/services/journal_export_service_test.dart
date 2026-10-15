@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'dart:io';
 import 'package:hive/hive.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wanzo/services/journal_export_service.dart';
 import 'package:wanzo/features/auth/models/user.dart';
 import 'package:wanzo/features/dashboard/models/journal_filter.dart';
@@ -10,9 +12,17 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() async {
+    // Taux et réglages lus dans les préférences : magasin vide en test.
+    SharedPreferences.setMockInitialValues({});
     // Initialize Hive with a temporary directory for tests
     final tempDir = Directory.systemTemp.createTempSync('hive_test_');
     Hive.init(tempDir.path);
+    // Le PDF est écrit dans le dossier Documents : dossier temporaire en test.
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => tempDir.path,
+    );
   });
 
   tearDownAll(() async {

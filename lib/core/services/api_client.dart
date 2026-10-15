@@ -264,9 +264,10 @@ class ApiClient {
     String endpoint,
     dynamic body,
     bool requiresAuth,
-    ApiException networkError,
-  ) async {
-    if (!_queueableMethods.contains(method.toUpperCase())) {
+    ApiException networkError, {
+    bool enabled = true,
+  }) async {
+    if (!enabled || !_queueableMethods.contains(method.toUpperCase())) {
       throw networkError;
     }
     final queued = await OfflineWriteQueue.instance.enqueue(
@@ -399,6 +400,9 @@ class ApiClient {
     bool requiresAuth = false,
     int? customTimeoutMs, // Timeout personnalisé en millisecondes
     bool bypassCircuitBreaker = false,
+    // false : l'appelant gère déjà sa reprise hors ligne (dépenses en
+    // attente de synchro) ; mettre aussi en file créerait un doublon.
+    bool queueOffline = true,
   }) async {
     // Vérifier le circuit breaker avant de faire la requête
     if (!bypassCircuitBreaker && !_circuitBreaker.canExecute) {
@@ -451,6 +455,7 @@ class ApiClient {
           'Could not connect to the server',
           endpoint: endpoint,
         ),
+        enabled: queueOffline,
       );
     } on HttpException {
       _circuitBreaker.recordFailure(reason: 'HttpException');
@@ -460,6 +465,7 @@ class ApiClient {
         body,
         requiresAuth,
         NetworkException('Could not find the server', endpoint: endpoint),
+        enabled: queueOffline,
       );
     } on FormatException {
       throw ResponseFormatException('Bad response format', endpoint: endpoint);
@@ -647,6 +653,9 @@ class ApiClient {
     String endpoint, {
     bool requiresAuth = false,
     bool bypassCircuitBreaker = false,
+    // false : suppression à confirmer par le serveur (refus possible),
+    // jamais rejouée plus tard à l'insu de l'utilisateur.
+    bool queueOffline = true,
   }) async {
     // Vérifier le circuit breaker avant de faire la requête
     if (!bypassCircuitBreaker && !_circuitBreaker.canExecute) {
@@ -690,6 +699,7 @@ class ApiClient {
           'Could not connect to the server',
           endpoint: endpoint,
         ),
+        enabled: queueOffline,
       );
     } on HttpException {
       _circuitBreaker.recordFailure(reason: 'HttpException');
@@ -699,6 +709,7 @@ class ApiClient {
         null,
         requiresAuth,
         NetworkException('Could not find the server', endpoint: endpoint),
+        enabled: queueOffline,
       );
     } on FormatException {
       throw ResponseFormatException('Bad response format', endpoint: endpoint);
@@ -923,7 +934,10 @@ class ApiClient {
     if (responseBody is Map<String, dynamic>) {
       // Essayer différents champs pour le message d'erreur
       if (responseBody.containsKey('message')) {
-        return responseBody['message'] as String;
+        // Erreurs de validation : liste de messages.
+        final message = responseBody['message'];
+        if (message is List) return message.join(', ');
+        if (message != null) return message.toString();
       }
       if (responseBody.containsKey('error')) {
         final error = responseBody['error'];

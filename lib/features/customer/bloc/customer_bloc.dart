@@ -122,6 +122,8 @@ class CustomerBloc extends Bloc<CustomerEvent, CustomerState> {
       emit(CustomerError(
         '$e'.replaceFirst('Exception: ', ''),
       ));
+      // Refus (historique) : la liste revient, pas l'erreur seule.
+      add(const LoadCustomers());
     }
   }
 

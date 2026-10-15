@@ -192,6 +192,8 @@ class CustomerApiService {
       final response = await _apiClient.delete(
         'customers/$id',
         requiresAuth: true,
+        // Suppression confirmée par le serveur, jamais rejouée à l'insu.
+        queueOffline: false,
       );
 
       return ApiResponse<void>(

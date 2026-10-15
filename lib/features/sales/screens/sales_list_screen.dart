@@ -51,7 +51,11 @@ extension SaleStatusDisplayExtension on SaleStatus {
 
 /// Écran de liste des ventes
 class SalesListScreen extends StatefulWidget {
-  const SalesListScreen({super.key});
+  /// Vrai : seules les ventes à encaisser (non payées ou partielles) sont
+  /// listées, comme depuis la vignette « À encaisser » du tableau de bord.
+  final bool onlyToCollect;
+
+  const SalesListScreen({super.key, this.onlyToCollect = false});
 
   @override
   State<SalesListScreen> createState() => _SalesListScreenState();
@@ -59,6 +63,17 @@ class SalesListScreen extends StatefulWidget {
 
 class _SalesListScreenState extends State<SalesListScreen> {
   StreamSubscription<SyncStatus>? _syncSubscription;
+
+  /// Filtre « À encaisser » actif (retirable par sa puce).
+  late bool _onlyToCollect = widget.onlyToCollect;
+
+  @override
+  void didUpdateWidget(covariant SalesListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.onlyToCollect != widget.onlyToCollect) {
+      _onlyToCollect = widget.onlyToCollect;
+    }
+  }
 
   @override
   void initState() {
@@ -215,6 +230,39 @@ class _SalesListScreenState extends State<SalesListScreen> {
       // Tri chronologique : plus récentes en premier
       final sortedSales = List<Sale>.from(state.sales)
         ..sort((a, b) => b.date.compareTo(a.date));
+      if (_onlyToCollect) {
+        final open = sortedSales.where(isOpenReceivable).toList();
+        // Reste dû total, en base CDF.
+        final due = open.fold<double>(
+          0,
+          (sum, s) => sum + s.remainingAmountInCdf,
+        );
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: InputChip(
+                  avatar: const Icon(Icons.schedule_send, size: 16),
+                  label: const Text('À encaisser'),
+                  onDeleted: () => setState(() => _onlyToCollect = false),
+                ),
+              ),
+            ),
+            Expanded(
+              child: open.isEmpty
+                  ? const Center(child: Text('Aucune vente à encaisser.'))
+                  : _buildSalesList(
+                    context,
+                    open,
+                    due,
+                    totalLabel: 'Reste à encaisser',
+                  ),
+            ),
+          ],
+        );
+      }
       return _buildSalesList(context, sortedSales, state.totalAmountInCdf);
     }
 
@@ -260,8 +308,9 @@ class _SalesListScreenState extends State<SalesListScreen> {
   Widget _buildSalesList(
     BuildContext context,
     List<Sale> sales,
-    double totalAmount,
-  ) {
+    double totalAmount, {
+    String totalLabel = 'Total',
+  }) {
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
 
     return Column(
@@ -280,7 +329,7 @@ class _SalesListScreenState extends State<SalesListScreen> {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               Text(
-                'Total: ${formatCurrency(totalAmount, 'CDF')}',
+                '$totalLabel : ${formatCurrency(totalAmount, 'CDF')}',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: Theme.of(context).colorScheme.primary,

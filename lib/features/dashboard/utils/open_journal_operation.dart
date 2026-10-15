@@ -1,53 +1,90 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/navigation/app_router.dart';
+import '../../expenses/repositories/expense_repository.dart';
+import '../../sales/repositories/sales_repository.dart';
 import '../models/operation_journal_entry.dart';
 
 /// Ouvre la PIÈCE derrière une ligne du journal des opérations.
 ///
 /// Une ligne de journal est le reflet d'un document : une vente, une dépense,
-/// un règlement. Taper dessus n'ouvrait qu'une fiche répétant les colonnes déjà
-/// visibles, alors que la question qu'on se pose devant une ligne est toujours
-/// « c'était quoi, cette vente ? ». On va donc au document quand on sait le
-/// retrouver, et on garde la fiche de détail pour les lignes qui n'en ont pas
-/// (mouvements de stock, financement).
-///
-/// Retourne `true` si un document a été ouvert.
-bool openJournalOperationDocument(
+/// un règlement, un mouvement de stock. Taper dessus ouvre ce document :
+///  - vente, règlement client, encaissement : la vente (sinon la fiche client) ;
+///  - dépense, règlement fournisseur : la dépense ;
+///  - entrée ou sortie de stock : la fiche produit.
+/// La pièce est cherchée dans les données locales avant d'y aller : une ligne
+/// dont la pièce a disparu (dépense supprimée) affiche un message au lieu
+/// d'ouvrir une fiche vide. Jamais de clic muet.
+Future<void> openJournalOperationDocument(
   BuildContext context,
   OperationJournalEntry operation,
-) {
+) async {
   final id = operation.relatedDocumentId?.trim() ?? '';
-  if (id.isEmpty) return false;
+  final productId = operation.productId?.trim() ?? '';
+  final customerId = operation.customerId?.trim() ?? '';
 
-  switch (operation.type) {
-    case OperationType.saleCash:
-    case OperationType.saleCredit:
-    case OperationType.saleInstallment:
-    // Un règlement client se rapporte à la vente qu'il solde : c'est elle que
-    // l'on veut relire.
-    case OperationType.customerPayment:
-      context.pushNamed(
-        AppRoute.saleDetail.name,
-        pathParameters: {'id': id},
-      );
-      return true;
-    case OperationType.cashOut:
-    case OperationType.supplierPayment:
+  // Mouvement de stock : la fiche produit répond à « quel article ? ».
+  if (operation.type == OperationType.stockIn ||
+      operation.type == OperationType.stockOut) {
+    if (productId.isNotEmpty) {
+      context.push('/inventory/product/$productId');
+      return;
+    }
+    _noDocument(context);
+    return;
+  }
+
+  if (id.isNotEmpty) {
+    if (await _saleExists(context, id)) {
+      if (!context.mounted) return;
+      context.pushNamed(AppRoute.saleDetail.name, pathParameters: {'id': id});
+      return;
+    }
+    if (!context.mounted) return;
+    if (await _expenseExists(context, id)) {
+      if (!context.mounted) return;
       context.pushNamed(
         AppRoute.expenseDetail.name,
         pathParameters: {'id': id},
       );
-      return true;
-    case OperationType.stockIn:
-    case OperationType.stockOut:
-    case OperationType.cashIn:
-    case OperationType.financingRequest:
-    case OperationType.financingApproved:
-    case OperationType.financingRepayment:
-    case OperationType.other:
-      // Pas de document propre à ouvrir : la fiche de détail reste la réponse.
-      return false;
+      return;
+    }
   }
+  if (!context.mounted) return;
+
+  // Règlement ou encaissement sans vente retrouvée : la fiche du client.
+  if (customerId.isNotEmpty) {
+    context.push('/customers/detail/$customerId');
+    return;
+  }
+  _noDocument(context);
+}
+
+Future<bool> _saleExists(BuildContext context, String id) async {
+  try {
+    return await context.read<SalesRepository>().getSaleById(id) != null;
+  } catch (_) {
+    return false;
+  }
+}
+
+Future<bool> _expenseExists(BuildContext context, String id) async {
+  try {
+    return await context.read<ExpenseRepository>().getExpenseById(id) != null;
+  } catch (_) {
+    return false;
+  }
+}
+
+void _noDocument(BuildContext context) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text(
+        'Cette ligne n\'a pas de pièce à ouvrir (pièce supprimée ou '
+        'opération sans document).',
+      ),
+    ),
+  );
 }

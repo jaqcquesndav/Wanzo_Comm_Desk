@@ -42,6 +42,7 @@ class _ServeurFactice implements ApiClient {
     bool requiresAuth = false,
     int? customTimeoutMs,
     bool bypassCircuitBreaker = false,
+    bool queueOffline = true,
   }) async {
     _envoisEnCours++;
     if (_envoisEnCours > envoisSimultanesMax) {
@@ -61,6 +62,7 @@ class _ServeurFactice implements ApiClient {
     String endpoint, {
     bool requiresAuth = false,
     bool bypassCircuitBreaker = false,
+    bool queueOffline = true,
   }) async {
     commandes.remove(endpoint.split('/').last);
     return null;

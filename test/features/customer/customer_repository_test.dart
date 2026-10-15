@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/annotations.dart';
 import 'package:wanzo/features/customer/repositories/customer_repository.dart';
@@ -7,46 +9,32 @@ import 'package:hive/hive.dart';
 @GenerateMocks([SalesRepository, Box])
 void main() {
   late CustomerRepository customerRepository;
+  late Directory dossier;
 
-  setUp(() {
+  // Le dépôt lit les boîtes Hive de l'appareil : un dossier temporaire
+  // par test, vide.
+  setUp(() async {
+    dossier = await Directory.systemTemp.createTemp('clients_');
+    Hive.init(dossier.path);
     customerRepository = CustomerRepository();
+    await customerRepository.init();
+  });
+
+  tearDown(() async {
+    await Hive.close();
+    await dossier.delete(recursive: true);
   });
 
   group('CustomerRepository', () {
     group('getUniqueCustomersCountForDateRange', () {
-      test(
-        'returns unique customer count from sales when sales repository is available',
-        () async {
-          // Note: This test requires a more sophisticated setup with dependency injection
-          // to properly test the interaction with SalesRepository.
-          // For now, we verify that the method exists and can be called.
-          final testStartDate = DateTime(2025, 6, 1);
-          final testEndDate = DateTime(2025, 6, 7);
-
-          // Act & Assert - Just verify the method doesn't throw
-          expect(
-            () => customerRepository.getUniqueCustomersCountForDateRange(
-              testStartDate,
-              testEndDate,
-            ),
-            returnsNormally,
-          );
-        },
-      );
-
-      test(
-        'uses fallback mechanism when sales repository is not available',
-        () async {
-          // Arrange
-          // We can't test the actual implementation since we can't inject the box
-          // This test is more of a documentation of expected behavior
-          expect(
-            true,
-            isTrue,
-            reason: 'This test requires implementation-specific testing',
-          );
-        },
-      );
+      test('aucune vente sur la période : zéro client servi', () async {
+        final count = await customerRepository
+            .getUniqueCustomersCountForDateRange(
+              DateTime(2025, 6, 1),
+              DateTime(2025, 6, 7),
+            );
+        expect(count, 0);
+      });
     });
   });
 }

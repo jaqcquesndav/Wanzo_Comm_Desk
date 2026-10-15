@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
+import 'package:wanzo/core/services/form_navigation_service.dart';
 import 'package:wanzo/core/widgets/table_export_button.dart';
 import 'package:wanzo/services/export/table_export_service.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
@@ -84,10 +85,13 @@ class _OperationsViewState extends State<_OperationsView>
   Future<void> _openCreateFromOperations(BuildContext context) async {
     final operationsBloc = context.read<OperationsBloc>();
 
+    // Même porte que le reste de l'app : dialogue sur grand écran, page
+    // complète sur fenêtre étroite.
+    final forms = FormNavigationService.instance;
     if (_tabController.index == 0 || _tabController.index == 1) {
-      await context.pushNamed('add_sale_from_operations');
+      await forms.openSaleForm(context);
     } else if (_tabController.index == 2) {
-      await context.pushNamed('add_expense_from_operations');
+      await forms.openExpenseForm(context);
     }
 
     // Toujours recharger après retour de la navigation

@@ -11,7 +11,7 @@ import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/services/currency_display_service.dart';
 import 'package:wanzo/features/dashboard/bloc/dashboard_bloc.dart';
 import 'package:wanzo/features/dashboard/bloc/operation_journal_bloc.dart';
-import 'package:wanzo/features/dashboard/services/journal_service.dart';
+import 'package:go_router/go_router.dart';
 import 'package:wanzo/features/dashboard/models/journal_filter.dart';
 import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
@@ -77,7 +77,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late OperationJournalBloc _operationJournalBloc;
   late SalesBloc _salesBloc;
   late ExpenseBloc _expenseBloc;
-  late JournalService _journalService;
   late DashboardBloc _dashboardBloc;
   DateTime? _selectedStartDate;
   DateTime? _selectedEndDate;
@@ -104,7 +103,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _salesBloc = BlocProvider.of<SalesBloc>(context);
     _expenseBloc = BlocProvider.of<ExpenseBloc>(context);
     _dashboardBloc = BlocProvider.of<DashboardBloc>(context);
-    _journalService = JournalService();
 
     final now = DateTime.now();
     _dashboardBloc.add(LoadDashboardData(date: now));
@@ -197,9 +195,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
+  /// Lignes affichées dans le journal agrandi, augmentées par « Charger plus ».
+  static const int _journalPageSize = 100;
+  int _journalLimit = _journalPageSize;
+
   void _expandOperationsJournal() {
     setState(() {
       _expandedView = _ExpandedView.operationsJournal;
+      _journalLimit = _journalPageSize;
     });
   }
 
@@ -286,15 +289,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }) {
     final l10n = AppLocalizations.of(context)!;
     final settingsState = context.watch<SettingsBloc>().state;
-
-    Settings settings;
-    if (settingsState is SettingsLoaded) {
-      settings = settingsState.settings;
-    } else if (settingsState is SettingsUpdated) {
-      settings = settingsState.settings;
-    } else {
-      return Scaffold(
-        appBar: AppBar(title: Text(title)),
+    if (settingsState is! SettingsLoaded && settingsState is! SettingsUpdated) {
+      return WanzoScaffold(
+        currentIndex: 0,
+        title: title,
+        onBackPressed: onCollapse,
         body: Center(child: Text(l10n.commonLoading)),
       );
     }
@@ -362,32 +361,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ],
         ),
-        IconButton(
-          icon: const Icon(Icons.picture_as_pdf),
-          tooltip: l10n.dashboardJournalExportExportButton,
-          onPressed: () {
-            _exportOperationsJournalToPdfInternal(context, l10n, settings);
+        // Un seul export : le PDF des opérations affichées (filtre actif).
+        BlocBuilder<OperationJournalBloc, OperationJournalState>(
+          builder: (context, journalState) {
+            final hasData =
+                journalState is OperationJournalLoaded &&
+                journalState.operations.isNotEmpty;
+            return IconButton(
+              icon: const Icon(Icons.picture_as_pdf),
+              tooltip: l10n.dashboardJournalExportExportButton,
+              onPressed: hasData
+                  ? () => _exportJournalOperations(context, journalState)
+                  : null,
+            );
           },
         ),
-        // IconButton(
-        //   icon: const Icon(Icons.print),
-        //   tooltip: l10n.dashboardJournalExportPrintButton, // This key exists
-        //   onPressed: () {
-        //     // _printOperationsJournalInternal(context, l10n, settings); // Kept commented
-        //   },
-        // ),
       ]);
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(title),
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: onCollapse,
-        ),
-        actions: actions,
-      ),
+    // Shell de l'application conservé (navigation, barre) avec un retour vers
+    // le tableau de bord.
+    return WanzoScaffold(
+      currentIndex: 0,
+      title: title,
+      appBarActions: actions,
+      onBackPressed: onCollapse,
       body: Padding(
         padding: const EdgeInsets.all(WanzoSpacing.md),
         child: content,
@@ -441,109 +439,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       onRangeSelected(picked.start, endDate);
     }
   }
-
-  Future<void> _exportOperationsJournalToPdfInternal(
-    BuildContext context,
-    AppLocalizations l10n,
-    Settings settings,
-  ) async {
-    final journalState = _operationJournalBloc.state;
-    final currencyService = _currencyServiceOf(context);
-
-    if (journalState is OperationJournalLoaded) {
-      if (_selectedStartDate == null || _selectedEndDate == null) {
-        await _selectDateRangeInternal(context, l10n, (start, end) async {
-          if (!mounted) return;
-          final file = await _journalService.generateJournalPdf(
-            journalState.operations,
-            start,
-            end,
-            journalState.openingCashBalances['CDF'] ?? 0.0,
-            l10n,
-            settings,
-            currencyService: currencyService,
-          );
-          if (!mounted) return;
-          // Utiliser le context actuel car mounted a été vérifié
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                file != null
-                    ? l10n.dashboardJournalExportSuccessMessage
-                    : l10n.dashboardJournalExportFailureMessage,
-              ),
-            ),
-          );
-        });
-      } else {
-        if (!mounted) return;
-        final file = await _journalService.generateJournalPdf(
-          journalState.operations,
-          _selectedStartDate!,
-          _selectedEndDate!,
-          journalState.openingCashBalances['CDF'] ?? 0.0,
-          l10n,
-          settings,
-          currencyService: currencyService,
-        );
-        if (!mounted) return;
-        ScaffoldMessenger.of(this.context).showSnackBar(
-          SnackBar(
-            content: Text(
-              file != null
-                  ? l10n.dashboardJournalExportSuccessMessage
-                  : l10n.dashboardJournalExportFailureMessage,
-            ),
-          ),
-        );
-      }
-    } else {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.dashboardJournalExportNoDataForPeriod)),
-      );
-    }
-  }
-
-  // Future<void> _printOperationsJournalInternal(BuildContext context, AppLocalizations l10n, Settings settings) async {
-  //   final journalState = _operationJournalBloc.state;
-  //   if (journalState is OperationJournalLoaded) {
-  //      if (_selectedStartDate == null || _selectedEndDate == null) {
-  //       await _selectDateRangeInternal(context, l10n, (start, end) async {
-  //         if (!mounted) return; // Check mounted
-  //         ScaffoldMessenger.of(context).showSnackBar(
-  //           SnackBar(content: Text(l10n.dashboardJournalExportPrintingMessage)),
-  //         );
-  //         // await _journalService.printJournalPdf( // Method does not exist
-  //         //   journalState.operations,
-  //         //   start,
-  //         //   end,
-  //         //   journalState.openingBalance,
-  //         //   l10n,
-  //         //   settings
-  //         // );
-  //       });
-  //     } else {
-  //       if (!mounted) return; // Check mounted
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         SnackBar(content: Text(l10n.dashboardJournalExportPrintingMessage)),
-  //       );
-  //       // await _journalService.printJournalPdf( // Method does not exist
-  //       //   journalState.operations,
-  //       //   _selectedStartDate!,
-  //       //   _selectedEndDate!,
-  //       //   journalState.openingBalance,
-  //       //   l10n,
-  //       //   settings
-  //       // );
-  //     }
-  //   } else {
-  //     if (!mounted) return; // Check mounted
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       SnackBar(content: Text(l10n.dashboardJournalExportNoDataForPeriod)),
-  //     );
-  //   }
-  // }
 
   @override
   Widget build(BuildContext context) {
@@ -827,6 +722,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             l10n: l10n,
             subtitle: 'Créances clients',
             isCompact: isCompact,
+            // Ouvre les ventes à encaisser (non payées ou partielles).
+            onTap: () => context.go('/sales?filtre=a_encaisser'),
           ),
         ];
 
@@ -915,16 +812,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String? subtitle,
     String? secondaryValue,
     bool isCompact = false,
+    VoidCallback? onTap,
   }) {
     final theme = Theme.of(context);
 
     return Card(
       elevation: 1,
       margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(WanzoBorderRadius.sm),
       ),
-      child: Padding(
+      // Vignette cliquable quand elle mène à la liste détaillée.
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
         padding: EdgeInsets.all(isCompact ? WanzoSpacing.xs : WanzoSpacing.sm),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -994,6 +896,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -1111,26 +1014,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Bouton d'exportation (visible seulement en mode agrandi)
-                    if (_expandedView == _ExpandedView.operationsJournal)
-                      BlocBuilder<OperationJournalBloc, OperationJournalState>(
-                        builder: (context, journalState) {
-                          final hasData =
-                              journalState is OperationJournalLoaded &&
-                              journalState.operations.isNotEmpty;
-                          return IconButton(
-                            icon: const Icon(Icons.file_download, size: 20),
-                            onPressed:
-                                hasData
-                                    ? () => _exportJournalOperations(
-                                      context,
-                                      journalState,
-                                    )
-                                    : null,
-                            tooltip: 'Exporter en PDF',
-                          );
-                        },
-                      ),
                     // Bouton de filtrage rapide
                     IconButton(
                       icon: const Icon(Icons.filter_list, size: 20),
@@ -1191,28 +1074,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   }
                   // Limiter aux 10 dernières opérations pour la vue en miniature
                   // En mode étendu, limiter à 100 entrées maximum pour éviter les problèmes de performance et d'overflow
+                  // Plus récentes d'abord ; la vue agrandie se déroule par
+                  // pages (« Charger plus »).
+                  final sorted = [...journalState.operations]
+                    ..sort((a, b) => b.date.compareTo(a.date));
                   final entriesToShow =
                       isExpanded
-                          ? journalState.operations.take(100).toList()
-                          : journalState.operations.take(10).toList();
+                          ? sorted.take(_journalLimit).toList()
+                          : sorted.take(10).toList();
 
                   final hasMoreEntries =
-                      (!isExpanded && journalState.operations.length > 10) ||
-                      (isExpanded && journalState.operations.length > 100);
+                      (!isExpanded && sorted.length > 10) ||
+                      (isExpanded && sorted.length > _journalLimit);
 
                   return isExpanded
                       ? SizedBox(
                         height:
                             MediaQuery.of(context).size.height *
                             0.75, // Utilisez plus de hauteur d'écran (75%)
-                        child: _buildOperationsDataTable(
-                          context,
-                          entriesToShow,
-                          displayCurrencyCode,
-                          l10n,
-                          dateFormat,
-                          timeFormat,
-                          isExpanded: true,
+                        child: Column(
+                          children: [
+                            Expanded(
+                              child: _buildOperationsDataTable(
+                                context,
+                                entriesToShow,
+                                displayCurrencyCode,
+                                l10n,
+                                dateFormat,
+                                timeFormat,
+                                isExpanded: true,
+                              ),
+                            ),
+                            if (hasMoreEntries)
+                              TextButton.icon(
+                                onPressed: () => setState(
+                                  () => _journalLimit += _journalPageSize,
+                                ),
+                                icon: const Icon(Icons.expand_more),
+                                label: Text(
+                                  'Charger plus '
+                                  '(${entriesToShow.length} sur ${sorted.length})',
+                                ),
+                              ),
+                          ],
                         ),
                       )
                       : SizedBox(
@@ -1332,7 +1236,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 rows:
                     entries.map((entry) {
                       final effectiveCurrencyCode =
-                          entry.currencyCode ?? displayCurrencyCode;
+                          entry.currencyCode ?? 'CDF'; // sans code : base CDF
                       String amountDisplay;
                       Color amountColor;
 
@@ -1353,9 +1257,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       }
 
                       return DataRow(
-                        // Une ligne du journal reflete un document : on va au
-                        // document. Les lignes sans piece propre (mouvements de
-                        // stock, financement) ne bougent pas.
+                        // Une ligne du journal reflète un document : on l'ouvre
+                        // (vente, dépense, produit) ; sans pièce, un message le
+                        // dit, jamais de clic muet.
                         onSelectChanged: (_) {
                           openJournalOperationDocument(context, entry);
                         },
@@ -1426,11 +1330,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                           if (!isCompact)
                             DataCell(
+                              // Solde de caisse tenu dans la devise de la
+                              // ligne : jamais affiché sous un autre code.
                               Text(
-                                formatCurrency(
-                                  entry.cashBalance ?? 0.0,
-                                  displayCurrencyCode,
-                                ),
+                                entry.cashBalance == null
+                                    ? '-'
+                                    : formatCurrency(
+                                      entry.cashBalance!,
+                                      effectiveCurrencyCode,
+                                    ),
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -1494,20 +1402,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ],
                 ),
 
-                const SizedBox(height: WanzoSpacing.lg),
-
-                // Bouton pour accéder aux filtres avancés
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _expandOperationsJournal();
-                    },
-                    icon: const Icon(Icons.tune),
-                    label: const Text('Filtres Avancés'),
-                  ),
-                ),
               ],
             ),
           ),

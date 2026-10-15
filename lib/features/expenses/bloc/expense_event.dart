@@ -34,7 +34,11 @@ class AddExpense extends ExpenseEvent {
   final Expense expense;
   final List<File>? imageFiles; // Added imageFiles
 
-  const AddExpense(this.expense, {this.imageFiles}); // Added imageFiles
+  /// Reçoit la dépense enregistrée (identifiant serveur si elle a été
+  /// acceptée, `syncStatus` « pending » si elle attend le réseau), ou l'erreur.
+  final Completer<Expense>? saved;
+
+  const AddExpense(this.expense, {this.imageFiles, this.saved});
 
   @override
   List<Object?> get props => [expense, imageFiles]; // Added imageFiles to props

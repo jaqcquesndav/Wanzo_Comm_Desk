@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
-import 'package:wanzo/core/services/currency_service.dart';
 import 'package:intl/intl.dart';
 import '../../receivables/utils/receivables_utils.dart';
 import '../../expenses/models/expense.dart';
@@ -13,7 +12,10 @@ import '../bloc/supplier_bloc.dart';
 import '../bloc/supplier_event.dart';
 import '../bloc/supplier_state.dart';
 import '../models/supplier.dart';
-import 'add_supplier_screen.dart';
+import '../utils/supplier_purchases.dart';
+import '../repositories/supplier_repository.dart';
+import 'package:wanzo/core/services/form_navigation_service.dart';
+import 'package:wanzo/core/utils/currency_formatter.dart';
 
 /// Écran de détails d'un fournisseur
 class SupplierDetailsScreen extends StatelessWidget {
@@ -30,7 +32,21 @@ class SupplierDetailsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
-    if (supplier == null && supplierId.isNotEmpty) {
+    final targetId = supplier?.id ?? supplierId;
+    if (supplier != null) {
+      // On écoute le bloc : après une modification ou un règlement, la fiche
+      // rechargée (LoadSupplier) remplace celle reçue en paramètre.
+      return BlocBuilder<SupplierBloc, SupplierState>(
+        buildWhen: (_, s) => s is SupplierLoaded && s.supplier.id == targetId,
+        builder: (context, state) {
+          final shown = state is SupplierLoaded && state.supplier.id == targetId
+              ? state.supplier
+              : supplier!;
+          return _buildSupplierDetails(context, shown);
+        },
+      );
+    }
+    if (supplierId.isNotEmpty) {
       context.read<SupplierBloc>().add(LoadSupplier(supplierId));
 
       return Scaffold(
@@ -60,12 +76,14 @@ class SupplierDetailsScreen extends StatelessWidget {
       );
     }
 
-    return _buildSupplierDetails(context, supplier!);
+    return Scaffold(
+      appBar: AppBar(title: Text(localizations.supplierDetailsTitle)),
+      body: Center(child: Text(localizations.supplierNotFound)),
+    );
   }
 
   Widget _buildSupplierDetails(BuildContext context, Supplier supplier) {
     final localizations = AppLocalizations.of(context)!;
-    final currencyService = context.read<CurrencyService>();
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -100,13 +118,11 @@ class SupplierDetailsScreen extends StatelessWidget {
                     context,
                     supplier,
                     localizations,
-                    currencyService,
                   )
                   : _buildMobileLayout(
                     context,
                     supplier,
                     localizations,
-                    currencyService,
                   ),
         );
       },
@@ -118,7 +134,6 @@ class SupplierDetailsScreen extends StatelessWidget {
     BuildContext context,
     Supplier supplier,
     AppLocalizations localizations,
-    CurrencyService currencyService,
   ) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
@@ -207,19 +222,7 @@ class SupplierDetailsScreen extends StatelessWidget {
                         ),
                         const Divider(),
                         const SizedBox(height: 8),
-                        _buildInfoRow(
-                          Icons.attach_money,
-                          localizations.totalPurchasesLabel,
-                          currencyService.formatAmount(supplier.totalPurchases),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildInfoRow(
-                          Icons.calendar_today,
-                          localizations.lastPurchaseLabel,
-                          supplier.lastPurchaseDate != null
-                              ? _formatDate(supplier.lastPurchaseDate!, context)
-                              : localizations.noPurchaseRecorded,
-                        ),
+                        _buildPurchasesRows(context, supplier, localizations),
                         const SizedBox(height: 12),
                         _buildInfoRow(
                           Icons.timer,
@@ -246,93 +249,8 @@ class SupplierDetailsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                // ── Dettes fournisseur (solde impayé) ──
-                FutureBuilder<List<Expense>>(
-                  future: context
-                      .read<ExpenseRepository>()
-                      .getExpensesBySupplier(supplier.id),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const SizedBox.shrink();
-                    final unpaid = snapshot.data!.where((e) {
-                      final st = e.paymentStatus;
-                      return st == ExpensePaymentStatus.unpaid ||
-                          st == ExpensePaymentStatus.partial ||
-                          st == ExpensePaymentStatus.credit;
-                    });
-                    final totalDue = unpaid.fold<double>(
-                      0,
-                      (sum, e) => sum + (e.amount - (e.paidAmount ?? 0)),
-                    );
-                    if (totalDue <= 0) return const SizedBox.shrink();
-                    return Column(
-                      children: [
-                        const SizedBox(height: 16),
-                        Card(
-                          elevation: 2,
-                          color: Colors.red.shade50,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  localizations.outstandingBalance,
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const Divider(),
-                                const SizedBox(height: 8),
-                                _buildInfoRow(
-                                  Icons.warning_amber_rounded,
-                                  localizations.payablesToPay,
-                                  currencyService.formatAmount(totalDue),
-                                ),
-                                const SizedBox(height: 8),
-                                _buildInfoRow(
-                                  Icons.receipt_long,
-                                  '',
-                                  localizations.unpaidExpensesCount(
-                                    unpaid.length,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                // Wrap : le bouton passe à la ligne au lieu
-                                // de déborder sur une fenêtre étroite.
-                                Wrap(
-                                  alignment: WrapAlignment.end,
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    ElevatedButton.icon(
-                                      icon: const Icon(
-                                        Icons.payments_outlined,
-                                        size: 18,
-                                      ),
-                                      label: const Text('Régler'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.green.shade700,
-                                        foregroundColor: Colors.white,
-                                      ),
-                                      onPressed:
-                                          () => _settlePayable(
-                                            context,
-                                            unpaid.toList(),
-                                            currencyService,
-                                            supplier,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
+                // Dettes fournisseur (solde impayé).
+                _buildPayablesSection(context, supplier, localizations),
                 if (supplier.notes.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   Card(
@@ -438,7 +356,7 @@ class SupplierDetailsScreen extends StatelessWidget {
                         const Divider(),
                         const SizedBox(height: 8),
                         ElevatedButton.icon(
-                          onPressed: () => _placeOrder(context),
+                          onPressed: () => _placeOrder(context, supplier),
                           icon: const Icon(Icons.shopping_cart),
                           label: Text(localizations.placeOrderButtonLabel),
                           style: ElevatedButton.styleFrom(
@@ -483,7 +401,6 @@ class SupplierDetailsScreen extends StatelessWidget {
     BuildContext context,
     Supplier supplier,
     AppLocalizations localizations,
-    CurrencyService currencyService,
   ) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
@@ -616,20 +533,7 @@ class SupplierDetailsScreen extends StatelessWidget {
                   const Divider(),
                   const SizedBox(height: 8),
 
-                  _buildInfoRow(
-                    Icons.attach_money,
-                    localizations.totalPurchasesLabel,
-                    currencyService.formatAmount(supplier.totalPurchases),
-                  ),
-                  const SizedBox(height: 12),
-
-                  _buildInfoRow(
-                    Icons.calendar_today,
-                    localizations.lastPurchaseLabel,
-                    supplier.lastPurchaseDate != null
-                        ? _formatDate(supplier.lastPurchaseDate!, context)
-                        : localizations.noPurchaseRecorded,
-                  ),
+                  _buildPurchasesRows(context, supplier, localizations),
                   const SizedBox(height: 12),
 
                   _buildInfoRow(
@@ -661,6 +565,8 @@ class SupplierDetailsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
+          // Dettes fournisseur : aussi sur fenêtre étroite.
+          _buildPayablesSection(context, supplier, localizations),
           if (supplier.notes.isNotEmpty) ...[
             Card(
               elevation: 2,
@@ -695,7 +601,7 @@ class SupplierDetailsScreen extends StatelessWidget {
                 label: localizations.placeOrderButtonLabel,
                 background: Theme.of(context).colorScheme.primaryContainer,
                 foreground: Theme.of(context).colorScheme.onPrimaryContainer,
-                onPressed: () => _placeOrder(context),
+                onPressed: () => _placeOrder(context, supplier),
               ),
               ActionBarItem(
                 icon: Icons.phone,
@@ -716,6 +622,131 @@ class SupplierDetailsScreen extends StatelessWidget {
           const SizedBox(height: 24),
         ],
       ),
+    );
+  }
+
+  /// Total des achats (par devise) et dernier achat, tirés des dépenses du
+  /// fournisseur (SupplierPurchases, même calcul que la liste).
+  Widget _buildPurchasesRows(
+    BuildContext context,
+    Supplier supplier,
+    AppLocalizations localizations,
+  ) {
+    return FutureBuilder<SupplierPurchases>(
+      future: SupplierPurchases.load(
+        context.read<ExpenseRepository>(),
+        supplier.id,
+      ),
+      builder: (context, snapshot) {
+        final achats = snapshot.data ?? const SupplierPurchases({}, null);
+        final total = achats.totalLabel();
+        final dernier = achats.dernierAchat;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoRow(
+              Icons.attach_money,
+              localizations.totalPurchasesLabel,
+              total,
+            ),
+            const SizedBox(height: 12),
+            _buildInfoRow(
+              Icons.calendar_today,
+              localizations.lastPurchaseLabel,
+              dernier != null
+                  ? _formatDate(dernier, context)
+                  : localizations.noPurchaseRecorded,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Dettes du fournisseur (dépenses non soldées) avec « Régler ».
+  /// Chaque dette garde sa devise : les restes sont additionnés par devise,
+  /// jamais mélangés. Rechargée à chaque reconstruction de la fiche.
+  Widget _buildPayablesSection(
+    BuildContext context,
+    Supplier supplier,
+    AppLocalizations localizations,
+  ) {
+    return FutureBuilder<List<Expense>>(
+      future: context
+          .read<ExpenseRepository>()
+          .getExpensesBySupplier(supplier.id),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox.shrink();
+        final unpaid = snapshot.data!
+            .where((e) =>
+                e.paymentStatus != ExpensePaymentStatus.paid &&
+                e.remainingAmount > 0.0001)
+            .toList();
+        final dueByCurrency = <String, double>{};
+        for (final e in unpaid) {
+          final code = e.effectiveCurrencyCode;
+          dueByCurrency[code] = (dueByCurrency[code] ?? 0) + e.remainingAmount;
+        }
+        if (dueByCurrency.isEmpty) return const SizedBox.shrink();
+        final dueText = dueByCurrency.entries
+            .map((entry) => formatCurrency(entry.value, entry.key))
+            .join('\n');
+        return Padding(
+          padding: const EdgeInsets.only(top: 16, bottom: 16),
+          child: Card(
+            elevation: 2,
+            color: Colors.red.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    localizations.outstandingBalance,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  _buildInfoRow(
+                    Icons.warning_amber_rounded,
+                    localizations.payablesToPay,
+                    dueText,
+                  ),
+                  const SizedBox(height: 8),
+                  _buildInfoRow(
+                    Icons.receipt_long,
+                    '',
+                    localizations.unpaidExpensesCount(unpaid.length),
+                  ),
+                  const SizedBox(height: 12),
+                  // Wrap : le bouton passe à la ligne au lieu de déborder sur
+                  // une fenêtre étroite.
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.payments_outlined, size: 18),
+                        label: const Text('Régler'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green.shade700,
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: () =>
+                            _settlePayable(context, unpaid, supplier),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -749,25 +780,28 @@ class SupplierDetailsScreen extends StatelessWidget {
     );
   }
 
-  void _navigateToEditSupplier(BuildContext context, Supplier supplier) {
-    final BuildContext currentContext = context;
-    Navigator.push(
+  /// Modifier : même porte que la liste (dialogue sur grand écran, page
+  /// /suppliers/edit/:id sur fenêtre étroite), puis rechargement de la fiche.
+  Future<void> _navigateToEditSupplier(
+    BuildContext context,
+    Supplier supplier,
+  ) async {
+    final bloc = context.read<SupplierBloc>();
+    await FormNavigationService.instance.openSupplierForm(
       context,
-      MaterialPageRoute(
-        builder: (context) => AddSupplierScreen(supplier: supplier),
-      ),
-    ).then((value) {
-      if (currentContext.mounted) {
-        currentContext.read<SupplierBloc>().add(LoadSupplier(supplier.id));
-      }
-    });
+      supplier: supplier,
+    );
+    bloc.add(LoadSupplier(supplier.id));
   }
 
-  void _placeOrder(BuildContext context) {
-    final localizations = AppLocalizations.of(context)!;
-    ScaffoldMessenger.of(
+  /// « Passer commande » : formulaire de dépense avec ce fournisseur choisi.
+  Future<void> _placeOrder(BuildContext context, Supplier supplier) async {
+    final bloc = context.read<SupplierBloc>();
+    final saved = await FormNavigationService.instance.openExpenseForm(
       context,
-    ).showSnackBar(SnackBar(content: Text(localizations.featureToImplement)));
+      supplier: supplier,
+    );
+    if (saved == true) bloc.add(LoadSupplier(supplier.id));
   }
 
   /// Règle une dette fournisseur : choix de la pièce puis dialogue de
@@ -776,19 +810,15 @@ class SupplierDetailsScreen extends StatelessWidget {
   Future<void> _settlePayable(
     BuildContext context,
     List<Expense> unpaidExpenses,
-    CurrencyService currencyService,
     Supplier supplier,
   ) async {
-    final expense = await pickExpenseToSettle(
-      context,
-      unpaidExpenses,
-      formatAmount: currencyService.formatAmount,
-    );
+    final bloc = context.read<SupplierBloc>();
+    final expense = await pickExpenseToSettle(context, unpaidExpenses);
     if (expense == null || !context.mounted) return;
     final updated = await startExpensePaymentFlow(context, expense);
-    if (updated != null && context.mounted) {
+    if (updated != null) {
       // Recharge la fiche pour rafraîchir le solde impayé affiché.
-      context.read<SupplierBloc>().add(LoadSupplier(supplier.id));
+      bloc.add(LoadSupplier(supplier.id));
     }
   }
 
@@ -889,34 +919,21 @@ class SupplierDetailsScreen extends StatelessWidget {
     );
   }
 
-  void _confirmDelete(BuildContext context, Supplier supplier) {
+  Future<void> _confirmDelete(BuildContext context, Supplier supplier) async {
     final localizations = AppLocalizations.of(context)!;
-    final supplierBloc = BlocProvider.of<SupplierBloc>(context);
-
-    showDialog(
+    final confirme = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
           title: Text(localizations.confirmDeleteSupplierTitle),
-          content: Text(
-            localizations.confirmDeleteSupplierMessage(
-              supplier.name,
-            ), // Corrected
-          ),
+          content: Text(localizations.confirmDeleteSupplierMessage(supplier.name)),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: Text(localizations.cancelButtonLabel),
             ),
             TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                supplierBloc.add(DeleteSupplier(supplier.id));
-                if (Navigator.canPop(context)) {
-                  // Check if context is still valid
-                  Navigator.pop(context);
-                }
-              },
+              onPressed: () => Navigator.pop(dialogContext, true),
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: Text(localizations.deleteButtonLabel),
             ),
@@ -924,6 +941,28 @@ class SupplierDetailsScreen extends StatelessWidget {
         );
       },
     );
+    if (confirme != true || !context.mounted) return;
+
+    // Le serveur d'abord : la fiche ne se ferme qu'une fois la suppression
+    // acceptée. Un fournisseur avec historique est refusé (409), on le dit.
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await context.read<SupplierRepository>().deleteSupplier(supplier.id);
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('$e'.replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    if (!context.mounted) return;
+    context.read<SupplierBloc>().add(const LoadSuppliers());
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Fournisseur supprimé.')),
+    );
+    context.canPop() ? context.pop() : context.go('/contacts');
   }
 
   Color _getCategoryColor(SupplierCategory category) {

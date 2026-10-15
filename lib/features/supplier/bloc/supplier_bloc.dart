@@ -126,6 +126,8 @@ class SupplierBloc extends Bloc<SupplierEvent, SupplierState> {
       emit(SupplierError(
         '$e'.replaceFirst('Exception: ', ''),
       ));
+      // Refus (historique) : la liste revient, pas l'erreur seule.
+      add(const LoadSuppliers());
     }
   }
 

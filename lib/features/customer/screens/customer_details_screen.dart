@@ -14,10 +14,11 @@ import '../bloc/customer_bloc.dart';
 import '../bloc/customer_event.dart';
 import '../bloc/customer_state.dart';
 import '../models/customer.dart';
+import '../repositories/customer_repository.dart';
 import '../../atelier/widgets/customer_atelier_section.dart';
 import '../../atelier/widgets/customer_vehicles_section.dart';
 import '../widgets/customer_contacts_card.dart';
-import 'add_customer_screen.dart';
+import 'package:wanzo/core/services/form_navigation_service.dart';
 
 /// Écran de détails d'un client
 class CustomerDetailsScreen extends StatelessWidget {
@@ -34,7 +35,21 @@ class CustomerDetailsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
-    if (customer == null && customerId.isNotEmpty) {
+    final targetId = customer?.id ?? customerId;
+    if (customer != null) {
+      // On écoute le bloc : après une modification ou un règlement, la fiche
+      // rechargée (LoadCustomer) remplace celle reçue en paramètre.
+      return BlocBuilder<CustomerBloc, CustomerState>(
+        buildWhen: (_, s) => s is CustomerLoaded && s.customer.id == targetId,
+        builder: (context, state) {
+          final shown = state is CustomerLoaded && state.customer.id == targetId
+              ? state.customer
+              : customer!;
+          return _buildCustomerDetails(context, shown);
+        },
+      );
+    }
+    if (customerId.isNotEmpty) {
       context.read<CustomerBloc>().add(LoadCustomer(customerId));
 
       return Scaffold(
@@ -65,7 +80,10 @@ class CustomerDetailsScreen extends StatelessWidget {
       );
     }
 
-    return _buildCustomerDetails(context, customer!);
+    return Scaffold(
+      appBar: AppBar(title: Text(localizations.customerDetailsTitle)),
+      body: Center(child: Text(localizations.customerNotFound)),
+    );
   }
 
   Widget _buildCustomerDetails(BuildContext context, Customer customer) {
@@ -237,105 +255,8 @@ class CustomerDetailsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                // ── Créances client (solde impayé) ──
-                FutureBuilder<List<Sale>>(
-                  future: context.read<SalesRepository>().getSalesByCustomer(
-                    customer.id,
-                  ),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const SizedBox.shrink();
-                    final unpaid = snapshot.data!.where(
-                      (s) =>
-                          s.status == SaleStatus.pending ||
-                          s.status == SaleStatus.partiallyPaid,
-                    );
-                    final totalDue = unpaid.fold<double>(
-                      0,
-                      (sum, s) =>
-                          sum + (s.totalAmountInCdf - s.paidAmountInCdf),
-                    );
-                    if (totalDue <= 0) return const SizedBox.shrink();
-                    return Column(
-                      children: [
-                        const SizedBox(height: 16),
-                        Card(
-                          elevation: 2,
-                          color: Colors.orange.shade50,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  localizations.outstandingBalance,
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const Divider(),
-                                const SizedBox(height: 8),
-                                _buildInfoRow(
-                                  Icons.warning_amber_rounded,
-                                  localizations.receivablesToCollect,
-                                  currencyService.formatAmount(totalDue),
-                                ),
-                                const SizedBox(height: 8),
-                                _buildInfoRow(
-                                  Icons.receipt_long,
-                                  '',
-                                  localizations.unpaidSalesCount(unpaid.length),
-                                ),
-                                const SizedBox(height: 12),
-                                // Wrap : « Régler » et « Relancer » passent à
-                                // la ligne au lieu de déborder.
-                                Wrap(
-                                  alignment: WrapAlignment.end,
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    ElevatedButton.icon(
-                                      icon: const Icon(
-                                        Icons.payments_outlined,
-                                        size: 18,
-                                      ),
-                                      label: const Text('Régler'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.green.shade700,
-                                        foregroundColor: Colors.white,
-                                      ),
-                                      onPressed:
-                                          () => _settleReceivable(
-                                            context,
-                                            unpaid.toList(),
-                                          ),
-                                    ),
-                                    ElevatedButton.icon(
-                                      icon: const Icon(
-                                        Icons.campaign_outlined,
-                                        size: 18,
-                                      ),
-                                      label: const Text('Relancer'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.orange.shade700,
-                                        foregroundColor: Colors.white,
-                                      ),
-                                      onPressed:
-                                          () => _remindCustomer(
-                                            context,
-                                            customer,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
+                // Créances client (solde impayé).
+                _buildReceivablesSection(context, customer, localizations, currencyService),
                 if (customer.notes?.isNotEmpty ?? false) ...[
                   const SizedBox(height: 16),
                   Card(
@@ -675,6 +596,8 @@ class CustomerDetailsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
+          // Créances client : aussi sur fenêtre étroite.
+          _buildReceivablesSection(context, customer, localizations, currencyService),
           if (customer.notes?.isNotEmpty ?? false) ...[
             Card(
               elevation: 2,
@@ -742,6 +665,93 @@ class CustomerDetailsScreen extends StatelessWidget {
     );
   }
 
+  /// Créances du client (ventes non soldées) avec « Régler » et « Relancer ».
+  /// Rechargée à chaque reconstruction de la fiche (après un règlement).
+  Widget _buildReceivablesSection(
+    BuildContext context,
+    Customer customer,
+    AppLocalizations localizations,
+    CurrencyService currencyService,
+  ) {
+    return FutureBuilder<List<Sale>>(
+      future: context.read<SalesRepository>().getSalesByCustomer(customer.id),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox.shrink();
+        final unpaid = snapshot.data!.where(isOpenReceivable).toList();
+        // Montants en base CDF, convertis par formatAmount.
+        final totalDue = unpaid.fold<double>(
+          0,
+          (sum, s) => sum + s.remainingAmountInCdf,
+        );
+        if (totalDue <= 0) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 16, bottom: 16),
+          child: Card(
+            elevation: 2,
+            color: Colors.orange.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    localizations.outstandingBalance,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  _buildInfoRow(
+                    Icons.warning_amber_rounded,
+                    localizations.receivablesToCollect,
+                    currencyService.formatAmount(totalDue),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildInfoRow(
+                    Icons.receipt_long,
+                    '',
+                    localizations.unpaidSalesCount(unpaid.length),
+                  ),
+                  const SizedBox(height: 12),
+                  // Wrap : « Régler » et « Relancer » passent à la ligne au
+                  // lieu de déborder.
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.payments_outlined, size: 18),
+                        label: const Text('Régler'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green.shade700,
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: () =>
+                            _settleReceivable(context, customer, unpaid),
+                      ),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.campaign_outlined, size: 18),
+                        label: const Text('Relancer'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange.shade700,
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: () => _remindCustomer(context, customer),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildInfoRow(
     IconData icon,
     String label,
@@ -772,25 +782,28 @@ class CustomerDetailsScreen extends StatelessWidget {
     );
   }
 
-  void _navigateToEditCustomer(BuildContext context, Customer customer) {
-    final BuildContext currentContext = context;
-    Navigator.push(
+  /// Modifier : même porte que la liste (dialogue sur grand écran, page
+  /// /customers/edit/:id sur fenêtre étroite), puis rechargement de la fiche.
+  Future<void> _navigateToEditCustomer(
+    BuildContext context,
+    Customer customer,
+  ) async {
+    final bloc = context.read<CustomerBloc>();
+    await FormNavigationService.instance.openCustomerForm(
       context,
-      MaterialPageRoute(
-        builder: (context) => AddCustomerScreen(customer: customer),
-      ),
-    ).then((value) {
-      if (currentContext.mounted) {
-        currentContext.read<CustomerBloc>().add(LoadCustomer(customer.id));
-      }
-    });
+      customer: customer,
+    );
+    bloc.add(LoadCustomer(customer.id));
   }
 
-  void _addSale(BuildContext context, Customer customer) {
-    final localizations = AppLocalizations.of(context)!;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(localizations.featureComingSoonMessage)),
+  /// « Nouvelle vente » : formulaire de vente avec ce client déjà choisi.
+  Future<void> _addSale(BuildContext context, Customer customer) async {
+    final bloc = context.read<CustomerBloc>();
+    final saved = await FormNavigationService.instance.openSaleFormPrefilled(
+      context,
+      customer: customer,
     );
+    if (saved == true) bloc.add(LoadCustomer(customer.id));
   }
 
   /// Relance de paiement : calcule le solde dû (offline, depuis les ventes
@@ -836,17 +849,19 @@ class CustomerDetailsScreen extends StatelessWidget {
   /// l'API avant d'informer l'utilisateur.
   Future<void> _settleReceivable(
     BuildContext context,
+    Customer customer,
     List<Sale> unpaidSales,
   ) async {
+    final bloc = context.read<CustomerBloc>();
     final sale = await pickSaleToSettle(
       context,
       unpaidSales,
     );
     if (sale == null || !context.mounted) return;
     final updated = await startSalePaymentFlow(context, sale);
-    if (updated != null && context.mounted) {
+    if (updated != null) {
       // Recharge la fiche pour rafraîchir le solde impayé affiché.
-      context.read<CustomerBloc>().add(LoadCustomer(sale.customerId ?? ''));
+      bloc.add(LoadCustomer(customer.id));
     }
   }
 
@@ -947,34 +962,21 @@ class CustomerDetailsScreen extends StatelessWidget {
     );
   }
 
-  void _confirmDelete(BuildContext context, Customer customer) {
+  Future<void> _confirmDelete(BuildContext context, Customer customer) async {
     final localizations = AppLocalizations.of(context)!;
-    final customerBloc = BlocProvider.of<CustomerBloc>(context);
-
-    showDialog(
+    final confirme = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
           title: Text(localizations.deleteCustomerTitle),
-          content: Text(
-            localizations.deleteCustomerConfirmation(
-              customer.name,
-            ), // Corrected
-          ),
+          content: Text(localizations.deleteCustomerConfirmation(customer.name)),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: Text(localizations.cancelButtonLabel),
             ),
             TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                customerBloc.add(DeleteCustomer(customer.id));
-                if (Navigator.canPop(context)) {
-                  // Check if context is still valid for Navigator.pop
-                  Navigator.pop(context);
-                }
-              },
+              onPressed: () => Navigator.pop(dialogContext, true),
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: Text(localizations.deleteButtonLabel),
             ),
@@ -982,6 +984,28 @@ class CustomerDetailsScreen extends StatelessWidget {
         );
       },
     );
+    if (confirme != true || !context.mounted) return;
+
+    // Le serveur d'abord : la fiche ne se ferme qu'une fois la suppression
+    // acceptée. Un client avec historique est refusé (409), on le dit.
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await context.read<CustomerRepository>().deleteCustomer(customer.id);
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('$e'.replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    if (!context.mounted) return;
+    context.read<CustomerBloc>().add(const LoadCustomers());
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Client supprimé.')),
+    );
+    context.canPop() ? context.pop() : context.go('/contacts');
   }
 
   Color _getCategoryColor(CustomerCategory category) {

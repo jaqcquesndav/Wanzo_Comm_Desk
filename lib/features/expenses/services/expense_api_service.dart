@@ -277,11 +277,14 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
 
       debugPrint("[ExpenseAPI] Creating expense with body: $body");
 
-      // Utiliser une requête JSON standard (pas multipart)
+      // Utiliser une requête JSON standard (pas multipart). Pas de file hors
+      // ligne : la dépense reste `pending` et la synchronisation l'envoie ;
+      // la mettre aussi en file la créait deux fois.
       final response = await _apiClient.post(
         'expenses',
         body: body,
         requiresAuth: true,
+        queueOffline: false,
       );
 
       // Le ApiClient.post retourne déjà le JSON décodé

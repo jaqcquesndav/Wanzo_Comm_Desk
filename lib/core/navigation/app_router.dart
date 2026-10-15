@@ -11,6 +11,9 @@ import '../../features/auth/screens/sync_pending_screen.dart';
 import '../../features/auth/screens/join_business_unit_screen.dart';
 import '../../features/dashboard/screens/dashboard_screen.dart';
 import '../../features/inventory/models/product.dart';
+import '../../features/inventory/repositories/inventory_repository.dart';
+import '../../features/customer/repositories/customer_repository.dart';
+import '../../features/supplier/repositories/supplier_repository.dart';
 import '../../features/inventory/screens/add_product_screen.dart';
 import '../../features/services/models/service_item.dart';
 import '../../features/services/screens/service_form_screen.dart';
@@ -31,6 +34,7 @@ import '../../features/notifications/screens/notification_settings_screen.dart';
 import '../../features/contacts/screens/contacts_screen.dart';
 import '../../features/receivables/screens/receivables_screen.dart';
 import '../../features/expenses/screens/add_expense_screen.dart';
+import '../../features/expenses/models/expense.dart';
 import '../../features/expenses/screens/expenses_list_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
 import '../../features/operations/screens/operations_screen.dart';
@@ -319,14 +323,32 @@ class AppRouter {
       GoRoute(
         path: '/sales',
         name: 'sales_list',
-        pageBuilder: (context, state) =>
-            _noAnim(state, const SalesListScreen()),
+        // ?filtre=a_encaisser : vignette « À encaisser » du tableau de bord.
+        pageBuilder: (context, state) => _noAnim(
+          state,
+          SalesListScreen(
+            onlyToCollect:
+                state.uri.queryParameters['filtre'] == 'a_encaisser',
+          ),
+        ),
         routes: [
           GoRoute(
             path: 'add',
             name: 'add_sale',
-            pageBuilder: (context, state) =>
-                _noAnim(state, const AddSaleScreen()),
+            pageBuilder: (context, state) {
+              // Fiche client : « Nouvelle vente » arrive avec le client.
+              final customer = state.extra is Customer
+                  ? state.extra as Customer
+                  : null;
+              return _noAnim(
+                state,
+                AddSaleScreen(
+                  initialCustomerId: customer?.id,
+                  initialCustomerName: customer?.name,
+                  initialCustomerPhone: customer?.phoneNumber,
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -339,8 +361,17 @@ class AppRouter {
           GoRoute(
             path: 'add',
             name: 'add_expense',
-            pageBuilder: (context, state) =>
-                _noAnim(state, const AddExpenseScreen()),
+            pageBuilder: (context, state) {
+              // extra : dépense à modifier, ou fournisseur pré-sélectionné.
+              final extra = state.extra;
+              return _noAnim(
+                state,
+                AddExpenseScreen(
+                  expense: extra is Expense ? extra : null,
+                  initialSupplier: extra is Supplier ? extra : null,
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -369,8 +400,19 @@ class AppRouter {
           GoRoute(
             path: 'edit/:productId',
             pageBuilder: (context, state) {
-              final product = state.extra as Product?;
-              return _noAnim(state, AddProductScreen(product: product));
+              // Sans fiche transmise (lien, notification), on la retrouve par
+              // son id : jamais un formulaire de création vide.
+              return _noAnim(
+                state,
+                _EditById<Product>(
+                  initial: state.extra as Product?,
+                  label: 'Produit',
+                  load: (context) async => context
+                      .read<InventoryRepository>()
+                      .getProductById(state.pathParameters['productId'] ?? ''),
+                  builder: (product) => AddProductScreen(product: product),
+                ),
+              );
             },
           ),
           GoRoute(
@@ -416,8 +458,17 @@ class AppRouter {
           GoRoute(
             path: 'edit/:customerId',
             pageBuilder: (context, state) {
-              final customer = state.extra as Customer?;
-              return _noAnim(state, AddCustomerScreen(customer: customer));
+              return _noAnim(
+                state,
+                _EditById<Customer>(
+                  initial: state.extra as Customer?,
+                  label: 'Client',
+                  load: (context) => context.read<CustomerRepository>().getCustomer(
+                    state.pathParameters['customerId'] ?? '',
+                  ),
+                  builder: (customer) => AddCustomerScreen(customer: customer),
+                ),
+              );
             },
           ),
           GoRoute(
@@ -448,8 +499,17 @@ class AppRouter {
           GoRoute(
             path: 'edit/:supplierId',
             pageBuilder: (context, state) {
-              final supplier = state.extra as Supplier?;
-              return _noAnim(state, AddSupplierScreen(supplier: supplier));
+              return _noAnim(
+                state,
+                _EditById<Supplier>(
+                  initial: state.extra as Supplier?,
+                  label: 'Fournisseur',
+                  load: (context) => context.read<SupplierRepository>().getSupplier(
+                    state.pathParameters['supplierId'] ?? '',
+                  ),
+                  builder: (supplier) => AddSupplierScreen(supplier: supplier),
+                ),
+              );
             },
           ),
           GoRoute(
@@ -504,20 +564,6 @@ class AppRouter {
         name: AppRoute.operations.name,
         pageBuilder: (context, state) =>
             _noAnim(state, const OperationsScreen()),
-        routes: [
-          GoRoute(
-            path: 'sales/add',
-            name: 'add_sale_from_operations',
-            pageBuilder: (context, state) =>
-                _noAnim(state, const AddSaleScreen()),
-          ),
-          GoRoute(
-            path: 'expenses/add',
-            name: 'add_expense_from_operations',
-            pageBuilder: (context, state) =>
-                _noAnim(state, const AddExpenseScreen()),
-          ),
-        ],
       ),
 
       // Routes de détail
@@ -597,6 +643,65 @@ extension AppRouteExtension on AppRoute {
 // Helper method to get path with parameters
 String saleDetailPath(String id) => '/sale-detail/$id';
 String expenseDetailPath(String id) => '/expense-detail/$id';
+
+/// Formulaire de modification ouvert par son identifiant : la fiche transmise
+/// par l'appelant est utilisée telle quelle, sinon elle est chargée.
+class _EditById<T> extends StatefulWidget {
+  const _EditById({
+    required this.initial,
+    required this.label,
+    required this.load,
+    required this.builder,
+  });
+
+  final T? initial;
+  final String label;
+  final Future<T?> Function(BuildContext context) load;
+  final Widget Function(T item) builder;
+
+  @override
+  State<_EditById<T>> createState() => _EditByIdState<T>();
+}
+
+class _EditByIdState<T> extends State<_EditById<T>> {
+  Future<T?>? _future;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initial == null) _future = widget.load(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = widget.initial;
+    if (initial != null) return widget.builder(initial);
+    return FutureBuilder<T?>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final item = snapshot.data;
+        if (item != null) return widget.builder(item);
+        return Scaffold(
+          appBar: AppBar(title: Text(widget.label)),
+          body: const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'Fiche introuvable sur cet appareil. Synchronisez, puis réessayez.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
 
 /// Charge une vente a partir de son identifiant, puis affiche son detail.
 ///

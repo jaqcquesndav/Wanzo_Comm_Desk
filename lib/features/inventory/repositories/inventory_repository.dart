@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
+import 'package:wanzo/core/exceptions/api_exceptions.dart'
+    show OfflineQueuedException;
 import '../models/product.dart';
 import '../models/stock_transaction.dart'; // Import StockTransaction
 import '../services/inventory_api_service.dart';
+import '../services/restock_awaiting_expense.dart';
 
 /// Repository pour gérer l'inventaire et les transactions de stock
 class InventoryRepository {
@@ -276,20 +280,25 @@ class InventoryRepository {
     }
   }
 
-  /// Ajouter une nouvelle transaction de stock
-  /// [pushToApi] : pousser la transaction vers le backend. À `false` pour les
-  /// mouvements DÉCLENCHÉS PAR UNE VENTE : le backend décrémente déjà le stock à
-  /// la création de la vente (sales.service), donc pousser en plus une
-  /// transaction de stock = DOUBLE décrément. Dans ce cas on ne fait que le
-  /// décrément LOCAL (UI offline) ; le stock backend fait foi et se réconcilie.
+  /// Enregistre un mouvement de stock SUR L'APPAREIL (transaction + quantité
+  /// du produit). L'envoi au serveur est séparé : [syncStockTransaction].
+  /// Les mouvements déclenchés par une vente ne sont jamais envoyés : le
+  /// serveur décrémente déjà le stock à la création de la vente.
+  /// [awaitingExpenseId] : réapprovisionnement dont la dépense attend encore
+  /// son id serveur ; le mouvement est gardé jusqu'à son envoi.
   Future<StockTransaction> addStockTransaction(
     StockTransaction transaction, {
-    bool pushToApi = true,
+    String? awaitingExpenseId,
   }) async {
     final product = getProductById(transaction.productId);
 
     if (product == null) {
       throw Exception('Produit non trouvé');
+    }
+
+    final newQuantity = product.stockQuantity + transaction.quantity;
+    if (newQuantity < 0 && transaction.type != StockTransactionType.sale) {
+      throw Exception('Stock insuffisant pour cette opération.');
     }
 
     final newTransaction = StockTransaction(
@@ -315,53 +324,59 @@ class InventoryRepository {
       locationId: transaction.locationId,
     );
 
-    // 1. Sauvegarder la transaction localement
     await _transactionsBox.put(newTransaction.id, newTransaction);
-
-    // 2. Mettre à jour la quantité en stock du produit localement
-    final newQuantity = product.stockQuantity + transaction.quantity;
-    if (newQuantity < 0 && transaction.type != StockTransactionType.sale) {
-      throw Exception('Stock insuffisant pour cette opération.');
+    if (awaitingExpenseId != null) {
+      await RestockAwaitingExpense.remember(awaitingExpenseId, newTransaction);
     }
 
-    // Update product stock quantity
-    // Mouvement de vente (pushToApi=false) : ne PAS forcer le re-push du produit
-    // (le stock backend est dérivé de la vente) ; sinon marquer en attente.
-    final updatedProduct = product.copyWith(
-      stockQuantity: newQuantity,
-      updatedAt: DateTime.now(),
-      syncStatus: pushToApi ? 'pending' : product.syncStatus,
+    // Le produit n'est pas marqué « à renvoyer » : le stock serveur suit les
+    // mouvements, renvoyer la fiche réécrirait sa quantité.
+    await _productsBox.put(
+      product.id,
+      product.copyWith(stockQuantity: newQuantity, updatedAt: DateTime.now()),
     );
-
-    await _productsBox.put(product.id, updatedProduct);
     debugPrint(
       '💾 Stock mis à jour localement: ${product.name} → $newQuantity',
     );
 
-    // 3. Synchroniser la transaction et le stock avec l'API (sauf mouvement de vente)
-    if (pushToApi && _apiService != null) {
-      try {
-        // Envoyer la transaction au serveur
-        final apiResponse = await _apiService
-            .createStockTransaction(newTransaction)
-            .timeout(const Duration(seconds: 10));
-
-        if (apiResponse.success) {
-          debugPrint('✅ Transaction de stock synchronisée avec l\'API');
-
-          // Mettre à jour le produit pour refléter le sync
-          final syncedProduct = updatedProduct.copyWith(syncStatus: 'synced');
-          await _productsBox.put(product.id, syncedProduct);
-        } else {
-          debugPrint('⚠️ Échec sync transaction stock: ${apiResponse.message}');
-        }
-      } catch (e) {
-        debugPrint('❌ Erreur sync transaction stock: $e - Restera en local');
-        // La transaction reste en local pour synchronisation ultérieure
-      }
-    }
-
     return newTransaction;
+  }
+
+  /// Envoie un mouvement au serveur (`POST stock-transactions`).
+  /// Renvoie `null` s'il est accepté ou mis en file hors ligne (rejoué au
+  /// retour du réseau), sinon le motif du refus, lisible.
+  /// [expenseId] : dépense d'achat qui porte ce réapprovisionnement.
+  Future<String?> syncStockTransaction(
+    StockTransaction transaction, {
+    String? expenseId,
+  }) async {
+    if (_apiService == null) return null;
+    try {
+      final apiResponse = await _apiService
+          .createStockTransaction(transaction, expenseId: expenseId)
+          .timeout(const Duration(seconds: 15));
+      if (apiResponse.success || apiResponse.error is OfflineQueuedException) {
+        return null;
+      }
+      debugPrint('⚠️ Mouvement de stock refusé: ${apiResponse.message}');
+      return _motifLisible(apiResponse.message);
+    } on TimeoutException {
+      return 'Le serveur ne répond pas. Réessayez dans un instant.';
+    } catch (e) {
+      return _motifLisible('$e');
+    }
+  }
+
+  static String _motifLisible(String? message) {
+    final brut = (message ?? '').replaceFirst('Exception: ', '').trim();
+    if (brut.startsWith('Insufficient stock')) {
+      return 'Stock insuffisant sur le serveur pour ce retrait.';
+    }
+    if (brut.contains('not found')) {
+      return "Cet article n'existe pas encore sur le serveur. "
+          'Synchronisez puis réessayez.';
+    }
+    return brut.isEmpty ? "Le serveur a refusé le mouvement de stock." : brut;
   }
 
   /// Obtenir toutes les transactions
@@ -388,29 +403,6 @@ class InventoryRepository {
               transaction.date.isBefore(endDate.add(const Duration(days: 1))),
         )
         .toList();
-  }
-
-  /// Annuler une transaction
-  Future<void> reverseTransaction(String transactionId) async {
-    final transaction = _transactionsBox.values.firstWhere(
-      (t) => t.id == transactionId,
-    );
-
-    // Créer une transaction inverse
-    final reverseTransaction = StockTransaction(
-      id: _uuid.v4(),
-      productId: transaction.productId,
-      type: transaction.type, // Type remains the same, but quantity is reversed
-      quantity: -transaction.quantity, // Quantité négative pour annuler
-      date: DateTime.now(),
-      referenceId: transaction.referenceId,
-      notes: 'Annulation de la transaction ${transaction.id}',
-      unitCostInCdf:
-          transaction.unitCostInCdf, // Use the original transaction's unit cost
-      totalValueInCdf: -transaction.totalValueInCdf, // Reverse the total value
-    );
-
-    await addStockTransaction(reverseTransaction);
   }
 
   /// Obtenir la valeur totale de l'inventaire en CDF

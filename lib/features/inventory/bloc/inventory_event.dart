@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:equatable/equatable.dart';
 import '../models/product.dart';
 import '../models/stock_transaction.dart'; // Added import
@@ -83,21 +85,27 @@ class DeleteProduct extends InventoryEvent {
 /// Ajouter une transaction de stock
 class AddStockTransaction extends InventoryEvent {
   final StockTransaction transaction;
-  
-  const AddStockTransaction(this.transaction);
-  
-  @override
-  List<Object?> get props => [transaction];
-}
 
-/// Annuler une transaction de stock
-class ReverseStockTransaction extends InventoryEvent {
-  final String transactionId;
-  
-  const ReverseStockTransaction(this.transactionId);
-  
+  /// Dépense d'achat qui porte ce réapprovisionnement (comptée une fois).
+  final String? expenseId;
+
+  /// Hors ligne : dépense pas encore envoyée (id local). Le mouvement est
+  /// appliqué en local et gardé jusqu'à ce qu'elle ait son id serveur.
+  final String? awaitingExpenseId;
+
+  /// Reçoit `null` si le serveur a accepté (ou mis en file hors ligne),
+  /// sinon le motif du refus.
+  final Completer<String?>? serverOutcome;
+
+  const AddStockTransaction(
+    this.transaction, {
+    this.expenseId,
+    this.awaitingExpenseId,
+    this.serverOutcome,
+  });
+
   @override
-  List<Object?> get props => [transactionId];
+  List<Object?> get props => [transaction, expenseId, awaitingExpenseId];
 }
 
 /// Charger toutes les transactions de stock

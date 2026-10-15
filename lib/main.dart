@@ -426,16 +426,17 @@ Future<Map<String, dynamic>> _initializeRepositoriesOptimized({
     final customerRepository = CustomerRepository(
       apiService: customerApiService,
     );
+    final expenseRepository = ExpenseRepository(
+      expenseApiService: expenseApiService,
+    );
     final supplierRepository = SupplierRepository(
       apiService: supplierApiService,
+      expenseRepository: expenseRepository,
     );
     final notificationRepository = NotificationRepository();
     final operationJournalRepository = OperationJournalRepository();
     final transactionRepository = TransactionRepository();
     final adhaRepository = AdhaRepository(apiService: adhaApiService);
-    final expenseRepository = ExpenseRepository(
-      expenseApiService: expenseApiService,
-    );
 
     // Business Unit: API Service + Repository
     final businessUnitApiService = BusinessUnitApiService(

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:wanzo/core/models/operation_payment.dart';
 import 'package:wanzo/core/shared_widgets/payment_history_section.dart';
 import 'package:wanzo/core/shared_widgets/record_payment_dialog.dart';
 import 'package:wanzo/core/shared_widgets/responsive_action_bar.dart';
@@ -112,7 +111,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
               icon: const Icon(Icons.arrow_back),
               tooltip: 'Retour',
               onPressed: () =>
-                  context.canPop() ? context.pop() : context.go('/operations'),
+                  context.canPop() ? context.pop() : context.go('/sales'),
             ),
             title: const Text("Détails de la vente"),
             actions: [
@@ -292,46 +291,22 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
     context.read<SalesBloc>().add(RecordSalePayment(sale: sale, payment: draft));
   }
 
-  /// Solde la vente d'un coup : une tranche égale au reste à payer.
+  /// Solde la vente : le dialogue de paiement, prérempli avec le reste à
+  /// payer, demande TOUJOURS le mode de règlement (jamais « Crédit »).
   Future<void> _settleInFull() async {
     final remaining = _remainingInTransactionCurrency;
     if (remaining <= 0) return;
-    final currencyCode = _money.currencyCode;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder:
-          (dialogContext) => AlertDialog(
-            title: const Text('Solder la vente'),
-            content: Text(
-              'Enregistrer un règlement de '
-              '${formatCurrency(remaining, currencyCode)} et solder la vente ?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Annuler'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('Confirmer'),
-              ),
-            ],
-          ),
+    final draft = await showRecordPaymentDialog(
+      context,
+      title: 'Solder la vente',
+      remainingAmount: remaining,
+      currencyCode: _money.currencyCode,
+      exchangeRate: _paymentRate,
+      defaultMethod: sale.paymentMethod,
     );
-    if (confirmed != true || !mounted) return;
+    if (draft == null || !mounted) return;
     setState(() => _submitting = true);
-    context.read<SalesBloc>().add(
-      RecordSalePayment(
-        sale: sale,
-        payment: PaymentDraft(
-          amount: remaining,
-          currencyCode: currencyCode,
-          exchangeRate: _paymentRate,
-          method: sale.paymentMethod ?? 'Espèces',
-          paidAt: DateTime.now(),
-        ),
-      ),
-    );
+    context.read<SalesBloc>().add(RecordSalePayment(sale: sale, payment: draft));
   }
 
   /// Historique des tranches de règlement (`GET sales/:id/payments`).

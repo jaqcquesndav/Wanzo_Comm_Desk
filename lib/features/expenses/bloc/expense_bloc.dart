@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io'; // Import for File, used by ExpenseEvent
 
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -39,6 +40,46 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
     on<CreateExpenseCategory>(_onCreateExpenseCategory);
     on<UpdateExpenseCategory>(_onUpdateExpenseCategory);
     on<DeleteExpenseCategory>(_onDeleteExpenseCategory);
+  }
+
+  /// Écriture de journal d'une dépense, identique à celle de la création :
+  /// seule la part payée est un mouvement de caisse, le reste une charge
+  /// engagée. [reversal] produit l'écriture inverse (modification, suppression).
+  OperationJournalEntry _expenseJournalEntry(
+    Expense expense, {
+    required String description,
+    bool reversal = false,
+    DateTime? date,
+  }) {
+    final montant = expense.amount.abs();
+    final paye = expense.paymentStatus == ExpensePaymentStatus.paid
+        ? montant
+        : (expense.paidAmount ?? 0).abs().clamp(0.0, montant).toDouble();
+    final valeur = paye > 0 ? paye : montant;
+    // Montant en CDF au taux figé de la dépense ; sans taux connu, il reste
+    // dans sa devise (jamais un taux 1 muet).
+    final devise = expense.effectiveCurrencyCode.toUpperCase();
+    final taux = expense.exchangeRate;
+    final enCdf = devise == 'CDF' || (taux != null && taux > 0);
+    final valeurJournal =
+        devise == 'CDF' ? valeur : (enCdf ? valeur * taux! : valeur);
+    return OperationJournalEntry(
+      id: _uuid.v4(),
+      date: date ?? expense.date,
+      type: paye > 0
+          ? (reversal ? OperationType.cashIn : OperationType.cashOut)
+          : OperationType.other,
+      description: description,
+      amount: reversal ? valeurJournal : -valeurJournal,
+      paymentMethod: expense.paymentMethod,
+      relatedDocumentId: expense.id,
+      currencyCode: enCdf ? 'CDF' : devise,
+      supplierId: expense.supplierId,
+      supplierName: expense.supplierName,
+      isDebit: !reversal,
+      isCredit: reversal,
+      balanceAfter: 0.0,
+    );
   }
 
   Future<void> _onLoadExpenses(
@@ -112,6 +153,9 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
         event.expense,
         imageFiles: event.imageFiles,
       );
+      if (event.saved != null && !event.saved!.isCompleted) {
+        event.saved!.complete(newExpense);
+      }
 
       debugPrint(
         "✅ Dépense ajoutée avec succès: ${newExpense.id}, ${newExpense.motif}, ${newExpense.amount} ${newExpense.effectiveCurrencyCode}",
@@ -122,24 +166,12 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
       // payer est une charge engagée, sans mouvement de caisse (chaque
       // règlement ajoute ensuite son décaissement). Avant, la caisse sortait
       // deux fois : à la création puis au règlement.
-      final montant = newExpense.amount.abs();
-      final dejaPaye = newExpense.paymentStatus == ExpensePaymentStatus.paid
-          ? montant
-          : (newExpense.paidAmount ?? 0).abs().clamp(0.0, montant).toDouble();
-      final journalEntry = OperationJournalEntry(
-        id: _uuid.v4(),
-        date: newExpense.date,
-        type: dejaPaye > 0 ? OperationType.cashOut : OperationType.other,
-        description: dejaPaye > 0
+      final journalEntry = _expenseJournalEntry(
+        newExpense,
+        description: (newExpense.paidAmount ?? 0) > 0 ||
+                newExpense.paymentStatus == ExpensePaymentStatus.paid
             ? "Dépense: ${newExpense.motif}"
             : "Dépense à payer: ${newExpense.motif}",
-        amount: -(dejaPaye > 0 ? dejaPaye : montant),
-        paymentMethod: newExpense.paymentMethod,
-        relatedDocumentId: newExpense.id,
-        currencyCode: newExpense.effectiveCurrencyCode,
-        isDebit: true,
-        isCredit: false,
-        balanceAfter: 0.0, // Placeholder, will be calculated
       );
 
       debugPrint(
@@ -182,6 +214,9 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
       add(const LoadExpenses());
     } catch (e) {
       debugPrint("❌ ERREUR lors de l'ajout de la dépense: $e");
+      if (event.saved != null && !event.saved!.isCompleted) {
+        event.saved!.completeError(e);
+      }
       emit(
         ExpenseError("Erreur lors de l'ajout de la dépense: ${e.toString()}"),
       );
@@ -223,37 +258,17 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
         "✅ Dépense mise à jour: ${updatedExpense.id}, ${updatedExpense.motif}, ${updatedExpense.amount} ${updatedExpense.effectiveCurrencyCode}",
       );
 
-      // 1. Create a reversing journal entry for the original expense
-      final reversalJournalEntry = OperationJournalEntry(
-        id: _uuid.v4(),
-        date:
-            DateTime.now(), // Or originalExpense.date - using now for reversal event time
-        type: OperationType.cashIn, // Reversing a cashOut
-        description:
-            "Annulation (MàJ) Dépense: ${originalExpense.motif}", // Changed from description to motif
-        amount: originalExpense.amount.abs(), // Positive amount for cashIn
-        paymentMethod: originalExpense.paymentMethod,
-        relatedDocumentId: originalExpense.id,
-        currencyCode: originalExpense.effectiveCurrencyCode,
-        isDebit: false, // Reversal of an expense is a credit
-        isCredit: true,
-        balanceAfter: 0.0, // Placeholder, to be calculated by journal logic
+      // Contrepassation puis nouvelle écriture, calculées comme à la création :
+      // la part payée ne change pas ici, la caisse n'est donc pas faussée.
+      final reversalJournalEntry = _expenseJournalEntry(
+        originalExpense,
+        description: "Annulation (MàJ) Dépense: ${originalExpense.motif}",
+        reversal: true,
+        date: DateTime.now(),
       );
-
-      // 2. Create a new journal entry for the updated expense
-      final newJournalEntry = OperationJournalEntry(
-        id: _uuid.v4(),
-        date: updatedExpense.date,
-        type: OperationType.cashOut,
-        description:
-            "Dépense (MàJ): ${updatedExpense.motif}", // Changed from description to motif
-        amount: -updatedExpense.amount.abs(), // Negative amount for cashOut
-        paymentMethod: updatedExpense.paymentMethod,
-        relatedDocumentId: updatedExpense.id,
-        currencyCode: updatedExpense.effectiveCurrencyCode,
-        isDebit: true, // Updated expense is a debit
-        isCredit: false,
-        balanceAfter: 0.0, // Placeholder, to be calculated by journal logic
+      final newJournalEntry = _expenseJournalEntry(
+        updatedExpense,
+        description: "Dépense (MàJ): ${updatedExpense.motif}",
       );
 
       // Tenter d'ajouter les entrées directement au repository du journal
@@ -377,20 +392,11 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
       debugPrint("✅ Dépense supprimée: ${event.expenseId}");
 
       // Create a reversing journal entry
-      final journalEntry = OperationJournalEntry(
-        id: _uuid.v4(),
-        date:
-            DateTime.now(), // Or expenseToDelete.date - decide on consistent date for reversal
-        type: OperationType.cashIn, // Reversing a cashOut
-        description:
-            "Annulation Dépense: ${expenseToDelete.motif}", // Changed from description to motif
-        amount: expenseToDelete.amount.abs(), // Positive amount for cashIn
-        paymentMethod: expenseToDelete.paymentMethod,
-        relatedDocumentId: expenseToDelete.id,
-        currencyCode: expenseToDelete.effectiveCurrencyCode,
-        isDebit: false, // Reversal of an expense is a credit
-        isCredit: true,
-        balanceAfter: 0.0, // Placeholder, to be calculated by journal logic
+      final journalEntry = _expenseJournalEntry(
+        expenseToDelete,
+        description: "Annulation Dépense: ${expenseToDelete.motif}",
+        reversal: true,
+        date: DateTime.now(),
       );
 
       try {

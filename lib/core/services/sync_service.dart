@@ -19,6 +19,7 @@ import 'package:wanzo/features/supplier/services/supplier_api_service.dart';
 import 'package:wanzo/features/settings/services/financial_account_api_service.dart';
 import 'package:wanzo/features/dashboard/repositories/operation_journal_repository.dart';
 import 'package:wanzo/features/inventory/models/product.dart';
+import 'package:wanzo/features/inventory/services/restock_awaiting_expense.dart';
 import 'package:wanzo/features/customer/models/customer.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
@@ -847,9 +848,19 @@ class SyncService {
                 final syncedExpense = response.data!.copyWith(
                   syncStatus: 'synced',
                 );
-                // Remplacer avec l'ID serveur
+                // Remplacer avec l'ID serveur. Le dépôt range une dépense
+                // locale sous son `localId` : effacer seulement `id` laissait
+                // la copie `pending`, renvoyée (en double) à chaque synchro.
+                final localKey = expense.localId ?? expense.id;
+                await expenseBox.delete(localKey);
                 await expenseBox.delete(expense.id);
                 await expenseBox.put(syncedExpense.id, syncedExpense);
+                // Entrée de stock d'un réapprovisionnement qui attendait
+                // l'id serveur de sa dépense.
+                await RestockAwaitingExpense.release(
+                  expense.id,
+                  syncedExpense.id,
+                );
                 debugPrint(
                   '✅ Dépense uploadée: ${expense.motif} (ID: ${syncedExpense.id})',
                 );

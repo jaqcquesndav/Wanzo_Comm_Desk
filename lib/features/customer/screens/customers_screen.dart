@@ -29,6 +29,32 @@ class _CustomersScreenState extends State<CustomersScreen> {
   late CurrencyService _currencyService;
   StreamSubscription<SyncStatus>? _syncSubscription;
 
+  /// Filtre « Par catégorie » appliqué à la liste chargée (null = toutes).
+  CustomerCategory? _categoryFilter;
+
+  List<Customer> _applyCategory(List<Customer> customers) {
+    final filter = _categoryFilter;
+    if (filter == null) return customers;
+    return customers.where((c) => c.category == filter).toList();
+  }
+
+  /// Rappel du filtre actif, avec la croix pour l'enlever.
+  Widget _categoryFilterBar(BuildContext context) {
+    final filter = _categoryFilter;
+    if (filter == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: InputChip(
+          avatar: const Icon(Icons.category, size: 16),
+          label: Text('Catégorie : ${_getCategoryName(context, filter)}'),
+          onDeleted: () => setState(() => _categoryFilter = null),
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -146,6 +172,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
           ),
         ),
 
+        _categoryFilterBar(context),
         // Liste des clients
         Expanded(
           child: BlocConsumer<CustomerBloc, CustomerState>(
@@ -154,11 +181,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
               if (state is CustomerLoading) {
                 return const Center(child: CircularProgressIndicator());
               } else if (state is CustomersLoaded) {
-                return _buildCustomersList(context, state.customers);
+                return _buildCustomersList(context, _applyCategory(state.customers));
               } else if (state is CustomerSearchResults) {
                 return _buildCustomersList(
                   context,
-                  state.customers,
+                  _applyCategory(state.customers),
                   isSearchResult: true,
                   searchTerm: state.searchTerm,
                 );
@@ -227,7 +254,18 @@ class _CustomersScreenState extends State<CustomersScreen> {
           return Center(child: Text(localizations.noCustomersToShow));
         }
 
-        return _buildCustomersTable(context, localizations, customers);
+        return Column(
+          children: [
+            _categoryFilterBar(context),
+            Expanded(
+              child: _buildCustomersTable(
+                context,
+                localizations,
+                _applyCategory(customers),
+              ),
+            ),
+          ],
+        );
       },
     );
   }
@@ -277,12 +315,15 @@ class _CustomersScreenState extends State<CustomersScreen> {
           onSelected: (value) {
             switch (value) {
               case 'all':
+                setState(() => _categoryFilter = null);
                 context.read<CustomerBloc>().add(const LoadCustomers());
                 break;
               case 'top':
+                setState(() => _categoryFilter = null);
                 context.read<CustomerBloc>().add(const LoadTopCustomers());
                 break;
               case 'recent':
+                setState(() => _categoryFilter = null);
                 context.read<CustomerBloc>().add(const LoadRecentCustomers());
                 break;
               case 'category':
@@ -631,6 +672,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 title: Text(localizations.allCustomers),
                 onTap: () {
                   Navigator.pop(context);
+                  setState(() => _categoryFilter = null);
                   context.read<CustomerBloc>().add(const LoadCustomers());
                 },
               ),
@@ -639,6 +681,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 title: Text(localizations.topCustomers),
                 onTap: () {
                   Navigator.pop(context);
+                  setState(() => _categoryFilter = null);
                   context.read<CustomerBloc>().add(const LoadTopCustomers());
                 },
               ),
@@ -647,6 +690,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 title: Text(localizations.recentCustomers),
                 onTap: () {
                   Navigator.pop(context);
+                  setState(() => _categoryFilter = null);
                   context.read<CustomerBloc>().add(const LoadRecentCustomers());
                 },
               ),
@@ -693,8 +737,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     title: Text(_getCategoryName(context, category)),
                     onTap: () {
                       Navigator.pop(dialogContext);
-                      // Ici, on pourrait implémenter un filtre par catégorie
-                      // Pour l\'instant, nous revenons simplement à tous les clients
+                      // Filtre local sur la liste complète des clients.
+                      setState(() => _categoryFilter = category);
                       context.read<CustomerBloc>().add(const LoadCustomers());
                     },
                   );

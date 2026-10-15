@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mockito/mockito.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:wanzo/core/services/currency_service.dart';
 import 'package:wanzo/features/dashboard/services/dashboard_api_service.dart';
 import 'package:wanzo/features/sales/repositories/sales_repository.dart';
 import 'package:wanzo/features/customer/repositories/customer_repository.dart';
@@ -7,7 +8,7 @@ import 'package:wanzo/features/transactions/repositories/transaction_repository.
 import 'package:wanzo/features/expenses/repositories/expense_repository.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 
-// Classes Mock manuelles
+// Doublures mocktail (sûres avec la null safety, sans génération de code)
 class MockSalesRepository extends Mock implements SalesRepository {}
 class MockCustomerRepository extends Mock implements CustomerRepository {}
 class MockTransactionRepository extends Mock implements TransactionRepository {}
@@ -31,6 +32,7 @@ void main() {
       customerRepository: mockCustomerRepository,
       transactionRepository: mockTransactionRepository,
       expenseRepository: mockExpenseRepository,
+      currencyService: CurrencyService(),
     );
   });
 
@@ -65,13 +67,13 @@ void main() {
         ),
       ];
 
-      when(mockSalesRepository.getSalesByDateRange(startOfDay, endOfDay))
+      when(() => mockSalesRepository.getSalesByDateRange(startOfDay, endOfDay))
           .thenAnswer((_) async => mockSales);
-      when(mockCustomerRepository.getUniqueCustomersCountForDateRange(startOfDay, endOfDay))
+      when(() => mockCustomerRepository.getUniqueCustomersCountForDateRange(startOfDay, endOfDay))
           .thenAnswer((_) async => 2);
-      when(mockSalesRepository.getTotalReceivables())
+      when(() => mockSalesRepository.getTotalReceivables())
           .thenAnswer((_) async => 25000.0);
-      when(mockExpenseRepository.getExpensesByDateRange(startOfDay, endOfDay))
+      when(() => mockExpenseRepository.getExpensesByDateRange(startOfDay, endOfDay))
           .thenAnswer((_) async => []);
 
       // Act
@@ -90,7 +92,7 @@ void main() {
 
     test('getDashboardData handles errors gracefully', () async {
       // Arrange
-      when(mockSalesRepository.getSalesByDateRange(startOfDay, endOfDay))
+      when(() => mockSalesRepository.getSalesByDateRange(startOfDay, endOfDay))
           .thenThrow(Exception('Database error'));
 
       // Act
@@ -129,7 +131,7 @@ void main() {
         ),
       ];
 
-      when(mockSalesRepository.getSalesByDateRange(startOfDay, endOfDay))
+      when(() => mockSalesRepository.getSalesByDateRange(startOfDay, endOfDay))
           .thenAnswer((_) async => mockSales);
 
       // Act
@@ -143,7 +145,7 @@ void main() {
 
     test('getClientsServedToday returns correct count', () async {
       // Arrange
-      when(mockCustomerRepository.getUniqueCustomersCountForDateRange(startOfDay, endOfDay))
+      when(() => mockCustomerRepository.getUniqueCustomersCountForDateRange(startOfDay, endOfDay))
           .thenAnswer((_) async => 3);
 
       // Act
@@ -156,7 +158,7 @@ void main() {
 
     test('getTotalReceivables returns correct amount', () async {
       // Arrange
-      when(mockSalesRepository.getTotalReceivables())
+      when(() => mockSalesRepository.getTotalReceivables())
           .thenAnswer((_) async => 30000.0);
 
       // Act
@@ -169,7 +171,7 @@ void main() {
 
     test('getExpensesToday returns correct expenses', () async {
       // Arrange
-      when(mockExpenseRepository.getExpensesByDateRange(startOfDay, endOfDay))
+      when(() => mockExpenseRepository.getExpensesByDateRange(startOfDay, endOfDay))
           .thenAnswer((_) async => []);
 
       // Act

@@ -270,23 +270,19 @@ class SupplierApiServiceImpl implements SupplierApiService {
 
   @override
   Future<ApiResponse<void>> deleteSupplier(String id) async {
-    try {
-      await _apiClient.delete('suppliers/$id', requiresAuth: true);
-
-      return ApiResponse<void>(
-        success: true,
-        data: null,
-        message: 'Supplier deleted successfully',
-        statusCode: 200,
-      );
-    } catch (e) {
-      return ApiResponse<void>(
-        success: false,
-        data: null,
-        message: 'Failed to delete supplier: ${e.toString()}',
-        statusCode: 500,
-      );
-    }
+    // Pas de capture : un refus (409, historique) doit remonter au dépôt.
+    // Avalé ici, il laissait le dépôt supprimer la fiche localement.
+    await _apiClient.delete(
+      'suppliers/$id',
+      requiresAuth: true,
+      queueOffline: false,
+    );
+    return ApiResponse<void>(
+      success: true,
+      data: null,
+      message: 'Supplier deleted successfully',
+      statusCode: 200,
+    );
   }
 
   @override

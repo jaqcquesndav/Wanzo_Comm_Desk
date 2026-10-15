@@ -36,7 +36,6 @@ class InventoryBloc extends Bloc<InventoryEvent, InventoryState> {
     on<UpdateProduct>(_onUpdateProduct);
     on<DeleteProduct>(_onDeleteProduct);
     on<AddStockTransaction>(_onAddStockTransaction);
-    on<ReverseStockTransaction>(_onReverseStockTransaction);
     on<LoadAllTransactions>(_onLoadAllTransactions);
     on<LoadProductTransactions>(_onLoadProductTransactions);
     on<LoadTransactionsByDateRange>(_onLoadTransactionsByDateRange);
@@ -298,175 +297,86 @@ class InventoryBloc extends Bloc<InventoryEvent, InventoryState> {
     }
   }
 
-  /// Ajouter une transaction de stock
+  /// Ajouter une transaction de stock : enregistrée sur l'appareil, puis
+  /// envoyée au serveur (`POST stock-transactions`).
   Future<void> _onAddStockTransaction(
     AddStockTransaction event,
     Emitter<InventoryState> emit,
   ) async {
     emit(const InventoryLoading());
     try {
-      // Retrieve product details to get product name and unit cost if needed for journal
       final product = _inventoryRepository.getProductById(
         event.transaction.productId,
       );
       if (product == null) {
-        emit(InventoryError("Produit associé à la transaction non trouvé."));
+        const message = 'Produit associé à la transaction non trouvé.';
+        _completer(event, message);
+        emit(const InventoryError(message));
         return;
       }
       final transaction = await _inventoryRepository.addStockTransaction(
         event.transaction,
+        awaitingExpenseId: event.awaitingExpenseId,
       );
-      // Create journal entry
+      // Mouvement gardé pour sa dépense : il partira avec elle.
+      final refus = event.awaitingExpenseId != null
+          ? null
+          : await _inventoryRepository.syncStockTransaction(
+              transaction,
+              expenseId: event.expenseId,
+            );
+      _completer(event, refus);
+
       final String? notes = transaction.notes;
-      String journalDescription;
-      if (notes != null && notes.isNotEmpty) {
-        journalDescription = notes;
-      } else {
-        journalDescription = "Mouvement de stock: ${product.name}";
-      }
+      final journalDescription = notes != null && notes.isNotEmpty
+          ? notes
+          : 'Mouvement de stock: ${product.name}';
+      // Entrée : achat, stock initial, retour, transfert entrant, ou
+      // ajustement positif. Le reste sort du stock.
+      final entree = transaction.type == StockTransactionType.purchase ||
+          transaction.type == StockTransactionType.initialStock ||
+          transaction.type == StockTransactionType.returned ||
+          transaction.type == StockTransactionType.transferIn ||
+          (transaction.type == StockTransactionType.adjustment &&
+              transaction.quantity > 0);
 
       final journalEntry = OperationJournalEntry(
         id: _uuid.v4(),
         date: transaction.date,
-        type:
-            transaction.type == StockTransactionType.purchase ||
-                    transaction.type == StockTransactionType.initialStock ||
-                    transaction.type == StockTransactionType.returned ||
-                    transaction.type == StockTransactionType.transferIn
-                ? OperationType.stockIn
-                : OperationType.stockOut,
+        type: entree ? OperationType.stockIn : OperationType.stockOut,
         description: journalDescription,
-        amount:
-            transaction.totalValueInCdf, // Use totalValueInCdf from transaction
+        amount: transaction.totalValueInCdf,
         quantity: transaction.quantity,
         productId: transaction.productId,
-        productName: product.name, // Use product name from fetched product
+        productName: product.name,
         relatedDocumentId: transaction.id,
         currencyCode: transaction.effectiveCurrencyCode,
-        isDebit:
-            transaction.type == StockTransactionType.purchase ||
-            transaction.type == StockTransactionType.initialStock ||
-            transaction.type == StockTransactionType.returned ||
-            transaction.type == StockTransactionType.transferIn,
-        isCredit:
-            !(transaction.type == StockTransactionType.purchase ||
-                transaction.type == StockTransactionType.initialStock ||
-                transaction.type == StockTransactionType.returned ||
-                transaction.type == StockTransactionType.transferIn),
-        balanceAfter: 0.0, // Placeholder, will be calculated by journal
+        isDebit: entree,
+        isCredit: !entree,
+        balanceAfter: 0.0,
       );
-      _operationJournalBloc.add(
-        AddOperationJournalEntry(journalEntry),
-      ); // Dispatch event
+      _operationJournalBloc.add(AddOperationJournalEntry(journalEntry));
 
       emit(
-        InventoryOperationSuccess(
-          'Transaction de stock ajoutée avec succès et enregistrée dans le journal',
-        ),
+        refus == null
+            ? const InventoryOperationSuccess(
+                'Mouvement de stock enregistré.',
+              )
+            : InventoryError('Stock mis à jour sur cet appareil, mais le '
+                'serveur a refusé le mouvement : $refus'),
       );
-      add(LoadProduct(transaction.productId)); // Reload product details
-      add(const LoadProducts()); // Reload all products
+      add(LoadProduct(transaction.productId));
+      add(const LoadProducts());
     } catch (e) {
-      emit(
-        InventoryError(
-          "Erreur lors de l'ajout de la transaction de stock: ${e.toString()}",
-        ),
-      );
+      final message = '$e'.replaceFirst('Exception: ', '');
+      _completer(event, message);
+      emit(InventoryError(message));
     }
   }
 
-  /// Annuler une transaction de stock (et créer une entrée de journal inverse)
-  Future<void> _onReverseStockTransaction(
-    ReverseStockTransaction event,
-    Emitter<InventoryState> emit,
-  ) async {
-    emit(const InventoryLoading());
-    try {
-      // In a real scenario, the repository would handle the logic of reversing a transaction.
-      // This might involve creating a new transaction that counters the original.
-      // For now, we'll simulate fetching the original transaction to create an inverse journal entry.
-
-      // Attempt to find the original transaction - THIS IS A SIMPLIFICATION
-      // A robust implementation would have a dedicated method in the repository.
-      final originalTransaction = _inventoryRepository
-          .getAllTransactions()
-          .firstWhere((t) => t.id == event.transactionId);
-
-      final product = _inventoryRepository.getProductById(
-        originalTransaction.productId,
-      );
-      if (product == null) {
-        emit(
-          InventoryError(
-            "Produit associé à la transaction originale non trouvé.",
-          ),
-        );
-        return;
-      }
-
-      // Create journal entry for the reversal
-      final String? originalNotes = originalTransaction.notes;
-      String reversalJournalDescription;
-      if (originalNotes != null && originalNotes.isNotEmpty) {
-        reversalJournalDescription = "Annulation: $originalNotes";
-      } else {
-        reversalJournalDescription =
-            "Annulation: Mouvement de stock: ${product.name}";
-      }
-
-      final journalEntry = OperationJournalEntry(
-        id: _uuid.v4(),
-        date: DateTime.now(),
-        type:
-            originalTransaction.type == StockTransactionType.purchase ||
-                    originalTransaction.type ==
-                        StockTransactionType.initialStock ||
-                    originalTransaction.type == StockTransactionType.returned ||
-                    originalTransaction.type == StockTransactionType.transferIn
-                ? OperationType
-                    .stockOut // Reverse of stockIn is stockOut
-                : OperationType.stockIn, // Reverse of stockOut is stockIn
-        description: reversalJournalDescription,
-        amount:
-            -originalTransaction
-                .totalValueInCdf, // Negative amount for reversal, using totalValueInCdf
-        quantity:
-            -originalTransaction.quantity, // Negative quantity for reversal
-        productId: originalTransaction.productId,
-        productName: product.name, // Use product name from fetched product
-        relatedDocumentId:
-            originalTransaction.id, // Link to original transaction ID
-        currencyCode: 'CDF', // Added currency code
-        isDebit:
-            !(originalTransaction.type == StockTransactionType.purchase ||
-                originalTransaction.type == StockTransactionType.initialStock ||
-                originalTransaction.type == StockTransactionType.returned ||
-                originalTransaction.type == StockTransactionType.transferIn),
-        isCredit:
-            originalTransaction.type == StockTransactionType.purchase ||
-            originalTransaction.type == StockTransactionType.initialStock ||
-            originalTransaction.type == StockTransactionType.returned ||
-            originalTransaction.type == StockTransactionType.transferIn,
-        balanceAfter: 0.0,
-      );
-      _operationJournalBloc.add(
-        AddOperationJournalEntry(journalEntry),
-      ); // Dispatch event
-
-      emit(
-        const InventoryOperationSuccess(
-          'Transaction de stock annulée et enregistrée dans le journal.',
-        ),
-      );
-      add(LoadProduct(originalTransaction.productId));
-      add(const LoadProducts());
-    } catch (e) {
-      emit(
-        InventoryError(
-          "Erreur lors de l'annulation de la transaction: ${e.toString()}",
-        ),
-      );
-    }
+  void _completer(AddStockTransaction event, String? refus) {
+    final c = event.serverOutcome;
+    if (c != null && !c.isCompleted) c.complete(refus);
   }
 
   /// Charger toutes les transactions de stock

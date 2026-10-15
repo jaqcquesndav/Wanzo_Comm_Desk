@@ -3,6 +3,7 @@ import 'package:wanzo/features/dashboard/services/dashboard_api_service.dart';
 import 'package:wanzo/features/sales/repositories/sales_repository.dart';
 import 'package:wanzo/features/customer/repositories/customer_repository.dart';
 import 'package:wanzo/features/transactions/repositories/transaction_repository.dart';
+import 'package:wanzo/core/services/currency_service.dart';
 import 'package:wanzo/features/expenses/repositories/expense_repository.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
@@ -75,7 +76,11 @@ class MockTransactionRepository implements TransactionRepository {
   }
 
   @override
-  Future<double> getTotalExpensesForDateRange(DateTime startDate, DateTime endDate) {
+  Future<double> getTotalExpensesForDateRange(
+    DateTime startDate,
+    DateTime endDate, {
+    CurrencyService? currencyService,
+  }) {
     if (_mockGetTotalExpensesForDateRange != null) {
       return _mockGetTotalExpensesForDateRange!(startDate, endDate);
     }
