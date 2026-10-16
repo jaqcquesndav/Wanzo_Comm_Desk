@@ -25,7 +25,14 @@ class LoggingService {
 
     try {
       if (!kIsWeb) {
-        final directory = await getApplicationDocumentsDirectory();
+        // Sur ordinateur, Documents est commun a toutes les apps Wanzo : les
+        // journaux y etaient melanges (meme fichier wanzo_<date>.log). Chaque
+        // app ecrit donc dans son propre dossier de support. Mobile : inchange.
+        final bool isDesktop =
+            Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+        final directory = isDesktop
+            ? await getApplicationSupportDirectory()
+            : await getApplicationDocumentsDirectory();
         final logDirectory = Directory('${directory.path}/logs');
         
         if (!await logDirectory.exists()) {

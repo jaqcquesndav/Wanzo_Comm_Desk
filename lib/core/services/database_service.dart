@@ -18,6 +18,7 @@ class DatabaseService {
   
   static Database? _database;
   static const String _databaseName = 'wanzo_local.db';
+  static const String _desktopDatabaseName = 'wanzo_comm_desk_local.db';
   static const int _databaseVersion = 2; // Incremented version
   
   /// Table pour stocker les réponses API mises en cache
@@ -39,8 +40,19 @@ class DatabaseService {
   
   /// Initialise la base de données
   Future<Database> _initDatabase() async {
-    final Directory documentsDirectory = await getApplicationDocumentsDirectory();
-    final String path = join(documentsDirectory.path, _databaseName);
+    // Sur ordinateur, Documents est commun a toutes les apps Wanzo : le fichier
+    // wanzo_local.db y etait partage (cache, file d envoi, profil en cache), et
+    // une app pouvait rejouer les envois d une autre. Chaque app a donc son
+    // propre fichier dans son dossier de support. Mobile : inchange.
+    final bool isDesktop =
+        Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    final Directory baseDirectory = isDesktop
+        ? await getApplicationSupportDirectory()
+        : await getApplicationDocumentsDirectory();
+    final String path = join(
+      baseDirectory.path,
+      isDesktop ? _desktopDatabaseName : _databaseName,
+    );
     
     return await openDatabase(
       path,

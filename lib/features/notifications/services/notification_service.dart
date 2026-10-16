@@ -137,7 +137,7 @@ class NotificationService {
     // Windows initialization settings
     final WindowsInitializationSettings windowsSettings =
         WindowsInitializationSettings(
-          appName: 'Wanzo',
+          appName: 'Wanzo Commerce',
           appUserModelId: 'com.wanzo.app',
           guid: 'd49b0314-ee7a-4e37-b5f1-0c7c45a0b64a',
         );
