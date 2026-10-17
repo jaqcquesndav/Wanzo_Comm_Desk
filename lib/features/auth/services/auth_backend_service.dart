@@ -36,44 +36,6 @@ class AuthBackendService {
 
       final response = await _apiClient.get('auth/me', requiresAuth: true);
 
-      // ignore: avoid_print
-      print('');
-      // ignore: avoid_print
-      print('╔══════════════════════════════════════════════════════════════');
-      // ignore: avoid_print
-      print('║ 👤 /auth/me RESPONSE');
-      // ignore: avoid_print
-      print('╠══════════════════════════════════════════════════════════════');
-      // ignore: avoid_print
-      print('║ success: ${response?['success']}');
-      // ignore: avoid_print
-      print('║ data keys: ${(response?['data'] as Map?)?.keys.toList()}');
-      if (response?['data']?['user'] != null) {
-        final user = response!['data']['user'];
-        // ignore: avoid_print
-        print('║ user.id: ${user['id']}');
-        // ignore: avoid_print
-        print('║ user.email: ${user['email']}');
-        // ignore: avoid_print
-        print('║ user.companyId: ${user['companyId']}');
-        // ignore: avoid_print
-        print('║ user.businessUnitId: ${user['businessUnitId']}');
-      }
-      if (response?['data']?['company'] != null) {
-        final company = response!['data']['company'];
-        // ignore: avoid_print
-        print('║ company.id: ${company['id']}');
-        // ignore: avoid_print
-        print('║ company.name: ${company['name']}');
-      } else {
-        // ignore: avoid_print
-        print('║ company: null');
-      }
-      // ignore: avoid_print
-      print('╚══════════════════════════════════════════════════════════════');
-      // ignore: avoid_print
-      print('');
-
       if (response != null && response['success'] == true) {
         var data = response['data'] as Map<String, dynamic>?;
         if (data != null) {
@@ -121,6 +83,13 @@ class AuthBackendService {
 
       debugPrint('AuthBackendService: Failed to parse auth/me response');
       return null;
+    } on AuthenticationException {
+      // 401 : jeton refusé par le serveur → propager pour que l'AuthBloc
+      // ferme la session (comme sur mobile) au lieu de garder une session morte.
+      debugPrint(
+        'AuthBackendService: 401 Unauthorized on /auth/me - rethrowing to force re-login',
+      );
+      rethrow;
     } on NetworkException catch (e) {
       debugPrint(
         'AuthBackendService: Network error fetching auth profile: ${e.message}',
@@ -268,7 +237,8 @@ class AuthBackendService {
         // Double enveloppe de gestion : lire le résultat, pas l'enveloppe
         // intérieure (sinon id et nom d'unité restaient vides).
         final unwrapped = unwrapGestionData(response);
-        if (unwrapped is Map) {
+        // unwrapped identique à la réponse = aucune donnée sous "data".
+        if (unwrapped is Map && !identical(unwrapped, response)) {
           debugPrint(
             'AuthBackendService: join-business-unit ${unwrapped['status'] ?? 'joined'}',
           );
@@ -277,6 +247,16 @@ class AuthBackendService {
             message: unwrapGestionMessage(response),
           );
         }
+        // Succès sans objet de données : le serveur a accepté, on garde
+        // son message (comme sur mobile) au lieu de signaler un échec.
+        return JoinBusinessUnitResponse(
+          success: true,
+          businessUnitId: '',
+          businessUnitCode: businessUnitCode,
+          businessUnitType: '',
+          businessUnitName: '',
+          message: unwrapGestionMessage(response) ?? 'Unité rejointe avec succès',
+        );
       }
 
       throw BadRequestException(
@@ -536,13 +516,13 @@ class BackendUserProfile {
       idCard: idCard,
       idCardStatus: _parseIdStatus(idCardStatus),
       idCardStatusReason: idCardStatusReason,
-      companyId: companyId,
+      companyId: companyId ?? company?.id,
       companyName: effectiveCompanyName,
       rccmNumber: effectiveRccm,
       companyLocation: effectiveLocation,
       businessSector: effectiveSector,
       businessSectorId: businessSectorId,
-      businessAddress: businessAddress,
+      businessAddress: businessAddress ?? company?.address,
       businessLogoUrl: effectiveLogoUrl,
       emailVerified: emailVerified,
       phoneVerified: phoneVerified,
@@ -634,6 +614,10 @@ class AuthMeResponse {
 
   /// Vérifie si l'utilisateur non-admin doit rejoindre une BU
   bool get needsBusinessUnitJoin {
+    // Synchro en cours ou entreprise pas encore reçue : pas encore le moment
+    // (le compte sans entreprise relève de l'écran de synchronisation).
+    if (isSyncPending) return false;
+    if (company == null) return false;
     final role = user.role.toLowerCase();
     final isAdminOrManager = role == 'admin' || role == 'manager';
     if (isAdminOrManager) return false;

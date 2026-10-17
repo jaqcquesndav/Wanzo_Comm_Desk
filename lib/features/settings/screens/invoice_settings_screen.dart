@@ -11,6 +11,18 @@ import '../bloc/settings_bloc.dart';
 import '../bloc/settings_event.dart';
 import '../bloc/settings_state.dart' as old_settings_state;
 import '../models/settings.dart';
+import 'package:wanzo/services/receipt_printer_service.dart';
+import 'printer_settings_screen.dart';
+
+/// Taux de change saisi : tolère espaces et virgule décimale ; renvoie null
+/// pour une saisie illisible, nulle ou négative (jamais de taux 0 implicite).
+double? parsePositiveRate(String? text) {
+  if (text == null) return null;
+  final v = double.tryParse(
+    text.trim().replaceAll(' ', '').replaceAll(' ', '').replaceAll(',', '.'),
+  );
+  return (v != null && v > 0) ? v : null;
+}
 
 class InvoiceSettingsScreen extends StatefulWidget {
   final Settings
@@ -42,6 +54,21 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
   Map<String, dynamic>? _initialOldSettingsValues;
   Map<String, dynamic>? _initialCurrencySettingsValues;
   bool _hasChanges = false;
+
+  // Imprimante thermique (rappel de la configuration, comme sur mobile)
+  final _printerService = ReceiptPrinterService();
+  ThermalPrinterDevice? _savedPrinter;
+  bool _autoPrint = false;
+
+  Future<void> _loadPrinterState() async {
+    final auto = await _printerService.getAutoPrintOnCashSale();
+    final saved = await _printerService.getSavedPrinter();
+    if (!mounted) return;
+    setState(() {
+      _autoPrint = auto;
+      _savedPrinter = saved;
+    });
+  }
 
   @override
   void initState() {
@@ -100,6 +127,8 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
     _taxRateController.addListener(_onFieldChanged);
     _usdToCdfRateController.addListener(_onFieldChanged);
     _fcfaToCdfRateController.addListener(_onFieldChanged);
+
+    _loadPrinterState();
   }
 
   void _onFieldChanged() {
@@ -124,9 +153,9 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
       currencySettingsChanged =
           _tempActiveCurrency !=
               _initialCurrencySettingsValues!['activeCurrency'] ||
-          (double.tryParse(_usdToCdfRateController.text) ?? 0.0) !=
+          parsePositiveRate(_usdToCdfRateController.text) !=
               _initialCurrencySettingsValues!['usdToCdfRate'] ||
-          (double.tryParse(_fcfaToCdfRateController.text) ?? 0.0) !=
+          parsePositiveRate(_fcfaToCdfRateController.text) !=
               _initialCurrencySettingsValues!['fcfaToCdfRate'];
     }
 
@@ -159,10 +188,18 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
 
       // Save new currency settings
       final currencySettingsCubit = context.read<CurrencySettingsCubit>();
+      final current = currencySettingsCubit.state.settings;
+      // Un taux illisible ou nul ne remplace jamais le taux en place : un 0
+      // enregistré ici faisait ensuite traiter chaque montant en devise comme
+      // s'il n'avait pas de taux.
       final newCurrencySettings = CurrencySettings(
         activeCurrency: _tempActiveCurrency!,
-        usdToCdfRate: double.tryParse(_usdToCdfRateController.text) ?? 0.0,
-        fcfaToCdfRate: double.tryParse(_fcfaToCdfRateController.text) ?? 0.0,
+        usdToCdfRate:
+            parsePositiveRate(_usdToCdfRateController.text) ??
+            current.usdToCdfRate,
+        fcfaToCdfRate:
+            parsePositiveRate(_fcfaToCdfRateController.text) ??
+            current.fcfaToCdfRate,
       );
       currencySettingsCubit.updateSettings(newCurrencySettings);
 
@@ -339,6 +376,10 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
 
         // Section Taxes et conditions (pleine largeur)
         _buildTaxesSection(l10n),
+        const SizedBox(height: 24),
+
+        // Section Imprimante thermique (pleine largeur)
+        _buildPrinterSection(),
         const SizedBox(height: 32),
 
         // Bouton d'enregistrement
@@ -414,8 +455,7 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
                     if (value == null || value.isEmpty) {
                       return l10n.errorFieldRequired;
                     }
-                    if (double.tryParse(value) == null ||
-                        double.parse(value) <= 0) {
+                    if (parsePositiveRate(value) == null) {
                       return l10n.errorInvalidRate;
                     }
                     return null;
@@ -437,8 +477,7 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
                     if (value == null || value.isEmpty) {
                       return l10n.errorFieldRequired;
                     }
-                    if (double.tryParse(value) == null ||
-                        double.parse(value) <= 0) {
+                    if (parsePositiveRate(value) == null) {
                       return l10n.errorInvalidRate;
                     }
                     return null;
@@ -574,6 +613,106 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
         ),
       ],
     );
+  }
+
+  Widget _buildPrinterSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Imprimante thermique',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 12),
+        Card(
+          elevation: 1,
+          child: Column(
+            children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.print),
+                title: const Text('Impression automatique (espèces)'),
+                subtitle: const Text(
+                  'Imprime le ticket thermique automatiquement après chaque '
+                  'vente payée en espèces.',
+                ),
+                value: _autoPrint,
+                onChanged: (v) async {
+                  await _printerService.setAutoPrintOnCashSale(v);
+                  if (mounted) setState(() => _autoPrint = v);
+                },
+              ),
+              const Divider(height: 1),
+              if (_savedPrinter != null)
+                ListTile(
+                  leading: Icon(_printerIcon(_savedPrinter!.type)),
+                  title: Text(_savedPrinter!.displayName),
+                  subtitle: Text(
+                    '${_printerTypeLabel(_savedPrinter!.type)} · ${_savedPrinter!.address}',
+                  ),
+                  trailing: const Icon(Icons.check_circle, color: Colors.green),
+                )
+              else
+                const ListTile(
+                  leading: Icon(Icons.print_disabled, color: Colors.grey),
+                  title: Text('Aucune imprimante configurée'),
+                  subtitle: Text(
+                    'Cliquez sur Configurer pour ajouter une imprimante.',
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.settings),
+                    label: const Text("Configurer l'imprimante"),
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const PrinterSettingsScreen(),
+                        ),
+                      );
+                      _loadPrinterState();
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  IconData _printerIcon(ThermalConnectionType type) {
+    switch (type) {
+      case ThermalConnectionType.bluetooth:
+        return Icons.bluetooth;
+      case ThermalConnectionType.usb:
+        return Icons.usb;
+      case ThermalConnectionType.network:
+        return Icons.wifi;
+      case ThermalConnectionType.epos:
+        return Icons.receipt_long;
+      case ThermalConnectionType.system:
+        return Icons.print;
+    }
+  }
+
+  String _printerTypeLabel(ThermalConnectionType type) {
+    switch (type) {
+      case ThermalConnectionType.bluetooth:
+        return 'Bluetooth';
+      case ThermalConnectionType.usb:
+        return 'USB';
+      case ThermalConnectionType.network:
+        return 'Réseau';
+      case ThermalConnectionType.epos:
+        return 'E-POS';
+      case ThermalConnectionType.system:
+        return 'Système';
+    }
   }
 
   @override

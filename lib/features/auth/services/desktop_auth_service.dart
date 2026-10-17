@@ -61,7 +61,11 @@ class DesktopAuthService {
     required OfflineAuthService offlineAuthService,
     Auth0Service? auth0Service,
   }) : _offlineAuthService = offlineAuthService,
-       _auth0Service = auth0Service;
+       _auth0Service = auth0Service {
+    // Les appels API passent par Auth0Service.getAccessToken : sur le poste,
+    // il nous délègue le jeton pour bénéficier du renouvellement.
+    auth0Service?.desktopTokenProvider = getAccessToken;
+  }
 
   /// Vérifie si la plateforme actuelle nécessite l'authentification desktop
   static bool get isDesktopPlatform {

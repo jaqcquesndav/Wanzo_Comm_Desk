@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:wanzo/core/enums/user_role.dart';
 import 'package:wanzo/core/modules/activity_mode.dart';
 import 'package:wanzo/core/modules/module_registry.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
@@ -50,6 +51,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final authState = context.read<AuthBloc>().state;
     return authState is AuthAuthenticated &&
         canDecideJoinRequests(authState.user.role);
+  }
+
+  /// Administrateur, super administrateur ou comptable (comptes financiers).
+  bool _isAdminOrAccountant() {
+    final authState = context.read<AuthBloc>().state;
+    if (authState is! AuthAuthenticated) return false;
+    return UserRoleExtension.fromApiValue(
+      authState.user.role,
+    ).canManageFinancialAccounts;
   }
 
   /// Nombre de demandes en attente (badge). Hors ligne, le badge reste vide :
@@ -222,12 +232,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: l10n.invoiceSettingsSubtitle,
             onTap: () => _navigateToInvoiceSettings(settings),
           ),
-          _SettingsItem(
-            icon: Icons.account_balance_wallet,
-            title: l10n.financeSettings,
-            subtitle: l10n.financeSettingsSubtitle,
-            onTap: () => _navigateToFinancialSettings(),
-          ),
+          // Comptes financiers (banque, Mobile Money) : administrateur ou
+          // comptable seulement, comme sur mobile.
+          if (_isAdminOrAccountant())
+            _SettingsItem(
+              icon: Icons.account_balance_wallet,
+              title: l10n.financeSettings,
+              subtitle: l10n.financeSettingsSubtitle,
+              onTap: () => _navigateToFinancialSettings(),
+            ),
         ],
       ),
       _SettingsSection(

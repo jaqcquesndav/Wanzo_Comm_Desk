@@ -65,6 +65,8 @@ class FinancialAccountApiService {
         'financial-accounts',
         queryParameters: queryParams,
         requiresAuth: true,
+        includeBusinessContext:
+            true, // Inclure companyId/businessUnitId pour isolation multi-tenant
       );
 
       debugPrint('💳 [FinancialAccountApiService] Response: $response');
@@ -154,6 +156,8 @@ class FinancialAccountApiService {
       debugPrint('💳 [FinancialAccountApiService] POST financial-accounts');
       debugPrint('💳 [FinancialAccountApiService] Request body: $body');
 
+      // Mise en file hors ligne permise : le serveur est idempotent sur l'id
+      // attribué par l'app, un rejeu ne crée jamais de doublon.
       final response = await _apiClient.post(
         'financial-accounts',
         body: body,
@@ -388,10 +392,13 @@ class FinancialAccountApiService {
         '💳 [FinancialAccountApiService] Syncing ${localAccounts.length} accounts',
       );
 
+      // Jamais mise en file : la synchronisation est relancée à chaque
+      // chargement et au retour du réseau, un rejeu différé ferait doublon.
       final response = await _apiClient.post(
         'financial-accounts/sync',
         body: body,
         requiresAuth: true,
+        queueOffline: false,
       );
 
       debugPrint('💳 [FinancialAccountApiService] Response: $response');

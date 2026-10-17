@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:image_cropper/image_cropper.dart';
+import 'package:image_cropper/image_cropper.dart' show CropAspectRatioPreset;
+import '../utils/profile_image_crop.dart';
 import '../../../core/platform/image_picker/image_picker_service_factory.dart';
 import '../../../core/platform/image_picker/image_picker_service_interface.dart';
 import '../../auth/models/user.dart';
@@ -66,34 +67,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
+  Future<void> _applyPickedImage(File? pickedFile) async {
+    if (pickedFile == null || !mounted) return;
+    final croppedFile = await cropProfileImage(
+      pickedFile.path,
+      toolbarColor: Theme.of(context).primaryColor,
+      initAspectRatio: CropAspectRatioPreset.square,
+    );
+    if (croppedFile != null && mounted) {
+      setState(() {
+        _profileImageFile = croppedFile;
+      });
+    }
+  }
+
   Future<void> _pickAndCropImageFromGallery() async {
     final pickedFile = await _imagePickerService.pickFromGallery();
-    if (pickedFile != null) {
-      if (!mounted) return;
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: pickedFile.path,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'Rogner l\'image',
-            toolbarColor: Theme.of(context).primaryColor,
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: false,
-          ),
-          IOSUiSettings(
-            title: 'Rogner l\'image',
-            minimumAspectRatio: 1.0,
-            aspectRatioLockEnabled: false,
-            resetAspectRatioEnabled: true,
-          ),
-        ],
-      );
-      if (croppedFile != null) {
-        setState(() {
-          _profileImageFile = File(croppedFile.path);
-        });
-      }
-    }
+    await _applyPickedImage(pickedFile);
   }
 
   Future<void> _pickAndCropImageFromCamera() async {
@@ -110,32 +100,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return;
     }
     final pickedFile = await _imagePickerService.pickFromCamera();
-    if (pickedFile != null) {
-      if (!mounted) return;
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: pickedFile.path,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'Rogner l\'image',
-            toolbarColor: Theme.of(context).primaryColor,
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: false,
-          ),
-          IOSUiSettings(
-            title: 'Rogner l\'image',
-            minimumAspectRatio: 1.0,
-            aspectRatioLockEnabled: false,
-            resetAspectRatioEnabled: true,
-          ),
-        ],
-      );
-      if (croppedFile != null) {
-        setState(() {
-          _profileImageFile = File(croppedFile.path);
-        });
-      }
-    }
+    await _applyPickedImage(pickedFile);
   }
 
   void _showImagePickerOptions(BuildContext context) {

@@ -238,4 +238,24 @@ extension UserRoleExtension on UserRole {
       this == UserRole.admin ||
       this == UserRole.manager ||
       this == UserRole.accountant;
+
+  /// Vérifie si ce rôle peut accéder au Wallet et aux fonctionnalités de financement
+  /// Seuls les admins et comptables ont accès à ces fonctionnalités sensibles
+  bool get canAccessWallet =>
+      this == UserRole.admin ||
+      this == UserRole.superAdmin ||
+      this == UserRole.accountant;
+
+  /// Vérifie si ce rôle peut gérer les demandes de crédit/financement
+  bool get canManageCredit =>
+      this == UserRole.admin ||
+      this == UserRole.superAdmin ||
+      this == UserRole.accountant;
+
+  /// Vérifie si ce rôle peut gérer les comptes financiers (banque, Mobile
+  /// Money) dans les paramètres : même périmètre que le mobile.
+  bool get canManageFinancialAccounts =>
+      this == UserRole.admin ||
+      this == UserRole.superAdmin ||
+      this == UserRole.accountant;
 }

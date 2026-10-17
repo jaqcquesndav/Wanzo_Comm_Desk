@@ -10,6 +10,7 @@ import '../../../core/config/env_config.dart';
 import 'offline_auth_service.dart';
 import 'auth_backend_service.dart';
 import 'jwt_offline_validator.dart';
+import '../../../core/exceptions/api_exceptions.dart' as api_ex;
 
 /// Service pour gérer l'authentification avec Auth0
 class Auth0Service {
@@ -43,6 +44,22 @@ class Auth0Service {
   AuthMeResponse? _lastAuthMeResponse;
   AuthMeResponse? get lastAuthMeResponse => _lastAuthMeResponse;
   set lastAuthMeResponse(AuthMeResponse? value) => _lastAuthMeResponse = value;
+
+  /// Sur poste (Windows/Linux), le SDK Auth0 n'est pas disponible : le jeton
+  /// vient du DesktopAuthService, qui sait le renouveler avec le refresh token.
+  /// Sans ce relais, un jeton expiré restait servi tel quel (401 en boucle).
+  Future<String?> Function()? desktopTokenProvider;
+
+  Future<String?> _desktopToken() async {
+    final provider = desktopTokenProvider;
+    if (provider == null) return null;
+    try {
+      return await provider();
+    } catch (e) {
+      debugPrint('Auth0Service: jeton du poste indisponible ($e)');
+      return null;
+    }
+  }
 
   Auth0Service({required this.offlineAuthService}) {
     auth0 = Auth0(_auth0Domain, _auth0ClientId);
@@ -424,6 +441,10 @@ class Auth0Service {
     // car il n'est pas supporté. Utiliser directement le cache.
     if (_isDesktopPlatform) {
       debugPrint('Auth0Service: Desktop platform - using cached access token');
+      final desktopToken = await _desktopToken();
+      if (desktopToken != null && desktopToken.isNotEmpty) {
+        return desktopToken;
+      }
       final cachedToken = await offlineAuthService.getCachedAccessToken();
       if (cachedToken != null) {
         debugPrint('Auth0Service: Desktop - returning cached access token');
@@ -505,6 +526,10 @@ class Auth0Service {
       debugPrint(
         'Auth0Service: Desktop platform - returning cached token (no SDK refresh)',
       );
+      final desktopToken = await _desktopToken();
+      if (desktopToken != null && desktopToken.isNotEmpty) {
+        return desktopToken;
+      }
       final cachedToken = await offlineAuthService.getCachedAccessToken();
       if (cachedToken != null) {
         return cachedToken;
@@ -863,6 +888,12 @@ class Auth0Service {
       }
 
       return currentUser;
+    } on api_ex.AuthenticationException {
+      // 401 : jeton refusé → propager pour forcer la reconnexion (comme mobile)
+      debugPrint(
+        'Auth0Service: 401 Unauthorized on /auth/me - rethrowing to force re-login',
+      );
+      rethrow;
     } catch (e) {
       debugPrint("Auth0Service: Error refreshing user from backend: $e");
       return await offlineAuthService.getLastLoggedInUser();

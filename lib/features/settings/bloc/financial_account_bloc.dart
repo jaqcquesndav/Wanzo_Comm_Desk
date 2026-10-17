@@ -1,4 +1,9 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/exceptions/api_exceptions.dart';
+import '../../../core/utils/connectivity_service.dart';
 import '../repositories/financial_account_repository.dart';
 import '../models/financial_account.dart';
 import 'financial_account_event.dart';
@@ -10,9 +15,16 @@ class FinancialAccountBloc
   /// Repository pour accéder aux comptes financiers
   final FinancialAccountRepository _repository;
 
-  FinancialAccountBloc({required FinancialAccountRepository repository})
-    : _repository = repository,
-      super(const FinancialAccountInitial()) {
+  /// Retour du réseau : relance la synchronisation (injectable pour les tests).
+  StreamSubscription<bool>? _connectivitySub;
+  VoidCallback? _connectivityListener;
+
+  FinancialAccountBloc({
+    required FinancialAccountRepository repository,
+    Stream<bool>? onlineChanges,
+    bool listenToConnectivity = true,
+  }) : _repository = repository,
+       super(const FinancialAccountInitial()) {
     on<LoadFinancialAccounts>(_onLoadFinancialAccounts);
     on<AddFinancialAccount>(_onAddFinancialAccount);
     on<UpdateFinancialAccount>(_onUpdateFinancialAccount);
@@ -20,9 +32,38 @@ class FinancialAccountBloc
     on<SetDefaultFinancialAccount>(_onSetDefaultFinancialAccount);
     on<FilterAccountsByType>(_onFilterAccountsByType);
     on<SyncFinancialAccounts>(_onSyncFinancialAccounts);
+
+    if (onlineChanges != null) {
+      _connectivitySub = onlineChanges.listen((online) {
+        if (online && !isClosed) add(const SyncFinancialAccounts());
+      });
+    } else if (listenToConnectivity) {
+      final status = ConnectivityService().connectionStatus;
+      var wasOnline = status.value;
+      _connectivityListener = () {
+        final online = status.value;
+        if (online && !wasOnline && !isClosed) {
+          add(const SyncFinancialAccounts());
+        }
+        wasOnline = online;
+      };
+      status.addListener(_connectivityListener!);
+    }
   }
 
-  /// Gère le chargement des comptes financiers
+  @override
+  Future<void> close() {
+    _connectivitySub?.cancel();
+    if (_connectivityListener != null) {
+      ConnectivityService().connectionStatus.removeListener(
+        _connectivityListener!,
+      );
+    }
+    return super.close();
+  }
+
+  /// Chargement : la box locale s'affiche tout de suite, puis la
+  /// synchronisation avec le serveur est lancée (fusion, sans suppression).
   Future<void> _onLoadFinancialAccounts(
     LoadFinancialAccounts event,
     Emitter<FinancialAccountState> emit,
@@ -33,9 +74,49 @@ class FinancialAccountBloc
       emit(
         FinancialAccountLoaded(accounts: accounts, filteredAccounts: accounts),
       );
+      add(const SyncFinancialAccounts());
     } catch (e) {
       emit(FinancialAccountError('Erreur lors du chargement des comptes: $e'));
     }
+  }
+
+  /// Exécute une écriture puis publie le résultat. Refus du serveur : message
+  /// du serveur, puis la liste (restaurée) reste affichée.
+  Future<void> _write(
+    Emitter<FinancialAccountState> emit, {
+    required Future<FinancialAccountWriteOutcome> Function() action,
+    required String successMessage,
+    required String errorPrefix,
+  }) async {
+    try {
+      final outcome = await action();
+      final updatedAccounts = _repository.getAllAccounts();
+      emit(
+        FinancialAccountOperationSuccess(
+          message: outcome == FinancialAccountWriteOutcome.queuedOffline
+              ? '$successMessage sur cet ordinateur. Envoi au serveur au retour du réseau.'
+              : successMessage,
+          accounts: updatedAccounts,
+        ),
+      );
+      emit(
+        FinancialAccountLoaded(
+          accounts: updatedAccounts,
+          filteredAccounts: updatedAccounts,
+        ),
+      );
+    } on FinancialAccountRejectedException catch (e) {
+      emit(FinancialAccountError(e.message));
+      _emitCurrent(emit);
+    } catch (e) {
+      emit(FinancialAccountError('$errorPrefix: $e'));
+      _emitCurrent(emit);
+    }
+  }
+
+  void _emitCurrent(Emitter<FinancialAccountState> emit) {
+    final accounts = _repository.getAllAccounts();
+    emit(FinancialAccountLoaded(accounts: accounts, filteredAccounts: accounts));
   }
 
   /// Gère l'ajout d'un nouveau compte financier
@@ -43,42 +124,18 @@ class FinancialAccountBloc
     AddFinancialAccount event,
     Emitter<FinancialAccountState> emit,
   ) async {
-    try {
-      // Validations
-      final validationError = _validateAccount(event.account);
-      if (validationError != null) {
-        emit(FinancialAccountError(validationError));
-        return;
-      }
-
-      // Vérifier les doublons
-      final duplicateError = _checkForDuplicates(event.account);
-      if (duplicateError != null) {
-        emit(FinancialAccountError(duplicateError));
-        return;
-      }
-
-      // Ajouter le compte
-      await _repository.addAccount(event.account);
-      final updatedAccounts = _repository.getAllAccounts();
-
-      emit(
-        FinancialAccountOperationSuccess(
-          message: 'Compte ajouté avec succès',
-          accounts: updatedAccounts,
-        ),
-      );
-
-      // Recharger les comptes
-      emit(
-        FinancialAccountLoaded(
-          accounts: updatedAccounts,
-          filteredAccounts: updatedAccounts,
-        ),
-      );
-    } catch (e) {
-      emit(FinancialAccountError('Erreur lors de l\'ajout du compte: $e'));
+    final validationError =
+        _validateAccount(event.account) ?? _checkForDuplicates(event.account);
+    if (validationError != null) {
+      emit(FinancialAccountError(validationError));
+      return;
     }
+    await _write(
+      emit,
+      action: () => _repository.addAccount(event.account, pin: event.pin),
+      successMessage: 'Compte ajouté',
+      errorPrefix: 'Erreur lors de l\'ajout du compte',
+    );
   }
 
   /// Gère la mise à jour d'un compte financier
@@ -86,47 +143,19 @@ class FinancialAccountBloc
     UpdateFinancialAccount event,
     Emitter<FinancialAccountState> emit,
   ) async {
-    try {
-      // Validations
-      final validationError = _validateAccount(event.account);
-      if (validationError != null) {
-        emit(FinancialAccountError(validationError));
-        return;
-      }
-
-      // Vérifier les doublons (en excluant le compte actuel)
-      final duplicateError = _checkForDuplicates(
-        event.account,
-        excludeId: event.account.id,
-      );
-      if (duplicateError != null) {
-        emit(FinancialAccountError(duplicateError));
-        return;
-      }
-
-      // Mettre à jour le compte
-      await _repository.updateAccount(event.account);
-      final updatedAccounts = _repository.getAllAccounts();
-
-      emit(
-        FinancialAccountOperationSuccess(
-          message: 'Compte mis à jour avec succès',
-          accounts: updatedAccounts,
-        ),
-      );
-
-      // Recharger les comptes
-      emit(
-        FinancialAccountLoaded(
-          accounts: updatedAccounts,
-          filteredAccounts: updatedAccounts,
-        ),
-      );
-    } catch (e) {
-      emit(
-        FinancialAccountError('Erreur lors de la mise à jour du compte: $e'),
-      );
+    final validationError =
+        _validateAccount(event.account) ??
+        _checkForDuplicates(event.account, excludeId: event.account.id);
+    if (validationError != null) {
+      emit(FinancialAccountError(validationError));
+      return;
     }
+    await _write(
+      emit,
+      action: () => _repository.updateAccount(event.account, pin: event.pin),
+      successMessage: 'Compte mis à jour',
+      errorPrefix: 'Erreur lors de la mise à jour du compte',
+    );
   }
 
   /// Gère la suppression d'un compte financier
@@ -134,29 +163,12 @@ class FinancialAccountBloc
     DeleteFinancialAccount event,
     Emitter<FinancialAccountState> emit,
   ) async {
-    try {
-      await _repository.deleteAccount(event.accountId);
-      final updatedAccounts = _repository.getAllAccounts();
-
-      emit(
-        FinancialAccountOperationSuccess(
-          message: 'Compte supprimé avec succès',
-          accounts: updatedAccounts,
-        ),
-      );
-
-      // Recharger les comptes
-      emit(
-        FinancialAccountLoaded(
-          accounts: updatedAccounts,
-          filteredAccounts: updatedAccounts,
-        ),
-      );
-    } catch (e) {
-      emit(
-        FinancialAccountError('Erreur lors de la suppression du compte: $e'),
-      );
-    }
+    await _write(
+      emit,
+      action: () => _repository.deleteAccount(event.accountId),
+      successMessage: 'Compte supprimé',
+      errorPrefix: 'Erreur lors de la suppression du compte',
+    );
   }
 
   /// Gère la définition d'un compte par défaut
@@ -164,31 +176,12 @@ class FinancialAccountBloc
     SetDefaultFinancialAccount event,
     Emitter<FinancialAccountState> emit,
   ) async {
-    try {
-      await _repository.setDefaultAccount(event.accountId);
-      final updatedAccounts = _repository.getAllAccounts();
-
-      emit(
-        FinancialAccountOperationSuccess(
-          message: 'Compte par défaut défini avec succès',
-          accounts: updatedAccounts,
-        ),
-      );
-
-      // Recharger les comptes
-      emit(
-        FinancialAccountLoaded(
-          accounts: updatedAccounts,
-          filteredAccounts: updatedAccounts,
-        ),
-      );
-    } catch (e) {
-      emit(
-        FinancialAccountError(
-          'Erreur lors de la définition du compte par défaut: $e',
-        ),
-      );
-    }
+    await _write(
+      emit,
+      action: () => _repository.setDefaultAccount(event.accountId),
+      successMessage: 'Compte par défaut défini',
+      errorPrefix: 'Erreur lors de la définition du compte par défaut',
+    );
   }
 
   /// Gère le filtrage des comptes par type
@@ -273,26 +266,39 @@ class FinancialAccountBloc
     return null;
   }
 
-  /// Gère la synchronisation avec l'API
+  /// Synchronisation avec le serveur, en arrière-plan : la liste affichée
+  /// reste en place (pas d'écran de chargement). Hors ligne, rien ne change ;
+  /// une autre erreur est signalée sans effacer la liste.
   Future<void> _onSyncFinancialAccounts(
     SyncFinancialAccounts event,
     Emitter<FinancialAccountState> emit,
   ) async {
-    emit(const FinancialAccountLoading());
     try {
       final syncedAccounts = await _repository.fullSync();
+      final current = state;
+      final filter = current is FinancialAccountLoaded ? current.filterType : null;
       emit(
         FinancialAccountLoaded(
           accounts: syncedAccounts,
-          filteredAccounts: syncedAccounts,
+          filteredAccounts: filter == null
+              ? syncedAccounts
+              : syncedAccounts.where((a) => a.type == filter).toList(),
+          filterType: filter,
         ),
       );
+    } on NetworkException {
+      // Hors ligne : la box locale reste affichée.
+    } on OfflineQueuedException {
+      // idem
     } catch (e) {
+      if (e.toString().contains('Service API non disponible')) return;
+      debugPrint('FinancialAccountBloc: synchronisation impossible : $e');
       emit(
         FinancialAccountError(
-          'Erreur lors de la synchronisation: ${e.toString()}',
+          'Synchronisation des comptes impossible : ${financialAccountErrorMessage(e)}',
         ),
       );
+      _emitCurrent(emit);
     }
   }
 }

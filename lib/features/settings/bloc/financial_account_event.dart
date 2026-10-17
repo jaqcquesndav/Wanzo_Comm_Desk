@@ -19,7 +19,10 @@ class AddFinancialAccount extends FinancialAccountEvent {
   /// Compte à ajouter
   final FinancialAccount account;
 
-  const AddFinancialAccount(this.account);
+  /// PIN Mobile Money saisi : gardé sur le poste, jamais envoyé.
+  final String? pin;
+
+  const AddFinancialAccount(this.account, {this.pin});
 
   @override
   List<Object?> get props => [account];
@@ -30,7 +33,10 @@ class UpdateFinancialAccount extends FinancialAccountEvent {
   /// Compte à mettre à jour
   final FinancialAccount account;
 
-  const UpdateFinancialAccount(this.account);
+  /// PIN Mobile Money saisi : gardé sur le poste, jamais envoyé.
+  final String? pin;
+
+  const UpdateFinancialAccount(this.account, {this.pin});
 
   @override
   List<Object?> get props => [account];

@@ -7,6 +7,7 @@ import '../models/join_request.dart';
 import '../repositories/auth_repository.dart';
 import '../services/join_request_service.dart' show joinRequestErrorMessage;
 import '../../../core/exceptions/api_exceptions.dart';
+import '../../../core/utils/connectivity_service.dart';
 
 part 'auth_event.dart';
 part 'auth_state.dart';
@@ -14,8 +15,13 @@ part 'auth_state.dart';
 /// Bloc gérant l'état d'authentification
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthRepository _authRepository;
-  AuthBloc({required AuthRepository authRepository})
+
+  /// Réseau disponible ? (injectable pour les tests)
+  final bool Function() _isOnline;
+
+  AuthBloc({required AuthRepository authRepository, bool Function()? isOnline})
     : _authRepository = authRepository,
+      _isOnline = isOnline ?? (() => ConnectivityService().isConnected),
       super(const AuthInitial()) {
     on<AuthCheckRequested>(_onAuthCheckRequested);
     on<AuthLoginRequested>(_onAuthLoginRequested);
@@ -78,19 +84,57 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     AuthCheckRequested event,
     Emitter<AuthState> emit,
   ) async {
-    emit(const AuthLoading());
+    // Éviter d'émettre AuthLoading si l'utilisateur est déjà authentifié :
+    // cela évite le flash de chargement lors des rares appels post-connexion.
+    if (state is! AuthAuthenticated) {
+      emit(const AuthLoading());
+    }
     try {
       final isLoggedIn = await _authRepository.isLoggedIn();
       if (isLoggedIn) {
         final user = await _authRepository.getCurrentUser();
         if (user != null) {
+          // Émettre immédiatement avec les données disponibles (cache)
           emit(await _resolveWithJoinRequest(user));
+
+          // Sur le poste, la reprise de session lit l'utilisateur en cache
+          // sans appeler /auth/me : sans cette relecture, un compte en
+          // attente de synchronisation ou de rattachement entrait dans l'app
+          // comme un compte complet, et le contexte entreprise/unité restait
+          // celui de la dernière session.
+          if (_authRepository.getLastAuthMeResponse() == null) {
+            // Ce rafraîchissement est un CONFORT, pas une condition d'accès :
+            // hors ligne, on garde l'état déjà émis.
+            try {
+              final refreshedUser = await _authRepository.refreshUserProfile();
+              if (refreshedUser != null && !isClosed) {
+                emit(await _resolveWithJoinRequest(refreshedUser));
+              }
+            } on AuthenticationException {
+              // Le serveur a répondu et refuse la session : seule cette
+              // réponse ferme l'accès, et uniquement si le réseau est là.
+              if (_isOnline()) rethrow;
+            } catch (e) {
+              debugPrint(
+                'AuthBloc: profil non rafraîchi (hors ligne), session conservée : $e',
+              );
+            }
+          }
         } else {
           emit(const AuthUnauthenticated());
         }
       } else {
         emit(const AuthUnauthenticated());
       }
+    } on AuthenticationException catch (_) {
+      // Jeton refusé (401 sur /auth/me) → déconnexion et retour à la connexion
+      debugPrint(
+        'AuthBloc: Token invalide (401) lors de la vérification - forçage de la déconnexion',
+      );
+      try {
+        await _authRepository.logout();
+      } catch (_) {}
+      emit(const AuthUnauthenticated());
     } catch (e) {
       // Dernier recours : plutôt que de renvoyer à l'écran de connexion sur une
       // panne technique, on rouvre la dernière session connue. Les écritures
@@ -288,6 +332,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         User? refreshedUser;
         try {
           refreshedUser = await _authRepository.refreshUserProfile();
+        } on AuthenticationException {
+          rethrow; // session refusée : déconnexion (ci-dessous)
         } catch (e) {
           debugPrint('AuthBloc: profil non relu après jonction : $e');
         }
@@ -439,8 +485,24 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final refreshedUser = await _authRepository.refreshUserProfile();
       if (refreshedUser != null) {
         emit(await _resolveWithJoinRequest(refreshedUser));
+      } else if (state is AuthSyncPending) {
+        // Garder l'écran de synchronisation, avec un message à jour
+        emit(
+          AuthSyncPending(
+            (state as AuthSyncPending).user,
+            message: 'Synchronisation toujours en cours...',
+          ),
+        );
       }
-      // Si refreshedUser est null, on garde l'état actuel
+    } on AuthenticationException catch (_) {
+      // Jeton refusé (401 sur /auth/me) → déconnexion
+      debugPrint(
+        'AuthBloc: Token invalide (401) lors du refresh profil - forçage de la déconnexion',
+      );
+      try {
+        await _authRepository.logout();
+      } catch (_) {}
+      emit(const AuthUnauthenticated());
     } catch (e) {
       debugPrint('AuthBloc: Error refreshing profile: $e');
       // Ne pas changer l'état en cas d'erreur de refresh

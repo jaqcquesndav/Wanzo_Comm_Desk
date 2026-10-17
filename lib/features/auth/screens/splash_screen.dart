@@ -58,6 +58,15 @@ class _SplashScreenState extends State<SplashScreen>
       _navigateToDashboard();
     } else {
       context.read<AuthBloc>().add(const AuthCheckRequested());
+
+      // Garde-fou (comme sur mobile) : si aucune navigation après 10 s, on
+      // sort de l'écran d'accueil plutôt que d'y rester bloqué.
+      Future.delayed(const Duration(seconds: 10), () {
+        if (!_hasNavigated && mounted) {
+          debugPrint('SplashScreen: Timeout reached - navigating to onboarding');
+          _navigateToOnboarding();
+        }
+      });
     }
   }
 

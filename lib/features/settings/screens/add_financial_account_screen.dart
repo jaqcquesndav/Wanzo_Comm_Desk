@@ -498,20 +498,28 @@ class _AddFinancialAccountScreenState extends State<AddFinancialAccountScreen>
         provider: _selectedProvider,
         phoneNumber: _phoneNumberController.text.trim(),
         accountHolderName: _accountHolderNameController.text.trim(),
-        encryptedPin:
-            _pinController.text.isNotEmpty
-                ? _encryptPin(_pinController.text)
-                : null,
         isDefault: _isDefault,
         createdAt: _isEditing ? widget.account!.createdAt : now,
         updatedAt: now,
       );
     }
 
+    // PIN Mobile Money : gardé dans le coffre de ce poste, jamais envoyé au
+    // serveur ni écrit dans la base locale.
+    final pin =
+        _selectedAccountType == FinancialAccountType.mobileMoney &&
+                _pinController.text.trim().isNotEmpty
+            ? _pinController.text.trim()
+            : null;
+
     if (_isEditing) {
-      context.read<FinancialAccountBloc>().add(UpdateFinancialAccount(account));
+      context.read<FinancialAccountBloc>().add(
+        UpdateFinancialAccount(account, pin: pin),
+      );
     } else {
-      context.read<FinancialAccountBloc>().add(AddFinancialAccount(account));
+      context.read<FinancialAccountBloc>().add(
+        AddFinancialAccount(account, pin: pin),
+      );
     }
 
     Navigator.pop(context);
@@ -537,12 +545,6 @@ class _AddFinancialAccountScreenState extends State<AddFinancialAccountScreen>
       case MobileMoneyProvider.mpesa:
         return Icons.signal_wifi_4_bar;
     }
-  }
-
-  String _encryptPin(String pin) {
-    // TODO: Implémenter un chiffrement sécurisé
-    // Pour l'instant, on utilise un encodage simple (à remplacer par un vrai chiffrement)
-    return 'encrypted_$pin';
   }
 }
 

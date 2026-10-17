@@ -118,7 +118,10 @@ class FinancialAccount extends Equatable {
   @HiveField(11)
   final String? accountHolderName;
 
-  /// Code PIN (chiffré pour la sécurité - ne sera pas stocké en clair)
+  /// Ancien champ PIN : plus jamais renseigné ni envoyé au serveur. Le PIN
+  /// vit dans FinancialAccountPinStore (coffre du poste). Gardé pour lire
+  /// les anciennes fiches Hive et les purger.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @HiveField(12)
   final String? encryptedPin;
 
@@ -271,6 +274,22 @@ class FinancialAccount extends Equatable {
       encryptedPin: encryptedPin ?? this.encryptedPin,
     );
   }
+
+  /// Même compte sans PIN (copyWith ne sait pas remettre un champ à null).
+  FinancialAccount withoutPin() => FinancialAccount(
+    id: id,
+    type: type,
+    accountName: accountName,
+    isDefault: isDefault,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+    bankInstitution: bankInstitution,
+    bankAccountNumber: bankAccountNumber,
+    swiftCode: swiftCode,
+    mobileMoneyProvider: mobileMoneyProvider,
+    phoneNumber: phoneNumber,
+    accountHolderName: accountHolderName,
+  );
 
   @override
   List<Object?> get props => [

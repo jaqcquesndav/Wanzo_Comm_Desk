@@ -46,7 +46,6 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
   String? _businessUnitId;
   String? _businessUnitName;
   bool _hasChanges = false;
-  bool _showCodeConfigSection = false;
 
   /// Seul un administrateur (ou super admin) peut modifier le profil de
   /// l'entreprise. Les autres rôles voient les informations en lecture seule.
@@ -659,17 +658,13 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
     BuildContext context,
     AppLocalizations l10n,
   ) {
+    // Le changement d'unité passe par une seule porte : le réglage « Unité
+    // d'affaires » des Paramètres (endpoint join-business-unit). Ce bloc ne
+    // fait qu'y renvoyer ; il ne dépliait auparavant qu'une section vide.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        InkWell(
-          onTap: () {
-            setState(() {
-              _showCodeConfigSection = !_showCodeConfigSection;
-            });
-          },
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
+        Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.orange[50],
@@ -693,7 +688,8 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        l10n.businessUnitConfigureByCodeDescription,
+                        "Saisissez le code reçu de votre administrateur dans "
+                        "Paramètres, rubrique « Unité d'affaires ».",
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.orange[700],
@@ -702,17 +698,9 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                     ],
                   ),
                 ),
-                Icon(
-                  _showCodeConfigSection
-                      ? Icons.keyboard_arrow_up
-                      : Icons.keyboard_arrow_down,
-                  color: Colors.orange[700],
-                ),
               ],
             ),
           ),
-        ),
-
       ],
     );
   }
@@ -880,8 +868,9 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Logo enregistre sur cet appareil. Il sera envoye des le retour '
-              'du reseau, pour apparaitre dans les autres applications.',
+              "Logo enregistré sur cet ordinateur seulement : l'envoi n'a pas "
+              'abouti. Choisissez-le à nouveau une fois connecté pour qu\'il '
+              'apparaisse dans les autres applications.',
             ),
           ),
         );
@@ -923,5 +912,4 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
     }
   }
 
-  /// Appelle le backend pour rejoindre une unité avec le code donné,
 }

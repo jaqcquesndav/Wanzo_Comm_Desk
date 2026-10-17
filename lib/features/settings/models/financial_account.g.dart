@@ -238,7 +238,6 @@ FinancialAccount _$FinancialAccountFromJson(Map<String, dynamic> json) =>
           _$MobileMoneyProviderEnumMap, json['mobileMoneyProvider']),
       phoneNumber: json['phoneNumber'] as String?,
       accountHolderName: json['accountHolderName'] as String?,
-      encryptedPin: json['encryptedPin'] as String?,
     );
 
 Map<String, dynamic> _$FinancialAccountToJson(FinancialAccount instance) =>
@@ -261,7 +260,6 @@ Map<String, dynamic> _$FinancialAccountToJson(FinancialAccount instance) =>
       if (instance.phoneNumber case final value?) 'phoneNumber': value,
       if (instance.accountHolderName case final value?)
         'accountHolderName': value,
-      if (instance.encryptedPin case final value?) 'encryptedPin': value,
     };
 
 const _$FinancialAccountTypeEnumMap = {

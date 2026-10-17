@@ -116,7 +116,7 @@ class SettingsRepository {
     if (_apiService != null) {
       try {
         debugPrint('📋 [SettingsRepository] Syncing settings to API...');
-        final apiData = _mapSettingsToApi(settings);
+        final apiData = mapSettingsToApi(settings);
         debugPrint('📋 [SettingsRepository] Sending to API: $apiData');
 
         final response = await _apiService.updateSettings(apiData);
@@ -367,7 +367,8 @@ class SettingsRepository {
   }
 
   /// Mapper le modèle Settings vers les données API
-  Map<String, dynamic> _mapSettingsToApi(Settings settings) {
+  /// Charge utile PATCH application-settings (publique pour les tests).
+  static Map<String, dynamic> mapSettingsToApi(Settings settings) {
     debugPrint('📋 [SettingsRepository] Mapping Settings model to API data...');
 
     final apiData = <String, dynamic>{};
@@ -376,8 +377,12 @@ class SettingsRepository {
     if (settings.companyName.isNotEmpty) {
       apiData['companyName'] = settings.companyName;
     }
-    if (settings.companyLogo.isNotEmpty) {
-      apiData['companyLogoUrl'] = settings.companyLogo;
+    // Seule une adresse web part au serveur (@IsUrl) : un chemin local de
+    // repli (logo non téléversé) faisait rejeter TOUTE la mise à jour en 400,
+    // NIF, RCCM et adresse compris, sans que l'utilisateur le sache.
+    final logo = settings.companyLogo.trim();
+    if (logo.startsWith('http://') || logo.startsWith('https://')) {
+      apiData['companyLogoUrl'] = logo;
     }
     if (settings.language.isNotEmpty) {
       apiData['defaultLanguage'] = settings.language;
@@ -409,9 +414,14 @@ class SettingsRepository {
       apiData['registrationNumber'] = settings.rccmNumber;
     }
     apiData['maintenanceMode'] = settings.maintenanceMode;
-    if (settings.socialMediaLinks != null &&
-        settings.socialMediaLinks!.isNotEmpty) {
-      apiData['socialMediaLinks'] = settings.socialMediaLinks;
+    // Liens vides retirés : chaque lien est validé @IsUrl côté serveur, un
+    // seul '' faisait rejeter toute la mise à jour.
+    final links = <String, String>{
+      for (final e in (settings.socialMediaLinks ?? const {}).entries)
+        if (e.value.trim().isNotEmpty) e.key: e.value.trim(),
+    };
+    if (links.isNotEmpty) {
+      apiData['socialMediaLinks'] = links;
     }
 
     debugPrint('📋 [SettingsRepository] Mapped API data: $apiData');

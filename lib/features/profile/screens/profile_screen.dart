@@ -2,7 +2,8 @@ import 'dart:io'; // Import for File type
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:image_cropper/image_cropper.dart'; // Import image_cropper
+import 'package:go_router/go_router.dart';
+import '../utils/profile_image_crop.dart';
 import '../../../core/platform/image_picker/image_picker_service_factory.dart';
 import '../../../core/platform/image_picker/image_picker_service_interface.dart';
 import '../../../core/services/entity_vocabulary_service.dart';
@@ -32,38 +33,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _imagePickerService = ImagePickerServiceFactory.getInstance();
   }
 
+  Future<void> _applyPickedImage(File? pickedFile) async {
+    if (pickedFile == null || !mounted) return;
+    final croppedFile = await cropProfileImage(
+      pickedFile.path,
+      toolbarColor: Theme.of(context).primaryColor,
+    );
+    if (croppedFile != null && mounted) {
+      setState(() {
+        _profileImageFile = croppedFile;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Photo de profil mise à jour localement.'),
+        ),
+      );
+    }
+  }
+
   Future<void> _pickImageFromGallery() async {
     final pickedFile = await _imagePickerService.pickFromGallery();
-    if (pickedFile != null && mounted) {
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: pickedFile.path,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'Rogner l\'image',
-            toolbarColor: Theme.of(context).primaryColor,
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.original,
-            lockAspectRatio: false,
-          ),
-          IOSUiSettings(
-            title: 'Rogner l\'image',
-            minimumAspectRatio: 1.0,
-            aspectRatioLockEnabled: false,
-            resetAspectRatioEnabled: true,
-          ),
-        ],
-      );
-      if (croppedFile != null && mounted) {
-        setState(() {
-          _profileImageFile = File(croppedFile.path);
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Photo de profil mise à jour localement.'),
-          ),
-        );
-      }
-    }
+    await _applyPickedImage(pickedFile);
   }
 
   Future<void> _pickImageFromCamera() async {
@@ -80,36 +70,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
     final pickedFile = await _imagePickerService.pickFromCamera();
-    if (pickedFile != null && mounted) {
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: pickedFile.path,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'Rogner l\'image',
-            toolbarColor: Theme.of(context).primaryColor,
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.original,
-            lockAspectRatio: false,
-          ),
-          IOSUiSettings(
-            title: 'Rogner l\'image',
-            minimumAspectRatio: 1.0,
-            aspectRatioLockEnabled: false,
-            resetAspectRatioEnabled: true,
-          ),
-        ],
-      );
-      if (croppedFile != null && mounted) {
-        setState(() {
-          _profileImageFile = File(croppedFile.path);
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Photo de profil mise à jour localement.'),
-          ),
-        );
-      }
-    }
+    await _applyPickedImage(pickedFile);
   }
 
   void _showImagePickerOptions(BuildContext context) {
@@ -176,6 +137,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return WanzoScaffold(
       currentIndex: -1,
       title: 'Mon Profil',
+      onBackPressed: () =>
+          context.canPop() ? context.pop() : context.go('/dashboard'),
       body: BlocBuilder<AuthBloc, AuthState>(
         builder: (context, state) {
           if (state is AuthAuthenticated) {
@@ -230,7 +193,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           CircleAvatar(
             radius: 60,
-            backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+            backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
             backgroundImage:
                 _profileImageFile != null
                     ? FileImage(_profileImageFile!)
@@ -334,7 +297,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            _buildSectionHeader(context, Icons.security, 'Rôle & Statut'),
+            _buildSectionHeader(context, Icons.security, 'Rôle et statut'),
             const SizedBox(height: 12),
             _buildProfileInfoRow(context, 'Rôle', _getRoleLabel(user.role)),
             _buildStatusRow(context, 'Compte actif', user.isActive),
