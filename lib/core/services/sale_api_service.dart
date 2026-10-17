@@ -3,8 +3,8 @@ import 'package:flutter/foundation.dart';
 import '../models/api_response.dart';
 import '../exceptions/api_exceptions.dart';
 import '../../features/sales/models/sale.dart';
+import '../../features/sales/services/sale_dto.dart';
 import './api_client.dart';
-import './business_context_service.dart';
 import './image_upload_service.dart';
 
 class SaleApiService {
@@ -15,75 +15,59 @@ class SaleApiService {
     : _apiClient = apiClient ?? ApiClient(),
       _imageUploadService = imageUploadService ?? ImageUploadService();
 
-  /// Convertit un Sale en DTO optimisé pour l'API
-  /// Envoie seulement les champs nécessaires, réduisant le payload de ~90%
-  Map<String, dynamic> _saleToCreateDto(Sale sale) {
-    return {
-      if (sale.localId != null) 'localId': sale.localId,
-      // Mode métier ayant produit la vente (colonne mode du journal comptable).
-      'sourceMode': BusinessContextService().activityMode.apiValue,
-      'date': sale.date.toIso8601String(),
-      if (sale.dueDate != null) 'dueDate': sale.dueDate!.toIso8601String(),
-      if (sale.customerId != null) 'customerId': sale.customerId,
-      'customerName': sale.customerName,
-      'paymentMethod': sale.paymentMethod,
-      if (sale.paymentReference != null)
-        'paymentReference': sale.paymentReference,
-      'exchangeRate': sale.transactionExchangeRate ?? 1.0,
-      if (sale.notes != null) 'notes': sale.notes,
-      'amountPaidInCdf': sale.paidAmountInCdf,
-      if (sale.transactionCurrencyCode != null)
-        'currencyCode': sale.transactionCurrencyCode,
-      if (sale.discountPercentage > 0)
-        'discountPercentage': sale.discountPercentage,
-      // Pièces jointes - URLs Cloudinary
-      if (sale.attachmentUrls != null && sale.attachmentUrls!.isNotEmpty)
-        'attachmentUrls': sale.attachmentUrls,
-      // NOTE: localAttachmentPaths ne doit PAS être envoyé au backend
-      // Les fichiers locaux sont uploadés vers Cloudinary avant l'envoi
-      // Champs Business Unit
-      if (sale.companyId != null) 'companyId': sale.companyId,
-      if (sale.businessUnitId != null) 'businessUnitId': sale.businessUnitId,
-      if (sale.businessUnitCode != null)
-        'businessUnitCode': sale.businessUnitCode,
-      // Items optimisés (sans les champs recalculés par le backend)
-      'items':
-          sale.items
-              .map(
-                (item) => {
-                  if (item.productId != null) 'productId': item.productId,
-                  'productName': item.productName,
-                  'quantity': item.quantity,
-                  'unitPrice': item.unitPrice,
-                  if (item.discount != null && item.discount! > 0)
-                    'discount': item.discount,
-                  'currencyCode': item.currencyCode,
-                  'itemType': item.itemType.name,
-                  if (item.taxRate != null) 'taxRate': item.taxRate,
-                  if (item.notes != null) 'notes': item.notes,
-                  // Mode salon : exécutant + commission figée (émis seulement
-                  // si renseignés). Chemin de sync offline (sync_service).
-                  if (item.performerId != null) 'performerId': item.performerId,
-                  if (item.performerName != null)
-                    'performerName': item.performerName,
-                  if (item.commissionRate != null)
-                    'commissionRate': item.commissionRate,
-                  if (item.commissionAmount != null)
-                    'commissionAmount': item.commissionAmount,
-                },
-              )
-              .toList(),
-    };
-  }
+  /// Corps de requête : construction UNIQUE partagée avec l'écran de vente
+  /// (voir [saleToApiDto] pour le contrat backend). Cette copie envoyait
+  /// `currencyCode` (clé inconnue : une vente en USD synchronisée hors ligne
+  /// était enregistrée en CDF), sans statut ni identifiants de ligne.
+  Map<String, dynamic> _saleToCreateDto(Sale sale) => saleToApiDto(sale);
 
+  /// Toutes les ventes. Le backend pagine par défaut à 10 (`limit`) : sans
+  /// page explicite, on parcourt TOUTES les pages (taille [salesPageSize])
+  /// jusqu'à une page incomplète. Sinon la synchronisation ne voyait que les
+  /// 10 dernières ventes et la purge « obsolètes » supprimait les autres.
   Future<ApiResponse<List<Sale>>> getSales({
     Map<String, String>? queryParameters,
+    // Inclure companyId / businessUnitId du contexte (isolation par unité)
+    bool includeBusinessContext = true,
+  }) async {
+    if (queryParameters?.containsKey('page') ?? false) {
+      return _getSalesPage(
+        queryParameters: queryParameters,
+        includeBusinessContext: includeBusinessContext,
+      );
+    }
+    final all = <Sale>[];
+    for (var page = 1; page <= salesMaxPages; page++) {
+      final res = await _getSalesPage(
+        queryParameters: {
+          ...?queryParameters,
+          'page': '$page',
+          'limit': '$salesPageSize',
+        },
+        includeBusinessContext: includeBusinessContext,
+      );
+      final batch = res.data ?? const <Sale>[];
+      all.addAll(batch);
+      if (batch.length < salesPageSize) break;
+    }
+    return ApiResponse<List<Sale>>(
+      success: true,
+      data: all,
+      message: 'Sales fetched successfully.',
+      statusCode: 200,
+    );
+  }
+
+  Future<ApiResponse<List<Sale>>> _getSalesPage({
+    Map<String, String>? queryParameters,
+    bool includeBusinessContext = true,
   }) async {
     try {
       final response = await _apiClient.get(
         'sales',
         queryParameters: queryParameters,
         requiresAuth: true,
+        includeBusinessContext: includeBusinessContext,
       );
       if (response != null && response['data'] != null) {
         var data = response['data'];
@@ -113,12 +97,7 @@ class SaleApiService {
           salesList = [];
         }
 
-        final sales =
-            salesList
-                .map(
-                  (saleJson) => Sale.fromJson(saleJson as Map<String, dynamic>),
-                )
-                .toList();
+        final sales = parseSaleList(salesList);
         return ApiResponse<List<Sale>>(
           success: true,
           data: sales,
@@ -225,6 +204,9 @@ class SaleApiService {
         'sales',
         body: body,
         requiresAuth: true,
+        // Hors ligne, la vente reste `pending` et la synchronisation la
+        // recrée : la mettre aussi en file la créerait deux fois.
+        queueOffline: false,
       );
       if (response != null && response['data'] != null) {
         final createdSale = Sale.fromJson(
@@ -295,7 +277,8 @@ class SaleApiService {
         ];
       }
 
-      final response = await _apiClient.put(
+      // PATCH (contrat UpdateSaleDto ; PUT n'est qu'un alias historique).
+      final response = await _apiClient.patch(
         'sales/$id',
         body: body,
         requiresAuth: true,

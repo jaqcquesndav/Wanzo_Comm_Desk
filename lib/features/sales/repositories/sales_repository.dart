@@ -56,8 +56,9 @@ class SalesRepository {
         // Les règlements saisis hors ligne partent AVANT la relecture, sinon
         // la réponse serveur écraserait le cache optimiste local.
         await flushPendingPayments();
-        final apiResponse = await _apiService.getSales().timeout(
-          const Duration(seconds: 5),
+        // Toutes les pages : le backend ne renvoie que 10 ventes sans `limit`.
+        final apiResponse = await _apiService.getAllSalesPaged().timeout(
+          const Duration(seconds: 30),
         );
         if (apiResponse.success && apiResponse.data != null) {
           // Fusionner les données API avec local
@@ -327,7 +328,11 @@ class SalesRepository {
     await _salesBox.put(sale.id, optimistic);
 
     if (_apiService == null) {
-      await _enqueuePayment(sale.id, payment);
+      await _enqueuePayment(
+        sale.id,
+        payment,
+        expectedPaidInCdf: newPaidInCdf,
+      );
       return SalePaymentOutcome(
         sale: optimistic,
         synced: false,
@@ -374,7 +379,11 @@ class SalesRepository {
     final result = stored ?? optimistic;
     final synced = result.syncStatus == 'synced';
     if (!synced) {
-      await _enqueuePayment(sale.id, payment);
+      await _enqueuePayment(
+        sale.id,
+        payment,
+        expectedPaidInCdf: newPaidInCdf,
+      );
     }
     return SalePaymentOutcome(
       sale: result,
@@ -399,12 +408,20 @@ class SalesRepository {
     }
   }
 
-  Future<void> _enqueuePayment(String saleId, PaymentDraft payment) async {
+  /// Met une tranche en file. [expectedPaidInCdf] = cumul payé attendu côté
+  /// serveur une fois la tranche appliquée : il rend le rejeu idempotent (voir
+  /// [flushPendingPayments]).
+  Future<void> _enqueuePayment(
+    String saleId,
+    PaymentDraft payment, {
+    double? expectedPaidInCdf,
+  }) async {
     try {
       final box = await _pendingPaymentsBox();
       await box.put(_uuid.v4(), <String, dynamic>{
         'saleId': saleId,
         ...payment.toRequestBody(),
+        if (expectedPaidInCdf != null) 'expectedPaidInCdf': expectedPaidInCdf,
       });
       Logger.info('🕓 Règlement mis en file pour la vente $saleId');
     } catch (e) {
@@ -446,6 +463,25 @@ class SalesRepository {
         reference: raw['reference'] as String?,
       );
       try {
+        // REJEU IDEMPOTENT : la même tranche peut déjà avoir atteint le
+        // serveur par un autre chemin (PATCH d'entête rejoué par la file hors
+        // ligne ou par la synchronisation, qui porte le cumul ABSOLU). La
+        // reposter la compterait deux fois : on vérifie d'abord le cumul.
+        final expected = (raw['expectedPaidInCdf'] as num?)?.toDouble();
+        if (expected != null) {
+          final current = await _apiService
+              .getSaleById(saleId)
+              .timeout(const Duration(seconds: 10));
+          if (current.success &&
+              current.data != null &&
+              current.data!.paidAmountInCdf + 0.01 >= expected) {
+            await box.delete(key);
+            Logger.info(
+              'ℹ️ Règlement en file déjà appliqué côté serveur (vente $saleId)',
+            );
+            continue;
+          }
+        }
         final response = await _apiService
             .recordSalePayment(saleId, draft)
             .timeout(const Duration(seconds: 15));
@@ -582,7 +618,9 @@ class SalesRepository {
       // synchronisation ne doit pas être effacé par la version serveur, qui
       // ne le connaît pas encore.
       if (existing != null &&
-          existing.syncStatus == 'pending' &&
+          // `pending` (jamais créée) ET `pending_update` (règlement posé sur
+          // une vente déjà synchronisée) : tout état non synchronisé.
+          existing.syncStatus != 'synced' &&
           existing.paidAmountInCdf > apiSale.paidAmountInCdf + 0.01) {
         Logger.info(
           'ℹ️ Vente ${apiSale.id} conservée en local (règlement non encore synchronisé)',

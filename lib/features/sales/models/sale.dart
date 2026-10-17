@@ -226,7 +226,53 @@ class Sale extends Equatable {
     this.errorMessage,
   });
 
-  factory Sale.fromJson(Map<String, dynamic> json) => _$SaleFromJson(json);
+  factory Sale.fromJson(Map<String, dynamic> json) {
+    final normalized = Map<String, dynamic>.from(json);
+    // Ancien nom du montant payé (parité mobile).
+    if (!normalized.containsKey('paidAmountInCdf') &&
+        normalized.containsKey('amountPaidInCdf')) {
+      normalized['paidAmountInCdf'] = normalized['amountPaidInCdf'];
+    }
+    // Les lignes ne sont jamais nulles.
+    normalized['items'] ??= <dynamic>[];
+    normalized['customerName'] ??= '';
+    // Colonnes Postgres `numeric` : elles peuvent arriver en chaîne ("50.00").
+    for (final key in const [
+      'totalAmountInCdf',
+      'amountHT',
+      'taxAmount',
+      'paidAmountInCdf',
+      'exchangeRate',
+      'totalAmountInTransactionCurrency',
+      'paidAmountInTransactionCurrency',
+      'discountPercentage',
+    ]) {
+      final v = normalized[key];
+      if (v is String) normalized[key] = double.tryParse(v.trim());
+    }
+    normalized['totalAmountInCdf'] ??= 0.0;
+    // Le serveur ne renvoie pas le taux des lignes : une ligne en devise
+    // étrangère prend le taux figé de la vente (jamais un taux 1 implicite).
+    final saleRate = normalized['exchangeRate'];
+    final rawItems = normalized['items'];
+    if (rawItems is List && saleRate is num && saleRate > 0) {
+      normalized['items'] = [
+        for (final it in rawItems)
+          if (it is Map && it['exchangeRate'] == null)
+            {
+              ...Map<String, dynamic>.from(it),
+              'exchangeRate':
+                  ((it['currencyCode'] as String?) ?? 'CDF').toUpperCase() ==
+                          'CDF'
+                      ? 1.0
+                      : saleRate.toDouble(),
+            }
+          else
+            it,
+      ];
+    }
+    return _$SaleFromJson(normalized);
+  }
   Map<String, dynamic> toJson() => _$SaleToJson(this);
 
   /// Vérifier si la vente est entièrement payée (basé sur les montants en CDF)

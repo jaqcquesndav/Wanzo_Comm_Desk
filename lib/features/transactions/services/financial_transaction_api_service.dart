@@ -35,6 +35,8 @@ class FinancialTransactionApiService {
         'financial-transactions',
         queryParameters: queryParams,
         requiresAuth: true,
+        // companyId / businessUnitId du contexte : isolation par unité.
+        includeBusinessContext: true,
       );
       if (response != null && response['data'] != null) {
         var data = response['data'];

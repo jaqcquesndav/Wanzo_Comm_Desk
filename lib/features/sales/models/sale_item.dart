@@ -136,8 +136,27 @@ class SaleItem extends Equatable {
     this.priceTierCode,
   });
 
-  factory SaleItem.fromJson(Map<String, dynamic> json) =>
-      _$SaleItemFromJson(json);
+  factory SaleItem.fromJson(Map<String, dynamic> json) {
+    final normalized = Map<String, dynamic>.from(json);
+    // Colonnes Postgres `numeric` : elles peuvent arriver en chaîne ("50.00").
+    for (final key in const [
+      'quantity',
+      'unitPrice',
+      'discount',
+      'totalPrice',
+      'exchangeRate',
+      'unitPriceInCdf',
+      'totalPriceInCdf',
+      'taxRate',
+      'taxAmount',
+      'commissionRate',
+      'commissionAmount',
+    ]) {
+      final v = normalized[key];
+      if (v is String) normalized[key] = num.tryParse(v.trim());
+    }
+    return _$SaleItemFromJson(normalized);
+  }
   Map<String, dynamic> toJson() => _$SaleItemToJson(this);
 
   /// Méthode pour créer un item avec le total calculé automatiquement

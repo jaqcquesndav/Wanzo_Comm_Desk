@@ -526,8 +526,9 @@ class FinancialTransaction extends Equatable {
   static BusinessUnitType? _businessUnitTypeFromJson(String? value) =>
       value != null ? BusinessUnitTypeExtension.fromApiValue(value) : null;
 
+  // Enum backend en minuscules (`company`, `branch`, `pos`), comme les ventes.
   static String? _businessUnitTypeToJson(BusinessUnitType? type) =>
-      type?.apiValue;
+      type?.code;
 
   FinancialTransaction copyWith({
     String? id,

@@ -2,10 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:wanzo/core/services/platform_share_service.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/widgets/desktop/adaptive_modal.dart';
 import 'package:wanzo/features/invoice/services/invoice_service.dart';
 import 'package:wanzo/features/invoice/utils/invoice_money.dart';
+import 'package:wanzo/features/receivables/utils/receivables_utils.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
 import 'package:wanzo/services/receipt_printer_service.dart';
@@ -41,9 +44,10 @@ Future<PostSaleDocument?> generatePostSaleDocument(
 
 /// Feuille d'options post-vente PARTAGÉE (boutique + salon), adaptative :
 /// `AdaptiveModal` sur desktop (>= 900 px), `BottomSheet` sur mobile. Propose
-/// aperçu, impression système, ticket thermique (si espèces) et partage du PDF.
+/// aperçu, impression système, ticket thermique (si espèces), envoi WhatsApp
+/// au client (repli SMS) et partage du PDF généré (PlatformShareService).
 ///
-/// - [customerPhone] : numéro du client lié, joint au partage du PDF.
+/// - [customerPhone] : numéro du client lié, pré-ciblé pour WhatsApp.
 /// - [onNewSale] : si non nul, affiche « Enregistrer une autre vente »
 ///   (spécifique à la boutique) ; le salon ne la fournit pas.
 /// - [onClose] : appelé après toute action terminale ou l'option « Fermer »
@@ -146,16 +150,28 @@ void showPostSaleDocumentSheet({
                   },
                 ),
               _DocumentOptionTile(
+                icon: Icons.chat,
+                iconColor: Colors.green,
+                title: 'Envoyer par WhatsApp',
+                subtitle: 'Résumé au client, avec repli SMS',
+                onTap: () async {
+                  Navigator.pop(dialogContext);
+                  await launchWhatsAppOrSms(
+                    context,
+                    message: buildPostSaleDocumentMessage(sale, documentType),
+                    phone: customerPhone,
+                  );
+                  onClose?.call();
+                },
+              ),
+              _DocumentOptionTile(
                 icon: Icons.share,
                 iconColor: Colors.orange,
                 title: 'Partager $documentType',
+                subtitle: 'E-mail, applications installées (PDF joint)',
                 onTap: () async {
                   Navigator.pop(dialogContext);
-                  await invoiceService.shareInvoice(
-                    sale,
-                    settings,
-                    customerPhoneNumber: customerPhone,
-                  );
+                  await _sharePdf(context, pdfPath, documentType, sale);
                   onClose?.call();
                 },
               ),
@@ -292,15 +308,25 @@ void showPostSaleDocumentSheet({
                   },
                 ),
               ListTile(
-                leading: const Icon(Icons.share, color: Colors.orange),
-                title: Text('Partager $documentType'),
+                leading: const Icon(Icons.chat, color: Colors.green),
+                title: const Text('Envoyer par WhatsApp'),
+                subtitle: const Text('Résumé au client, avec repli SMS'),
                 onTap: () async {
                   Navigator.pop(bc);
-                  await invoiceService.shareInvoice(
-                    sale,
-                    settings,
-                    customerPhoneNumber: customerPhone,
+                  await launchWhatsAppOrSms(
+                    context,
+                    message: buildPostSaleDocumentMessage(sale, documentType),
+                    phone: customerPhone,
                   );
+                  onClose?.call();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.share, color: Colors.orange),
+                title: Text('Partager $documentType (PDF)'),
+                onTap: () async {
+                  Navigator.pop(bc);
+                  await _sharePdf(context, pdfPath, documentType, sale);
                   onClose?.call();
                 },
               ),
@@ -318,6 +344,66 @@ void showPostSaleDocumentSheet({
       );
     },
   );
+}
+
+/// Partage le PDF DÉJÀ généré (la pièce réellement présentée, reçu ou
+/// facture) via [PlatformShareService], qui gère les replis desktop
+/// (enregistrer, imprimer, copier le chemin). L'ancien
+/// `InvoiceService.shareInvoice` régénérait toujours une FACTURE, même quand
+/// la pièce était un reçu.
+Future<void> _sharePdf(
+  BuildContext context,
+  String pdfPath,
+  String documentType,
+  Sale sale,
+) async {
+  try {
+    await PlatformShareService.instance.sharePdfFile(
+      filePath: pdfPath,
+      subject: '$documentType ${_documentReference(sale)}',
+      text: buildPostSaleDocumentMessage(sale, documentType),
+      context: context,
+    );
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Impossible de partager la pièce : $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
+
+String _documentReference(Sale sale) =>
+    (sale.invoiceNumber != null && sale.invoiceNumber!.isNotEmpty)
+        ? sale.invoiceNumber!
+        : (sale.id.length >= 8 ? sale.id.substring(0, 8) : sale.id);
+
+/// Résumé texte de la pièce (facture / reçu) pour un envoi WhatsApp / SMS.
+/// Total et solde dans la MÊME devise, celle de la pièce, depuis la base CDF.
+String buildPostSaleDocumentMessage(Sale sale, String documentType) {
+  final money = InvoiceMoney.forSale(sale);
+  final total = formatCurrency(
+    money.fromCdf(sale.totalAmountInCdf),
+    money.currencyCode,
+  );
+  final ctx = BusinessContextService();
+  final business =
+      ctx.currentContext?.companyName ?? ctx.businessUnitName ?? 'Wanzo';
+  final base = buildDocumentMessage(
+    businessName: business,
+    documentLabel: documentType.toLowerCase(),
+    reference: _documentReference(sale),
+    amountText: total,
+  );
+  if (sale.remainingAmountInCdf <= 0.0001) return base;
+  final due = formatCurrency(
+    money.fromCdf(sale.remainingAmountInCdf),
+    money.currencyCode,
+  );
+  return '$base\n\nSolde restant dû : $due';
 }
 
 /// Formate le montant de la vente pour l'en-tête de la feuille.

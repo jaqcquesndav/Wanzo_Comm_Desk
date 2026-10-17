@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import '../../../constants/constants.dart';
 import '../../../core/widgets/barcode_scanner_widget.dart';
 import '../../inventory/bloc/inventory_bloc.dart';
@@ -172,8 +173,8 @@ class _SalesBarcodeScannerState extends State<SalesBarcodeScanner> {
 
   void _createNewProductWithBarcode(String barcode) {
     // Navigation vers l'écran d'ajout de produit avec le code-barres
-    Navigator.of(
-      context,
-    ).pushNamed('/inventory/add', arguments: {'barcode': barcode});
+    // go_router : Navigator.pushNamed levait une exception (aucune route
+    // nommée Navigator) et le code-barres était perdu.
+    context.push('/inventory/add', extra: barcode);
   }
 }

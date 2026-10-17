@@ -141,6 +141,36 @@ class InvoiceFooter {
 }
 
 
+/// Contenu du QR imprimé sur la facture et le reçu PDF : identité émettrice
+/// (NIF, RCCM) et montants issus du MÊME pied de pièce (base CDF au taux de la
+/// vente), donc cohérents avec ce qui est imprimé au-dessus.
+String _documentQrData({
+  required _IssuerIdentity issuer,
+  required Sale sale,
+  required InvoiceFooter footer,
+  required String formattedDate,
+  String? invoiceNumber,
+}) {
+  final fig = footer.figures;
+  final code = footer.currencyCode;
+  return <String>[
+    if (issuer.name.isNotEmpty) issuer.name,
+    if (issuer.taxId.isNotEmpty) 'NIF: ${issuer.taxId}',
+    if (issuer.rccm.isNotEmpty) 'RCCM: ${issuer.rccm}',
+    'ID: ${sale.id}',
+    if (invoiceNumber != null && invoiceNumber.isNotEmpty)
+      'FAC: $invoiceNumber',
+    'Date: $formattedDate',
+    if (sale.customerName.isNotEmpty) 'Client: ${sale.customerName}',
+    'Total: ${formatCurrency(fig.total, code)}',
+    if (fig.received > 0) 'Paye: ${formatCurrency(fig.received, code)}',
+    if (fig.due > 0) 'Solde du: ${formatCurrency(fig.due, code)}',
+    if (sale.paymentMethod != null && sale.paymentMethod!.isNotEmpty)
+      'Mode: ${sale.paymentMethod}',
+    'wanzzo.com',
+  ].join('\n');
+}
+
 /// Service pour générer et imprimer des factures et tickets de caisse
 class InvoiceService {
   /// Ligne du pied de facture A4.
@@ -262,6 +292,13 @@ class InvoiceService {
     // Pied de pièce depuis la base CDF au taux figé de la vente : lignes,
     // remise, TVA et totaux s'additionnent (voir InvoiceFooter).
     final footer = InvoiceFooter.of(sale, settings);
+    final invoiceQrData = _documentQrData(
+      issuer: issuer,
+      sale: sale,
+      footer: footer,
+      formattedDate: formattedDate,
+      invoiceNumber: invoiceNumber,
+    );
 
     pdf.addPage(
       pw.Page(
@@ -497,25 +534,39 @@ class InvoiceService {
 
               pw.Spacer(),
 
-              pw.Center(
-                child: pw.Column(
-                  children: [
-                    pw.Text(
-                      'Merci pour votre confiance, merci pour votre achat!',
-                      style: pw.TextStyle(font: boldFont, fontSize: 12),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          'Merci pour votre confiance, merci pour votre achat!',
+                          style: pw.TextStyle(font: boldFont, fontSize: 12),
+                        ),
+                        pw.SizedBox(height: 5),
+                        pw.Text(
+                          'Facture générée par Wanzo, conçu par i-kiotahub Goma.',
+                          style: pw.TextStyle(
+                            font: regularFont,
+                            fontSize: 8,
+                            color: PdfColors.grey600,
+                          ),
+                        ),
+                      ],
                     ),
-                    pw.SizedBox(height: 5),
-                    pw.Text(
-                      'Facture générée par Wanzo, conçu par i-kiotahub Goma.',
-                      style: pw.TextStyle(
-                        font: regularFont,
-                        fontSize: 8,
-                        color: PdfColors.grey600,
-                      ),
-                      textAlign: pw.TextAlign.center,
-                    ),
-                  ],
-                ),
+                  ),
+                  pw.SizedBox(width: 20),
+                  // QR de la pièce (données de la vente, sans appel réseau).
+                  pw.BarcodeWidget(
+                    barcode: pw.Barcode.qrCode(),
+                    data: invoiceQrData,
+                    width: 80,
+                    height: 80,
+                  ),
+                ],
               ),
             ],
           );
@@ -607,6 +658,13 @@ class InvoiceService {
     // Pied de pièce depuis la base CDF au taux figé de la vente : lignes,
     // remise, TVA et totaux s'additionnent (voir InvoiceFooter).
     final footer = InvoiceFooter.of(sale, settings);
+    final receiptQrData = _documentQrData(
+      issuer: issuer,
+      sale: sale,
+      footer: footer,
+      formattedDate: formattedDate,
+      invoiceNumber: sale.invoiceNumber,
+    );
     final ticketWidth = PdfPageFormat(
       80 * PdfPageFormat.mm,
       500 * PdfPageFormat.mm, // Increased height for potentially long receipts
@@ -794,6 +852,16 @@ class InvoiceService {
                 _receiptFooterRow(footer, l, regularFont, boldFont),
 
               pw.SizedBox(height: 10),
+
+              pw.Center(
+                child: pw.BarcodeWidget(
+                  barcode: pw.Barcode.qrCode(),
+                  data: receiptQrData,
+                  width: 80,
+                  height: 80,
+                ),
+              ),
+              pw.SizedBox(height: 5),
 
               pw.Text(
                 'Merci pour votre confiance, merci pour votre achat!',

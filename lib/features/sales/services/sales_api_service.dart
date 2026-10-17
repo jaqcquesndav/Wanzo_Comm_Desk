@@ -1,12 +1,12 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:wanzo/core/services/api_client.dart';
-import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/core/models/api_response.dart';
 import 'package:wanzo/core/models/operation_payment.dart';
 import 'package:wanzo/core/exceptions/api_exceptions.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
+import 'package:wanzo/features/sales/services/sale_dto.dart';
 
 /// Service API pour la gestion des ventes
 class SalesApiService {
@@ -19,102 +19,30 @@ class SalesApiService {
   }) : _apiClient = apiClient ?? ApiClient(),
        _imageUploadService = imageUploadService ?? ImageUploadService();
 
-  /// Convertit un Sale en DTO optimisé pour l'API
-  /// Envoie seulement les champs nécessaires, réduisant le payload de ~90%
-  ///
-  /// [includeItems] à `false` pour un PATCH qui ne touche pas aux lignes
-  /// (règlement, changement de statut) : le backend ne recalcule alors pas le
-  /// stock et il n'y a aucun risque de rejet sur un identifiant de ligne
-  /// (« SaleItem with ID not found in this sale »).
-  Map<String, dynamic> _saleToCreateDto(Sale sale, {bool includeItems = true}) {
-    return {
-      if (sale.localId != null) 'localId': sale.localId,
-      // Mode métier ayant produit la vente (colonne mode du journal comptable).
-      'sourceMode': BusinessContextService().activityMode.apiValue,
-      'date': sale.date.toIso8601String(),
-      if (sale.dueDate != null) 'dueDate': sale.dueDate!.toIso8601String(),
-      if (sale.customerId != null) 'customerId': sale.customerId,
-      // Client de passage : si aucun customerId reel, le backend fait un
-      // find-or-create du Customer via ce numero (base fidelite).
-      if (sale.customerPhoneNumber != null &&
-          sale.customerPhoneNumber!.isNotEmpty)
-        'customerPhoneNumber': sale.customerPhoneNumber,
-      'customerName': sale.customerName,
-      'paymentMethod': sale.paymentMethod,
-      if (sale.paymentReference != null)
-        'paymentReference': sale.paymentReference,
-      'exchangeRate': sale.transactionExchangeRate ?? 1.0,
-      if (sale.notes != null) 'notes': sale.notes,
-      // Montant payé : les deux DTO backend NE portent PAS le même nom.
-      //   CreateSaleDto -> amountPaidInCdf
-      //   UpdateSaleDto -> paidAmountInCdf
-      // Le ValidationPipe est en `whitelist: true` : la clé inconnue est
-      // silencieusement supprimée (le serveur répondait 200 sans rien changer,
-      // le règlement était perdu). On émet donc les deux noms, chaque DTO ne
-      // retient que le sien.
-      'amountPaidInCdf': sale.paidAmountInCdf,
-      'paidAmountInCdf': sale.paidAmountInCdf,
-      if (sale.paidAmountInTransactionCurrency != null &&
-          sale.paidAmountInTransactionCurrency! > 0)
-        'paidAmountInTransactionCurrency': sale.paidAmountInTransactionCurrency,
-      // Statut : accepté par les DTO de création et de mise à jour. Sans lui,
-      // un passage en « partiellement payée » / « terminée » n'était jamais
-      // transmis au serveur.
-      'status': sale.status.name,
-      if (sale.transactionCurrencyCode != null)
-        'currencyCode': sale.transactionCurrencyCode,
-      if (sale.discountPercentage > 0)
-        'discountPercentage': sale.discountPercentage,
-      // Pièces jointes - URLs Cloudinary
-      if (sale.attachmentUrls != null && sale.attachmentUrls!.isNotEmpty)
-        'attachmentUrls': sale.attachmentUrls,
-      // NOTE: localAttachmentPaths ne doit PAS être envoyé au backend
-      // Les fichiers locaux sont uploadés vers Cloudinary avant l'envoi
-      // Champs Business Unit
-      if (sale.companyId != null) 'companyId': sale.companyId,
-      if (sale.businessUnitId != null) 'businessUnitId': sale.businessUnitId,
-      if (sale.businessUnitCode != null)
-        'businessUnitCode': sale.businessUnitCode,
-      // Items optimisés (sans les champs recalculés par le backend)
-      if (includeItems)
-        'items':
-          sale.items
-              .map(
-                (item) => {
-                  // L'identifiant de ligne DOIT être renvoyé sur un PATCH :
-                  // sans lui, le backend recrée les lignes et re-décrémente le
-                  // stock à chaque mise à jour. Il n'est émis que s'il est
-                  // réellement connu du serveur (non vide), sinon le backend
-                  // rejette la requête (« SaleItem with ID not found »).
-                  if (item.id != null && item.id!.isNotEmpty) 'id': item.id,
-                  if (item.productId != null) 'productId': item.productId,
-                  'productName': item.productName,
-                  'quantity': item.quantity,
-                  'unitPrice': item.unitPrice,
-                  if (item.discount != null && item.discount! > 0)
-                    'discount': item.discount,
-                  'currencyCode': item.currencyCode,
-                  'itemType': item.itemType.name,
-                  // Service du catalogue (page Offre) et palier de prix retenu.
-                  if (item.serviceId != null && item.serviceId!.isNotEmpty)
-                    'serviceId': item.serviceId,
-                  if (item.priceTierCode != null && item.priceTierCode!.isNotEmpty)
-                    'priceTierCode': item.priceTierCode,
-                  if (item.taxRate != null) 'taxRate': item.taxRate,
-                  if (item.notes != null) 'notes': item.notes,
-                  // Mode salon : exécutant + commission figée (émis seulement
-                  // si renseignés).
-                  if (item.performerId != null) 'performerId': item.performerId,
-                  if (item.performerName != null)
-                    'performerName': item.performerName,
-                  if (item.commissionRate != null)
-                    'commissionRate': item.commissionRate,
-                  if (item.commissionAmount != null)
-                    'commissionAmount': item.commissionAmount,
-                },
-              )
-              .toList(),
-    };
+  /// Corps de requête : construction UNIQUE partagée avec la synchronisation
+  /// (voir [saleToApiDto] pour le contrat backend).
+  Map<String, dynamic> _saleToCreateDto(Sale sale, {bool includeItems = true}) =>
+      saleToApiDto(sale, includeItems: includeItems);
+
+  /// TOUTES les ventes, page par page jusqu'à une page incomplète (le
+  /// backend renvoie 10 ventes quand `limit` est absent).
+  Future<ApiResponse<List<Sale>>> getAllSalesPaged({
+    int pageSize = salesPageSize,
+  }) async {
+    final all = <Sale>[];
+    for (var page = 1; page <= salesMaxPages; page++) {
+      final res = await getSales(page: page, limit: pageSize);
+      if (!res.success) return res;
+      final batch = res.data ?? const <Sale>[];
+      all.addAll(batch);
+      if (batch.length < pageSize) break;
+    }
+    return ApiResponse<List<Sale>>(
+      success: true,
+      data: all,
+      message: 'Ventes récupérées avec succès',
+      statusCode: 200,
+    );
   }
 
   /// Récupère toutes les ventes avec filtres
@@ -145,6 +73,8 @@ class SalesApiService {
         'sales',
         queryParameters: queryParams,
         requiresAuth: true,
+        // companyId / businessUnitId du contexte : isolation par unité.
+        includeBusinessContext: true,
       );
 
       if (response != null && response['data'] != null) {
@@ -175,10 +105,9 @@ class SalesApiService {
           salesList = [];
         }
 
-        final sales =
-            salesList
-                .map((json) => Sale.fromJson(json as Map<String, dynamic>))
-                .toList();
+        // Une vente mal formée est ignorée (et tracée) au lieu de faire
+        // échouer toute la liste.
+        final sales = parseSaleList(salesList);
 
         return ApiResponse<List<Sale>>(
           success: true,
@@ -420,6 +349,10 @@ class SalesApiService {
         'sales/$id/payments',
         body: payment.toRequestBody(),
         requiresAuth: true,
+        // Hors ligne, le dépôt met déjà la tranche dans SA file (rejeu
+        // idempotent) : la mettre aussi dans la file générique la ferait
+        // compter deux fois au retour du réseau.
+        queueOffline: false,
       );
 
       if (response is Map<String, dynamic>) {
@@ -484,10 +417,26 @@ class SalesApiService {
   }
 
   /// Marque une vente comme complétée
-  Future<ApiResponse<Sale>> completeSale(String id) async {
+  ///
+  /// Contrat `CompleteSaleDto` : `paidAmountInCdf` (OBLIGATOIRE, montant EN CDF
+  /// de ce règlement), `paymentMethod`, `paymentReference`. Sans corps, le
+  /// serveur répondait 400.
+  Future<ApiResponse<Sale>> completeSale(
+    String id, {
+    required double paidAmountInCdf,
+    String? paymentMethod,
+    String? paymentReference,
+  }) async {
     try {
       final response = await _apiClient.put(
         'sales/$id/complete',
+        body: <String, dynamic>{
+          'paidAmountInCdf': paidAmountInCdf,
+          if (paymentMethod != null && paymentMethod.isNotEmpty)
+            'paymentMethod': paymentMethod,
+          if (paymentReference != null && paymentReference.trim().isNotEmpty)
+            'paymentReference': paymentReference.trim(),
+        },
         requiresAuth: true,
       );
 
@@ -518,10 +467,14 @@ class SalesApiService {
   }
 
   /// Annule une vente
-  Future<ApiResponse<Sale>> cancelSale(String id) async {
+  Future<ApiResponse<Sale>> cancelSale(String id, {String? reason}) async {
     try {
       final response = await _apiClient.put(
         'sales/$id/cancel',
+        body: <String, dynamic>{
+          if (reason != null && reason.trim().isNotEmpty)
+            'reason': reason.trim(),
+        },
         requiresAuth: true,
       );
 

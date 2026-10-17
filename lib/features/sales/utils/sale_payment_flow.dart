@@ -18,7 +18,11 @@ import 'package:wanzo/features/sales/models/sale.dart';
 ///    inaperçu.
 ///
 /// Renvoie la vente à jour en cas de succès, sinon `null`.
-Future<Sale?> startSalePaymentFlow(BuildContext context, Sale sale) async {
+Future<Sale?> startSalePaymentFlow(
+  BuildContext context,
+  Sale sale, {
+  String title = 'Enregistrer un paiement',
+}) async {
   // Reste dérivé de la base CDF au taux figé, libellé dans la devise de la
   // vente (jamais un montant CDF sous un autre code).
   final money = InvoiceMoney.forSale(sale);
@@ -39,6 +43,7 @@ Future<Sale?> startSalePaymentFlow(BuildContext context, Sale sale) async {
     remainingAmount: remaining,
     currencyCode: currencyCode,
     exchangeRate: money.isBase ? null : money.rateToBase,
+    title: title,
     defaultMethod: sale.paymentMethod,
   );
   if (draft == null || !context.mounted) return null;

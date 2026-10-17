@@ -279,26 +279,31 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
               // Elle N'IMPACTE PAS la trésorerie (c'est un mouvement de stock)
               final cogsAmount = product.costPriceInCdf * item.quantity;
 
-              journalEntries.add(
-                OperationJournalEntry(
-                  id: _uuid.v4(),
-                  date: savedSale.date,
-                  description:
-                      'Sortie stock: ${item.quantity} x ${item.productName} (Vente #${savedSale.id.substring(0, 6)})',
-                  type: OperationType.stockOut,
-                  amount:
-                      -cogsAmount, // Négatif = diminution de la valeur du stock
-                  relatedDocumentId: savedSale.id,
-                  quantity: item.quantity.toDouble(),
-                  productId: productId,
-                  productName: item.productName,
-                  // Montant = costPriceInCdf x quantité : il est en CDF.
-                  currencyCode: 'CDF',
-                  isDebit: true, // COGS = charge (débit)
-                  isCredit: false,
-                  balanceAfter: 0, // Sera calculé par le repository
-                ),
-              );
+              // Ne créer l'écriture COGS que si le prix d'achat est connu.
+              // Sinon `costPriceInCdf == 0` produisait une opération à montant 0
+              // par article dans le journal (parité mobile).
+              if (cogsAmount > 0) {
+                journalEntries.add(
+                  OperationJournalEntry(
+                    id: _uuid.v4(),
+                    date: savedSale.date,
+                    description:
+                        'Sortie stock: ${item.quantity} x ${item.productName} (Vente #${savedSale.id.substring(0, 6)})',
+                    type: OperationType.stockOut,
+                    amount:
+                        -cogsAmount, // Négatif = diminution de la valeur du stock
+                    relatedDocumentId: savedSale.id,
+                    quantity: item.quantity.toDouble(),
+                    productId: productId,
+                    productName: item.productName,
+                    // Montant = costPriceInCdf x quantité : il est en CDF.
+                    currencyCode: 'CDF',
+                    isDebit: true, // COGS = charge (débit)
+                    isCredit: false,
+                    balanceAfter: 0, // Sera calculé par le repository
+                  ),
+                );
+              }
 
               // 2. Mise à jour du stock dans l'inventaire
               // Créer une transaction de stock négative (sortie de stock)

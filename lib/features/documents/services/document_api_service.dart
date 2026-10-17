@@ -57,10 +57,12 @@ class DocumentApiService {
         'fileType': mimeType,
         'fileSize': fileSize,
         'url': cloudinaryUrl,
-        if (documentType != null)
-          'documentType':
-              documentType.name.substring(0, 1).toUpperCase() +
-              documentType.name.substring(1),
+        // `documentType` est OBLIGATOIRE côté backend (@IsNotEmpty) : à
+        // défaut, « Other » plutôt qu'un refus 400.
+        'documentType': documentType == null
+            ? 'Other'
+            : documentType.name.substring(0, 1).toUpperCase() +
+                documentType.name.substring(1),
         'relatedToEntityType':
             entityType.name.substring(0, 1).toUpperCase() +
             entityType.name.substring(1),
