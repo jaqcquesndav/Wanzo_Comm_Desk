@@ -19,12 +19,15 @@ class ProductApiService {
 
   Future<ApiResponse<List<Product>>> getProducts({
     Map<String, String>? queryParameters,
+    // Inclure companyId / businessUnitId du contexte (isolation par unité)
+    bool includeBusinessContext = true,
   }) async {
     try {
       final response = await _apiClient.get(
         'products',
         queryParameters: queryParameters,
         requiresAuth: true,
+        includeBusinessContext: includeBusinessContext,
       );
       if (response != null && response['data'] != null) {
         var data = response['data'];

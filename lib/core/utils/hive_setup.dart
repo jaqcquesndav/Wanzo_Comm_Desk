@@ -12,6 +12,7 @@ import '../../features/customer/models/customer_contact.dart';
 
 // Inventory models
 import '../../features/inventory/models/product.dart' as inventory_product;
+import '../../features/inventory/models/product_attribute.dart';
 import '../../features/inventory/models/stock_transaction.dart'
     as stock_tx_model;
 
@@ -85,6 +86,10 @@ Future<void> initializeHiveAdapters() async {
   _registerAdapterIfNotExists(inventory_product.ProductAdapter());
   _registerAdapterIfNotExists(inventory_product.ProductCategoryAdapter());
   _registerAdapterIfNotExists(inventory_product.ProductUnitAdapter());
+  // ProductAttribute (typeId 120, anciennement 28 = collision avec
+  // NotificationModel, jamais enregistré : tout produit portant des
+  // attributs échouait à l'écriture en cache).
+  _registerAdapterIfNotExists(ProductAttributeAdapter());
   _registerAdapterIfNotExists(stock_tx_model.StockTransactionAdapter());
   _registerAdapterIfNotExists(stock_tx_model.StockTransactionTypeAdapter());
 

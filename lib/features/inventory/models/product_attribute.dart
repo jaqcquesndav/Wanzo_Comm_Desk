@@ -6,7 +6,7 @@ part 'product_attribute.g.dart';
 
 /// Représente un attribut personnalisé d'un produit
 /// Ex: { "name": "Couleur", "value": "Noir" }
-@HiveType(typeId: 28)
+@HiveType(typeId: 120)
 @JsonSerializable()
 class ProductAttribute extends Equatable {
   /// Nom de l'attribut (ex: "Couleur", "Taille", "RAM")

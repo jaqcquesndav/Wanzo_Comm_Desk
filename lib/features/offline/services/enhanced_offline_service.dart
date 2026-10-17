@@ -366,12 +366,22 @@ class EnhancedOfflineService {
     }
   }
 
+  // Callback optionnel pour déclencher la sync lors de la reconnexion
+  void Function()? _onConnectivityRestoredCallback;
+
+  /// Configure le callback de synchronisation (appelé depuis main.dart)
+  void setSyncCallback(void Function() callback) {
+    _onConnectivityRestoredCallback = callback;
+    debugPrint('EnhancedOfflineService: Sync callback configured');
+  }
+
   /// Gestionnaire de changement de connectivité (callback)
   void _onConnectivityChangedCallback() {
     final isConnected = _connectivityService.isConnected;
     if (isConnected) {
       debugPrint('EnhancedOfflineService: Connectivity restored - sync opportunity');
-      // TODO: Déclencher la synchronisation automatique
+      // Déclencher la synchronisation automatique si le callback est configuré
+      _onConnectivityRestoredCallback?.call();
     } else {
       debugPrint('EnhancedOfflineService: Connectivity lost - offline mode active');
     }

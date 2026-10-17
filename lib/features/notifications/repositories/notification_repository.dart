@@ -1,6 +1,7 @@
 // filepath: c:\Users\DevSpace\Flutter\wanzo\lib\features\notifications\repositories\notification_repository.dart
 
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:hive/hive.dart';
@@ -85,49 +86,77 @@ class NotificationRepository {
     try {
       final response = await _apiService.get('notifications');
 
-      if (response['success'] == true && response.containsKey('data')) {
-        final List<dynamic> notificationsData = response['data'] as List<dynamic>;
-
-        final notifications = <NotificationModel>[];
-
-        for (final data in notificationsData) {
-          try {
-            final notificationData = data as Map<String, dynamic>;
-
-            // Convertir le type de notification
-            final NotificationType type = _parseNotificationType(notificationData['type'] as String? ?? 'info');
-
-            final notification = NotificationModel(
-              id: notificationData['id'] as String,
-              title: notificationData['title'] as String,
-              message: notificationData['message'] as String,
-              type: type,
-              timestamp: DateTime.parse(notificationData['timestamp'] as String),
-              isRead: notificationData['is_read'] as bool? ?? false,
-              actionRoute: notificationData['action_route'] as String?,
-              additionalData: notificationData['additional_data'] as String?,
-            );
-
-            // Sauvegarder la notification en local
-            await saveNotification(notification);
-            notifications.add(notification);
-          } catch (e) {
-            debugPrint('Erreur lors du traitement d\'une notification: $e');
-          }
+      final notifications = <NotificationModel>[];
+      for (final data in extractNotificationList(response)) {
+        try {
+          final notification = parseApiNotification(
+            Map<String, dynamic>.from(data as Map),
+          );
+          // Sauvegarder la notification en local
+          await saveNotification(notification);
+          notifications.add(notification);
+        } catch (e) {
+          debugPrint('Erreur lors du traitement d\'une notification: $e');
         }
-
-        return notifications;
       }
-
-      return [];
+      return notifications;
     } catch (e) {
       debugPrint('Erreur lors de la récupération des notifications: $e');
       return [];
     }
   }
 
+  /// Liste des notifications d'une réponse `GET notifications`.
+  ///
+  /// Le service gestion ré-enveloppe tout : le service renvoie
+  /// `{data, total, page, limit}`, la réponse finale est donc
+  /// `{success, data: {data: [...], total, ...}}`. L'ancien code attendait
+  /// une liste directement sous `data` et n'affichait jamais rien.
+  @visibleForTesting
+  static List<dynamic> extractNotificationList(dynamic response) {
+    dynamic node = response;
+    for (var depth = 0; depth < 3; depth++) {
+      if (node is List) return node;
+      if (node is Map && node['data'] != null) {
+        node = node['data'];
+        continue;
+      }
+      if (node is Map && node['items'] is List) return node['items'] as List;
+      break;
+    }
+    return node is List ? node : const [];
+  }
+
+  /// Convertit une notification du serveur (champs camelCase de l'entité :
+  /// `readAt`, `actionRoute`, `additionalData` objet JSON). Les anciennes
+  /// clés snake_case restent lues par compatibilité.
+  @visibleForTesting
+  static NotificationModel parseApiNotification(Map<String, dynamic> json) {
+    final rawTimestamp = json['timestamp'] ?? json['createdAt'];
+    final readAt = json['readAt'];
+    final bool isRead = json['isRead'] as bool? ??
+        json['is_read'] as bool? ??
+        (readAt != null && readAt.toString().isNotEmpty);
+    final rawData = json['additionalData'] ?? json['additional_data'];
+    return NotificationModel(
+      id: json['id'].toString(),
+      title: (json['title'] ?? '').toString(),
+      message: (json['message'] ?? '').toString(),
+      type: _parseNotificationType((json['type'] ?? 'info').toString()),
+      timestamp: (rawTimestamp != null
+              ? DateTime.tryParse(rawTimestamp.toString())
+              : null) ??
+          DateTime.now(),
+      isRead: isRead,
+      actionRoute: (json['actionRoute'] ?? json['action_route']) as String?,
+      additionalData: rawData == null
+          ? null
+          : (rawData is String ? rawData : jsonEncode(rawData)),
+    );
+  }
+
   /// Convertit une chaîne en type de notification
-  NotificationType _parseNotificationType(String typeStr) {
+  static NotificationType _parseNotificationType(String typeStr) {
     switch (typeStr.toLowerCase()) {
       case 'success':
         return NotificationType.success;
@@ -183,27 +212,10 @@ class NotificationRepository {
       additionalData: additionalData,
     );
 
+    // Notification LOCALE (alerte de stock, rappel...) : le serveur n'expose
+    // aucune route de création (POST notifications répondait 404, et la
+    // version hors ligne s'empilait dans la file d'envoi).
     await saveNotification(notification);
-    // Synchroniser avec l'API si connecté
-    if (_connectivityService.isConnected) {
-      _syncNotificationToApi(notification);
-    } else {
-      // Enregistrer pour synchronisation future
-      await _databaseService.savePendingOperation(
-        endpoint: 'notifications',
-        method: 'POST',
-        body: {
-          'id': notification.id,
-          'title': notification.title,
-          'message': notification.message,
-          'type': notification.type.toString().split('.').last,
-          'timestamp': notification.timestamp.toIso8601String(),
-          'is_read': notification.isRead,
-          'action_route': notification.actionRoute,
-          'additional_data': notification.additionalData,
-        },
-      );
-    }
 
     return notification;
   }
@@ -248,24 +260,6 @@ class NotificationRepository {
       await _apiService.put('notifications/$id/read', body: {'read': true});
     } catch (e) {
       debugPrint('Erreur lors du marquage de la notification comme lue sur l\'API: $e');
-    }
-  }
-
-  /// Synchronise une notification avec l'API
-  Future<void> _syncNotificationToApi(NotificationModel notification) async {
-    try {
-      await _apiService.post('notifications', body: {
-        'id': notification.id,
-        'title': notification.title,
-        'message': notification.message,
-        'type': notification.type.toString().split('.').last,
-        'timestamp': notification.timestamp.toIso8601String(),
-        'is_read': notification.isRead,
-        'action_route': notification.actionRoute,
-        'additional_data': notification.additionalData,
-      });
-    } catch (e) {
-      debugPrint('Erreur lors de la synchronisation de la notification avec l\'API: $e');
     }
   }
 
@@ -351,6 +345,12 @@ class NotificationRepository {
         final Map<String, dynamic>? body = operation['body'] as Map<String, dynamic>?;
         final String id = operation['id'] as String;
         if (endpoint.startsWith('notifications')) {
+          // Anciennes créations mises en file (route absente côté serveur) :
+          // retirées au lieu d'échouer à chaque passage.
+          if (method == 'POST' && endpoint == 'notifications') {
+            await _databaseService.markOperationAsSynchronized(id);
+            continue;
+          }
           try {
             switch (method) {
               case 'GET':

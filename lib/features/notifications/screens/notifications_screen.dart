@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart'; // Added go_router import
 import '../bloc/notifications_bloc.dart';
 import '../models/notification_model.dart';
+import '../utils/notification_router.dart';
 import '../../../constants/colors.dart';
 import '../../../constants/spacing.dart';
 
@@ -205,9 +206,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             }
             
             // Naviguer vers la route associée si elle existe
-            if (notification.actionRoute != null && notification.actionRoute!.isNotEmpty) {
-              Navigator.of(context).pushNamed(notification.actionRoute!);
-            }
+            // (routeur go_router : Navigator.pushNamed levait une exception,
+            // l'application ne déclare aucune route nommée Navigator).
+            NotificationRouter.handleNotificationTap(context, notification);
           },
           isThreeLine: true,
         ),

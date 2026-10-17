@@ -502,6 +502,20 @@ class _SyncButtonWidgetState extends State<_SyncButtonWidget> {
               duration: Duration(seconds: 2),
             ),
           );
+        } else {
+          // Échec jamais silencieux : l'icône d'erreur seule ne disait pas
+          // pourquoi rien n'avait bougé.
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Synchronisation incomplète. Vérifiez la connexion : vos '
+                'saisies restent conservées sur ce poste et partiront au '
+                'prochain essai.',
+              ),
+              backgroundColor: WanzoColors.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
         }
       }
     } catch (e) {

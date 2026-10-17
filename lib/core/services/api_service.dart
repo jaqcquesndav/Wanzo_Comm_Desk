@@ -9,6 +9,7 @@ import '../../features/auth/services/auth0_service.dart';
 import '../../features/auth/services/offline_auth_service.dart';
 import '../utils/connectivity_service.dart';
 import 'database_service.dart';
+import 'account_block_notifier.dart';
 
 /// Service pour gérer les appels API
 class ApiService {
@@ -187,6 +188,29 @@ class ApiService {
     }
   }
 
+  /// Chemin RELATIF à rejouer plus tard (ex. `products/42`).
+  ///
+  /// `uri.path` contient le préfixe de la base (`/commerce/api/v1/products`) :
+  /// le stocker tel quel faisait rejouer `base/commerce/api/v1/commerce/api/v1/
+  /// products`, un 404 qui retirait l'opération de la file (saisie perdue). On
+  /// retire donc le chemin de la base URL, pas la base URL complète (que
+  /// `uri.path` ne contient jamais).
+  @visibleForTesting
+  static String relativeEndpointPath(Uri uri, String baseUrl) {
+    String path = uri.path;
+    final basePath = Uri.parse(baseUrl).path.replaceAll(RegExp(r'/+$'), '');
+    if (basePath.isNotEmpty &&
+        (path == basePath || path.startsWith('$basePath/'))) {
+      path = path.substring(basePath.length);
+    } else if (path.startsWith(baseUrl)) {
+      path = path.substring(baseUrl.length);
+    }
+    while (path.startsWith('/')) {
+      path = path.substring(1);
+    }
+    return path;
+  }
+
   /// Construit l'URI pour la requête
   Uri _buildUri(String endpoint, [Map<String, dynamic>? queryParams]) {
     String tempBaseUrl = _apiBaseUrl;
@@ -199,6 +223,16 @@ class ApiService {
     // Remove all leading slashes from endpoint
     while (tempEndpoint.startsWith('/')) {
       tempEndpoint = tempEndpoint.substring(1);
+    }
+    // Opérations mises en file par une version précédente avec le préfixe
+    // de la base (« commerce/api/v1/products ») : on le retire pour ne pas
+    // le doubler à l'envoi.
+    final basePath = Uri.parse(tempBaseUrl).path.replaceAll(
+      RegExp(r'^/+|/+$'),
+      '',
+    );
+    if (basePath.isNotEmpty && tempEndpoint.startsWith('$basePath/')) {
+      tempEndpoint = tempEndpoint.substring(basePath.length + 1);
     }
 
     // Ensures a single slash between base and endpoint
@@ -235,19 +269,7 @@ class ApiService {
         }
 
         if (method != 'GET') {
-          String endpointPathToSave = uri.path;
-          // If uri.path somehow contains the full base URL (e.g. if endpoint was an absolute URL string), remove it.
-          // This makes it robust even if _buildUri was passed an absolute path for `endpoint`.
-          if (endpointPathToSave.startsWith(_apiBaseUrl)) {
-            endpointPathToSave = endpointPathToSave.substring(
-              _apiBaseUrl.length,
-            );
-          }
-
-          // Remove all leading slashes to ensure a clean relative path like "feature/action"
-          while (endpointPathToSave.startsWith('/')) {
-            endpointPathToSave = endpointPathToSave.substring(1);
-          }
+          final endpointPathToSave = relativeEndpointPath(uri, _apiBaseUrl);
 
           await _databaseService.savePendingOperation(
             endpoint: endpointPathToSave, // Use the cleaned relative path
@@ -348,13 +370,7 @@ class ApiService {
       }
 
       if (!_canUseCache(method) && body != null) {
-        String pathOnly = uri.path;
-        if (pathOnly.startsWith(_apiBaseUrl)) {
-          pathOnly = pathOnly.substring(_apiBaseUrl.length);
-        }
-        if (pathOnly.startsWith('/')) {
-          pathOnly = pathOnly.substring(1);
-        }
+        final pathOnly = relativeEndpointPath(uri, _apiBaseUrl);
         await _storeForSync(pathOnly, method, body);
         debugPrint(
           'Opération stockée pour synchronisation ultérieure: $method $pathOnly',
@@ -399,6 +415,16 @@ class ApiService {
 
       case 403:
         debugPrint('Erreur 403: Accès refusé');
+        // Compte suspendu : même signal que le client HTTP principal, pour
+        // que l'écran de compte fermé s'affiche quelle que soit la couche.
+        try {
+          final refus = AccountBlockNotifier.lireRefus(
+            jsonDecode(response.body),
+          );
+          if (refus != null) AccountBlockNotifier.instance.signal(refus);
+        } catch (_) {
+          // Corps illisible : simple refus de droits.
+        }
         throw Exception(
           'Vous n\'avez pas les droits nécessaires pour effectuer cette action.',
         );

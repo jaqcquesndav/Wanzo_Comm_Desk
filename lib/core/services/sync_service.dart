@@ -7,8 +7,10 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive/hive.dart';
 import 'package:wanzo/core/utils/connectivity_service.dart';
 import 'package:wanzo/core/services/api_service.dart';
+import 'package:wanzo/core/services/api_client.dart';
 import 'package:wanzo/core/services/database_service.dart';
 import 'package:wanzo/core/exceptions/api_exceptions.dart';
+import 'package:wanzo/core/models/api_response.dart';
 import 'package:wanzo/core/services/customer_api_service.dart';
 import 'package:wanzo/core/services/sale_api_service.dart';
 import 'package:wanzo/core/services/product_api_service.dart';
@@ -201,11 +203,10 @@ class SyncService {
   /// Vérifie la connectivité
   Future<bool> isConnected() async {
     var connectivityResults = await (Connectivity().checkConnectivity());
-    if (connectivityResults.contains(ConnectivityResult.mobile) ||
-        connectivityResults.contains(ConnectivityResult.wifi)) {
-      return true;
-    }
-    return false;
+    // Sur ordinateur, la connexion est souvent filaire (ethernet) : seule
+    // l'absence de réseau compte, pas le type de liaison.
+    return connectivityResults.isNotEmpty &&
+        !connectivityResults.contains(ConnectivityResult.none);
   }
 
   /// Synchronise les données avec l'API
@@ -221,6 +222,10 @@ class SyncService {
     debugPrint('Démarrage de la synchronisation des données...');
 
     try {
+      // Écritures conservées hors ligne par le client HTTP (modules récents) :
+      // envoyées AVANT de relire le serveur, pour que la relecture les inclue.
+      await _replayOfflineWrites();
+
       // Déterminer si un full sync est nécessaire (>24h depuis le dernier)
       // Cette vérification est faite UNE SEULE FOIS au début pour éviter les boucles
       final bool forceFullSync = _shouldForceFullSync();
@@ -429,20 +434,17 @@ class SyncService {
 
       // ========== ÉTAPE 2: DOWNLOAD depuis le backend ==========
       final String lastSyncKey = 'product_last_sync';
-      Map<String, String> queryParams = {};
 
-      if (!forceFullSync && _syncStatusBox.containsKey(lastSyncKey)) {
-        final lastSyncDate = _syncStatusBox.get(lastSyncKey)!;
-        queryParams['updated_after'] = lastSyncDate;
-        debugPrint('📅 Sync incrémental depuis: $lastSyncDate');
-      } else {
-        debugPrint('📅 Sync complet (pas de date précédente)');
-      }
-
-      debugPrint('🔄 Appel API getProducts...');
-      final apiResponse = await _productApiService.getProducts(
-        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      // Le serveur ne filtre pas sur `updated_after` et plafonne la liste à
+      // 10 par défaut : on lit TOUTES les pages (sinon seuls 10 articles
+      // arrivaient, et une purge effaçait les autres en local).
+      debugPrint('🔄 Appel API getProducts (paginé)...');
+      final paged = await fetchAllPages<Product>(
+        (page, limit) => _productApiService.getProducts(
+          queryParameters: {'page': '$page', 'limit': '$limit'},
+        ),
       );
+      final apiResponse = paged.response;
 
       if (apiResponse.success && apiResponse.data != null) {
         debugPrint('✅ ${apiResponse.data!.length} produits reçus de l\'API');
@@ -500,7 +502,8 @@ class SyncService {
           }
         }
         // ====== ÉTAPE 3: NETTOYAGE données obsolètes (full sync) ======
-        if (forceFullSync) {
+        // Uniquement si la pagination est allée jusqu'au bout.
+        if (forceFullSync && paged.completed) {
           final stale = await _removeStaleEntries(
             box: productBox,
             backendIds: apiResponse.data!.map((p) => p.id).toSet(),
@@ -730,23 +733,27 @@ class SyncService {
 
       // ========== ÉTAPE 2: DOWNLOAD depuis le backend ==========
       final String lastSyncKey = 'sale_last_sync';
-      Map<String, String> queryParams = {};
 
-      if (!forceFullSync && _syncStatusBox.containsKey(lastSyncKey)) {
-        final lastSyncDate = _syncStatusBox.get(lastSyncKey)!;
-        queryParams['updated_after'] = lastSyncDate;
-      }
-
-      final apiResponse = await _saleApiService.getSales(
-        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      // Toutes les pages (`updated_after` n'est pas filtré côté serveur, et
+      // la liste est plafonnée à 10 par défaut).
+      final paged = await fetchAllPages<Sale>(
+        (page, limit) => _saleApiService.getSales(
+          queryParameters: {'page': '$page', 'limit': '$limit'},
+        ),
       );
+      final apiResponse = paged.response;
       if (apiResponse.success && apiResponse.data != null) {
         debugPrint('✅ ${apiResponse.data!.length} ventes reçues de l\'API');
         for (var apiSale in apiResponse.data!) {
           // Préserver les ventes locales en attente de sync
           final localSale = saleBox.get(apiSale.id);
-          if (localSale != null && localSale.syncStatus == 'pending') {
+          if (localSale != null &&
+              (localSale.syncStatus == 'pending' ||
+                  localSale.syncStatus == 'pending_update')) {
             // Ne pas écraser une vente locale en attente de synchronisation
+            // (création OU modification, ex. paiement saisi hors ligne). Un
+            // statut absent (anciennes versions) n'est pas protégé : sinon la
+            // vente ne serait plus jamais mise à jour depuis le serveur.
             debugPrint('⏳ Vente ${apiSale.id} ignorée (sync pending local)');
             continue;
           }
@@ -754,7 +761,7 @@ class SyncService {
           await saleBox.put(apiSale.id, apiSale.copyWith(syncStatus: 'synced'));
         }
         // ====== NETTOYAGE données obsolètes (full sync) ======
-        if (forceFullSync) {
+        if (forceFullSync && paged.completed) {
           final stale = await _removeStaleEntries(
             box: saleBox,
             backendIds: apiResponse.data!.map((s) => s.id).toSet(),
@@ -843,6 +850,7 @@ class SyncService {
                 supplierName: expense.supplierName,
                 currencyCode: expense.currencyCode,
                 exchangeRate: expense.exchangeRate,
+                notes: expense.notes,
               );
               if (response.success && response.data != null) {
                 final syncedExpense = response.data!.copyWith(
@@ -890,6 +898,7 @@ class SyncService {
                 expense.paymentMethod,
                 expense.supplierId,
                 newAttachments: attachmentFiles, // Upload des fichiers locaux
+                notes: expense.notes,
               );
               if (response.success && response.data != null) {
                 final syncedExpense = response.data!.copyWith(
@@ -908,19 +917,15 @@ class SyncService {
 
       // ========== ÉTAPE 2: DOWNLOAD depuis le backend ==========
       final String lastSyncKey = 'expense_last_sync';
-      Map<String, String> queryParams = {};
 
-      if (!forceFullSync && _syncStatusBox.containsKey(lastSyncKey)) {
-        final lastSyncDate = _syncStatusBox.get(lastSyncKey)!;
-        queryParams['dateFrom'] = lastSyncDate;
-      }
-
-      final apiResponse = await _expenseApiService.getExpenses(
-        dateFrom:
-            queryParams.containsKey('dateFrom')
-                ? queryParams['dateFrom']
-                : null,
+      // Toutes les pages (limite serveur ≤ 100). Plus de `dateFrom` = date de
+      // dernière synchro : il filtre sur la DATE de la dépense, pas sur sa
+      // modification, et faisait manquer les dépenses antidatées.
+      final expenseApi = _expenseApiService;
+      final paged = await fetchAllPages<Expense>(
+        (page, limit) => expenseApi.getExpenses(page: page, limit: limit),
       );
+      final apiResponse = paged.response;
 
       if (apiResponse.success && apiResponse.data != null) {
         debugPrint('✅ ${apiResponse.data!.length} dépenses reçues de l\'API');
@@ -942,7 +947,7 @@ class SyncService {
           );
         }
         // ====== NETTOYAGE données obsolètes (full sync) ======
-        if (forceFullSync) {
+        if (forceFullSync && paged.completed) {
           final stale = await _removeStaleEntries(
             box: expenseBox,
             backendIds: apiResponse.data!.map((e) => e.id).toSet(),
@@ -1189,7 +1194,9 @@ class SyncService {
     debugPrint('Synchronisation des comptes financiers...');
     try {
       final accountBox = await Hive.openBox<FinancialAccount>(
-        'financialAccountsBox',
+        // Box lue par l'écran (FinancialAccountRepository, hive_setup) :
+        // l'ancienne 'financialAccountsBox' n'était lue par personne.
+        'financial_accounts',
       );
       final String lastSyncKey = 'financial_account_last_sync';
 
@@ -1328,6 +1335,64 @@ class SyncService {
     return true;
   }
 
+  /// Lit toutes les pages d'une liste serveur (plafonnée à 10 par défaut).
+  ///
+  /// `response.success` est vrai si au moins la première page a été lue ;
+  /// `completed` n'est vrai que si la dernière page (incomplète) a été
+  /// atteinte sans erreur. Une purge locale ne doit se faire qu'avec
+  /// `completed` : une liste partielle effacerait des données valides.
+  @visibleForTesting
+  static Future<PagedFetch<T>> fetchAllPages<T>(
+    Future<ApiResponse<List<T>>> Function(int page, int limit) fetchPage, {
+    int pageSize = 100,
+    int maxPages = 200,
+  }) async {
+    final all = <T>[];
+    String? lastMessage;
+    bool anySuccess = false;
+    for (int page = 1; page <= maxPages; page++) {
+      final response = await fetchPage(page, pageSize);
+      if (!response.success || response.data == null) {
+        lastMessage = response.message;
+        return PagedFetch<T>(
+          ApiResponse<List<T>>(
+            success: anySuccess,
+            data: anySuccess ? all : null,
+            message: lastMessage,
+          ),
+          completed: false,
+        );
+      }
+      anySuccess = true;
+      all.addAll(response.data!);
+      if (response.data!.length < pageSize) {
+        return PagedFetch<T>(
+          ApiResponse<List<T>>(success: true, data: all),
+          completed: true,
+        );
+      }
+    }
+    // Plafond de pages atteint : liste peut-être partielle, pas de purge.
+    return PagedFetch<T>(
+      ApiResponse<List<T>>(success: true, data: all),
+      completed: false,
+    );
+  }
+
+  /// Rejoue la file des écritures hors ligne du client HTTP
+  /// ([OfflineWriteQueue]). Sans effet si elle est vide ; un échec ne bloque
+  /// pas la synchronisation (les écritures restent en file).
+  Future<void> _replayOfflineWrites() async {
+    try {
+      final report = await ApiClient().replayPendingWrites();
+      if (!report.isEmpty) {
+        debugPrint('🔁 Écritures hors ligne rejouées : $report');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Rejeu des écritures hors ligne impossible : $e');
+    }
+  }
+
   /// Exécute une opération API selon la méthode
   Future<void> _executeApiOperation(
     String method,
@@ -1374,6 +1439,10 @@ class SyncService {
     _syncStatusController.add(SyncStatus.syncing);
 
     try {
+      // Bouton Sync : les écritures conservées hors ligne par le client HTTP
+      // partent d'abord (même file que celle rejouée au retour du réseau).
+      await _replayOfflineWrites();
+
       // Appeler directement les méthodes internes sans passer par syncAll
       // pour éviter les conflits de flags _isSyncing
       await _syncProducts(forceFullSync: true);
@@ -1399,7 +1468,13 @@ class SyncService {
       // BUG #7 : le full sync manuel doit AUSSI rejouer la file générique des
       // opérations en attente (que `syncData` draine), sinon le bouton Sync
       // laisse des POST/PUT/DELETE hors ligne non envoyés. Idempotent.
-      await _drainPendingOperations();
+      final drained = await _drainPendingOperations();
+      if (!drained) {
+        // Connexion perdue en cours de route : ne pas annoncer un succès.
+        _isSyncing = false;
+        _syncStatusController.add(SyncStatus.failed);
+        return false;
+      }
 
       await _updateLastFullSyncDate();
 
@@ -1492,4 +1567,14 @@ class SyncService {
     _connectivityDebounceTimer?.cancel();
     _syncStatusController.close();
   }
+}
+
+/// Résultat d'une lecture paginée complète (voir [SyncService.fetchAllPages]).
+class PagedFetch<T> {
+  final ApiResponse<List<T>> response;
+
+  /// Vrai si toutes les pages ont été lues (purge locale autorisée).
+  final bool completed;
+
+  const PagedFetch(this.response, {required this.completed});
 }

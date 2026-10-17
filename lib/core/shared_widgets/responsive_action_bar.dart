@@ -40,12 +40,19 @@ class ResponsiveActionBar extends StatelessWidget {
   final double minButtonWidth;
   final double spacing;
 
+  /// `true` quand la barre vit dans une hauteur fixe (une `BottomAppBar` par
+  /// exemple) : on ne peut alors PAS passer à la ligne sans déborder en
+  /// hauteur, donc on bascule en icônes seules dès que les boutons libellés ne
+  /// tiennent pas sur une seule rangée.
+  final bool singleRow;
+
   const ResponsiveActionBar({
     super.key,
     required this.items,
     this.compactBreakpoint = 360,
     this.minButtonWidth = 148,
     this.spacing = 8,
+    this.singleRow = false,
   });
 
   @override
@@ -61,6 +68,19 @@ class ResponsiveActionBar extends StatelessWidget {
                 ? constraints.maxWidth
                 : MediaQuery.of(context).size.width;
 
+        final count = rendered.length;
+        final evenWidth = (available - spacing * (count - 1)) / count;
+        final wouldWrap = evenWidth < minButtonWidth;
+
+        if (singleRow && (wouldWrap || available < compactBreakpoint)) {
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              for (final item in rendered) _buildIconOnly(context, item),
+            ],
+          );
+        }
+
         if (available < compactBreakpoint) {
           return Wrap(
             alignment: WrapAlignment.spaceEvenly,
@@ -72,9 +92,7 @@ class ResponsiveActionBar extends StatelessWidget {
           );
         }
 
-        final count = rendered.length;
-        final evenWidth = (available - spacing * (count - 1)) / count;
-        final width = evenWidth < minButtonWidth ? minButtonWidth : evenWidth;
+        final width = wouldWrap ? minButtonWidth : evenWidth;
 
         return Wrap(
           spacing: spacing,

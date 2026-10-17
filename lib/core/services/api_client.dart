@@ -10,6 +10,7 @@ import '../exceptions/api_exceptions.dart'; // Import des exceptions personnalis
 import 'reauth_service.dart'; // Import du service de ré-authentification
 import 'api_circuit_breaker.dart'; // Import du circuit breaker
 import 'account_block_notifier.dart';
+import 'business_context_service.dart'; // Contexte multi-tenant (companyId / businessUnitId)
 
 class ApiClient {
   final String _baseUrl;
@@ -42,13 +43,27 @@ class ApiClient {
     useApiGateway: true,
   );
 
+  /// Source de jeton prioritaire (ordinateur : le service d'authentification
+  /// desktop, qui renouvelle le jeton avant son expiration). `null` ou jeton
+  /// absent : repli sur [Auth0Service].
+  Future<String?> Function()? _tokenProvider;
+
   // Configure the instance with Auth0Service
-  static void configure({Auth0Service? auth0Service}) {
+  static void configure({
+    Auth0Service? auth0Service,
+    Future<String?> Function()? tokenProvider,
+  }) {
     _instance._auth0Service = auth0Service;
+    _instance._tokenProvider = tokenProvider;
     if (auth0Service != null) {
       _instance._reauthService.configure(auth0Service);
     }
   }
+
+  /// Client distinct du singleton, sur un client HTTP fourni (tests).
+  @visibleForTesting
+  factory ApiClient.withHttpClient(http.Client httpClient) =>
+      ApiClient._internal(httpClient: httpClient);
 
   // Factory constructor to return the singleton instance
   factory ApiClient() => _instance;
@@ -59,94 +74,36 @@ class ApiClient {
     };
 
     if (requiresAuth) {
-      if (_auth0Service != null) {
-        // Utiliser Auth0Service pour obtenir le token d'accès (recommandé)
-        final String? token = await _auth0Service?.getAccessToken();
-        if (token != null) {
-          headers[HttpHeaders.authorizationHeader] = 'Bearer $token';
-          // Debug: Afficher le payload du token JWT pour vérifier company_id
-          // ignore: avoid_print
-          print(
-            '🔐 Token JWT obtenu (${token.length} chars): ${token.substring(0, 50)}...',
-          );
-          _debugJwtPayload(token);
-        } else {
-          // ignore: avoid_print
-          print('⚠️ Token JWT est NULL !');
+      String? token;
+      if (_tokenProvider != null) {
+        try {
+          token = await _tokenProvider!();
+        } catch (e) {
+          debugPrint('ApiClient: source de jeton indisponible : $e');
         }
-      } else {
-        // Fallback à la méthode précédente
-        String? token = await _secureStorage.read(key: 'auth_token');
+      }
+      if ((token == null || token.isEmpty) && _auth0Service != null) {
+        // Utiliser Auth0Service pour obtenir le token d'accès (recommandé)
+        token = await _auth0Service?.getAccessToken();
+      } else if (token == null || token.isEmpty) {
+        // Fallback à la méthode précédente. Stockage illisible (clé
+        // régénérée, absent en test) : pas de jeton plutôt qu'un plantage.
+        try {
+          token = await _secureStorage.read(key: 'auth_token');
+        } catch (e) {
+          debugPrint('ApiClient: lecture du jeton impossible : $e');
+        }
+      }
+      // Jamais d'en-tête « Bearer null » : sans jeton, le serveur répond 401
+      // et la reconnexion prend le relais.
+      if (token != null && token.isNotEmpty) {
         headers[HttpHeaders.authorizationHeader] = 'Bearer $token';
+      } else {
+        debugPrint('ApiClient: aucun jeton disponible pour cette requête');
       }
     }
 
     return headers;
-  }
-
-  /// Debug: Décoder et afficher le payload du token JWT (une seule fois par session)
-  static bool _jwtDebugShown = false;
-
-  void _debugJwtPayload(String token) {
-    // Afficher une fois par session (reset au hot restart complet)
-    if (_jwtDebugShown) return;
-    _jwtDebugShown = true;
-
-    try {
-      final parts = token.split('.');
-      if (parts.length == 3) {
-        // Décoder le payload (partie 2)
-        String payload = parts[1];
-        // Ajouter le padding si nécessaire pour base64
-        while (payload.length % 4 != 0) {
-          payload += '=';
-        }
-        final decoded = utf8.decode(base64Url.decode(payload));
-        final payloadJson = jsonDecode(decoded) as Map<String, dynamic>;
-
-        // ignore: avoid_print
-        print('');
-        // ignore: avoid_print
-        print(
-          '╔══════════════════════════════════════════════════════════════',
-        );
-        // ignore: avoid_print
-        print('║ 🔑 JWT TOKEN PAYLOAD DEBUG');
-        // ignore: avoid_print
-        print(
-          '╠══════════════════════════════════════════════════════════════',
-        );
-        // ignore: avoid_print
-        print(
-          '║ company_id (wanzo.app): ${payloadJson['https://wanzo.app/company_id']}',
-        );
-        // ignore: avoid_print
-        print(
-          '║ company_id (wanzo.com): ${payloadJson['https://wanzo.com/company_id']}',
-        );
-        // ignore: avoid_print
-        print('║ roles (wanzo.app): ${payloadJson['https://wanzo.app/roles']}');
-        // ignore: avoid_print
-        print('║ roles (wanzo.com): ${payloadJson['https://wanzo.com/roles']}');
-        // ignore: avoid_print
-        print('║ sub: ${payloadJson['sub']}');
-        // ignore: avoid_print
-        print(
-          '║ exp: ${payloadJson['exp']} (${DateTime.fromMillisecondsSinceEpoch((payloadJson['exp'] as int) * 1000)})',
-        );
-        // ignore: avoid_print
-        print('║ iat: ${payloadJson['iat']}');
-        // ignore: avoid_print
-        print(
-          '╚══════════════════════════════════════════════════════════════',
-        );
-        // ignore: avoid_print
-        print('');
-      }
-    } catch (e) {
-      // ignore: avoid_print
-      print('⚠️ Failed to decode JWT payload: $e');
-    }
   }
 
   // Méthode privée pour nettoyer l'endpoint (enlever les slashes en début/fin)
@@ -275,28 +232,65 @@ class ApiClient {
       endpoint: endpoint,
       body: body,
       requiresAuth: requiresAuth,
+      scope: _currentCompanyScope(),
     );
     if (!queued) throw networkError;
     throw OfflineQueuedException(endpoint: endpoint);
+  }
+
+  /// Entreprise de la session courante (null si inconnue).
+  String? _currentCompanyScope() {
+    try {
+      return BusinessContextService().companyId;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Rejoue les écritures conservées hors ligne. À appeler au retour du
   /// réseau. Retourne le bilan pour permettre un rafraîchissement des écrans.
   Future<OfflineReplayReport> replayPendingWrites() {
     return OfflineWriteQueue.instance.replay(
+      currentScope: _currentCompanyScope(),
+      // queueOffline: false : l'écriture est DÉJÀ en file. Si le réseau
+      // retombe pendant le rejeu, la remettre en file créerait un doublon
+      // (elle serait envoyée deux fois au passage suivant).
       send: (method, endpoint, body, requiresAuth) async {
         switch (method.toUpperCase()) {
           case 'POST':
-            await post(endpoint, body: body, requiresAuth: requiresAuth);
+            await post(
+              endpoint,
+              body: body,
+              requiresAuth: requiresAuth,
+              bypassCircuitBreaker: true,
+              queueOffline: false,
+            );
             break;
           case 'PUT':
-            await put(endpoint, body: body, requiresAuth: requiresAuth);
+            await put(
+              endpoint,
+              body: body,
+              requiresAuth: requiresAuth,
+              bypassCircuitBreaker: true,
+              queueOffline: false,
+            );
             break;
           case 'PATCH':
-            await patch(endpoint, body: body, requiresAuth: requiresAuth);
+            await patch(
+              endpoint,
+              body: body,
+              requiresAuth: requiresAuth,
+              bypassCircuitBreaker: true,
+              queueOffline: false,
+            );
             break;
           case 'DELETE':
-            await delete(endpoint, requiresAuth: requiresAuth);
+            await delete(
+              endpoint,
+              requiresAuth: requiresAuth,
+              bypassCircuitBreaker: true,
+              queueOffline: false,
+            );
             break;
           default:
             throw ArgumentError('Méthode non rejouable : $method');
@@ -305,18 +299,31 @@ class ApiClient {
       // Refus DÉFINITIF du serveur : validation, droits, entité disparue. Les
       // rejouer indéfiniment ne ferait qu'empiler des échecs. 408 et 429 sont
       // au contraire temporaires.
-      isPermanentFailure: (error) {
-        if (error is OfflineQueuedException) return false;
-        if (error is NetworkException) return false;
-        if (error is ApiException) {
-          final code = error.statusCode;
-          if (code == null) return false;
-          if (code == 408 || code == 429) return false;
-          return code >= 400 && code < 500;
-        }
-        return false;
-      },
+      isPermanentFailure: isPermanentReplayFailure,
     );
+  }
+
+  /// Refus DÉFINITIF du serveur pour une écriture rejouée : validation,
+  /// droits, entité disparue. Restent au contraire en file : les coupures,
+  /// 408 et 429, une session expirée (401 : le rejeu au lancement peut partir
+  /// avant que le jeton soit prêt, abandonner perdrait la saisie) et un compte
+  /// suspendu (403 ACCOUNT_SUSPENDED : la saisie repartira à la réactivation).
+  @visibleForTesting
+  static bool isPermanentReplayFailure(Object error) {
+    if (error is OfflineQueuedException) return false;
+    if (error is NetworkException) return false;
+    if (error is AuthenticationException) return false;
+    if (error is ApiException) {
+      final code = error.statusCode;
+      if (code == null) return false;
+      if (code == 401 || code == 408 || code == 429) return false;
+      if (code == 403 &&
+          AccountBlockNotifier.lireRefus(error.responseBody) != null) {
+        return false;
+      }
+      return code >= 400 && code < 500;
+    }
+    return false;
   }
 
   Future<dynamic> get(
@@ -324,6 +331,10 @@ class ApiClient {
     Map<String, String>? queryParameters,
     bool requiresAuth = false,
     bool bypassCircuitBreaker = false,
+    // true : ajoute companyId / businessUnitId du contexte courant (isolation
+    // par unité d'affaires quand le jeton ne porte pas l'unité). Les
+    // paramètres explicites de l'appelant restent prioritaires.
+    bool includeBusinessContext = false,
   }) async {
     // Vérifier le circuit breaker avant de faire la requête
     if (!bypassCircuitBreaker && !_circuitBreaker.canExecute) {
@@ -344,9 +355,17 @@ class ApiClient {
     // Nettoyer l'endpoint
     final cleanedEndpoint = _cleanEndpoint(endpoint);
 
+    Map<String, String>? finalQueryParams = queryParameters;
+    if (includeBusinessContext) {
+      final contextParams = BusinessContextService().getApiQueryParams();
+      if (contextParams.isNotEmpty) {
+        finalQueryParams = {...contextParams, ...?queryParameters};
+      }
+    }
+
     final url = Uri.parse(
       '$deviceCompatibleBaseUrl/$cleanedEndpoint',
-    ).replace(queryParameters: queryParameters);
+    ).replace(queryParameters: finalQueryParams);
 
     _logRequest('GET', url);
 
@@ -409,9 +428,19 @@ class ApiClient {
       debugPrint(
         '⛔ POST $endpoint bloqué par circuit breaker (retry dans ${_circuitBreaker.timeUntilRetry}s)',
       );
-      throw NetworkException(
-        'Service temporarily unavailable. Retry in ${_circuitBreaker.timeUntilRetry}s',
-        endpoint: endpoint,
+      // Serveur injoignable : même traitement qu'une coupure, la saisie est
+      // conservée. Avant, après quelques échecs hors ligne, le disjoncteur
+      // s'ouvrait et les écritures suivantes étaient perdues.
+      return _queueWriteOrThrow(
+        'POST',
+        endpoint,
+        body,
+        requiresAuth,
+        NetworkException(
+          'Service temporarily unavailable. Retry in ${_circuitBreaker.timeUntilRetry}s',
+          endpoint: endpoint,
+        ),
+        enabled: queueOffline,
       );
     }
 
@@ -435,7 +464,7 @@ class ApiClient {
           .post(
             url,
             headers: await getHeaders(requiresAuth: requiresAuth),
-            body: jsonEncode(body),
+            body: jsonEncode(body ?? const <String, dynamic>{}),
           )
           .timeout(Duration(milliseconds: timeoutMs));
 
@@ -496,13 +525,23 @@ class ApiClient {
     dynamic body,
     bool requiresAuth = false,
     bool bypassCircuitBreaker = false,
+    // false : pas de mise en file hors ligne (rejeu déjà en cours, ou
+    // action à confirmer par le serveur).
+    bool queueOffline = true,
   }) async {
     // Vérifier le circuit breaker avant de faire la requête
     if (!bypassCircuitBreaker && !_circuitBreaker.canExecute) {
       debugPrint('⛔ PUT $endpoint bloqué par circuit breaker');
-      throw NetworkException(
-        'Service temporarily unavailable. Retry in ${_circuitBreaker.timeUntilRetry}s',
-        endpoint: endpoint,
+      return _queueWriteOrThrow(
+        'PUT',
+        endpoint,
+        body,
+        requiresAuth,
+        NetworkException(
+          'Service temporarily unavailable. Retry in ${_circuitBreaker.timeUntilRetry}s',
+          endpoint: endpoint,
+        ),
+        enabled: queueOffline,
       );
     }
 
@@ -523,7 +562,7 @@ class ApiClient {
           .put(
             url,
             headers: await getHeaders(requiresAuth: requiresAuth),
-            body: jsonEncode(body),
+            body: jsonEncode(body ?? const <String, dynamic>{}),
           )
           .timeout(Duration(milliseconds: receiveTimeoutMs));
 
@@ -543,6 +582,7 @@ class ApiClient {
           'Could not connect to the server',
           endpoint: endpoint,
         ),
+        enabled: queueOffline,
       );
     } on HttpException {
       _circuitBreaker.recordFailure(reason: 'HttpException');
@@ -552,6 +592,7 @@ class ApiClient {
         body,
         requiresAuth,
         NetworkException('Could not find the server', endpoint: endpoint),
+        enabled: queueOffline,
       );
     } on FormatException {
       throw ResponseFormatException('Bad response format', endpoint: endpoint);
@@ -575,13 +616,23 @@ class ApiClient {
     dynamic body,
     bool requiresAuth = false,
     bool bypassCircuitBreaker = false,
+    // false : pas de mise en file hors ligne (rejeu déjà en cours, ou
+    // action à confirmer par le serveur).
+    bool queueOffline = true,
   }) async {
     // Vérifier le circuit breaker avant de faire la requête
     if (!bypassCircuitBreaker && !_circuitBreaker.canExecute) {
       debugPrint('⛔ PATCH $endpoint bloqué par circuit breaker');
-      throw NetworkException(
-        'Service temporarily unavailable. Retry in ${_circuitBreaker.timeUntilRetry}s',
-        endpoint: endpoint,
+      return _queueWriteOrThrow(
+        'PATCH',
+        endpoint,
+        body,
+        requiresAuth,
+        NetworkException(
+          'Service temporarily unavailable. Retry in ${_circuitBreaker.timeUntilRetry}s',
+          endpoint: endpoint,
+        ),
+        enabled: queueOffline,
       );
     }
 
@@ -602,7 +653,7 @@ class ApiClient {
           .patch(
             url,
             headers: await getHeaders(requiresAuth: requiresAuth),
-            body: jsonEncode(body),
+            body: jsonEncode(body ?? const <String, dynamic>{}),
           )
           .timeout(Duration(milliseconds: receiveTimeoutMs));
 
@@ -622,6 +673,7 @@ class ApiClient {
           'Could not connect to the server',
           endpoint: endpoint,
         ),
+        enabled: queueOffline,
       );
     } on HttpException {
       _circuitBreaker.recordFailure(reason: 'HttpException');
@@ -631,6 +683,7 @@ class ApiClient {
         body,
         requiresAuth,
         NetworkException('Could not find the server', endpoint: endpoint),
+        enabled: queueOffline,
       );
     } on FormatException {
       throw ResponseFormatException('Bad response format', endpoint: endpoint);
@@ -660,9 +713,16 @@ class ApiClient {
     // Vérifier le circuit breaker avant de faire la requête
     if (!bypassCircuitBreaker && !_circuitBreaker.canExecute) {
       debugPrint('⛔ DELETE $endpoint bloqué par circuit breaker');
-      throw NetworkException(
-        'Service temporarily unavailable. Retry in ${_circuitBreaker.timeUntilRetry}s',
-        endpoint: endpoint,
+      return _queueWriteOrThrow(
+        'DELETE',
+        endpoint,
+        null,
+        requiresAuth,
+        NetworkException(
+          'Service temporarily unavailable. Retry in ${_circuitBreaker.timeUntilRetry}s',
+          endpoint: endpoint,
+        ),
+        enabled: queueOffline,
       );
     }
 

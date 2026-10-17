@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'package:wanzo/core/widgets/desktop/responsive_form_container.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
 import '../bloc/settings_bloc.dart';
@@ -350,7 +351,7 @@ class _NotificationSettingsScreenState
                   icon: const Icon(Icons.notifications_active),
                   label: const Text('Voir toutes les notifications'),
                   onPressed: () {
-                    Navigator.of(context).pushNamed('/notifications');
+                    context.push('/notifications');
                   },
                 ),
               ],

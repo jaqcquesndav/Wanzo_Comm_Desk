@@ -38,10 +38,32 @@ class OfflineWriteQueue {
 
   Future<Box>? _boxFuture;
 
+  /// Rejeu en cours : un second appel (retour du réseau ET bouton Sync, par
+  /// exemple) attend le même passage au lieu de renvoyer les mêmes écritures
+  /// une deuxième fois, ce qui créerait des doublons côté serveur.
+  Future<OfflineReplayReport>? _replayInFlight;
+
+  /// Nombre d'écritures en attente, pour le bandeau d'état hors ligne.
+  /// Mis à jour à chaque mise en file et à chaque rejeu.
+  final ValueNotifier<int> pending = ValueNotifier<int>(0);
+
   Future<Box> _box() {
-    return _boxFuture ??= Hive.isBoxOpen(_boxName)
-        ? Future.value(Hive.box(_boxName))
+    final existing = _boxFuture;
+    if (existing != null) return existing;
+    final Future<Box> future = Hive.isBoxOpen(_boxName)
+        ? Future<Box>.value(Hive.box(_boxName))
         : Hive.openBox(_boxName);
+    _boxFuture = future;
+    // Un échec d'ouverture (Hive pas encore initialisé au tout premier
+    // instant du lancement, par exemple) ne doit pas être mémorisé : sinon
+    // plus aucune écriture ne pourrait être mise en file jusqu'au redémarrage.
+    future.then<void>(
+      (box) => pending.value = box.length,
+      onError: (Object _) {
+        if (identical(_boxFuture, future)) _boxFuture = null;
+      },
+    );
+    return future;
   }
 
   /// Ajoute une écriture à rejouer. Best-effort : si le stockage local est
@@ -51,6 +73,9 @@ class OfflineWriteQueue {
     required String endpoint,
     dynamic body,
     bool requiresAuth = true,
+    // Entreprise de la session qui a fait la saisie : une écriture n'est
+    // jamais rejouée sous la session d'une autre entreprise (poste partagé).
+    String? scope,
   }) async {
     try {
       final box = await _box();
@@ -68,9 +93,11 @@ class OfflineWriteQueue {
         // sérialiser des objets arbitraires.
         'body': body == null ? null : jsonEncode(body),
         'requiresAuth': requiresAuth,
+        if (scope != null && scope.isNotEmpty) 'scope': scope,
         'queuedAt': DateTime.now().toIso8601String(),
         'attempts': 0,
       });
+      pending.value = box.length;
       debugPrint('[OfflineWriteQueue] $method $endpoint mis en file');
       return true;
     } catch (e) {
@@ -102,6 +129,30 @@ class OfflineWriteQueue {
       bool requiresAuth,
     ) send,
     required bool Function(Object error) isPermanentFailure,
+    // Entreprise de la session courante. Une écriture saisie sous une autre
+    // entreprise est abandonnée (jamais envoyée dans la mauvaise société).
+    String? currentScope,
+  }) {
+    final running = _replayInFlight;
+    if (running != null) return running;
+    final future = _replay(
+      send: send,
+      isPermanentFailure: isPermanentFailure,
+      currentScope: currentScope,
+    ).whenComplete(() => _replayInFlight = null);
+    _replayInFlight = future;
+    return future;
+  }
+
+  Future<OfflineReplayReport> _replay({
+    required Future<void> Function(
+      String method,
+      String endpoint,
+      dynamic body,
+      bool requiresAuth,
+    ) send,
+    required bool Function(Object error) isPermanentFailure,
+    String? currentScope,
   }) async {
     int replayed = 0;
     int abandoned = 0;
@@ -120,6 +171,24 @@ class OfflineWriteQueue {
         continue;
       }
       final entry = Map<String, dynamic>.from(raw);
+      final entryScope = entry['scope'] as String?;
+      if (entryScope != null && (currentScope == null || currentScope.isEmpty)) {
+        // Session pas encore connue (tout début du lancement) : on attend le
+        // prochain passage plutôt que d'envoyer à l'aveugle.
+        break;
+      }
+      if (entryScope != null &&
+          currentScope != null &&
+          currentScope.isNotEmpty &&
+          entryScope != currentScope) {
+        debugPrint(
+          '[OfflineWriteQueue] Abandon de ${entry['method']} '
+          '${entry['endpoint']} : saisie faite sous une autre entreprise',
+        );
+        await box.delete(key);
+        abandoned++;
+        continue;
+      }
       final bodyJson = entry['body'] as String?;
       dynamic body;
       if (bodyJson != null) {
@@ -164,6 +233,7 @@ class OfflineWriteQueue {
       }
     }
 
+    pending.value = box.length;
     final report = OfflineReplayReport(
       replayed: replayed,
       abandoned: abandoned,
@@ -179,6 +249,7 @@ class OfflineWriteQueue {
   Future<void> clear() async {
     try {
       await (await _box()).clear();
+      pending.value = 0;
     } catch (_) {
       // ignoré
     }

@@ -207,7 +207,12 @@ class _DesktopDataTableState<T> extends State<DesktopDataTable<T>> {
                                               _selectedItems.toList(),
                                             );
                                           }
-                                          : null,
+                                          // Hors sélection, un clic sur la
+                                          // ligne ouvre l'élément (onRowTap
+                                          // n'était relié à rien).
+                                          : (widget.onRowTap != null
+                                              ? (_) => widget.onRowTap!(item)
+                                              : null),
                                   onLongPress:
                                       () => widget.onRowDoubleTap?.call(item),
                                   cells: row.cells,

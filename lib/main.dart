@@ -38,6 +38,9 @@ import 'package:wanzo/features/sales/services/sales_api_service.dart'; // Sales 
 import 'package:wanzo/features/customer/services/customer_api_service.dart'
     as customer_feature; // Customer Feature API Service
 import 'package:wanzo/features/supplier/services/supplier_api_service.dart'; // Supplier API Service
+import 'package:wanzo/features/transactions/services/financial_transaction_api_service.dart'; // Financial Transaction API Service
+import 'package:wanzo/core/services/reauth_service.dart';
+import 'package:wanzo/features/connectivity/widgets/offline_status_banner.dart';
 
 import 'package:wanzo/features/auth/services/auth0_service.dart';
 import 'package:wanzo/features/auth/services/auth_backend_service.dart';
@@ -192,6 +195,9 @@ Future<void> main() async {
 
     // 6. Initialisation de l'API client avec Auth0Service
     final apiClient = ApiClient();
+    // Sur ordinateur, Auth0Service relaie lui-même le jeton du
+    // DesktopAuthService (renouvelé avant expiration, voir
+    // desktopTokenProvider) : pas de source de jeton supplémentaire ici.
     ApiClient.configure(auth0Service: auth0Service);
 
     // 6.1 Enregistrer AuthBackendService dans GetIt pour accès par DesktopAuthService
@@ -273,6 +279,14 @@ Future<void> main() async {
     final operationJournalRepo =
         repositories['operationJournal'] as OperationJournalRepository?;
 
+    // Service API pour les transactions financières (pour le SyncService)
+    final financialTransactionApiService = FinancialTransactionApiService(
+      apiClient: apiClient,
+    );
+
+    // Mêmes entités synchronisées que sur mobile : sans les fournisseurs, les
+    // transactions et les comptes financiers, le bouton Sync du poste ne les
+    // envoyait ni ne les relisait jamais.
     final syncService = SyncService(
       productApiService: productApiService,
       customerApiService: customerApiService,
@@ -280,6 +294,9 @@ Future<void> main() async {
       syncStatusBox: syncStatusBox,
       expenseApiService:
           expenseApiService, // AJOUTÉ: Pour synchroniser les dépenses
+      supplierApiService: supplierApiService,
+      financialTransactionApiService: financialTransactionApiService,
+      financialAccountApiService: financialAccountApiService,
       operationJournalRepository:
           operationJournalRepo, // AJOUTÉ: Passer le repository pour sync des opérations
     );
@@ -300,6 +317,12 @@ Future<void> main() async {
       currencyService.loadSettings(),
     ]);
 
+    // Connecter EnhancedOfflineService au SyncService pour sync automatique sur reconnexion
+    enhancedOfflineService.setSyncCallback(() {
+      debugPrint('🔄 Sync automatique déclenchée par EnhancedOfflineService');
+      syncService.syncData();
+    });
+
     logger.info('Business services initialized');
     logger.info('Security and offline services initialized');
 
@@ -311,6 +334,12 @@ Future<void> main() async {
     );
 
     logger.info('BLoCs initialized');
+
+    // 11b. Connecter le ReauthService au AuthBloc pour la redirection login
+    final authBloc = blocs['auth'] as AuthBloc;
+    ReauthService.instance.setForceLogoutCallback(() {
+      authBloc.add(const AuthLogoutRequested());
+    });
 
     // 12. Lancement de l'application IMMÉDIATEMENT
     // Les chargements de données se feront après le premier frame
@@ -333,6 +362,19 @@ Future<void> main() async {
 
     // 13. Chargement différé des données après le premier frame
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Écritures conservées hors ligne lors d'une session précédente :
+      // rejouées au lancement, une fois Hive et la session prêts (le premier
+      // état réseau ne les rejoue pas, il arrive trop tôt).
+      if (connectivityService.isConnected) {
+        ApiClient().replayPendingWrites().then((report) {
+          if (!report.isEmpty) {
+            debugPrint('Main: écritures hors ligne rejouées : $report');
+          }
+        }).catchError((Object e) {
+          debugPrint('Main: rejeu des écritures hors ligne impossible : $e');
+        });
+      }
+
       // Charger les paramètres de devise dans le cubit (si pas déjà fait)
       final currencySettingsCubit =
           blocs['currencySettings'] as CurrencySettingsCubit;
@@ -828,8 +870,12 @@ class WanzoApp extends StatelessWidget {
                   title: 'Wanzo - Gestion de Stock',
                   debugShowCheckedModeBanner: false,
                   routerConfig: appRouter.router,
+                  // Bandeau hors ligne commun à tous les écrans (dernières
+                  // données connues, saisies en attente d'envoi).
                   builder: (context, child) => SubscriptionBannerOverlay(
-                    child: child ?? const SizedBox.shrink(),
+                    child: OfflineStatusBanner(
+                      child: child ?? const SizedBox.shrink(),
+                    ),
                   ),
                   theme: WanzoTheme.lightTheme, // Use your custom light theme
                   darkTheme: WanzoTheme.darkTheme, // Use your custom dark theme
@@ -933,21 +979,21 @@ class CriticalErrorApp extends StatelessWidget {
 class AuthObserver extends NavigatorObserver {
   final AuthBloc authBloc;
 
+  bool _initialCheckDone = false;
+
   AuthObserver(this.authBloc);
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    authBloc.add(
-      const AuthCheckRequested(),
-    ); // Corrected: Use AuthCheckRequested
+    // Ne déclencher la vérification d'auth qu'au premier push (démarrage de l'app).
+    // Les navigations ultérieures ne doivent pas réinitialiser l'état d'auth.
+    if (!_initialCheckDone) {
+      _initialCheckDone = true;
+      authBloc.add(const AuthCheckRequested());
+    }
   }
 
-  @override
-  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    authBloc.add(
-      const AuthCheckRequested(),
-    ); // Corrected: Use AuthCheckRequested
-  }
+  // Pas de re-vérification de l'auth au retour arrière : l'état est déjà connu.
 }
 
 // Helper function to show a loading dialog (optional)

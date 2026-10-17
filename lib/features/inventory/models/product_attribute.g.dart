@@ -8,7 +8,7 @@ part of 'product_attribute.dart';
 
 class ProductAttributeAdapter extends TypeAdapter<ProductAttribute> {
   @override
-  final int typeId = 28;
+  final int typeId = 120;
 
   @override
   ProductAttribute read(BinaryReader reader) {
