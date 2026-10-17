@@ -66,7 +66,8 @@ void showRestaurantOrderQuickView(
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
-            '${order.itemCount} article(s) · ${order.status.label}\n'
+            '${order.itemCount} article(s) · ${order.status.label}'
+            '${_modeReglement(order.paymentMethod)}\n'
             'Total ${formatCurrency(order.totalCdf, 'CDF')}',
             style: Theme.of(ctx).textTheme.bodySmall,
           ),
@@ -201,6 +202,16 @@ Future<void> _promptRename(
     await cubit.renameOrder(order.id, label);
   }
 }
+
+/// Mode de règlement d'une commande close (« · Sur une réservation »…), vide
+/// tant qu'elle n'est pas réglée.
+String _modeReglement(String? method) => switch (method) {
+      'cash' => ' · Espèces',
+      'mobile_money' => ' · Mobile Money',
+      'credit' => ' · Compte client',
+      'room' => ' · Sur une réservation',
+      _ => '',
+    };
 
 /// Accents de statut (cohérents avec le board / le plan de salle).
 const _accent = <RestaurantOrderStatus, Color>{

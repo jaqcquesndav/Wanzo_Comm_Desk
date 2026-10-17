@@ -32,7 +32,7 @@ class RestaurantKitchenScreen extends StatelessWidget {
     return RestaurantOrdersAutoRefresh(
       child: WanzoScaffold(
       currentIndex: index < 0 ? 0 : index,
-      title: 'Cuisine — commandes en préparation',
+      title: 'Cuisine, commandes en préparation',
       appBarActions: [
         IconButton(
           tooltip: 'Actualiser',

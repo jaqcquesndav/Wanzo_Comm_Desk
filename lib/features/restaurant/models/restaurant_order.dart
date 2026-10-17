@@ -210,6 +210,14 @@ class RestaurantOrder extends Equatable {
   /// (prestation), base de la future cote crédit.
   final List<Map<String, dynamic>> stageHistory;
 
+  /// Mode de règlement retenu à la clôture (`cash`, `mobile_money`, `credit`,
+  /// `room` = reportée sur le folio d'une réservation). `null` tant que la
+  /// commande n'est pas réglée. Le serveur le conserve (`paymentMethod`).
+  final String? paymentMethod;
+
+  /// Date du règlement (`paidAt` côté serveur).
+  final DateTime? paidAt;
+
   const RestaurantOrder({
     required this.id,
     required this.label,
@@ -222,6 +230,8 @@ class RestaurantOrder extends Equatable {
     this.customerId,
     this.customerName,
     this.stageHistory = const [],
+    this.paymentMethod,
+    this.paidAt,
   });
 
   /// La commande est close : elle a été facturée ou annulée, on n'y touche plus.
@@ -257,6 +267,8 @@ class RestaurantOrder extends Equatable {
     String? customerId,
     String? customerName,
     List<Map<String, dynamic>>? stageHistory,
+    String? paymentMethod,
+    DateTime? paidAt,
   }) {
     return RestaurantOrder(
       id: id,
@@ -270,6 +282,8 @@ class RestaurantOrder extends Equatable {
       customerId: customerId ?? this.customerId,
       customerName: customerName ?? this.customerName,
       stageHistory: stageHistory ?? this.stageHistory,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      paidAt: paidAt ?? this.paidAt,
     );
   }
 
@@ -285,6 +299,8 @@ class RestaurantOrder extends Equatable {
     if (customerId != null) 'customerId': customerId,
     if (customerName != null) 'customerName': customerName,
     if (stageHistory.isNotEmpty) 'stageHistory': stageHistory,
+    if (paymentMethod != null) 'paymentMethod': paymentMethod,
+    if (paidAt != null) 'paidAt': paidAt!.toUtc().toIso8601String(),
   };
 
   factory RestaurantOrder.fromJson(Map<String, dynamic> json) {
@@ -317,13 +333,19 @@ class RestaurantOrder extends Equatable {
               ?.whereType<Map<String, dynamic>>()
               .toList() ??
           const [],
+      paymentMethod: (json['paymentMethod'] as String?)?.trim().isEmpty ?? true
+          ? null
+          : (json['paymentMethod'] as String).trim(),
+      paidAt: json['paidAt'] == null
+          ? null
+          : DateTime.tryParse('${json['paidAt']}')?.toLocal(),
     );
   }
 
   @override
   List<Object?> get props =>
       [id, label, lines, status, createdAt, notes, tableId, type, customerId,
-       customerName, stageHistory];
+       customerName, stageHistory, paymentMethod, paidAt];
 }
 
 /// Arrondi bancaire au centime — centralisé pour tout le module.

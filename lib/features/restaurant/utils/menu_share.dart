@@ -9,11 +9,12 @@ import '../services/restaurant_api_service.dart';
 
 /// Partage PUBLIC de la CARTE (menu) par lien.
 ///
-/// Le lien public de la carte est SIGNÉ HMAC côté serveur (companyId + tableId)
-/// et n'existe qu'attaché à une table (page publique menu + commande en ligne).
-/// On RÉUTILISE donc le lien signé de la première table plutôt que de fabriquer
-/// une signature côté client. Sans aucune table, le serveur ne peut pas produire
-/// de lien signé : on invite alors l'utilisateur à créer une table.
+/// Le lien public est SIGNÉ côté serveur. On demande d'abord le lien de la
+/// carte SANS table (`restaurant/tables/menu-link`) : une commande passée par
+/// ce lien arrive comme commande à emporter. Avant, on réutilisait le lien de
+/// la PREMIÈRE table, si bien que toute commande d'un client qui avait reçu la
+/// carte par WhatsApp tombait sur cette table. Repli sur le lien d'une table
+/// seulement si le serveur ne fournit pas le lien de carte.
 ///
 /// Le partage réutilise le même mécanisme que les pièces commerciales :
 /// WhatsApp via un lien profond `wa.me` (comme `messaging_launcher`), partage
@@ -24,39 +25,46 @@ Future<void> shareRestaurantMenu(
 ) async {
   final messenger = ScaffoldMessenger.of(context);
 
-  // 1) Trouver une table pour réutiliser son lien public signé.
-  List<RestaurantTable> tables;
+  // 1) Lien de la carte sans table (commandes à emporter).
+  String url = '';
   try {
-    tables = await api.getTables();
-  } catch (_) {
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text('Lien indisponible. Vérifiez votre connexion.'),
-        backgroundColor: Colors.orange,
-      ),
-    );
-    return;
-  }
-  if (tables.isEmpty) {
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Créez d\'abord une table : le lien public de la carte est '
-          'généré par le serveur pour une table.',
-        ),
-        backgroundColor: Colors.orange,
-      ),
-    );
-    return;
-  }
-
-  // 2) Récupérer le lien signé (URL publique) de cette table.
-  String url;
-  try {
-    final link = await api.getTableLink(tables.first.id);
-    url = link.url;
+    url = await api.getMenuLink();
   } catch (_) {
     url = '';
+  }
+
+  // 2) Repli : lien signé de la première table.
+  if (url.isEmpty) {
+    List<RestaurantTable> tables;
+    try {
+      tables = await api.getTables();
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Lien indisponible. Vérifiez votre connexion.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    if (tables.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Créez d\'abord une table : le lien public de la carte est '
+            'généré par le serveur pour une table.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    try {
+      final link = await api.getTableLink(tables.first.id);
+      url = link.url;
+    } catch (_) {
+      url = '';
+    }
   }
   if (url.isEmpty) {
     messenger.showSnackBar(

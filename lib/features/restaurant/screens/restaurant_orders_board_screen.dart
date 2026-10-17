@@ -9,16 +9,13 @@ import '../../../core/services/business_context_service.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/kanban/kanban_board.dart';
-import '../../customer/bloc/customer_bloc.dart';
-import '../../customer/bloc/customer_event.dart';
-import '../../customer/bloc/customer_state.dart';
-import '../../customer/models/customer.dart';
 import '../cubit/restaurant_orders_cubit.dart';
 import '../models/menu_item.dart';
 import '../models/restaurant_order.dart';
 import '../repositories/menu_repository.dart';
 import '../widgets/order_dish_thumbs.dart';
 import '../widgets/order_type_badge.dart';
+import '../widgets/new_order_dialog.dart';
 import '../widgets/restaurant_order_quick_view_dialog.dart';
 import 'restaurant_floor_plan_view.dart';
 
@@ -205,136 +202,13 @@ class _RestaurantOrdersBoardScreenState
       );
   }
 
+  /// Nouvelle commande par le parcours commun du desktop : à emporter, le
+  /// client se choisit dans les fiches (vente rattachée à son vrai client).
   Future<void> _createOrder(
     BuildContext context,
     RestaurantOrdersCubit cubit,
   ) async {
-    // Charge les clients existants pour proposer des suggestions dans le champ
-    // « Libellé », tout en laissant saisir librement une table (« Table 4 »…).
-    final customerBloc = context.read<CustomerBloc>()..add(const LoadCustomers());
-    String typed = '';
-    // Nature du service choisie à la création : une commande à emporter
-    // n'occupera pas le plan de salle.
-    RestaurantOrderType type = RestaurantOrderType.dineIn;
-    final label = await showDialog<String>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Nouvelle commande'),
-          content: SizedBox(
-            width: 360,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SegmentedButton<RestaurantOrderType>(
-                  segments: const [
-                    ButtonSegment(
-                      value: RestaurantOrderType.dineIn,
-                      icon: Icon(Icons.restaurant),
-                      label: Text('Sur place'),
-                    ),
-                    ButtonSegment(
-                      value: RestaurantOrderType.takeaway,
-                      icon: Icon(Icons.takeout_dining),
-                      label: Text('À emporter'),
-                    ),
-                  ],
-                  selected: {type},
-                  showSelectedIcon: false,
-                  onSelectionChanged: (s) => setLocal(() => type = s.first),
-                ),
-                const SizedBox(height: 12),
-                BlocBuilder<CustomerBloc, CustomerState>(
-                  bloc: customerBloc,
-                  builder: (context, state) {
-                    final customers = <Customer>[
-                      if (state is CustomersLoaded)
-                        ...state.customers
-                      else if (state is CustomerSearchResults)
-                        ...state.customers,
-                    ];
-                    return Autocomplete<Customer>(
-                      optionsBuilder: (value) {
-                        final q = value.text.trim().toLowerCase();
-                        if (q.isEmpty) {
-                          return const Iterable<Customer>.empty();
-                        }
-                        return customers.where(
-                          (c) =>
-                              c.name.toLowerCase().contains(q) ||
-                              c.phoneNumber.toLowerCase().contains(q),
-                        );
-                      },
-                      displayStringForOption: (c) => c.name,
-                      onSelected: (c) => typed = c.name,
-                      fieldViewBuilder: (context, textController, focusNode,
-                          onFieldSubmitted) {
-                        return TextField(
-                          controller: textController,
-                          focusNode: focusNode,
-                          autofocus: true,
-                          decoration: InputDecoration(
-                            labelText: type == RestaurantOrderType.takeaway
-                                ? 'Libellé (nom du client, Emporter…)'
-                                : 'Libellé (Table 4, nom du client…)',
-                          ),
-                          onChanged: (v) => typed = v,
-                          onSubmitted: (v) => Navigator.pop(ctx, v),
-                        );
-                      },
-                      optionsViewBuilder: (context, onSelected, options) {
-                        return Align(
-                          alignment: Alignment.topLeft,
-                          child: Material(
-                            elevation: 4.0,
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                maxHeight: 240,
-                                maxWidth: 360,
-                              ),
-                              child: ListView.builder(
-                                padding: const EdgeInsets.all(8.0),
-                                shrinkWrap: true,
-                                itemCount: options.length,
-                                itemBuilder: (context, index) {
-                                  final option = options.elementAt(index);
-                                  return ListTile(
-                                    leading: const Icon(Icons.person, size: 20),
-                                    title: Text(option.name),
-                                    subtitle: option.phoneNumber.isNotEmpty
-                                        ? Text(option.phoneNumber)
-                                        : null,
-                                    onTap: () => onSelected(option),
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Annuler'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, typed),
-              child: const Text('Créer'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (label != null && label.trim().isNotEmpty) {
-      await cubit.openOrder(label, type: type);
-    }
+    await showNewRestaurantOrderDialog(context, cubit);
   }
 }
 

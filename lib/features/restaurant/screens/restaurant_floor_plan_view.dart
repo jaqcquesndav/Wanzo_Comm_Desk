@@ -12,6 +12,7 @@ import '../models/restaurant_order.dart';
 import '../repositories/menu_repository.dart';
 import '../services/restaurant_api_service.dart';
 import '../widgets/order_dish_thumbs.dart';
+import '../widgets/new_order_dialog.dart';
 import '../widgets/restaurant_order_quick_view_dialog.dart';
 
 /// Vue « Plan de salle » : une grille de tables (module restaurant, backend) où
@@ -233,69 +234,15 @@ class _RestaurantFloorPlanViewState extends State<RestaurantFloorPlanView> {
     _openPos(order.id);
   }
 
-  /// Repli hors-ligne / sans tables : ouvrir une commande libre (même flux que
-  /// le board), afin que le service ne soit jamais bloqué. Choix sur place / à
-  /// emporter.
+  /// Repli hors-ligne / sans tables : ouvrir une commande libre (même parcours
+  /// que le board et la caisse), afin que le service ne soit jamais bloqué.
+  /// À emporter, le client se choisit dans les fiches.
   Future<void> _createFreeOrder() async {
-    final cubit = context.read<RestaurantOrdersCubit>();
-    final controller = TextEditingController();
-    RestaurantOrderType type = RestaurantOrderType.dineIn;
-    final label = await showDialog<String>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Nouvelle commande'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SegmentedButton<RestaurantOrderType>(
-                segments: const [
-                  ButtonSegment(
-                    value: RestaurantOrderType.dineIn,
-                    icon: Icon(Icons.restaurant),
-                    label: Text('Sur place'),
-                  ),
-                  ButtonSegment(
-                    value: RestaurantOrderType.takeaway,
-                    icon: Icon(Icons.takeout_dining),
-                    label: Text('À emporter'),
-                  ),
-                ],
-                selected: {type},
-                showSelectedIcon: false,
-                onSelectionChanged: (s) => setLocal(() => type = s.first),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: type == RestaurantOrderType.takeaway
-                      ? 'Libellé (nom du client, Emporter…)'
-                      : 'Libellé (Table 4, nom…)',
-                ),
-                onSubmitted: (v) => Navigator.pop(ctx, v),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Annuler'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, controller.text),
-              child: const Text('Créer'),
-            ),
-          ],
-        ),
-      ),
+    final order = await showNewRestaurantOrderDialog(
+      context,
+      context.read<RestaurantOrdersCubit>(),
     );
-    if (label != null && label.trim().isNotEmpty) {
-      final order = await cubit.openOrder(label, type: type);
-      if (mounted) _openPos(order.id);
-    }
+    if (order != null && mounted) _openPos(order.id);
   }
 
   @override

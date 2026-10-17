@@ -280,7 +280,7 @@ class RestaurantDashboardScreen extends StatelessWidget {
           label: 'Temps service moy.',
           value: m.avgServiceMinutes > 0
               ? '${m.avgServiceMinutes.round()} min'
-              : '—',
+              : 'n.d.',
         ),
       ],
     );
@@ -524,8 +524,11 @@ class _RestaurantMetrics {
         .where((o) =>
             o.status == RestaurantOrderStatus.paid && sameDay(o.createdAt))
         .toList();
-    final revenueToday =
-        paidToday.fold<double>(0, (sum, o) => sum + o.totalCdf);
+    // Une commande reportée sur une réservation n'est pas une vente du jour :
+    // elle sera facturée avec le séjour ou la location (pas de double compte).
+    final revenueToday = paidToday
+        .where((o) => o.paymentMethod != 'room')
+        .fold<double>(0, (sum, o) => sum + o.totalCdf);
 
     // Plats les plus vendus : agrégat des réglées du jour ; repli sur toutes
     // les réglées si la journée vient de commencer.

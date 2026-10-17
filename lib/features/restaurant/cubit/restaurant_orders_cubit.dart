@@ -187,7 +187,6 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
   }
 
   /// Ouvre une nouvelle commande (table / emporter) et la retourne.
-  /// Ouvre une nouvelle commande (table / emporter) et la retourne.
   ///
   /// [tableId] lie fortement la commande à une table du plan de salle (source de
   /// vérité du rapprochement, plus fiable que le libellé). [type] force la nature
@@ -292,10 +291,26 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
   /// Marque la commande réglée. À appeler APRÈS création réussie de la `Sale`.
   /// Une commande déjà close est ignorée : deux encaissements du même ticket
   /// produiraient deux ventes pour un seul repas.
-  Future<void> markPaid(String orderId) async {
+  ///
+  /// [method] consigne le mode retenu (`cash`, `mobile_money`, `credit`, ou
+  /// `room` quand la commande rejoint le folio d'une réservation) : le serveur
+  /// le garde, et un report sur réservation n'est pas pris pour un encaissement.
+  Future<void> markPaid(String orderId, {String? method}) async {
     final order = state.byId(orderId);
     if (order == null || order.isSettled) return;
-    await updateStatus(orderId, RestaurantOrderStatus.paid);
+    final history = [
+      ...order.stageHistory,
+      {
+        'status': RestaurantOrderStatus.paid.apiValue,
+        'at': DateTime.now().toIso8601String(),
+      },
+    ];
+    await _upsert(order.copyWith(
+      status: RestaurantOrderStatus.paid,
+      stageHistory: history,
+      paymentMethod: method,
+      paidAt: DateTime.now(),
+    ));
   }
 
   /// Rattache (ou détache) le client enregistré d'une commande en cours.
@@ -318,6 +333,8 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
       customerId: customerId,
       customerName: customerName,
       stageHistory: order.stageHistory,
+      paymentMethod: order.paymentMethod,
+      paidAt: order.paidAt,
     ));
   }
 

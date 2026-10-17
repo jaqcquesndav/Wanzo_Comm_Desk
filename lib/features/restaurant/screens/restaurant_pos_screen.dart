@@ -15,9 +15,10 @@ import 'package:wanzo/core/widgets/dish_thumb_grid.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/core/shared_widgets/payment_method_selector.dart';
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
-import 'package:wanzo/features/customer/bloc/customer_bloc.dart';
-import 'package:wanzo/features/customer/bloc/customer_event.dart';
-import 'package:wanzo/features/customer/bloc/customer_state.dart';
+import 'package:wanzo/core/exceptions/api_exceptions.dart';
+import 'package:wanzo/core/modules/activity_mode.dart';
+import 'package:wanzo/core/utils/price_plausibility.dart';
+import 'package:wanzo/features/customer/widgets/customer_picker_field.dart';
 import 'package:wanzo/features/customer/models/customer.dart';
 import 'package:wanzo/features/invoice/widgets/post_sale_document_sheet.dart';
 import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
@@ -32,7 +33,10 @@ import 'package:wanzo/features/settings/models/settings.dart'
     as old_settings_model;
 
 import '../cubit/restaurant_orders_cubit.dart';
+import '../services/restaurant_folio_service.dart';
+import '../widgets/new_order_dialog.dart';
 import '../widgets/orders_auto_refresh.dart';
+import '../widgets/web_orders_inbox.dart';
 import '../models/menu_course.dart';
 import '../models/menu_item.dart';
 import '../models/restaurant_order.dart';
@@ -55,23 +59,34 @@ import 'package:wanzo/features/inventory/repositories/inventory_repository.dart'
 /// widgets de facturation que la boutique, le salon et l'app Assets.
 ///
 /// Ce n'est PAS le mobile étiré : tout est visible d'un coup, adapté au comptoir.
-enum _PayMethod { cash, mobileMoney, credit }
+///
+/// Facturation croisée (même modèle que la caisse resto de l'app Assets) :
+///  - Espèces et Mobile Money sont ENCAISSÉS (vente réglée) ;
+///  - « Compte client » : vente à crédit portée par un client RÉEL, obligatoire
+///    (jamais de dette sur un client fabriqué, impossible à encaisser) ;
+///  - « Sur une réservation » : la commande rejoint le folio d'une chambre ou
+///    d'une salle (gestion `POST reservations/:id/folio`) et figurera sur LA
+///    facture du séjour ou de la location. Aucune vente séparée ici.
+enum _PayMethod { cash, mobileMoney, credit, room }
 
 extension _PayMethodX on _PayMethod {
   String get label => switch (this) {
         _PayMethod.cash => 'Espèces',
         _PayMethod.mobileMoney => 'Mobile Money',
-        _PayMethod.credit => 'Crédit',
+        _PayMethod.credit => 'Compte client',
+        _PayMethod.room => 'Sur une réservation',
       };
   String get apiValue => switch (this) {
         _PayMethod.cash => 'cash',
         _PayMethod.mobileMoney => 'mobile_money',
         _PayMethod.credit => 'credit',
+        _PayMethod.room => 'room',
       };
   IconData get icon => switch (this) {
         _PayMethod.cash => Icons.payments,
         _PayMethod.mobileMoney => Icons.smartphone,
-        _PayMethod.credit => Icons.schedule,
+        _PayMethod.credit => Icons.account_box_outlined,
+        _PayMethod.room => Icons.event_available,
       };
 }
 
@@ -127,6 +142,29 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   final _cashController = TextEditingController();
   bool _submitting = false;
 
+  /// Commande en cours d'encaissement, figée au clic sur « Valider » : la
+  /// sélection du bandeau peut changer pendant l'enregistrement, et c'est
+  /// CETTE commande (pas la sélection courante) qui doit passer réglée.
+  String? _payingOrderId;
+
+  /// Mode retenu pour la commande en cours d'encaissement (consigné sur la
+  /// commande au moment de la clôture).
+  _PayMethod? _payingMethod;
+
+  /// Client qui porte la vente « Compte client » (locataire, habitué,
+  /// entreprise). Jamais de dette sans client réel.
+  Customer? _clientCompte;
+
+  /// Réservation retenue pour « Sur une réservation ».
+  FolioReservation? _sejour;
+
+  final RestaurantFolioService _folio = RestaurantFolioService();
+
+  /// Réservations ouvertes connues (chambre ou salle). L'option « Sur une
+  /// réservation » n'apparaît qu'en mode hôtel ou quand l'entreprise en a :
+  /// un restaurant sans hébergement ni salle n'a pas à la voir.
+  List<FolioReservation> _reservations = const [];
+
   /// Affichage double devise (CDF + USD) : préférence utilisateur partagée avec
   /// les tableaux de bord. Le primaire reste CDF (devise système) ; l'USD est un
   /// simple repère converti au taux central (jamais inventé).
@@ -152,6 +190,7 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     // Pré-sélection depuis le plan de salle (query param `orderId`).
     _selectedOrderId = widget.initialOrderId;
     _loadMenu();
+    _chargerReservations(silencieux: true);
     CurrencyDisplayService.instance.dualCurrency.addListener(_onDualChanged);
     final cubit = context.read<CurrencySettingsCubit>();
     if (cubit.state.status == CurrencySettingsStatus.loaded) {
@@ -246,6 +285,40 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     return '≈ ${formatCurrency(cdf / rate, 'USD')}';
   }
 
+  /// Le mode hôtel propose toujours « Sur une réservation » ; ailleurs,
+  /// seulement si l'entreprise a des réservations ouvertes (salle louée…).
+  bool get _reservationsProposees =>
+      BusinessContextService().activityMode == ActivityMode.hotel ||
+      _reservations.isNotEmpty ||
+      _method == _PayMethod.room;
+
+  List<_PayMethod> get _modesProposes => [
+        _PayMethod.cash,
+        _PayMethod.mobileMoney,
+        _PayMethod.credit,
+        if (_reservationsProposees) _PayMethod.room,
+      ];
+
+  /// Relit les réservations ouvertes. [silencieux] : au montage, un échec
+  /// (hors ligne, droits) ne dérange personne ; à la demande, on l'explique.
+  Future<bool> _chargerReservations({bool silencieux = false}) async {
+    try {
+      final liste = await _folio.reservationsOuvertes();
+      if (!mounted) return false;
+      setState(() => _reservations = liste);
+      return true;
+    } catch (_) {
+      if (!silencieux && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Réservations indisponibles. Vérifiez la connexion.'),
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
   Future<void> _loadMenu() async {
     // Stock lu AVANT l'attente (pas de contexte traversé par un `await`) : il
     // vient du cache Hive, donc disponible même hors ligne.
@@ -318,6 +391,9 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
               children: [
                 _buildOrderStrip(orders, selected),
                 const Divider(height: 1),
+                // Commandes passées par les clients depuis le lien de table :
+                // la caisse reste ouverte tout le service, elle doit les voir.
+                const WebOrdersInbox(),
                 Expanded(
                   child: selected == null
                       ? const EmptyStateView(
@@ -400,8 +476,7 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
                       child: ChoiceChip(
                         label: Text('${o.label} · ${o.itemCount}'),
                         selected: o.id == sel?.id,
-                        onSelected: (_) =>
-                            setState(() => _selectedOrderId = o.id),
+                        onSelected: (_) => _selectionner(o.id),
                       ),
                     ),
                 ],
@@ -932,7 +1007,8 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     return Container(
       color: theme.colorScheme.surfaceContainerLow,
       padding: const EdgeInsets.all(16),
-      child: Column(
+      child: SingleChildScrollView(
+       child: Column(
         // min + SizedBox (pas de Spacer) : fonctionne aussi bien en colonne
         // pleine hauteur (large) qu'empilé sous le ticket (compact).
         mainAxisSize: MainAxisSize.min,
@@ -994,13 +1070,56 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
           Text('Règlement', style: theme.textTheme.labelLarge),
           const SizedBox(height: 8),
           PaymentMethodSelector<_PayMethod>(
-            methods: _PayMethod.values,
+            methods: _modesProposes,
             selected: _method,
             labelOf: (m) => m.label,
             iconOf: (m) => m.icon,
-            onChanged: (m) => setState(() => _method = m),
+            onChanged: (m) {
+              setState(() => _method = m);
+              if (m == _PayMethod.room && _sejour == null) _choisirSejour();
+              if (m == _PayMethod.credit && _compteId(order) == null) {
+                _choisirClient(order);
+              }
+            },
           ),
           const SizedBox(height: 12),
+          if (_method == _PayMethod.room)
+            Card(
+              margin: EdgeInsets.zero,
+              child: ListTile(
+                dense: true,
+                leading: const Icon(Icons.event_available),
+                title: Text(_sejour == null
+                    ? 'Choisir la réservation'
+                    : (_sejour!.spaceName ?? 'Réservation')),
+                subtitle: Text(_sejour == null
+                    ? 'Chambre ou salle : la commande rejoint sa facture.'
+                    : '${_sejour!.customerName ?? 'Client'} · ajoutée à sa facture'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _choisirSejour,
+              ),
+            ),
+          if (_method == _PayMethod.credit)
+            Card(
+              margin: EdgeInsets.zero,
+              child: ListTile(
+                dense: true,
+                leading: const Icon(Icons.account_box_outlined),
+                title: Text(_compteNom(order) ?? 'Choisir le client'),
+                subtitle: Text(_compteId(order) == null
+                    ? 'Client obligatoire : la dette lui est rattachée.'
+                    : 'À encaisser plus tard, visible dans son historique'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _choisirClient(order),
+              ),
+            ),
+          if (_method == _PayMethod.mobileMoney)
+            Text(
+              'Paiement reçu sur le compte Mobile Money : la vente est réglée.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           if (_method == _PayMethod.cash) ...[
             TextField(
               controller: _cashController,
@@ -1043,9 +1162,13 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
           FilledButton.icon(
             onPressed: order.isEmpty ||
                     _submitting ||
-                    (_method == _PayMethod.cash && change < 0)
+                    (_method == _PayMethod.cash && change < 0) ||
+                    (_method == _PayMethod.room && _sejour == null) ||
+                    (_method == _PayMethod.credit && _compteId(order) == null)
                 ? null
-                : () => _confirm(order),
+                : () => _method == _PayMethod.room
+                    ? _reporterSurReservation(order)
+                    : _confirm(order),
             icon: _submitting
                 ? const SizedBox(
                     width: 18,
@@ -1054,7 +1177,9 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
                   )
                 : const Icon(Icons.check),
             label: Text(
-              'Valider · ${formatCurrency(_versDevise(total), _codeDevise)}',
+              _method == _PayMethod.room
+                  ? 'Ajouter à la réservation · ${formatCurrency(total, 'CDF')}'
+                  : 'Valider · ${formatCurrency(_versDevise(total), _codeDevise)}',
             ),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -1062,13 +1187,249 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
           ),
         ],
       ),
+      ),
     );
   }
 
-  void _confirm(RestaurantOrder order) {
+  /// Client du compte : celui choisi à la caisse, sinon celui déjà rattaché à
+  /// la commande (à emporter nommé).
+  String? _compteId(RestaurantOrder order) =>
+      _clientCompte?.id ?? order.customerId;
+
+  String? _compteNom(RestaurantOrder order) =>
+      _clientCompte?.name ?? order.customerName;
+
+  /// Change de commande dans le bandeau : le client du compte et la
+  /// réservation valaient pour la précédente.
+  void _selectionner(String orderId) {
+    if (orderId == _selectedOrderId) return;
+    setState(() {
+      _selectedOrderId = orderId;
+      _clientCompte = null;
+      _sejour = null;
+      _cashController.clear();
+      if (_method == _PayMethod.room || _method == _PayMethod.credit) {
+        _method = _PayMethod.cash;
+      }
+    });
+  }
+
+  /// Choisit le client qui porte la vente « Compte client ». Sélecteur
+  /// partagé ([CustomerPickerField]) : recherche locale et serveur, création
+  /// en ligne d'une fiche manquante. Le client est aussi rattaché à la
+  /// commande (historique, créance).
+  Future<void> _choisirClient(RestaurantOrder order) async {
+    final cubit = context.read<RestaurantOrdersCubit>();
+    final controller = TextEditingController(text: order.customerName ?? '');
+    Customer? choisi;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: Row(
+            children: [
+              const Expanded(child: Text('Sur le compte de quel client ?')),
+              IconButton(
+                tooltip: 'Fermer',
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(ctx, false),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                CustomerPickerField(
+                  controller: controller,
+                  label: 'Client',
+                  hint: 'Locataire, habitué ou entreprise',
+                  onSelected: (c) => setD(() => choisi = c),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Une vente sur compte exige une fiche client : la dette '
+                  'lui est rattachée et se retrouve dans « À encaisser ».',
+                  style: Theme.of(ctx).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: choisi == null ? null : () => Navigator.pop(ctx, true),
+              child: const Text('Retenir ce client'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    final client = choisi;
+    if (ok != true || client == null || !mounted) return;
+    setState(() => _clientCompte = client);
+    await cubit.setCustomer(
+      order.id,
+      customerId: client.id,
+      customerName: client.name,
+    );
+  }
+
+  /// Réservations ouvertes (chambre ou salle) : en cours, ou qui commencent
+  /// dans les 7 prochains jours (un traiteur se commande souvent avant
+  /// l'événement). Relues à chaque ouverture : une réservation créée dans
+  /// l'app Assets apparaît sans redémarrer la caisse.
+  Future<void> _choisirSejour() async {
+    final ok = await _chargerReservations();
+    if (!ok || !mounted) return;
+    final sejours = _reservations;
+    final choix = await showDialog<FolioReservation>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Ajouter à quelle réservation ?'),
+        children: sejours.isEmpty
+            ? const [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(24, 8, 24, 16),
+                  child: Text(
+                    'Aucune réservation en cours ou prévue cette semaine. '
+                    "Créez d'abord celle du client (chambre ou salle) dans "
+                    "l'app Assets, puis revenez ici.",
+                  ),
+                ),
+              ]
+            : [
+                for (final r in sejours)
+                  ListTile(
+                    leading: const Icon(Icons.event_available),
+                    title: Text(r.spaceName ?? 'Réservation'),
+                    subtitle: Text(
+                      '${r.customerName ?? 'Client'} · '
+                      '${_jourHeure(r.startAt)} au ${_jourHeure(r.endAt)}',
+                    ),
+                    trailing: Text(r.statusLabel),
+                    onTap: () => Navigator.pop(ctx, r),
+                  ),
+              ],
+      ),
+    );
+    if (choix != null && mounted) setState(() => _sejour = choix);
+  }
+
+  static String _jourHeure(DateTime d) {
+    String deux(int v) => v.toString().padLeft(2, '0');
+    return '${deux(d.day)}/${deux(d.month)} ${deux(d.hour)}:${deux(d.minute)}';
+  }
+
+  /// Ajoute la commande au folio de la réservation, puis la clôt (mode
+  /// `room`). La facture sera émise UNE fois par le serveur, au départ du
+  /// client, avec le séjour ou la location : aucune vente ici, donc aucun
+  /// décrément de stock ici (l'article du stock sort à cette facturation).
+  /// Hors ligne, l'envoi part en file et le serveur ignore un second envoi de
+  /// la même commande (`sourceId`) : ni perte ni doublon.
+  Future<void> _reporterSurReservation(RestaurantOrder order) async {
+    final sejour = _sejour;
+    if (sejour == null) return;
+    final cubit = context.read<RestaurantOrdersCubit>();
+    final messenger = ScaffoldMessenger.of(context);
+    final erreur = Theme.of(context).colorScheme.error;
+    setState(() => _submitting = true);
+    bool differe;
+    try {
+      differe = !await _folio.reporterSurReservation(sejour.id, order);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(e is ApiException && e.message.isNotEmpty
+              ? 'Ajout à la réservation impossible : ${e.message}'
+              : 'Ajout à la réservation impossible. Réessayez.'),
+          backgroundColor: erreur,
+        ),
+      );
+      return;
+    }
+    await cubit.markPaid(order.id, method: _PayMethod.room.apiValue);
+    if (!mounted) return;
+    setState(() {
+      _submitting = false;
+      _selectedOrderId = null;
+      _sejour = null;
+      _clientCompte = null;
+      _method = _PayMethod.cash;
+    });
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(differe
+            ? 'Hors ligne : ajout à ${sejour.spaceName ?? 'la réservation'} '
+                'envoyé au retour du réseau.'
+            : 'Ajouté à la facture de ${sejour.spaceName ?? 'la réservation'}.'),
+        backgroundColor: differe ? Colors.orange : Colors.green,
+      ),
+    );
+  }
+
+  /// Garde-fou avant encaissement, même règle que la vente boutique : un
+  /// article du stock à un prix anormalement bas (dollars saisis en francs)
+  /// ou un montant reçu disproportionné demande confirmation.
+  Future<bool> _verifierVraisemblance(RestaurantOrder order) async {
+    for (final l in order.lines) {
+      // Un plat se contrôle à sa saisie dans la carte ; ici, le stock.
+      if (!l.fromStock || !prixAnormalementBas(l.unitPriceCdf, 'CDF')) continue;
+      if (!mounted) return false;
+      final choix = await confirmerPrixVenteBas(
+        context,
+        article: l.productName,
+        prix: l.unitPriceCdf,
+        codeDevise: 'CDF',
+        peutCorriger: false,
+      );
+      if (choix != ChoixPrixVente.continuer || !mounted) return false;
+    }
+    final totalDevise = _versDevise(order.totalCdf);
+    if (_codeDevise != 'CDF' && prixAnormalementBas(totalDevise, _codeDevise)) {
+      if (!mounted) return false;
+      final choix = await confirmerPrixVenteBas(
+        context,
+        article: 'le total de la commande',
+        prix: totalDevise,
+        codeDevise: _codeDevise,
+        peutCorriger: false,
+      );
+      if (choix != ChoixPrixVente.continuer || !mounted) return false;
+    }
+    if (_method == _PayMethod.cash) {
+      final recu =
+          double.tryParse(_cashController.text.replaceAll(' ', '')) ?? 0;
+      if (encaissementDisproportionne(recu: recu, total: totalDevise)) {
+        if (!mounted) return false;
+        return confirmerEncaissementDisproportionne(
+          context,
+          recu: recu,
+          total: totalDevise,
+          codeDevise: _codeDevise,
+        );
+      }
+    }
+    return true;
+  }
+
+  Future<void> _confirm(RestaurantOrder order) async {
+    if (!await _verifierVraisemblance(order) || !mounted) return;
     final total = order.totalCdf;
-    final completed = _method == _PayMethod.cash;
+    // Espèces et Mobile Money sont ENCAISSÉS ; seul le compte client reste dû.
+    // (Mobile Money tombait dans « À encaisser » alors que l'argent est reçu.)
+    final completed = _method != _PayMethod.credit;
     final paid = completed ? total : 0.0;
+    final compteId = _compteId(order);
+    if (_method == _PayMethod.credit && compteId == null) return;
 
     final items = order.lines
         .map(
@@ -1098,8 +1459,18 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
       // Client RÉEL quand la commande en connaît un (à emporter nommé) :
       // sans cela la vente restait rattachée à un client fabriqué, invisible
       // dans l'historique du client et dans le journal des opérations.
-      customerId: order.customerId ?? 'resto_${order.id}',
-      customerName: order.customerName ?? order.label,
+      // Sans client rattaché : client de passage, comme la vente boutique
+      // (aucun identifiant fabriqué, qui donnait une dette sans débiteur).
+      customerId: _method == _PayMethod.credit ? compteId : order.customerId,
+      // Un libellé de table n'est pas un client ; le nom d'un client à
+      // emporter l'est.
+      customerName: _method == _PayMethod.credit
+          ? (_compteNom(order) ?? order.label)
+          : (order.customerName ??
+              (order.type == RestaurantOrderType.takeaway &&
+                      !RestaurantOrderTypeX.labelLooksTakeaway(order.label)
+                  ? order.label
+                  : 'Inconnu')),
       items: items,
       totalAmountInCdf: total,
       paidAmountInCdf: paid,
@@ -1118,7 +1489,11 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     );
 
     _pendingSale = sale;
-    setState(() => _submitting = true);
+    setState(() {
+      _submitting = true;
+      _payingOrderId = order.id;
+      _payingMethod = _method;
+    });
     context.read<SalesBloc>().add(AddSale(sale));
 
     // Auto-impression du ticket de caisse (ventes espèces) — même câblage que
@@ -1157,14 +1532,21 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   void _onSalesState(BuildContext context, SalesState state) async {
     if (!_submitting) return;
     if (state is SalesOperationSuccess) {
-      final id = _selectedOrderId;
+      // La commande payée est celle figée au clic, pas la sélection courante.
+      final id = _payingOrderId;
       if (id != null) {
-        await context.read<RestaurantOrdersCubit>().markPaid(id);
+        await context
+            .read<RestaurantOrdersCubit>()
+            .markPaid(id, method: _payingMethod?.apiValue);
       }
       if (!mounted) return;
       await _showPostSaleActions();
     } else if (state is SalesError) {
-      setState(() => _submitting = false);
+      setState(() {
+        _submitting = false;
+        _payingOrderId = null;
+        _payingMethod = null;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Échec : ${state.message}'),
@@ -1221,8 +1603,15 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     if (!mounted) return;
     setState(() {
       _submitting = false;
-      _selectedOrderId = null;
+      // Ne désélectionne que si l'on est resté sur la commande réglée.
+      if (_selectedOrderId == _payingOrderId) _selectedOrderId = null;
+      _payingOrderId = null;
+      _payingMethod = null;
       _cashController.clear();
+      // Le client du compte valait pour CETTE commande seulement.
+      _clientCompte = null;
+      _sejour = null;
+      _method = _PayMethod.cash;
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -1232,134 +1621,15 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     );
   }
 
+  /// Nouvelle commande par le parcours commun du desktop (sur place ou à
+  /// emporter avec choix du client), sélectionnée aussitôt dans la caisse.
   Future<void> _promptNewOrder() async {
-    final cubit = context.read<RestaurantOrdersCubit>();
-    // Charge les clients existants pour proposer des suggestions dans le champ
-    // « Table / client » (autocomplétion desktop), tout en laissant saisir
-    // librement un libellé de table (« Table 4 », « Emporter »…).
-    final customerBloc = context.read<CustomerBloc>()..add(const LoadCustomers());
-    // Valeur courante saisie (suggestion sélectionnée OU texte libre).
-    String typed = '';
-    // Nature du service choisie à la création : une commande à emporter
-    // n'occupera pas le plan de salle.
-    RestaurantOrderType type = RestaurantOrderType.dineIn;
-    final label = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setLocal) => AlertDialog(
-        title: const Text('Nouvelle commande'),
-        content: SizedBox(
-          width: 360,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SegmentedButton<RestaurantOrderType>(
-                segments: const [
-                  ButtonSegment(
-                    value: RestaurantOrderType.dineIn,
-                    icon: Icon(Icons.restaurant),
-                    label: Text('Sur place'),
-                  ),
-                  ButtonSegment(
-                    value: RestaurantOrderType.takeaway,
-                    icon: Icon(Icons.takeout_dining),
-                    label: Text('À emporter'),
-                  ),
-                ],
-                selected: {type},
-                showSelectedIcon: false,
-                onSelectionChanged: (s) => setLocal(() => type = s.first),
-              ),
-              const SizedBox(height: 12),
-              BlocBuilder<CustomerBloc, CustomerState>(
-                bloc: customerBloc,
-                builder: (context, state) {
-              final customers = <Customer>[
-                if (state is CustomersLoaded)
-                  ...state.customers
-                else if (state is CustomerSearchResults)
-                  ...state.customers,
-              ];
-              return Autocomplete<Customer>(
-                optionsBuilder: (value) {
-                  final q = value.text.trim().toLowerCase();
-                  if (q.isEmpty) return const Iterable<Customer>.empty();
-                  return customers.where(
-                    (c) =>
-                        c.name.toLowerCase().contains(q) ||
-                        c.phoneNumber.toLowerCase().contains(q),
-                  );
-                },
-                displayStringForOption: (c) => c.name,
-                onSelected: (c) => typed = c.name,
-                fieldViewBuilder:
-                    (context, textController, focusNode, onFieldSubmitted) {
-                  return TextField(
-                    controller: textController,
-                    focusNode: focusNode,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Table / client',
-                      hintText: 'Ex. Table 4, Emporter, ou un client existant…',
-                    ),
-                    onChanged: (v) => typed = v,
-                    onSubmitted: (v) => Navigator.of(dialogContext).pop(v),
-                  );
-                },
-                optionsViewBuilder: (context, onSelected, options) {
-                  return Align(
-                    alignment: Alignment.topLeft,
-                    child: Material(
-                      elevation: 4.0,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxHeight: 240,
-                          maxWidth: 360,
-                        ),
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(8.0),
-                          shrinkWrap: true,
-                          itemCount: options.length,
-                          itemBuilder: (context, index) {
-                            final option = options.elementAt(index);
-                            return ListTile(
-                              leading: const Icon(Icons.person, size: 20),
-                              title: Text(option.name),
-                              subtitle: option.phoneNumber.isNotEmpty
-                                  ? Text(option.phoneNumber)
-                                  : null,
-                              onTap: () => onSelected(option),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(typed),
-            child: const Text('Ouvrir'),
-          ),
-        ],
-        ),
-      ),
+    final order = await showNewRestaurantOrderDialog(
+      context,
+      context.read<RestaurantOrdersCubit>(),
     );
-    if (label == null) return;
-    final order = await cubit.openOrder(label, type: type);
-    if (!mounted) return;
-    setState(() => _selectedOrderId = order.id);
+    if (order == null || !mounted) return;
+    _selectionner(order.id);
   }
 }
 

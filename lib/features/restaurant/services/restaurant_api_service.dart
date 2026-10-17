@@ -345,6 +345,18 @@ class RestaurantApiService {
     await _apiClient.delete('restaurant/tables/$id', requiresAuth: true);
   }
 
+  /// Lien PUBLIC signé de la carte SANS table (`GET restaurant/tables/menu-link`) :
+  /// une commande passée depuis ce lien arrive comme commande à emporter, au
+  /// lieu d'être attribuée à une table qui n'a rien commandé. Chaîne vide si
+  /// le serveur ne le fournit pas.
+  Future<String> getMenuLink() async {
+    final response = await _apiClient.get(
+      'restaurant/tables/menu-link',
+      requiresAuth: true,
+    );
+    return (_asMap(response)['url'] ?? '').toString();
+  }
+
   /// Récupère le lien PUBLIC signé d'une table (URL à encoder dans le QR).
   /// L'URL est produite par le backend (domaine public + signature) et ne doit
   /// pas être reconstruite côté client.

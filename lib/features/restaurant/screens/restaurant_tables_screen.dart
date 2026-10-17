@@ -8,6 +8,7 @@ import 'package:wanzo/core/modules/module_registry.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
+import 'package:wanzo/core/widgets/desktop/desktop_data_table.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
 import 'package:wanzo/features/settings/repositories/settings_repository.dart';
@@ -19,7 +20,7 @@ import '../services/restaurant_api_service.dart';
 /// ouvre une vue QR (à afficher/imprimer sur la table). Les données viennent du
 /// backend (module restaurant) — l'URL du QR est SIGNÉE côté serveur.
 ///
-/// Version DESKTOP : la liste des tables est un [DataTable] (création par
+/// Version DESKTOP : la liste des tables est une [DesktopDataTable] paginée (création par
 /// dialog, suppression en ligne) ; « Voir le QR » ouvre la vue QR comme un
 /// Dialog CENTRÉ (pas une page poussée façon mobile), avec export PDF et
 /// impression directe (Printing).
@@ -175,7 +176,7 @@ class _RestaurantTablesScreenState extends State<RestaurantTablesScreen> {
     );
     return WanzoScaffold(
       currentIndex: index < 0 ? 0 : index,
-      title: 'Tables & QR',
+      title: 'Tables et QR',
       appBarActions: [
         IconButton(
           tooltip: 'Rafraîchir',
@@ -206,67 +207,49 @@ class _RestaurantTablesScreenState extends State<RestaurantTablesScreen> {
     );
   }
 
+  /// Liste paginée et filtrable des tables ([DesktopDataTable]), actions de
+  /// ligne en menu 3 points. Un clic sur la ligne ouvre le QR.
   Widget _buildTable(ThemeData theme) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minWidth: constraints.maxWidth - 48),
-              child: Card(
-                clipBehavior: Clip.antiAlias,
-                child: DataTable(
-                  headingRowColor: WidgetStatePropertyAll(
-                    theme.colorScheme.surfaceContainerHighest
-                        .withValues(alpha: 0.4),
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: DesktopDataTable<RestaurantTable>(
+        data: _tables,
+        searchHint: 'Rechercher une table',
+        searchFilter: (t, q) => t.label.toLowerCase().contains(q),
+        onRowTap: _openQr,
+        columns: const [
+          DataColumn(label: Text('Table')),
+          DataColumn(label: Text('Statut')),
+          DataColumn(label: Text('Actions')),
+        ],
+        rowBuilder: (table) => DataRow(
+          cells: [
+            DataCell(
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor:
+                        theme.colorScheme.primary.withValues(alpha: 0.12),
+                    child: Icon(Icons.table_restaurant,
+                        size: 18, color: theme.colorScheme.primary),
                   ),
-                  columns: const [
-                    DataColumn(label: Text('Table')),
-                    DataColumn(label: Text('Statut')),
-                    DataColumn(label: Text('Actions')),
-                  ],
-                  rows: [
-                    for (final table in _tables)
-                      DataRow(
-                        cells: [
-                          DataCell(
-                            Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 16,
-                                  backgroundColor: theme.colorScheme.primary
-                                      .withValues(alpha: 0.12),
-                                  child: Icon(Icons.table_restaurant,
-                                      size: 18,
-                                      color: theme.colorScheme.primary),
-                                ),
-                                const SizedBox(width: 12),
-                                Text(table.label,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w700)),
-                              ],
-                            ),
-                          ),
-                          DataCell(
-                            _StatusChip(active: table.active),
-                          ),
-                          DataCell(
-                            _TableActionsMenu(
-                              onQr: () => _openQr(table),
-                              onDelete: () => _deleteTable(table),
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
+                  const SizedBox(width: 12),
+                  Text(table.label,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                ],
               ),
             ),
-          ),
-        );
-      },
+            DataCell(_StatusChip(active: table.active)),
+            DataCell(
+              _TableActionsMenu(
+                onQr: () => _openQr(table),
+                onDelete: () => _deleteTable(table),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -387,7 +370,7 @@ class _TableQrDialogState extends State<_TableQrDialog> {
               ),
               pw.SizedBox(height: 6),
               pw.Text(
-                'Scannez pour voir le menu & commander',
+                'Scannez pour voir le menu et commander',
                 textAlign: pw.TextAlign.center,
                 style: const pw.TextStyle(fontSize: 11),
               ),
@@ -477,7 +460,7 @@ class _TableQrDialogState extends State<_TableQrDialog> {
                 children: [
                   Expanded(
                     child: Text(
-                      'QR — ${widget.table.label}',
+                      'QR, ${widget.table.label}',
                       style: theme.textTheme.titleLarge
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),
@@ -528,7 +511,7 @@ class _TableQrDialogState extends State<_TableQrDialog> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'Scannez pour voir le menu & commander',
+                                'Scannez pour voir le menu et commander',
                                 textAlign: TextAlign.center,
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                     color:
