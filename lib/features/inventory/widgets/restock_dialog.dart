@@ -33,6 +33,8 @@ import '../models/stock_transaction.dart';
 Future<bool?> showRestockDialog(BuildContext context, Product product) {
   return showDialog<bool>(
     context: context,
+    // Pas de fermeture par clic extérieur pendant l'envoi de la dépense.
+    barrierDismissible: false,
     builder: (_) => _RestockDialog(product: product),
   );
 }
@@ -56,6 +58,9 @@ class _RestockDialogState extends State<_RestockDialog> {
   bool _paid = true;
   String? _method = kPaymentMethodOptions.first;
   bool _envoi = false;
+
+  /// Dépense déjà enregistrée : une nouvelle tentative ne rejoue que le stock.
+  Expense? _depenseEnregistree;
 
   /// Devise du prix d'achat, choisie une fois (devise active des réglages
   /// si son taux existe, sinon CDF) ; jamais réécrite par une reconstruction.
@@ -101,16 +106,21 @@ class _RestockDialogState extends State<_RestockDialog> {
     if (_envoi || !_formKey.currentState!.validate()) return;
     final product = widget.product;
     final code = _devise.code;
-    // Devise étrangère sans taux : refus, jamais un taux 1 muet.
-    final taux = context.read<CurrencyService>().usableRateToCdfForCode(code);
+    // Devise étrangère sans taux : refus, jamais un taux 1 muet. Reprise du
+    // stock : taux figé sur la dépense déjà enregistrée.
+    final taux = _depenseEnregistree?.exchangeRate ??
+        context.read<CurrencyService>().usableRateToCdfForCode(code);
     if (taux == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(CurrencyService.missingRateMessage(code))),
       );
       return;
     }
-    // Prix en francs anormalement bas : sans doute des dollars.
-    final choix = await verifierPrixSaisi(context, prix: _price, codeDevise: code);
+    // Prix en francs anormalement bas : sans doute des dollars (une seule
+    // fois, pas à la reprise du stock).
+    final choix = _depenseEnregistree != null
+        ? ChoixDevisePrix.garder
+        : await verifierPrixSaisi(context, prix: _price, codeDevise: code);
     if (!mounted || choix == ChoixDevisePrix.annule) return;
     if (choix == ChoixDevisePrix.enDollars) {
       // On bascule en dollars et on laisse relire avant d'enregistrer.
@@ -127,140 +137,125 @@ class _RestockDialogState extends State<_RestockDialog> {
     final messenger = ScaffoldMessenger.of(context);
     final inventoryBloc = context.read<InventoryBloc>();
     final now = DateTime.now();
+    // Nom saisi sans fiche choisie : gardé sur la dépense (comme le mobile).
+    final nomSaisi = _supplierNameController.text.trim();
+    final nomFournisseur =
+        _supplier?.name ?? (nomSaisi.isEmpty ? null : nomSaisi);
 
     // 1. La dépense d'achat D'ABORD : payée (avec son mode) ou à payer au
-    // fournisseur. Son identifiant serveur rattache ensuite le stock.
-    final depenseEnregistree = Completer<Expense>();
-    context.read<ExpenseBloc>().add(
-      AddExpense(
-        Expense(
-          id: const Uuid().v4(),
-          date: now,
-          motif: 'Réapprovisionnement ${product.name}',
-          amount: _total,
-          category: ExpenseCategory.inventory,
-          currencyCode: code,
-          exchangeRate: taux,
-          supplierId: _supplier?.id,
-          supplierName: _supplier?.name,
-          paidAmount: _paid ? _total : 0.0,
-          paymentStatus:
-              _paid ? ExpensePaymentStatus.paid : ExpensePaymentStatus.unpaid,
-          paymentMethod: _paid ? _method : null,
-          notes: '${_qty.toStringAsFixed(_qty % 1 == 0 ? 0 : 2)} x '
-              '${formatCurrency(_price, code)}',
-        ),
-        saved: depenseEnregistree,
-      ),
-    );
-    final Expense depense;
-    try {
-      depense = await depenseEnregistree.future;
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _envoi = false);
-      final motif = '$e'.replaceFirst('Exception: ', '');
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            "La dépense n'a pas pu être enregistrée, le stock n'a pas "
-            'été modifié : $motif',
+    // fournisseur. Son identifiant serveur rattache ensuite le stock. Une
+    // reprise (stock refusé) ne la recrée pas.
+    var depense = _depenseEnregistree;
+    if (depense == null) {
+      final depenseEnregistree = Completer<Expense>();
+      context.read<ExpenseBloc>().add(
+        AddExpense(
+          Expense(
+            id: const Uuid().v4(),
+            date: now,
+            motif: 'Réapprovisionnement ${product.name}',
+            amount: _total,
+            category: ExpenseCategory.inventory,
+            currencyCode: code,
+            exchangeRate: taux,
+            supplierId: _supplier?.id,
+            supplierName: nomFournisseur,
+            paidAmount: _paid ? _total : 0.0,
+            paymentStatus:
+                _paid ? ExpensePaymentStatus.paid : ExpensePaymentStatus.unpaid,
+            paymentMethod: _paid ? _method : null,
+            notes: '${_qty.toStringAsFixed(_qty % 1 == 0 ? 0 : 2)} x '
+                '${formatCurrency(_price, code)}',
           ),
-          backgroundColor: Colors.red,
+          saved: depenseEnregistree,
         ),
       );
-      return;
+      try {
+        depense = await depenseEnregistree.future.timeout(
+          const Duration(seconds: 45),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _envoi = false);
+        final motif = e is TimeoutException
+            ? 'pas de réponse. Vérifiez la liste des dépenses avant de '
+                'réessayer.'
+            : '$e'.replaceFirst('Exception: ', '');
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              "La dépense n'a pas pu être enregistrée, le stock n'a pas "
+              'été modifié : $motif',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _depenseEnregistree = depense);
     }
+    final achat = depense;
 
     // 2. L'entrée de stock. Dépense acceptée par le serveur : achat rattaché
     // (le serveur passe 311 / 6031, pas une seconde dette). Dépense en
     // attente du réseau (pas encore d'identifiant serveur) : stock appliqué
     // en local, l'achat est gardé et part avec l'id serveur de la dépense.
-    final surServeur = depense.syncStatus == 'synced';
+    // Le coût est valorisé au taux FIGÉ de la dépense.
+    final tauxAchat = achat.exchangeRate ?? taux;
+    final surServeur = achat.syncStatus == 'synced';
     final mouvement = StockTransaction(
       id: const Uuid().v4(),
       productId: product.id,
       type: StockTransactionType.purchase,
       quantity: _qty,
       date: now,
-      referenceId: depense.id,
+      referenceId: achat.id,
       notes: 'Réapprovisionnement ${product.name}',
-      unitCostInCdf: _price * taux,
-      totalValueInCdf: _total * taux,
+      unitCostInCdf: _price * tauxAchat,
+      totalValueInCdf: _total * tauxAchat,
       currencyCode: 'CDF',
     );
-    final expenseId = surServeur ? depense.id : null;
     final issue = Completer<String?>();
     inventoryBloc.add(
       AddStockTransaction(
         mouvement,
-        expenseId: expenseId,
-        awaitingExpenseId: surServeur ? null : depense.id,
+        expenseId: surServeur ? achat.id : null,
+        awaitingExpenseId: surServeur ? null : achat.id,
         serverOutcome: issue,
       ),
     );
     final refus = await issue.future;
     if (!mounted) return;
-    Navigator.of(context).pop(true);
 
-    if (refus == null) {
+    if (refus != null) {
+      // La dépense existe, le stock non (rien n'a bougé sur l'appareil) :
+      // la saisie est figée et « Réessayer le stock » ne rejoue que lui.
+      setState(() => _envoi = false);
       messenger.showSnackBar(
         SnackBar(
+          duration: const Duration(seconds: 10),
+          backgroundColor: Colors.red,
           content: Text(
-            surServeur
-                ? 'Réapprovisionnement de ${product.name} enregistré : '
-                    'stock mis à jour et dépense créée.'
-                : 'Hors connexion : réapprovisionnement de ${product.name} '
-                    'enregistré sur cet appareil, envoyé au retour du réseau.',
+            'La dépense est enregistrée, mais le stock de ${product.name} '
+            "n'a pas été mis à jour : $refus Utilisez « Réessayer le stock ».",
           ),
-          backgroundColor: Colors.green,
         ),
       );
       return;
     }
-    // La dépense existe, le stock serveur non : on le dit et on propose de
-    // renvoyer le même mouvement (sans le recompter sur l'appareil).
-    messenger.showSnackBar(
-      SnackBar(
-        duration: const Duration(seconds: 12),
-        backgroundColor: Colors.red,
-        content: Text(
-          'La dépense est enregistrée, mais le stock de ${product.name} '
-          "n'a pas été mis à jour sur le serveur : $refus",
-        ),
-        action: SnackBarAction(
-          label: 'Réessayer',
-          textColor: Colors.white,
-          onPressed: () => _renvoyerMouvement(
-            inventoryBloc,
-            messenger,
-            mouvement,
-            expenseId,
-          ),
-        ),
-      ),
-    );
-  }
 
-  static Future<void> _renvoyerMouvement(
-    InventoryBloc bloc,
-    ScaffoldMessengerState messenger,
-    StockTransaction mouvement,
-    String? expenseId,
-  ) async {
-    final refus = await bloc.inventoryRepository.syncStockTransaction(
-      mouvement,
-      expenseId: expenseId,
-    );
-    bloc.add(LoadProduct(mouvement.productId));
+    Navigator.of(context).pop(true);
     messenger.showSnackBar(
       SnackBar(
-        backgroundColor: refus == null ? Colors.green : Colors.red,
         content: Text(
-          refus == null
-              ? 'Stock mis à jour sur le serveur.'
-              : "Le stock n'a toujours pas été mis à jour : $refus",
+          surServeur
+              ? 'Réapprovisionnement de ${product.name} enregistré : '
+                  'stock mis à jour et dépense créée.'
+              : 'Hors connexion : réapprovisionnement de ${product.name} '
+                  'enregistré sur cet appareil, envoyé au retour du réseau.',
         ),
+        backgroundColor: Colors.green,
       ),
     );
   }
@@ -277,7 +272,10 @@ class _RestockDialogState extends State<_RestockDialog> {
         width: 460,
         child: Form(
           key: _formKey,
-          child: SingleChildScrollView(
+          // Dépense enregistrée : la saisie est figée, seul le stock se rejoue.
+          child: AbsorbPointer(
+            absorbing: _depenseEnregistree != null,
+            child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -392,12 +390,16 @@ class _RestockDialogState extends State<_RestockDialog> {
               ],
             ),
           ),
+          ),
         ),
       ),
       actions: [
         TextButton(
-          onPressed: _envoi ? null : () => Navigator.of(context).pop(false),
-          child: const Text('Annuler'),
+          // Dépense déjà enregistrée : on ferme, on n'annule plus rien.
+          onPressed: _envoi
+              ? null
+              : () => Navigator.of(context).pop(_depenseEnregistree != null),
+          child: Text(_depenseEnregistree != null ? 'Fermer' : 'Annuler'),
         ),
         FilledButton.icon(
           onPressed: _envoi ? null : _submit,
@@ -407,7 +409,11 @@ class _RestockDialogState extends State<_RestockDialog> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.add_shopping_cart),
-          label: const Text('Réapprovisionner'),
+          label: Text(
+            _depenseEnregistree != null
+                ? 'Réessayer le stock'
+                : 'Réapprovisionner',
+          ),
         ),
       ],
     );

@@ -346,7 +346,8 @@ class _AddSupplierScreenState extends State<AddSupplierScreen> {
       final supplier = Supplier(
         id: widget.supplier?.id ?? '',
         name: _nameController.text.trim(),
-        phoneNumber: _phoneController.text.trim(),
+        // Le serveur refuse espaces et tirets (6 à 15 chiffres, « + » permis).
+        phoneNumber: _phoneController.text.replaceAll(RegExp(r'[\s.-]'), ''),
         email: _emailController.text.trim(),
         address: _addressController.text.trim(),
         contactPerson: _contactPersonController.text.trim(),

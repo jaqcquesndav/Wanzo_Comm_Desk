@@ -56,24 +56,36 @@ class ExpenseRepository {
     // you might not even call the API here unless a sync is triggered.
     // However, for a "load from cache, then update from network" strategy:
     debugPrint("Local expenses empty, fetching from API...");
-    final apiResponse = await _expenseApiService.getExpenses();
-
-    if (apiResponse.success && apiResponse.data != null) {
-      // Save API expenses to local box for future offline access
-      for (var expense in apiResponse.data!) {
-        // Assuming expense.id from API is the correct key
-        // If API expenses don't have a local-compatible ID, adjust accordingly
-        await _expensesBox.put(expense.id, expense);
-      }
-      debugPrint(
-        "Fetched and saved ${apiResponse.data!.length} expenses from API to Hive.",
-      );
-      return apiResponse.data!;
-    } else {
-      debugPrint("Error fetching expenses from API: ${apiResponse.message}");
-      // If API fails and local is empty, return empty list
-      return [];
+    // Toutes les pages : le serveur plafonne à 10 par défaut (100 au plus) ;
+    // sans pagination, seules les 10 dernières dépenses revenaient.
+    final toutes = await fetchAllExpensesFromApi();
+    if (toutes == null) return [];
+    for (var expense in toutes) {
+      await _expensesBox.put(expense.id, expense);
     }
+    debugPrint("Fetched and saved ${toutes.length} expenses from API to Hive.");
+    return toutes;
+  }
+
+  /// Lit toutes les pages de `GET expenses` (100 par page) jusqu'à une page
+  /// incomplète. `null` si une page a échoué (liste incomplète : ne rien
+  /// purger sur cette base).
+  Future<List<Expense>?> fetchAllExpensesFromApi({int maxPages = 100}) async {
+    const taille = 100;
+    final toutes = <Expense>[];
+    for (var page = 1; page <= maxPages; page++) {
+      final res = await _expenseApiService.getExpenses(
+        page: page,
+        limit: taille,
+      );
+      if (!res.success || res.data == null) {
+        debugPrint("Error fetching expenses from API: ${res.message}");
+        return null;
+      }
+      toutes.addAll(res.data!);
+      if (res.data!.length < taille) break;
+    }
+    return toutes;
   }
 
   Future<Expense?> getExpenseById(String id) async {
@@ -165,6 +177,7 @@ class ExpenseRepository {
       performerName: expenseToSave.performerName,
       subCategory: expenseToSave.subCategory,
       beneficiary: expenseToSave.beneficiary,
+      notes: expenseToSave.notes,
     );
 
     if (apiResponse.success && apiResponse.data != null) {
@@ -250,6 +263,7 @@ class ExpenseRepository {
       performerName: expenseToUpdate.performerName,
       subCategory: expenseToUpdate.subCategory,
       beneficiary: expenseToUpdate.beneficiary,
+      notes: expenseToUpdate.notes,
     );
 
     if (apiResponse.success && apiResponse.data != null) {

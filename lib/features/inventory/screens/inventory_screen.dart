@@ -11,6 +11,7 @@ import 'package:wanzo/core/widgets/smart_image.dart'; // Added for smart image l
 import '../../../constants/spacing.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/widgets/table_export_button.dart';
+import '../../../core/widgets/desktop/desktop_data_table.dart';
 import '../../../services/export/table_export_service.dart';
 import '../bloc/inventory_bloc.dart';
 import '../bloc/inventory_event.dart';
@@ -44,6 +45,10 @@ class _InventoryScreenState extends State<InventoryScreen>
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   StreamSubscription<SyncStatus>? _syncSubscription;
+
+  /// Page courante de la grille des articles (40 par page).
+  int _productPage = 0;
+  static const int _productPageSize = 40;
 
   @override
   void initState() {
@@ -530,6 +535,20 @@ class _InventoryScreenState extends State<InventoryScreen>
       appActiveDisplayCurrency = currencySettingsState.settings.activeCurrency;
     }
 
+    // Devise d'affichage sans taux connu : prix en CDF (jamais un taux 1 muet).
+    if (appActiveDisplayCurrency != Currency.CDF &&
+        !currencyService.hasRate(appActiveDisplayCurrency)) {
+      appActiveDisplayCurrency = Currency.CDF;
+    }
+
+    // Pagination de la grille (règle desktop : toute liste est paginée).
+    final pageCount = (products.length / _productPageSize).ceil();
+    final page = _productPage.clamp(0, pageCount - 1);
+    final pageItems = products
+        .skip(page * _productPageSize)
+        .take(_productPageSize)
+        .toList();
+
     return LayoutBuilder(
       builder: (context, constraints) {
         // Calculer le nombre de colonnes selon la largeur
@@ -542,7 +561,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                 ? 4
                 : 5;
 
-        return GridView.builder(
+        final grid = GridView.builder(
           padding: const EdgeInsets.all(WanzoSpacing.md),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
@@ -550,9 +569,9 @@ class _InventoryScreenState extends State<InventoryScreen>
             crossAxisSpacing: WanzoSpacing.sm,
             mainAxisSpacing: WanzoSpacing.sm,
           ),
-          itemCount: products.length,
+          itemCount: pageItems.length,
           itemBuilder: (context, index) {
-            final product = products[index];
+            final product = pageItems[index];
             final isLowStock = product.stockQuantity <= product.alertThreshold;
 
             final displayCurrencyCode = appActiveDisplayCurrency.code;
@@ -569,12 +588,11 @@ class _InventoryScreenState extends State<InventoryScreen>
               displayCurrencyCode: displayCurrencyCode,
               l10n: l10n,
               onTap: () {
+                final bloc = context.read<InventoryBloc>();
                 context
                     .push('/inventory/product/${product.id}', extra: product)
                     .then((_) {
-                      if (mounted) {
-                        context.read<InventoryBloc>().add(const LoadProducts());
-                      }
+                      if (mounted) bloc.add(const LoadProducts());
                     });
               },
               // Même formulaire que la création (dialogue sur desktop).
@@ -590,6 +608,44 @@ class _InventoryScreenState extends State<InventoryScreen>
               onAddStock: () => showRestockDialog(context, product),
             );
           },
+        );
+        if (pageCount <= 1) return grid;
+        return Column(
+          children: [
+            Expanded(child: grid),
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: WanzoSpacing.md,
+                vertical: WanzoSpacing.xs,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    '${page * _productPageSize + 1} à '
+                    '${page * _productPageSize + pageItems.length} sur '
+                    '${products.length}',
+                  ),
+                  const SizedBox(width: WanzoSpacing.sm),
+                  IconButton(
+                    tooltip: 'Page précédente',
+                    icon: const Icon(Icons.chevron_left),
+                    onPressed: page > 0
+                        ? () => setState(() => _productPage = page - 1)
+                        : null,
+                  ),
+                  Text('${page + 1} / $pageCount'),
+                  IconButton(
+                    tooltip: 'Page suivante',
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: page < pageCount - 1
+                        ? () => setState(() => _productPage = page + 1)
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+          ],
         );
       },
     );
@@ -641,41 +697,90 @@ class _InventoryScreenState extends State<InventoryScreen>
       appActiveDisplayCurrency = currencySettingsState.settings.activeCurrency;
     }
 
-    return ListView.builder(
+    final repo = context.read<InventoryBloc>().inventoryRepository;
+    // Valeur affichée dans la devise active seulement si son taux est connu ;
+    // sinon la base CDF (jamais une conversion à taux 1 muet).
+    final afficheEnDevise = appActiveDisplayCurrency != Currency.CDF &&
+        currencyService.hasRate(appActiveDisplayCurrency);
+    String valeur(StockTransaction t) {
+      final cdf = t.totalValueInCdf.abs();
+      final base = formatCurrency(cdf, Currency.CDF.code);
+      if (!afficheEnDevise) return base;
+      final enDevise = formatCurrency(
+        currencyService.convertFromCdf(cdf, appActiveDisplayCurrency),
+        appActiveDisplayCurrency.code,
+      );
+      return '$enDevise ($base)';
+    }
+
+    String unite(StockTransaction t) => t.businessUnitCode != null
+        ? '${t.businessUnitType?.code ?? 'company'} - ${t.businessUnitCode}'
+        : t.businessUnitType?.code ?? 'company';
+
+    String quantite(StockTransaction t) {
+      final d = t.stockDelta;
+      final txt = d.abs() % 1 == 0
+          ? d.abs().toStringAsFixed(0)
+          : d.abs().toStringAsFixed(2);
+      return d >= 0 ? '+$txt' : '-$txt';
+    }
+
+    final rows = [...transactions]..sort((a, b) => b.date.compareTo(a.date));
+    // Liste paginée (tableau desktop) : le sens suit la règle du serveur
+    // (stockDelta), pas le signe saisi (un « endommagé » positif sort).
+    return Padding(
       padding: const EdgeInsets.all(WanzoSpacing.md),
-      itemCount: transactions.length,
-      itemBuilder: (context, index) {
-        final transaction = transactions[index];
-        final product = context
-            .read<InventoryBloc>()
-            .inventoryRepository
-            .getProductById(transaction.productId);
-
-        // Convert transaction total value to active display currency
-        final displayValue = currencyService.convertFromCdf(
-          transaction.totalValueInCdf,
-          appActiveDisplayCurrency,
-        );
-        final displayCurrencyCode = appActiveDisplayCurrency.code;
-
-        return Card(
-          margin: const EdgeInsets.symmetric(vertical: WanzoSpacing.xs),
-          child: ListTile(
-            title: Text(
-              "${_getTransactionTypeName(transaction.type, l10n)}: ${product?.name ?? l10n.unknownProductLabel}",
-            ),
-            subtitle: Text(
-              "${l10n.quantityLabel}: ${transaction.quantity}, ${l10n.dateLabel}: ${formatDate(transaction.date, l10n)}\n${l10n.valueLabel}: ${formatCurrency(displayValue, displayCurrencyCode)} (${formatCurrency(transaction.totalValueInCdf, Currency.CDF.code)})\nUnité: ${transaction.businessUnitCode != null ? '${transaction.businessUnitType?.code ?? 'company'} - ${transaction.businessUnitCode}' : transaction.businessUnitType?.code ?? 'company'}",
-            ),
-            leading: Icon(
-              transaction.quantity > 0
-                  ? Icons.arrow_upward
-                  : Icons.arrow_downward,
-              color: transaction.quantity > 0 ? Colors.green : Colors.red,
-            ),
-          ),
-        );
-      },
+      child: DesktopDataTable<StockTransaction>(
+        data: rows,
+        searchHint: 'Rechercher un article ou un type...',
+        searchFilter: (t, query) {
+          final nom = repo.getProductById(t.productId)?.name ?? '';
+          return nom.toLowerCase().contains(query) ||
+              _getTransactionTypeName(t.type, l10n)
+                  .toLowerCase()
+                  .contains(query);
+        },
+        columns: [
+          DataColumn(label: Text(l10n.dateLabel)),
+          const DataColumn(label: Text('Type')),
+          const DataColumn(label: Text('Article')),
+          DataColumn(label: Text(l10n.quantityLabel), numeric: true),
+          DataColumn(label: Text(l10n.valueLabel), numeric: true),
+          const DataColumn(label: Text('Unité')),
+        ],
+        rowBuilder: (t) {
+          final entree = t.stockDelta >= 0;
+          final couleur = entree ? Colors.green : Colors.red;
+          return DataRow(
+            cells: [
+              DataCell(Text(formatDate(t.date, l10n))),
+              DataCell(
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      entree ? Icons.arrow_upward : Icons.arrow_downward,
+                      color: couleur,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(_getTransactionTypeName(t.type, l10n)),
+                  ],
+                ),
+              ),
+              DataCell(
+                Text(
+                  repo.getProductById(t.productId)?.name ??
+                      l10n.unknownProductLabel,
+                ),
+              ),
+              DataCell(Text(quantite(t), style: TextStyle(color: couleur))),
+              DataCell(Text(valeur(t))),
+              DataCell(Text(unite(t))),
+            ],
+          );
+        },
+      ),
     );
   }
 

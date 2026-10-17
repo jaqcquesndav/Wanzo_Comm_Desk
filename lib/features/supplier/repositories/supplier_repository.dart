@@ -8,6 +8,16 @@ import '../services/supplier_api_service.dart';
 import '../utils/supplier_purchases.dart';
 import '../../expenses/repositories/expense_repository.dart';
 
+/// Refus définitif du serveur (4xx) sur une fiche fournisseur : rien n'est
+/// gardé sur l'appareil. [toString] donne le motif lisible.
+class SupplierRefusedException implements Exception {
+  final String message;
+  const SupplierRefusedException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 /// Repository pour la gestion des fournisseurs (API-First + Offline Fallback)
 class SupplierRepository {
   static const _suppliersBoxName =
@@ -51,9 +61,11 @@ class SupplierRepository {
           debugPrint(
             '📦 [SupplierRepository] API: ${apiResponse.data!.length} fournisseurs récupérés',
           );
-          // Fusionner avec le cache local
+          // Fusionner avec le cache local, puis renvoyer TOUT le cache : la
+          // réponse n'est qu'une page (10 par défaut) et ne contient pas les
+          // fiches créées hors ligne (`pending`).
           await _mergeSuppliers(apiResponse.data!);
-          return apiResponse.data!;
+          return _suppliersBox.values.toList();
         }
       } catch (e) {
         debugPrint(
@@ -109,12 +121,19 @@ class SupplierRepository {
             .timeout(const Duration(seconds: 10));
         if (apiResponse.success && apiResponse.data != null) {
           // Sauvegarder la version serveur localement
-          await _suppliersBox.put(apiResponse.data!.id, apiResponse.data!);
+          final cree = apiResponse.data!.copyWith(syncStatus: 'synced');
+          await _suppliersBox.put(cree.id, cree);
           debugPrint(
-            '✅ [SupplierRepository] Fournisseur créé via API: ${apiResponse.data!.id}',
+            '✅ [SupplierRepository] Fournisseur créé via API: ${cree.id}',
           );
-          return apiResponse.data!;
+          return cree;
         }
+        // Refus (4xx : téléphone invalide, doublon) : dit à l'utilisateur.
+        // Avant, la fiche était gardée « synced » sur l'appareil et n'existait
+        // jamais sur le serveur.
+        _throwIfRefused(apiResponse.statusCode, apiResponse.message);
+      } on SupplierRefusedException {
+        rethrow;
       } catch (e) {
         debugPrint(
           '⚠️ [SupplierRepository] Erreur API create, sauvegarde locale: $e',
@@ -122,9 +141,22 @@ class SupplierRepository {
       }
     }
 
-    // Fallback: Sauvegarder localement
-    await _suppliersBox.put(newSupplier.id, newSupplier);
-    return newSupplier;
+    // Hors ligne ou serveur indisponible : gardée `pending`, la
+    // synchronisation la crée au retour du réseau.
+    final enAttente = newSupplier.copyWith(syncStatus: 'pending');
+    await _suppliersBox.put(enAttente.id, enAttente);
+    return enAttente;
+  }
+
+  /// Lève [SupplierRefusedException] pour un refus définitif du serveur.
+  static void _throwIfRefused(int? statusCode, String? message) {
+    final code = statusCode ?? 0;
+    if (code >= 400 && code < 500 && code != 408 && code != 429) {
+      final motif = (message ?? '').replaceFirst('Exception: ', '').trim();
+      throw SupplierRefusedException(
+        motif.isEmpty ? 'Le serveur a refusé la fiche fournisseur.' : motif,
+      );
+    }
   }
 
   /// Met à jour un fournisseur existant (API + Local)
@@ -136,12 +168,16 @@ class SupplierRepository {
             .updateSupplier(supplier.id, supplier)
             .timeout(const Duration(seconds: 10));
         if (apiResponse.success && apiResponse.data != null) {
-          await _suppliersBox.put(apiResponse.data!.id, apiResponse.data!);
+          final misAJour = apiResponse.data!.copyWith(syncStatus: 'synced');
+          await _suppliersBox.put(misAJour.id, misAJour);
           debugPrint(
-            '✅ [SupplierRepository] Fournisseur mis à jour via API: ${apiResponse.data!.id}',
+            '✅ [SupplierRepository] Fournisseur mis à jour via API: ${misAJour.id}',
           );
-          return apiResponse.data!;
+          return misAJour;
         }
+        _throwIfRefused(apiResponse.statusCode, apiResponse.message);
+      } on SupplierRefusedException {
+        rethrow;
       } catch (e) {
         debugPrint(
           '⚠️ [SupplierRepository] Erreur API update, sauvegarde locale: $e',
@@ -149,8 +185,14 @@ class SupplierRepository {
       }
     }
 
-    // Fallback: Sauvegarder localement
-    final updatedSupplier = supplier.copyWith();
+    // Hors ligne : gardée à renvoyer (`pending` si jamais envoyée, sinon
+    // `pending_update`) ; la synchronisation l'envoie au retour du réseau.
+    final existante = _suppliersBox.get(supplier.id);
+    final dejaEnAttente =
+        existante?.syncStatus == 'pending' || supplier.syncStatus == 'pending';
+    final updatedSupplier = supplier.copyWith(
+      syncStatus: dejaEnAttente ? 'pending' : 'pending_update',
+    );
     await _suppliersBox.put(updatedSupplier.id, updatedSupplier);
     return updatedSupplier;
   }
@@ -280,6 +322,13 @@ class SupplierRepository {
   /// Fusionne les fournisseurs API avec le cache local
   Future<void> _mergeSuppliers(List<Supplier> apiSuppliers) async {
     for (final apiSupplier in apiSuppliers) {
+      // Une modification locale pas encore envoyée n'est pas écrasée.
+      final local = _suppliersBox.get(apiSupplier.id);
+      if (local != null &&
+          (local.syncStatus == 'pending' ||
+              local.syncStatus == 'pending_update')) {
+        continue;
+      }
       await _suppliersBox.put(apiSupplier.id, apiSupplier);
     }
     await _suppliersBox.flush();

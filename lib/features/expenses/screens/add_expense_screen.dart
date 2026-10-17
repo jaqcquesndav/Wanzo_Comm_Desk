@@ -17,6 +17,7 @@ import '../../../core/platform/image_picker/image_picker_service_interface.dart'
 import '../../../core/widgets/desktop/responsive_form_container.dart';
 import '../../../core/widgets/desktop/modal_form_shell.dart';
 import '../../../features/settings/presentation/cubit/currency_settings_cubit.dart';
+import '../../../features/dashboard/bloc/dashboard_bloc.dart';
 import '../../../features/supplier/models/supplier.dart';
 import '../../../features/supplier/widgets/supplier_picker_field.dart';
 import '../bloc/expense_bloc.dart';
@@ -348,6 +349,14 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       }
 
       final paidAmount = double.tryParse(_paidAmountController.text) ?? 0.0;
+      if (widget.expense == null && paidAmount > amount + 0.001) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Le montant payé dépasse le montant total.'),
+          ),
+        );
+        return;
+      }
       // Un mode de paiement n'a de sens que pour la part réellement payée.
       final method = paidAmount > 0 ? _selectedPaymentMethod : null;
 
@@ -432,6 +441,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               ScaffoldMessenger.of(
                 context,
               ).showSnackBar(SnackBar(content: Text(state.message)));
+              // Cartes « Charges » du tableau de bord à jour.
+              context.read<DashboardBloc>().add(
+                LoadDashboardData(date: DateTime.now()),
+              );
               if (widget.onSaved != null) {
                 widget.onSaved!();
               } else {
@@ -439,7 +452,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               }
             } else if (state is ExpenseError) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Erreur: ${state.message}')),
+                SnackBar(
+                  content: Text(
+                    state.message.replaceAll('Exception: ', ''),
+                  ),
+                ),
               );
             }
           },

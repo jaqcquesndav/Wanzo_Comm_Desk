@@ -116,6 +116,70 @@ class StockTransaction extends Equatable {
       _$StockTransactionFromJson(json);
   Map<String, dynamic> toJson() => _$StockTransactionToJson(this);
 
+  /// Types qui font SORTIR du stock (le sens vient du type, pas du signe).
+  static const Set<StockTransactionType> sortieTypes = {
+    StockTransactionType.sale,
+    StockTransactionType.transferOut,
+    StockTransactionType.damaged,
+    StockTransactionType.lost,
+  };
+
+  /// Variation du stock portée par ce mouvement, avec la même règle que le
+  /// serveur : seul l'ajustement garde son signe ; sinon le type décide.
+  double get stockDelta {
+    if (type == StockTransactionType.adjustment) return quantity;
+    return sortieTypes.contains(type) ? -quantity.abs() : quantity.abs();
+  }
+
+  /// Corps EXACT de `POST stock-transactions` : le serveur retire en silence
+  /// tout champ hors liste (l'ancien `toJson` envoyait `unitCostInCdf`, perdu,
+  /// au lieu de `unitCostPrice`). Un coût nul est omis : le serveur prend
+  /// alors le coût de l'article au lieu d'enregistrer 0.
+  Map<String, dynamic> toApiPayload({String? expenseId}) {
+    final note = notes?.trim();
+    return {
+      'productId': productId,
+      'type': type.name,
+      'quantity':
+          type == StockTransactionType.adjustment ? quantity : quantity.abs(),
+      'date': date.toUtc().toIso8601String(),
+      if (referenceId != null && referenceId!.isNotEmpty)
+        'referenceId': referenceId,
+      if (note != null && note.isNotEmpty) 'notes': note,
+      if (unitCostInCdf > 0) 'unitCostPrice': unitCostInCdf,
+      if (locationId != null && locationId!.isNotEmpty)
+        'locationId': locationId,
+      if (expenseId != null && expenseId.isNotEmpty) 'expenseId': expenseId,
+    };
+  }
+
+  /// Mouvement tel que renvoyé par le serveur (entité, décimaux en texte,
+  /// coût dans `unitCostPrice`).
+  factory StockTransaction.fromApi(Map<String, dynamic> json) {
+    double nombre(dynamic v) =>
+        v is num ? v.toDouble() : double.tryParse('${v ?? ''}') ?? 0;
+    final type = StockTransactionType.values.firstWhere(
+      (t) => t.name == json['type'],
+      orElse: () => StockTransactionType.adjustment,
+    );
+    final quantity = nombre(json['quantity']);
+    final unitCost = nombre(json['unitCostPrice'] ?? json['unitCostInCdf']);
+    return StockTransaction(
+      id: '${json['id'] ?? ''}',
+      productId: '${json['productId'] ?? ''}',
+      type: type,
+      quantity: quantity,
+      date: DateTime.tryParse('${json['date'] ?? ''}') ?? DateTime.now(),
+      referenceId: json['referenceId']?.toString(),
+      notes: json['notes']?.toString(),
+      unitCostInCdf: unitCost,
+      totalValueInCdf: unitCost * quantity.abs(),
+      currencyCode: 'CDF',
+      createdBy: json['createdBy']?.toString(),
+      locationId: json['locationId']?.toString(),
+    );
+  }
+
   @override
   List<Object?> get props => [
     id,

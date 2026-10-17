@@ -146,7 +146,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(state.message),
+          content: Text(state.message.replaceFirst('Exception: ', '')),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 5),
         ),

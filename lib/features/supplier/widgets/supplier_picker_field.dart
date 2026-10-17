@@ -289,13 +289,27 @@ class _CreateSupplierDialogState extends State<_CreateSupplierDialog> {
   Future<void> _save() async {
     final name = _name.text.trim();
     if (name.isEmpty) return;
+    // Le serveur exige un téléphone (6 à 15 chiffres, « + » permis) : le
+    // dire ici plutôt qu'après un refus.
+    final phone = _phone.text.replaceAll(RegExp(r'[\s.-]'), '');
+    if (!RegExp(r'^\+?[0-9]{6,15}$').hasMatch(phone)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Indiquez le téléphone du fournisseur (6 à 15 chiffres, '
+            'indicatif pays permis).',
+          ),
+        ),
+      );
+      return;
+    }
     setState(() => _saving = true);
     try {
       final created = await widget.bloc.supplierRepository.addSupplier(
         Supplier(
           id: '',
           name: name,
-          phoneNumber: _phone.text.trim(),
+          phoneNumber: phone,
           createdAt: DateTime.now(),
         ),
       );
@@ -304,7 +318,7 @@ class _CreateSupplierDialogState extends State<_CreateSupplierDialog> {
       if (mounted) {
         setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Création impossible: $e')),
+          SnackBar(content: Text('Création impossible : $e')),
         );
       }
     }

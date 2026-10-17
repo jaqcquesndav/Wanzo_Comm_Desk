@@ -131,7 +131,7 @@ class Supplier extends Equatable {
       value != null ? BusinessUnitTypeExtension.fromApiValue(value) : null;
 
   static String? _businessUnitTypeToJson(BusinessUnitType? type) =>
-      type?.apiValue;
+      type?.code;
 
   /// Crée une copie du fournisseur avec des valeurs modifiées
   Supplier copyWith({

@@ -9,6 +9,16 @@ import '../models/stock_transaction.dart'; // Import StockTransaction
 import '../services/inventory_api_service.dart';
 import '../services/restock_awaiting_expense.dart';
 
+/// Refus définitif du serveur (4xx) sur un mouvement de stock : rien n'a été
+/// enregistré sur l'appareil. [toString] donne le motif lisible.
+class StockRefusedException implements Exception {
+  final String message;
+  const StockRefusedException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 /// Repository pour gérer l'inventaire et les transactions de stock
 class InventoryRepository {
   static const _productsBoxName = 'products';
@@ -39,6 +49,65 @@ class InventoryRepository {
   /// Obtenir tous les produits
   List<Product> getAllProducts() {
     return _productsBox.values.toList();
+  }
+
+  /// Rafraîchit le cache local depuis le serveur (stock tenu par le serveur,
+  /// mouvements des autres caisses), puis renvoie la liste locale. Hors ligne
+  /// ou en cas d'erreur : la dernière liste connue. Une fiche modifiée ici et
+  /// pas encore envoyée (`pending`, `pending_update`) n'est jamais écrasée.
+  Future<List<Product>> syncProductsFromApi() async {
+    final api = _apiService;
+    if (api == null) return getAllProducts();
+    try {
+      // Toutes les pages (le serveur renvoie 10 articles par défaut) ; une
+      // page incomplète marque la fin.
+      const taille = 200;
+      final serveur = <Product>[];
+      var complet = false;
+      for (var page = 1; page <= 100; page++) {
+        final response = await api
+            .getProducts(page: page, limit: taille)
+            .timeout(const Duration(seconds: 15));
+        final lot = response.data;
+        if (!response.success || lot == null) break;
+        serveur.addAll(lot);
+        if (lot.length < taille) {
+          complet = true;
+          break;
+        }
+      }
+      final enAttente = _productsBox.values
+          .where(
+            (p) =>
+                p.syncStatus == 'pending' || p.syncStatus == 'pending_update',
+          )
+          .map((p) => p.id)
+          .toSet();
+      for (final product in serveur) {
+        if (!enAttente.contains(product.id)) {
+          await _productsBox.put(
+            product.id,
+            product.copyWith(syncStatus: 'synced'),
+          );
+        }
+      }
+      // Purge des articles supprimés côté serveur, seulement après une
+      // lecture COMPLÈTE et non vide (une coupure ne vide jamais le stock).
+      // Les fiches pas encore envoyées sont gardées.
+      if (complet && serveur.isNotEmpty) {
+        final ids = serveur.map((p) => p.id).toSet();
+        final absents = _productsBox.values
+            .where((p) => !ids.contains(p.id) && !enAttente.contains(p.id))
+            .map((p) => p.id)
+            .toList();
+        for (final id in absents) {
+          await _productsBox.delete(id);
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Rafraîchissement des articles impossible : $e');
+    }
+    return getAllProducts();
   }
 
   /// Obtenir un produit par son ID
@@ -128,20 +197,26 @@ class InventoryRepository {
     await _productsBox.put(newProduct.id, newProduct);
     debugPrint('💾 Produit sauvegardé localement avec ID: ${newProduct.id}');
 
-    // Enregistrer une transaction initiale si la quantité est > 0
+    // Historique : mouvement « stock initial ». La fiche porte DÉJÀ la
+    // quantité saisie : passer par addStockTransaction l'ajoutait une seconde
+    // fois (stock doublé hors ligne, puis envoyé doublé par la synchro).
     if (product.stockQuantity > 0) {
-      await addStockTransaction(
-        StockTransaction(
-          id: _uuid.v4(),
-          productId: newProduct.id,
-          type: StockTransactionType.initialStock,
-          quantity: product.stockQuantity,
-          date: DateTime.now(),
-          notes: 'Stock initial lors de la création du produit',
-          unitCostInCdf: newProduct.costPriceInCdf,
-          totalValueInCdf: newProduct.costPriceInCdf * product.stockQuantity,
-        ),
+      final initial = StockTransaction(
+        id: _uuid.v4(),
+        productId: newProduct.id,
+        type: StockTransactionType.initialStock,
+        quantity: product.stockQuantity,
+        date: now,
+        notes: 'Stock initial lors de la création du produit',
+        unitCostInCdf: newProduct.costPriceInCdf,
+        totalValueInCdf: newProduct.costPriceInCdf * product.stockQuantity,
+        currencyCode: 'CDF',
+        companyId: newProduct.companyId,
+        businessUnitId: newProduct.businessUnitId,
+        businessUnitCode: newProduct.businessUnitCode,
+        businessUnitType: newProduct.businessUnitType,
       );
+      await _transactionsBox.put(initial.id, initial);
     }
 
     // 2. Try to sync with API
@@ -280,10 +355,85 @@ class InventoryRepository {
     }
   }
 
-  /// Enregistre un mouvement de stock SUR L'APPAREIL (transaction + quantité
-  /// du produit). L'envoi au serveur est séparé : [syncStockTransaction].
-  /// Les mouvements déclenchés par une vente ne sont jamais envoyés : le
-  /// serveur décrémente déjà le stock à la création de la vente.
+  /// Mouvement de stock MANUEL (retrait, perte, ajustement, réapprovision-
+  /// nement) : le serveur fait foi, par la voie unique `POST
+  /// stock-transactions` (stock par emplacement, historique, comptabilité).
+  ///
+  /// - Accepté (ou mis en file hors ligne par le client HTTP) : appliqué ici.
+  /// - Refusé (4xx : stock insuffisant, droits, article inconnu) : RIEN n'est
+  ///   enregistré sur l'appareil et l'exception porte le motif lisible
+  ///   (avant, le stock local bougeait quand même et divergeait du serveur).
+  /// - Serveur indisponible (5xx, délai) : appliqué ici, la fiche repart en
+  ///   `pending_update` pour que la synchronisation renvoie sa quantité.
+  ///
+  /// [expenseId] : dépense d'achat (déjà sur le serveur) qui porte un
+  /// réapprovisionnement : le serveur ne passe que 311 / 6031 (achat compté
+  /// une fois). [awaitingExpenseId] : dépense pas encore envoyée ; le
+  /// mouvement est appliqué ici et gardé ([RestockAwaitingExpense]) jusqu'à
+  /// son identifiant serveur.
+  Future<StockTransaction> recordStockMovement(
+    StockTransaction transaction, {
+    String? expenseId,
+    String? awaitingExpenseId,
+  }) async {
+    final product = getProductById(transaction.productId);
+    if (product == null) {
+      throw Exception('Produit non trouvé');
+    }
+    final pret = transaction.id.isEmpty
+        ? transaction.copyWith(id: _uuid.v4())
+        : transaction;
+    if (product.stockQuantity + pret.stockDelta < 0) {
+      throw Exception('Stock insuffisant pour cette opération.');
+    }
+
+    if (awaitingExpenseId != null) {
+      return addStockTransaction(pret, awaitingExpenseId: awaitingExpenseId);
+    }
+    // Article jamais envoyé : sa création portera la quantité.
+    if (_apiService == null || product.syncStatus == 'pending') {
+      return addStockTransaction(pret);
+    }
+
+    var serveurIndisponible = false;
+    var envoye = pret;
+    try {
+      final reponse = await _apiService
+          .createStockTransaction(pret, expenseId: expenseId)
+          .timeout(const Duration(seconds: 20));
+      if (reponse.success) {
+        envoye = reponse.data ?? pret;
+      } else if (reponse.error is! OfflineQueuedException) {
+        final code = reponse.statusCode ?? 500;
+        if (code >= 400 && code < 500) {
+          throw StockRefusedException(
+            stockRefusalMessage(code, reponse.message ?? ''),
+          );
+        }
+        serveurIndisponible = true;
+        debugPrint('⚠️ Mouvement de stock non transmis : ${reponse.message}');
+      }
+    } on TimeoutException {
+      serveurIndisponible = true;
+    }
+
+    final enregistre = await addStockTransaction(envoye);
+    if (serveurIndisponible) {
+      final p = getProductById(product.id);
+      if (p != null) {
+        await _productsBox.put(
+          p.id,
+          p.copyWith(syncStatus: _pendingStatusFor(p.syncStatus)),
+        );
+      }
+    }
+    return enregistre;
+  }
+
+  /// Enregistre un mouvement de stock SUR L'APPAREIL SEULEMENT (transaction +
+  /// quantité du produit), sans envoi. Sert aux mouvements déclenchés par une
+  /// vente (le serveur décrémente déjà le stock à sa création) ; un mouvement
+  /// manuel passe par [recordStockMovement].
   /// [awaitingExpenseId] : réapprovisionnement dont la dépense attend encore
   /// son id serveur ; le mouvement est gardé jusqu'à son envoi.
   Future<StockTransaction> addStockTransaction(
@@ -296,7 +446,10 @@ class InventoryRepository {
       throw Exception('Produit non trouvé');
     }
 
-    final newQuantity = product.stockQuantity + transaction.quantity;
+    // Même règle de sens que le serveur : seul l'ajustement garde son signe,
+    // sinon le type décide (un « endommagé » saisi en positif faisait MONTER
+    // le stock local).
+    final newQuantity = product.stockQuantity + transaction.stockDelta;
     if (newQuantity < 0 && transaction.type != StockTransactionType.sale) {
       throw Exception('Stock insuffisant pour cette opération.');
     }
@@ -342,41 +495,28 @@ class InventoryRepository {
     return newTransaction;
   }
 
-  /// Envoie un mouvement au serveur (`POST stock-transactions`).
-  /// Renvoie `null` s'il est accepté ou mis en file hors ligne (rejoué au
-  /// retour du réseau), sinon le motif du refus, lisible.
-  /// [expenseId] : dépense d'achat qui porte ce réapprovisionnement.
-  Future<String?> syncStockTransaction(
-    StockTransaction transaction, {
-    String? expenseId,
-  }) async {
-    if (_apiService == null) return null;
-    try {
-      final apiResponse = await _apiService
-          .createStockTransaction(transaction, expenseId: expenseId)
-          .timeout(const Duration(seconds: 15));
-      if (apiResponse.success || apiResponse.error is OfflineQueuedException) {
-        return null;
-      }
-      debugPrint('⚠️ Mouvement de stock refusé: ${apiResponse.message}');
-      return _motifLisible(apiResponse.message);
-    } on TimeoutException {
-      return 'Le serveur ne répond pas. Réessayez dans un instant.';
-    } catch (e) {
-      return _motifLisible('$e');
+  /// Message lisible d'un refus serveur sur un mouvement de stock.
+  static String stockRefusalMessage(int statusCode, String serverMessage) {
+    final brut = serverMessage.replaceFirst('Exception: ', '').trim();
+    if (brut.contains('Insufficient stock')) {
+      return 'Stock insuffisant sur le serveur pour cet article.';
     }
-  }
-
-  static String _motifLisible(String? message) {
-    final brut = (message ?? '').replaceFirst('Exception: ', '').trim();
-    if (brut.startsWith('Insufficient stock')) {
-      return 'Stock insuffisant sur le serveur pour ce retrait.';
+    switch (statusCode) {
+      case 401:
+        return 'Session expirée, reconnectez-vous puis réessayez.';
+      case 403:
+        return 'Votre rôle ne permet pas de modifier le stock.';
+      case 404:
+        return "Cet article n'existe pas encore sur le serveur. "
+            'Synchronisez puis réessayez.';
     }
     if (brut.contains('not found')) {
       return "Cet article n'existe pas encore sur le serveur. "
           'Synchronisez puis réessayez.';
     }
-    return brut.isEmpty ? "Le serveur a refusé le mouvement de stock." : brut;
+    return brut.isEmpty
+        ? 'Le serveur a refusé le mouvement de stock.'
+        : 'Le serveur a refusé le mouvement de stock : $brut';
   }
 
   /// Obtenir toutes les transactions

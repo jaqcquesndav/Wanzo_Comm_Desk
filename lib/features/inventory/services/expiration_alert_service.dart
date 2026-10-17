@@ -33,6 +33,11 @@ class ExpirationAlertService {
     return _instance!;
   }
 
+  /// Reset l'instance (utile pour les tests)
+  static void resetInstance() {
+    _instance = null;
+  }
+
   /// Vérifie les produits expirés et ceux qui expirent bientôt
   /// et envoie des notifications si nécessaire
   Future<ExpirationCheckResult> checkExpirations({

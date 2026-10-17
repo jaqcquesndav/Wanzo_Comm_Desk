@@ -188,8 +188,8 @@ class _VoucherSheet extends StatelessWidget {
       await PlatformShareService.instance.sharePdfFile(
         filePath: pdfPath,
         subject: 'Bon de sortie de caisse N° ${bon.reference}',
-        text: 'Bon de sortie de caisse N° ${bon.reference} — '
-            '${bon.beneficiary} — '
+        text: 'Bon de sortie de caisse N° ${bon.reference}, '
+            '${bon.beneficiary}, '
             '${formatCurrency(bon.amount, bon.currencyCode)}',
         context: context,
       );

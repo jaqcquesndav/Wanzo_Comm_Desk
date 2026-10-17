@@ -41,6 +41,9 @@ abstract class ExpenseApiService {
     String? subCategory,
     String? beneficiary,
     String? supplierPhoneNumber,
+    // Justificatif libre (ex. « 10 x 2 500 CDF » d un réapprovisionnement) :
+    // accepté par le DTO serveur, il n était jamais envoyé.
+    String? notes,
   });
 
   /// Récupère une dépense par son ID
@@ -70,6 +73,9 @@ abstract class ExpenseApiService {
     String? subCategory,
     String? beneficiary,
     String? supplierPhoneNumber,
+    // Justificatif libre (ex. « 10 x 2 500 CDF » d un réapprovisionnement) :
+    // accepté par le DTO serveur, il n était jamais envoyé.
+    String? notes,
   });
 
   /// Enregistre UNE tranche de règlement fournisseur
@@ -217,6 +223,9 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
     String? subCategory,
     String? beneficiary,
     String? supplierPhoneNumber,
+    // Justificatif libre (ex. « 10 x 2 500 CDF » d un réapprovisionnement) :
+    // accepté par le DTO serveur, il n était jamais envoyé.
+    String? notes,
   }) async {
     try {
       List<String>? attachmentUrls;
@@ -258,17 +267,18 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
         'motif': motif,
         'amount': amount,
         'category': categoryId,
-        if (paymentMethod != null) 'paymentMethod': paymentMethod,
-        if (supplierId != null) 'supplierId': supplierId,
+        if (paymentMethod != null && paymentMethod.isNotEmpty) 'paymentMethod': paymentMethod,
+        if (supplierId != null && supplierId.isNotEmpty) 'supplierId': supplierId,
         if (paidAmount != null) 'paidAmount': paidAmount,
         if (paymentStatus != null) 'paymentStatus': paymentStatus,
-        if (supplierName != null) 'supplierName': supplierName,
+        if (supplierName != null && supplierName.isNotEmpty) 'supplierName': supplierName,
         if (currencyCode != null) 'currencyCode': currencyCode,
         if (exchangeRate != null) 'exchangeRate': exchangeRate,
-        if (performerId != null) 'performerId': performerId,
-        if (performerName != null) 'performerName': performerName,
-        if (subCategory != null) 'subCategory': subCategory,
-        if (beneficiary != null) 'beneficiary': beneficiary,
+        if (performerId != null && performerId.isNotEmpty) 'performerId': performerId,
+        if (performerName != null && performerName.isNotEmpty) 'performerName': performerName,
+        if (subCategory != null && subCategory.isNotEmpty) 'subCategory': subCategory,
+        if (beneficiary != null && beneficiary.isNotEmpty) 'beneficiary': beneficiary,
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
         if (supplierPhoneNumber != null && supplierPhoneNumber.isNotEmpty)
           'supplierPhoneNumber': supplierPhoneNumber,
         if (attachmentUrls != null && attachmentUrls.isNotEmpty)
@@ -382,6 +392,9 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
     String? subCategory,
     String? beneficiary,
     String? supplierPhoneNumber,
+    // Justificatif libre (ex. « 10 x 2 500 CDF » d un réapprovisionnement) :
+    // accepté par le DTO serveur, il n était jamais envoyé.
+    String? notes,
   }) async {
     try {
       List<String>? uploadedAttachmentUrls;
@@ -425,8 +438,8 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
         if (amount != null) 'amount': amount,
         if (motif != null) 'motif': motif,
         if (categoryId != null) 'category': categoryId,
-        if (paymentMethod != null) 'paymentMethod': paymentMethod,
-        if (supplierId != null) 'supplierId': supplierId,
+        if (paymentMethod != null && paymentMethod.isNotEmpty) 'paymentMethod': paymentMethod,
+        if (supplierId != null && supplierId.isNotEmpty) 'supplierId': supplierId,
         if (paidAmount != null) 'paidAmount': paidAmount,
         if (paymentStatus != null) 'paymentStatus': paymentStatus,
         if (supplierName != null) 'supplierName': supplierName,
@@ -436,6 +449,7 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
         if (performerName != null) 'performerName': performerName,
         if (subCategory != null) 'subCategory': subCategory,
         if (beneficiary != null) 'beneficiary': beneficiary,
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
         if (supplierPhoneNumber != null && supplierPhoneNumber.isNotEmpty)
           'supplierPhoneNumber': supplierPhoneNumber,
         // `attachmentUrls` remplace toutes les URLs existantes (selon UpdateExpenseDto)
@@ -572,9 +586,15 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
       );
 
       if (response != null && response['data'] != null) {
+        // Double enveloppe possible : `{success, data: {data: [...], total}}`
+        // (le contrôleur renvoie déjà `{data, total}`, l'intercepteur
+        // ré-enveloppe).
+        var data = response['data'];
+        if (data is Map) data = data['data'] ?? data['items'];
         final categories =
-            (response['data'] as List)
-                .map((json) => json as Map<String, dynamic>)
+            (data is List ? data : const [])
+                .whereType<Map>()
+                .map((json) => Map<String, dynamic>.from(json))
                 .toList();
 
         return ApiResponse<List<Map<String, dynamic>>>(

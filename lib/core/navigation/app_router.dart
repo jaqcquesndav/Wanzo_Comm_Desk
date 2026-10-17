@@ -404,7 +404,12 @@ class AppRouter {
           GoRoute(
             path: 'add',
             pageBuilder: (context, state) =>
-                _noAnim(state, const AddProductScreen()),
+                _noAnim(
+              state,
+              AddProductScreen(
+                initialBarcode: state.extra is String ? state.extra as String : null,
+              ),
+            ),
           ),
           GoRoute(
             path: 'services/add',

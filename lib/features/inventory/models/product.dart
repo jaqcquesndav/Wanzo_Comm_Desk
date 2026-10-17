@@ -432,7 +432,7 @@ class Product extends Equatable {
       value != null ? BusinessUnitTypeExtension.fromApiValue(value) : null;
 
   static String? _businessUnitTypeToJson(BusinessUnitType? type) =>
-      type?.apiValue;
+      type?.code;
 
   /// Vérifie si le stock est bas
   bool get isLowStock => stockQuantity <= alertThreshold;

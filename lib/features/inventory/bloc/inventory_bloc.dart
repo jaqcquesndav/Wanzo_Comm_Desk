@@ -48,7 +48,9 @@ class InventoryBloc extends Bloc<InventoryEvent, InventoryState> {
   ) async {
     emit(const InventoryLoading());
     try {
-      final products = _inventoryRepository.getAllProducts();
+      // Serveur d'abord (cache vide après réinstallation, stock des autres
+      // caisses) ; hors ligne, la dernière liste connue.
+      final products = await _inventoryRepository.syncProductsFromApi();
       final totalValue =
           _inventoryRepository
               .getTotalInventoryValue(); // Valeur au coût d'achat en CDF
@@ -297,8 +299,9 @@ class InventoryBloc extends Bloc<InventoryEvent, InventoryState> {
     }
   }
 
-  /// Ajouter une transaction de stock : enregistrée sur l'appareil, puis
-  /// envoyée au serveur (`POST stock-transactions`).
+  /// Ajouter une transaction de stock : envoyée au serveur (`POST
+  /// stock-transactions`), puis enregistrée sur l'appareil si elle est
+  /// acceptée ou mise en file hors ligne.
   Future<void> _onAddStockTransaction(
     AddStockTransaction event,
     Emitter<InventoryState> emit,
@@ -314,39 +317,31 @@ class InventoryBloc extends Bloc<InventoryEvent, InventoryState> {
         emit(const InventoryError(message));
         return;
       }
-      final transaction = await _inventoryRepository.addStockTransaction(
+      // Serveur d'abord (voie unique stock-transactions) : un refus lève
+      // une exception et rien n'est enregistré sur l'appareil. Un mouvement
+      // qui attend sa dépense (hors ligne) est appliqué ici et part avec elle.
+      final transaction = await _inventoryRepository.recordStockMovement(
         event.transaction,
+        expenseId: event.expenseId,
         awaitingExpenseId: event.awaitingExpenseId,
       );
-      // Mouvement gardé pour sa dépense : il partira avec elle.
-      final refus = event.awaitingExpenseId != null
-          ? null
-          : await _inventoryRepository.syncStockTransaction(
-              transaction,
-              expenseId: event.expenseId,
-            );
-      _completer(event, refus);
+      _completer(event, null);
 
       final String? notes = transaction.notes;
       final journalDescription = notes != null && notes.isNotEmpty
           ? notes
           : 'Mouvement de stock: ${product.name}';
-      // Entrée : achat, stock initial, retour, transfert entrant, ou
-      // ajustement positif. Le reste sort du stock.
-      final entree = transaction.type == StockTransactionType.purchase ||
-          transaction.type == StockTransactionType.initialStock ||
-          transaction.type == StockTransactionType.returned ||
-          transaction.type == StockTransactionType.transferIn ||
-          (transaction.type == StockTransactionType.adjustment &&
-              transaction.quantity > 0);
+      // Le sens suit la règle du serveur : seul l'ajustement garde son
+      // signe, sinon le type décide.
+      final entree = transaction.stockDelta > 0;
 
       final journalEntry = OperationJournalEntry(
         id: _uuid.v4(),
         date: transaction.date,
         type: entree ? OperationType.stockIn : OperationType.stockOut,
         description: journalDescription,
-        amount: transaction.totalValueInCdf,
-        quantity: transaction.quantity,
+        amount: transaction.totalValueInCdf.abs(),
+        quantity: transaction.stockDelta.abs(),
         productId: transaction.productId,
         productName: product.name,
         relatedDocumentId: transaction.id,
@@ -357,14 +352,7 @@ class InventoryBloc extends Bloc<InventoryEvent, InventoryState> {
       );
       _operationJournalBloc.add(AddOperationJournalEntry(journalEntry));
 
-      emit(
-        refus == null
-            ? const InventoryOperationSuccess(
-                'Mouvement de stock enregistré.',
-              )
-            : InventoryError('Stock mis à jour sur cet appareil, mais le '
-                'serveur a refusé le mouvement : $refus'),
-      );
+      emit(const InventoryOperationSuccess('Mouvement de stock enregistré.'));
       add(LoadProduct(transaction.productId));
       add(const LoadProducts());
     } catch (e) {

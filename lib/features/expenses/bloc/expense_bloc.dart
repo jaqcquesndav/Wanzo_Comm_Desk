@@ -190,8 +190,9 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
         debugPrint("🔄 Journal rafraîchi");
 
         emit(
-          const ExpenseOperationSuccess(
+          ExpenseOperationSuccess(
             'Dépense ajoutée avec succès et enregistrée au journal des opérations.',
+            expense: newExpense,
           ),
         );
       } catch (journalError) {
@@ -205,8 +206,9 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
         debugPrint("✅ Événement d'ajout envoyé au bloc du journal");
 
         emit(
-          const ExpenseOperationSuccess(
+          ExpenseOperationSuccess(
             'Dépense ajoutée avec succès. Enregistrement au journal en cours...',
+            expense: newExpense,
           ),
         );
       }

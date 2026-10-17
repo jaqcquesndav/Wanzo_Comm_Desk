@@ -76,7 +76,8 @@ class InventoryApiServiceImpl implements InventoryApiService {
         if (category != null) 'category': category,
         if (sortBy != null) 'sortBy': sortBy,
         if (sortOrder != null) 'sortOrder': sortOrder,
-        if (searchQuery != null) 'q': searchQuery,
+        // Nom attendu par FilterProductsDto (`q` était ignoré).
+        if (searchQuery != null) 'searchQuery': searchQuery,
       };
       final response = await _apiClient.get(
         'products',
@@ -112,10 +113,15 @@ class InventoryApiServiceImpl implements InventoryApiService {
       } else {
         data = [];
       }
-      final products =
-          data
-              .map((json) => Product.fromJson(json as Map<String, dynamic>))
-              .toList();
+      // Une fiche mal formée ne doit pas vider toute la liste.
+      final products = <Product>[];
+      for (final item in data) {
+        try {
+          products.add(Product.fromJson(item as Map<String, dynamic>));
+        } catch (e) {
+          debugPrint('[InventoryAPI] ⚠️ Fiche article ignorée : $e');
+        }
+      }
 
       return ApiResponse<List<Product>>(
         success: true,
@@ -325,7 +331,9 @@ class InventoryApiServiceImpl implements InventoryApiService {
   Future<ApiResponse<Product>> getProductById(String id) async {
     try {
       final response = await _apiClient.get('products/$id', requiresAuth: true);
-      final productData = Product.fromJson(response as Map<String, dynamic>);
+      final productData = Product.fromJson(
+        Map<String, dynamic>.from(_unwrap(response) as Map),
+      );
 
       return ApiResponse<Product>(
         success: true,
@@ -582,20 +590,16 @@ class InventoryApiServiceImpl implements InventoryApiService {
         queryParameters: queryParameters,
         requiresAuth: true,
       );
-      // Gérer les deux formats de réponse: liste directe ou objet avec 'data'
-      final List<dynamic> data;
-      if (response is List) {
-        data = response;
-      } else if (response is Map && response['data'] != null) {
-        data = response['data'] as List<dynamic>;
-      } else {
-        data = [];
-      }
+      // Réponse `{success, data: {data: [...], total}}` (intercepteur + page),
+      // décimaux en texte : lecture tolérante.
+      var data = _unwrap(response);
+      if (data is Map) data = data['data'];
       final transactions =
-          data
+          (data is List ? data : const [])
+              .whereType<Map>()
               .map(
                 (json) =>
-                    StockTransaction.fromJson(json as Map<String, dynamic>),
+                    StockTransaction.fromApi(Map<String, dynamic>.from(json)),
               )
               .toList();
 
@@ -628,27 +632,7 @@ class InventoryApiServiceImpl implements InventoryApiService {
   static Map<String, dynamic> stockTransactionPayload(
     StockTransaction transaction, {
     String? expenseId,
-  }) {
-    final quantite = transaction.type == StockTransactionType.adjustment
-        ? transaction.quantity
-        : transaction.quantity.abs();
-    final notes = transaction.notes?.trim();
-    final reference = transaction.referenceId;
-    final emplacement = transaction.locationId;
-    return {
-      'productId': transaction.productId,
-      'type': transaction.type.name,
-      'quantity': quantite,
-      'date': transaction.date.toUtc().toIso8601String(),
-      if (reference != null && reference.isNotEmpty) 'referenceId': reference,
-      if (notes != null && notes.isNotEmpty) 'notes': notes,
-      if (transaction.unitCostInCdf > 0)
-        'unitCostPrice': transaction.unitCostInCdf,
-      if (emplacement != null && emplacement.isNotEmpty)
-        'locationId': emplacement,
-      if (expenseId != null && expenseId.isNotEmpty) 'expenseId': expenseId,
-    };
-  }
+  }) => transaction.toApiPayload(expenseId: expenseId);
 
   @override
   Future<ApiResponse<StockTransaction>> createStockTransaction(
@@ -663,9 +647,7 @@ class InventoryApiServiceImpl implements InventoryApiService {
       );
       // Réponse enveloppée {success, data} : on garde le mouvement local
       // (montants CDF, unité d'affaires) avec l'identifiant du serveur.
-      final data = response is Map && response['data'] is Map
-          ? response['data'] as Map
-          : response;
+      final data = _unwrap(response);
       final serverId = data is Map ? data['id']?.toString() : null;
       return ApiResponse<StockTransaction>(
         success: true,
@@ -705,8 +687,8 @@ class InventoryApiServiceImpl implements InventoryApiService {
         'stock-transactions/$id',
         requiresAuth: true,
       );
-      final transactionData = StockTransaction.fromJson(
-        response as Map<String, dynamic>,
+      final transactionData = StockTransaction.fromApi(
+        Map<String, dynamic>.from(_unwrap(response) as Map),
       );
 
       return ApiResponse<StockTransaction>(
@@ -731,4 +713,12 @@ class InventoryApiServiceImpl implements InventoryApiService {
       );
     }
   }
+
+  /// Retire l'enveloppe `{success, data}` posée par l'intercepteur serveur.
+  static dynamic _unwrap(dynamic response) =>
+      response is Map &&
+              response.containsKey('success') &&
+              response.containsKey('data')
+          ? response['data']
+          : response;
 }

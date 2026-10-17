@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import '../models/supplier.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/models/api_response.dart';
+import '../../../core/exceptions/api_exceptions.dart' show ApiException;
 
 /// Service API pour les fournisseurs
 abstract class SupplierApiService {
@@ -136,13 +137,46 @@ class SupplierApiServiceImpl implements SupplierApiService {
     }
   }
 
+  /// Corps envoyé au serveur : jamais de chaîne vide pour un champ validé
+  /// (email, date) ni pour un texte facultatif. `@IsOptional` ne saute pas
+  /// `''` côté DTO : la clé est omise.
+  static Map<String, dynamic> supplierPayload(Supplier supplier) {
+    final corps = supplier.toJson();
+    corps.removeWhere((_, v) => v is String && v.trim().isEmpty);
+    return corps;
+  }
+
+  /// Statut et cause d'un échec, pour que le dépôt distingue un refus (4xx,
+  /// à montrer) d'une coupure (fiche gardée `pending`, envoyée par la synchro).
+  static ApiResponse<T> _failure<T>(Object e, String prefix) {
+    if (e is ApiException) {
+      return ApiResponse<T>(
+        success: false,
+        data: null,
+        message: e.message,
+        statusCode: e.statusCode,
+        error: e,
+      );
+    }
+    return ApiResponse<T>(
+      success: false,
+      data: null,
+      message: '$prefix: ${e.toString()}',
+      statusCode: 500,
+      error: e,
+    );
+  }
+
   @override
   Future<ApiResponse<Supplier>> createSupplier(Supplier supplier) async {
     try {
+      // Pas de file hors ligne : la fiche reste `pending` et la
+      // synchronisation la crée ; la mettre aussi en file la créait deux fois.
       final response = await _apiClient.post(
         'suppliers',
-        body: supplier.toJson(),
+        body: supplierPayload(supplier),
         requiresAuth: true,
+        queueOffline: false,
       );
 
       if (response != null) {
@@ -170,12 +204,7 @@ class SupplierApiServiceImpl implements SupplierApiService {
         statusCode: 500,
       );
     } catch (e) {
-      return ApiResponse<Supplier>(
-        success: false,
-        data: null,
-        message: 'Failed to create supplier: ${e.toString()}',
-        statusCode: 500,
-      );
+      return _failure<Supplier>(e, 'Failed to create supplier');
     }
   }
 
@@ -228,10 +257,13 @@ class SupplierApiServiceImpl implements SupplierApiService {
   ) async {
     try {
       // Utiliser PATCH au lieu de PUT conformément à la documentation API
+      // Corps complet (une chaîne vide efface le champ, le DTO l'accepte pour
+      // l'email). Pas de file hors ligne : la fiche reste `pending_update`.
       final response = await _apiClient.patch(
         'suppliers/$id',
         body: supplier.toJson(),
         requiresAuth: true,
+        queueOffline: false,
       );
 
       if (response != null) {
@@ -259,12 +291,7 @@ class SupplierApiServiceImpl implements SupplierApiService {
         statusCode: 500,
       );
     } catch (e) {
-      return ApiResponse<Supplier>(
-        success: false,
-        data: null,
-        message: 'Failed to update supplier: ${e.toString()}',
-        statusCode: 500,
-      );
+      return _failure<Supplier>(e, 'Failed to update supplier');
     }
   }
 

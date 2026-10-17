@@ -36,10 +36,15 @@ class ExpenseLoaded extends ExpenseState {
 
 class ExpenseOperationSuccess extends ExpenseState {
   final String message;
-  const ExpenseOperationSuccess(this.message);
+
+  /// Dépense enregistrée (création) : identifiant serveur si `synced`, sinon
+  /// version locale en attente d'envoi.
+  final Expense? expense;
+
+  const ExpenseOperationSuccess(this.message, {this.expense});
 
   @override
-  List<Object?> get props => [message];
+  List<Object?> get props => [message, expense];
 }
 
 /// Règlement enregistré sur une dette fournisseur (une tranche).

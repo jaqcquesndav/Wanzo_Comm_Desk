@@ -38,7 +38,15 @@ class AddProductScreen extends StatefulWidget {
   /// Callback appelé après sauvegarde réussie (mode modal).
   final VoidCallback? onSaved;
 
-  const AddProductScreen({super.key, this.product, this.onSaved});
+  /// Code-barres pré-rempli (produit inconnu scanné à la caisse).
+  final String? initialBarcode;
+
+  const AddProductScreen({
+    super.key,
+    this.product,
+    this.onSaved,
+    this.initialBarcode,
+  });
 
   @override
   State<AddProductScreen> createState() => _AddProductScreenState();
@@ -98,7 +106,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       text: widget.product?.description ?? '',
     );
     _barcodeController = TextEditingController(
-      text: widget.product?.barcode ?? '',
+      text: widget.product?.barcode ?? widget.initialBarcode ?? '',
     );
     _lookupName = widget.product?.name ?? '';
     _lookupBarcode = widget.product?.barcode ?? '';
@@ -242,12 +250,27 @@ class _AddProductScreenState extends State<AddProductScreen> {
       source = chosen;
     }
     try {
-      final File? pickedFile = source == 'camera'
-          ? await _imagePickerService.pickFromCamera()
-          : await _imagePickerService.pickFromGallery();
-      if (pickedFile == null) return [];
+      // Galerie : plusieurs photos d'un coup (comme le mobile).
+      final List<File> choisis;
+      if (source == 'camera') {
+        final photo = await _imagePickerService.pickFromCamera(
+          maxWidth: 1280,
+          imageQuality: 80,
+        );
+        choisis = photo == null ? const [] : [photo];
+      } else {
+        choisis = await _imagePickerService.pickMultipleImages(
+          maxWidth: 1280,
+          imageQuality: 80,
+        );
+      }
+      if (choisis.isEmpty) return [];
       final appDir = await getApplicationDocumentsDirectory();
-      return [await _uniqueCopy(pickedFile, appDir)];
+      final result = <File>[];
+      for (final f in choisis) {
+        result.add(await _uniqueCopy(f, appDir));
+      }
+      return result;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -308,6 +331,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       );
 
       // Si un code a été scanné, l'ajouter au champ
+      if (!mounted) return;
       if (result != null && result.isNotEmpty) {
         setState(() {
           _barcodeController.text = result;

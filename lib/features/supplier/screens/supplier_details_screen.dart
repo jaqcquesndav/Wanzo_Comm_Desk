@@ -322,7 +322,7 @@ class SupplierDetailsScreen extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: _getCategoryColor(
                               supplier.category,
-                            ).withOpacity(0.2),
+                            ).withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Text(
@@ -438,7 +438,7 @@ class SupplierDetailsScreen extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: _getCategoryColor(
                       supplier.category,
-                    ).withOpacity(0.2),
+                    ).withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Text(

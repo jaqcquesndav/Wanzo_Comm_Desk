@@ -273,6 +273,27 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
     double totalAmount,
   ) {
     final dateFormat = DateFormat('dd/MM/yyyy');
+    // Total en base CDF, chaque dépense à son taux FIGÉ. Le total brut du
+    // bloc additionnait des dollars et des francs sous l'étiquette CDF. Une
+    // dépense étrangère sans taux reste à part, dans sa devise.
+    var totalCdf = 0.0;
+    final sansTaux = <String, double>{};
+    for (final e in expenses) {
+      final code = e.effectiveCurrencyCode.toUpperCase();
+      final taux = e.exchangeRate ?? 0;
+      if (code == 'CDF') {
+        totalCdf += e.amount;
+      } else if (taux > 0) {
+        totalCdf += e.amount * taux;
+      } else {
+        sansTaux[code] = (sansTaux[code] ?? 0) + e.amount;
+      }
+    }
+    final totalTexte = [
+      formatCurrency(totalCdf, 'CDF'),
+      for (final s in sansTaux.entries)
+        '${formatCurrency(s.value, s.key)} (sans taux)',
+    ].join(' + ');
 
     return Column(
       children: [
@@ -288,7 +309,7 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               Text(
-                'Total: ${formatCurrency(totalAmount, 'CDF')}',
+                'Total : $totalTexte',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: Colors.red[700],
