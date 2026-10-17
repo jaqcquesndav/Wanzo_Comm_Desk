@@ -123,6 +123,8 @@ class _SplashScreenState extends State<SplashScreen>
           _navigateToRoute('/sync-pending');
         } else if (state is AuthBusinessUnitRequired) {
           _navigateToRoute('/join-business-unit');
+        } else if (state is AuthJoinRequestState) {
+          _navigateToRoute('/join-request');
         } else if (state is AuthUnauthenticated || state is AuthFailure) {
           _navigateToOnboarding();
         }

@@ -21,6 +21,10 @@ import 'financial_account_settings_screen.dart';
 import 'printer_settings_screen.dart';
 import '../../security/screens/security_settings_screen.dart';
 import '../../business_unit/widgets/join_business_unit_dialog.dart';
+import '../../auth/bloc/auth_bloc.dart';
+import '../../auth/models/join_request.dart' show canDecideJoinRequests;
+import '../../auth/services/join_request_service.dart';
+import '../../users/screens/join_requests_screen.dart';
 
 /// Écran principal des paramètres
 class SettingsScreen extends StatefulWidget {
@@ -31,11 +35,39 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  int _pendingJoinRequests = 0;
+
   @override
   void initState() {
     super.initState();
     // Charge les paramètres au démarrage
     context.read<SettingsBloc>().add(const LoadSettings());
+    _loadPendingJoinRequests();
+  }
+
+  /// Administrateur ou propriétaire : seuls à décider des demandes.
+  bool _canDecideJoinRequests() {
+    final authState = context.read<AuthBloc>().state;
+    return authState is AuthAuthenticated &&
+        canDecideJoinRequests(authState.user.role);
+  }
+
+  /// Nombre de demandes en attente (badge). Hors ligne, le badge reste vide :
+  /// la liste elle-même dira qu'il faut le réseau.
+  Future<void> _loadPendingJoinRequests() async {
+    if (!_canDecideJoinRequests()) return;
+    try {
+      final count = await JoinRequestService().pendingCount();
+      if (mounted) setState(() => _pendingJoinRequests = count);
+    } catch (_) {}
+  }
+
+  Future<void> _openJoinRequests() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const JoinRequestsScreen()),
+    );
+    if (mounted) _loadPendingJoinRequests();
   }
 
   @override
@@ -157,6 +189,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: _uniteCouranteLibelle(),
             onTap: _rejoindreUnite,
           ),
+          if (_canDecideJoinRequests())
+            _SettingsItem(
+              icon: Icons.how_to_reg_outlined,
+              title: 'Demandes de rattachement',
+              subtitle: _pendingJoinRequests > 0
+                  ? '$_pendingJoinRequests en attente de votre accord'
+                  : 'Personnes qui demandent à rejoindre l\'entreprise',
+              badgeCount: _pendingJoinRequests,
+              onTap: _openJoinRequests,
+            ),
           _SettingsItem(
             icon: Icons.security,
             title: 'Sécurité locale',
@@ -275,13 +317,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildSettingsTile(_SettingsItem item) {
+    final icon = Icon(
+      item.icon,
+      size: 28,
+      color: Theme.of(context).primaryColor,
+    );
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      leading: Icon(
-        item.icon,
-        size: 28,
-        color: Theme.of(context).primaryColor,
-      ),
+      leading: item.badgeCount > 0
+          ? Badge(
+              label: Text(item.badgeCount > 99 ? '99+' : '${item.badgeCount}'),
+              child: icon,
+            )
+          : icon,
       title: Text(
         item.title,
         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
@@ -517,12 +565,14 @@ class _SettingsItem {
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final int badgeCount;
 
   const _SettingsItem({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.badgeCount = 0,
   });
 }
 

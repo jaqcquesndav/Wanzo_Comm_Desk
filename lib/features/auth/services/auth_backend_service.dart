@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/exceptions/api_exceptions.dart';
 import '../models/user.dart';
+import '../models/join_request.dart';
+import 'join_request_service.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
 
 /// Service pour récupérer les informations utilisateur depuis le backend
@@ -230,9 +232,10 @@ class AuthBackendService {
       requiresAuth: true,
     );
 
-    final data = (response is Map && response['data'] is Map)
-        ? response['data'] as Map<String, dynamic>
-        : (response as Map<String, dynamic>? ?? const {});
+    final unwrapped = unwrapGestionData(response);
+    final data = unwrapped is Map
+        ? Map<String, dynamic>.from(unwrapped)
+        : const <String, dynamic>{};
 
     return JoinBusinessUnitResponse(
       success: true,
@@ -252,32 +255,37 @@ class AuthBackendService {
         'AuthBackendService: Joining business unit with code: $businessUnitCode',
       );
 
+      // Action en ligne uniquement : un code rejoué plus tard, à l'insu de
+      // l'utilisateur, créerait une demande qu'il n'attend plus.
       final response = await _apiClient.post(
         'settings-user-profile/company/join-business-unit',
         body: {'businessUnitCode': businessUnitCode},
         requiresAuth: true,
+        queueOffline: false,
       );
 
-      if (response != null && response['success'] == true) {
-        final data = response['data'] as Map<String, dynamic>?;
-        if (data != null) {
-          debugPrint('AuthBackendService: Successfully joined business unit');
+      if (response is Map && response['success'] == true) {
+        // Double enveloppe de gestion : lire le résultat, pas l'enveloppe
+        // intérieure (sinon id et nom d'unité restaient vides).
+        final unwrapped = unwrapGestionData(response);
+        if (unwrapped is Map) {
+          debugPrint(
+            'AuthBackendService: join-business-unit ${unwrapped['status'] ?? 'joined'}',
+          );
           return JoinBusinessUnitResponse.fromJson(
-            data,
-            message: response['message'] as String?,
+            Map<String, dynamic>.from(unwrapped),
+            message: unwrapGestionMessage(response),
           );
         }
       }
 
       throw BadRequestException(
-        response?['message'] as String? ??
+        unwrapGestionMessage(response) ??
             'Échec de la jonction à l\'unité d\'affaires',
       );
-    } on NetworkException {
-      rethrow;
-    } on BadRequestException {
-      rethrow;
-    } on NotFoundException {
+    } on ApiException {
+      // Statut et message du serveur conservés (403, 409, 429, 503...) :
+      // l'écran affiche le texte précis plutôt qu'une erreur générique.
       rethrow;
     } catch (e) {
       debugPrint('AuthBackendService: Error joining business unit: $e');
@@ -663,6 +671,14 @@ class JoinBusinessUnitResponse {
   final String businessUnitName;
   final String? message;
 
+  /// `joined` (200, compte déjà membre) ou `pending` (202, compte sans
+  /// entreprise : demande en attente de l'administrateur).
+  final String status;
+  final String? requestId;
+  final String? companyId;
+  final String? companyName;
+  final bool joinedCompany;
+
   const JoinBusinessUnitResponse({
     required this.success,
     required this.businessUnitId,
@@ -670,21 +686,47 @@ class JoinBusinessUnitResponse {
     required this.businessUnitType,
     required this.businessUnitName,
     this.message,
+    this.status = 'joined',
+    this.requestId,
+    this.companyId,
+    this.companyName,
+    this.joinedCompany = false,
   });
+
+  /// Une demande a été créée : l'accès viendra après l'accord de l'administrateur.
+  bool get isPending => status == 'pending';
 
   factory JoinBusinessUnitResponse.fromJson(
     Map<String, dynamic> json, {
     String? message,
   }) {
+    String s(String key) => json[key]?.toString() ?? '';
     return JoinBusinessUnitResponse(
       success: true,
-      businessUnitId: (json['businessUnitId'] as String?) ?? '',
-      businessUnitCode: (json['businessUnitCode'] as String?) ?? '',
-      businessUnitType: (json['businessUnitType'] as String?) ?? '',
-      businessUnitName: (json['businessUnitName'] as String?) ?? '',
-      message: message ?? json['message'] as String?,
+      businessUnitId: s('businessUnitId'),
+      businessUnitCode: s('businessUnitCode'),
+      businessUnitType: s('businessUnitType'),
+      businessUnitName: s('businessUnitName'),
+      message: message ?? json['message']?.toString(),
+      status: json['status']?.toString() ?? 'joined',
+      requestId: json['requestId']?.toString(),
+      companyId: json['companyId']?.toString(),
+      companyName: json['companyName']?.toString(),
+      joinedCompany: json['joinedCompany'] == true,
     );
   }
+
+  /// La demande créée, telle que l'écran d'attente l'affiche.
+  JoinRequest toPendingRequest() => JoinRequest(
+    id: requestId ?? '',
+    status: JoinRequestStatus.pending,
+    companyId: companyId,
+    companyName: companyName,
+    businessUnitId: businessUnitId,
+    businessUnitCode: businessUnitCode,
+    businessUnitName: businessUnitName,
+    createdAt: DateTime.now(),
+  );
 }
 
 /// Informations de l'entreprise retournées par /auth/me

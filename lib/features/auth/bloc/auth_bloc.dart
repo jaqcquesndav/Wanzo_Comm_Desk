@@ -3,7 +3,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'dart:io'; // Import for File type
 import '../models/user.dart';
+import '../models/join_request.dart';
 import '../repositories/auth_repository.dart';
+import '../services/join_request_service.dart' show joinRequestErrorMessage;
+import '../../../core/exceptions/api_exceptions.dart';
 
 part 'auth_event.dart';
 part 'auth_state.dart';
@@ -22,6 +25,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthUserProfileUpdated>(_onAuthUserProfileUpdated);
     on<AuthJoinBusinessUnitRequested>(_onAuthJoinBusinessUnitRequested);
     on<AuthRefreshProfileRequested>(_onAuthRefreshProfileRequested);
+    on<AuthJoinRequestCheckRequested>(_onJoinRequestCheckRequested);
+    on<AuthJoinRequestCancelRequested>(_onJoinRequestCancelRequested);
   }
 
   /// Résout l'état d'authentification selon les 3 cas de /auth/me
@@ -50,6 +55,24 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     return AuthAuthenticated(user);
   }
 
+  /// Comme [_resolveAuthState], et pour un compte sans entreprise, regarde
+  /// s'il a une demande de rattachement en cours : l'écran d'attente de la
+  /// demande s'affiche alors directement (au démarrage, après connexion).
+  /// Un échec de cette lecture n'empêche jamais l'accès au parcours habituel.
+  Future<AuthState> _resolveWithJoinRequest(User user) async {
+    final resolved = _resolveAuthState(user);
+    if (resolved is! AuthSyncPending) return resolved;
+    try {
+      final request = await _authRepository.fetchMyJoinRequest();
+      if (request != null && (request.isPending || request.isRefused)) {
+        return AuthJoinRequestState(user, request);
+      }
+    } catch (e) {
+      debugPrint('AuthBloc: demande de rattachement non lue : $e');
+    }
+    return resolved;
+  }
+
   /// Vérifie si l'utilisateur est authentifié au démarrage
   Future<void> _onAuthCheckRequested(
     AuthCheckRequested event,
@@ -61,7 +84,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       if (isLoggedIn) {
         final user = await _authRepository.getCurrentUser();
         if (user != null) {
-          emit(_resolveAuthState(user));
+          emit(await _resolveWithJoinRequest(user));
         } else {
           emit(const AuthUnauthenticated());
         }
@@ -91,7 +114,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(const AuthLoading());
     try {
       final user = await _authRepository.login(event.email, event.password);
-      emit(_resolveAuthState(user));
+      emit(await _resolveWithJoinRequest(user));
     } catch (e) {
       emit(AuthFailure(e.toString()));
     }
@@ -112,7 +135,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         event.email ?? '',
         event.password ?? '',
       );
-      emit(_resolveAuthState(user));
+      emit(await _resolveWithJoinRequest(user));
     } catch (e) {
       emit(AuthFailure(e.toString()));
     }
@@ -200,50 +223,202 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     }
   }
 
-  /// Gère la jonction à une unité d'affaires via code
+  /// Gère la demande de rejoindre une business unit avec un code
   Future<void> _onAuthJoinBusinessUnitRequested(
     AuthJoinBusinessUnitRequested event,
     Emitter<AuthState> emit,
   ) async {
-    // Récupérer l'utilisateur actuel depuis l'état courant
+    // Récupérer l'utilisateur courant depuis l'état actuel. Un compte sans
+    // entreprise (synchro en attente ou demande refusée) saisit aussi un code.
+    final previous = state;
     User? currentUser;
-    if (state is AuthBusinessUnitRequired) {
-      currentUser = (state as AuthBusinessUnitRequired).user;
-    } else if (state is AuthJoinBusinessUnitFailure) {
-      currentUser = (state as AuthJoinBusinessUnitFailure).user;
-    } else if (state is AuthAuthenticated) {
-      currentUser = (state as AuthAuthenticated).user;
+    if (previous is AuthBusinessUnitRequired) {
+      currentUser = previous.user;
+    } else if (previous is AuthJoinBusinessUnitFailure) {
+      currentUser = previous.user;
+    } else if (previous is AuthAuthenticated) {
+      currentUser = previous.user;
+    } else if (previous is AuthSyncPending) {
+      currentUser = previous.user;
+    } else if (previous is AuthJoinRequestState) {
+      currentUser = previous.user;
+    }
+
+    if (currentUser == null) {
+      emit(const AuthFailure('Utilisateur non authentifié'));
+      return;
+    }
+
+    // En cas d'échec, l'écran d'origine reste affiché : l'échec est signalé
+    // (message) puis l'état précédent revient. Sans cela, un code erroné
+    // depuis l'écran d'attente renvoyait vers un autre écran.
+    void fail(String message) {
+      emit(AuthJoinBusinessUnitFailure(message, user: currentUser!));
+      if (previous is AuthSyncPending ||
+          previous is AuthJoinRequestState ||
+          previous is AuthBusinessUnitRequired) {
+        emit(
+          previous is AuthJoinRequestState
+              ? previous.copyWith(busy: false, clearNotice: true)
+              : previous,
+        );
+      }
     }
 
     emit(const AuthJoinBusinessUnitInProgress());
 
     try {
-      await _authRepository.joinBusinessUnit(event.businessUnitCode);
+      final response = await _authRepository.joinBusinessUnit(
+        event.businessUnitCode,
+      );
 
-      // Rafraîchir le profil pour obtenir les données mises à jour
-      final refreshedUser = await _authRepository.refreshUserProfile();
-      if (refreshedUser != null) {
-        emit(_resolveAuthState(refreshedUser));
-      } else if (currentUser != null) {
-        emit(_resolveAuthState(currentUser));
-      } else {
-        emit(const AuthUnauthenticated());
+      if (response.success && response.isPending) {
+        // Compte sans entreprise (202) : la demande attend l'administrateur.
+        emit(
+          AuthJoinRequestState(
+            currentUser,
+            response.toPendingRequest(),
+          ),
+        );
+        return;
       }
+
+      if (response.success) {
+        // Rafraîchir le profil pour obtenir les données BU complètes
+        User? refreshedUser;
+        try {
+          refreshedUser = await _authRepository.refreshUserProfile();
+        } catch (e) {
+          debugPrint('AuthBloc: profil non relu après jonction : $e');
+        }
+        if (refreshedUser != null) {
+          emit(await _resolveWithJoinRequest(refreshedUser));
+        } else {
+          // Join a réussi mais le refresh a échoué - essayer avec l'utilisateur existant
+          emit(AuthAuthenticated(currentUser));
+        }
+      } else {
+        fail(response.message ?? "L'unité n'a pas pu être rejointe.");
+      }
+    } on AuthenticationException catch (_) {
+      try {
+        await _authRepository.logout();
+      } catch (_) {}
+      emit(const AuthUnauthenticated());
+    } catch (e) {
+      fail(joinRequestErrorMessage(e));
+    }
+  }
+
+  /// Vérifie le statut de ma demande de rattachement.
+  Future<void> _onJoinRequestCheckRequested(
+    AuthJoinRequestCheckRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    final current = state;
+    if (current is! AuthJoinRequestState || current.busy) return;
+    if (!event.silent) emit(current.copyWith(busy: true, clearNotice: true));
+    await _reconcileJoinRequest(current, emit, silent: event.silent);
+  }
+
+  /// Annule ma demande en attente puis revient à l'écran du compte sans
+  /// entreprise (où un autre code peut être saisi).
+  Future<void> _onJoinRequestCancelRequested(
+    AuthJoinRequestCancelRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    final current = state;
+    if (current is! AuthJoinRequestState || current.busy) return;
+    emit(current.copyWith(busy: true, clearNotice: true));
+    try {
+      await _authRepository.cancelMyJoinRequest();
+    } on NotFoundException {
+      // Plus rien en attente : la demande a peut-être été traitée entre-temps.
+      await _reconcileJoinRequest(current, emit, silent: false);
+      return;
+    } on AuthenticationException catch (_) {
+      try {
+        await _authRepository.logout();
+      } catch (_) {}
+      emit(const AuthUnauthenticated());
+      return;
+    } catch (e) {
+      emit(current.copyWith(busy: false, notice: joinRequestErrorMessage(e)));
+      return;
+    }
+    emit(
+      AuthSyncPending(
+        current.user,
+        message: 'Demande annulée. Vous pouvez saisir un autre code.',
+      ),
+    );
+  }
+
+  /// Relit ma demande et en tire l'état : acceptée → relecture de /auth/me et
+  /// entrée dans l'application ; refusée → motif ; toujours en attente →
+  /// l'écran reste. Jamais de boucle ici : un appel par demande.
+  Future<void> _reconcileJoinRequest(
+    AuthJoinRequestState current,
+    Emitter<AuthState> emit, {
+    required bool silent,
+  }) async {
+    try {
+      final request = await _authRepository.fetchMyJoinRequest();
+
+      if (request == null || request.isCancelled || request.isAccepted) {
+        final refreshed = await _authRepository.refreshUserProfile();
+        if (refreshed != null) {
+          final next = await _resolveWithJoinRequest(refreshed);
+          if (next is AuthJoinRequestState || next is! AuthSyncPending) {
+            emit(next);
+            return;
+          }
+          // Acceptée mais l'entreprise n'est pas encore propagée : l'écran
+          // de synchronisation prend le relais (vérifications bornées).
+          if (request != null && request.isAccepted) {
+            emit(
+              AuthSyncPending(
+                refreshed,
+                message:
+                    "Votre demande est acceptée. Connexion à l'entreprise en cours...",
+              ),
+            );
+            return;
+          }
+          emit(next);
+          return;
+        }
+        emit(
+          current.copyWith(
+            request: request ?? current.request,
+            busy: false,
+            notice: request != null && request.isAccepted
+                ? 'Votre demande est acceptée. Touchez Vérifier dans un instant pour entrer.'
+                : 'Statut indisponible pour le moment. Réessayez dans un instant.',
+          ),
+        );
+        return;
+      }
+
+      emit(
+        AuthJoinRequestState(
+          current.user,
+          request,
+          notice: !silent && request.isPending
+              ? "Toujours en attente de l'accord de l'administrateur."
+              : null,
+        ),
+      );
+    } on AuthenticationException catch (_) {
+      try {
+        await _authRepository.logout();
+      } catch (_) {}
+      emit(const AuthUnauthenticated());
     } catch (e) {
       emit(
-        AuthJoinBusinessUnitFailure(
-          e.toString(),
-          user:
-              currentUser ??
-              User(
-                id: '',
-                name: '',
-                email: '',
-                phone: '',
-                role: '',
-                emailVerified: false,
-                phoneVerified: false,
-              ),
+        current.copyWith(
+          busy: false,
+          notice: silent ? current.notice : joinRequestErrorMessage(e),
         ),
       );
     }
@@ -254,10 +429,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     AuthRefreshProfileRequested event,
     Emitter<AuthState> emit,
   ) async {
+    // Une saisie de code ou une demande en cours a la priorité sur les
+    // vérifications automatiques de l'écran de synchronisation.
+    if (state is AuthJoinBusinessUnitInProgress ||
+        state is AuthJoinRequestState) {
+      return;
+    }
     try {
       final refreshedUser = await _authRepository.refreshUserProfile();
       if (refreshedUser != null) {
-        emit(_resolveAuthState(refreshedUser));
+        emit(await _resolveWithJoinRequest(refreshedUser));
       }
       // Si refreshedUser est null, on garde l'état actuel
     } catch (e) {

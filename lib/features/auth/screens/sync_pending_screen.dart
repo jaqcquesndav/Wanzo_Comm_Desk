@@ -1,196 +1,154 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:wanzo/constants/constants.dart';
-import 'package:wanzo/core/platform/platform_service.dart';
-import 'package:wanzo/core/utils/logout_confirmation.dart';
 import '../bloc/auth_bloc.dart';
+import '../widgets/join_code_form.dart';
 
-/// Écran affiché quand la synchronisation Kafka est en cours (Cas 3 de /auth/me)
+/// Écran d'un compte sans entreprise.
 ///
-/// L'utilisateur vient de s'inscrire et ses données entreprise
-/// ne sont pas encore disponibles dans le service commercial.
-/// Le système réessaie automatiquement toutes les 5 secondes (max 30 tentatives).
+/// Deux situations y mènent : l'entreprise vient d'être créée et ses données
+/// sont encore en route (synchronisation), ou le compte n'appartient à aucune
+/// entreprise. Dans le second cas, l'utilisateur saisit le code reçu de son
+/// administrateur : une demande est envoyée et son écran d'attente s'affiche.
+///
+/// Les vérifications automatiques sont espacées et bornées (jamais une
+/// boucle) ; le bouton « Réessayer » en relance une à la demande.
 class SyncPendingScreen extends StatefulWidget {
-  const SyncPendingScreen({super.key});
+  /// Délais des vérifications automatiques, comptés depuis la précédente.
+  final List<Duration> autoRetryDelays;
+
+  const SyncPendingScreen({
+    super.key,
+    this.autoRetryDelays = const [
+      Duration(seconds: 5),
+      Duration(seconds: 10),
+      Duration(seconds: 20),
+      Duration(seconds: 40),
+      Duration(seconds: 80),
+      Duration(minutes: 3),
+    ],
+  });
 
   @override
   State<SyncPendingScreen> createState() => _SyncPendingScreenState();
 }
 
-class _SyncPendingScreenState extends State<SyncPendingScreen>
-    with SingleTickerProviderStateMixin {
+class _SyncPendingScreenState extends State<SyncPendingScreen> {
   Timer? _retryTimer;
-  int _retryCount = 0;
-  static const int _maxRetries = 30; // 30 x 5s = 2.5 minutes
-  static const Duration _retryInterval = Duration(seconds: 5);
-  late AnimationController _pulseController;
+  int _retryIndex = 0;
+
+  bool get _exhausted => _retryIndex >= widget.autoRetryDelays.length;
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-    _startAutoRetry();
-  }
-
-  void _startAutoRetry() {
-    _retryTimer = Timer.periodic(_retryInterval, (timer) {
-      if (_retryCount >= _maxRetries) {
-        timer.cancel();
-        return;
-      }
-      _retryCount++;
-      context.read<AuthBloc>().add(const AuthRefreshProfileRequested());
-    });
-  }
-
-  void _manualRetry() {
-    _retryCount = 0;
-    context.read<AuthBloc>().add(const AuthRefreshProfileRequested());
-    // Relancer le timer si arrêté
-    if (_retryTimer == null || !_retryTimer!.isActive) {
-      _startAutoRetry();
-    }
+    _scheduleNext();
   }
 
   @override
   void dispose() {
     _retryTimer?.cancel();
-    _pulseController.dispose();
     super.dispose();
+  }
+
+  void _scheduleNext() {
+    _retryTimer?.cancel();
+    if (_exhausted) {
+      if (mounted) setState(() {});
+      return;
+    }
+    final delay = widget.autoRetryDelays[_retryIndex++];
+    _retryTimer = Timer(delay, () {
+      if (!mounted) return;
+      context.read<AuthBloc>().add(const AuthRefreshProfileRequested());
+      _scheduleNext();
+    });
+  }
+
+  void _manualRetry() {
+    _retryIndex = 0;
+    context.read<AuthBloc>().add(const AuthRefreshProfileRequested());
+    _scheduleNext();
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
-    final platform = PlatformService.instance;
-    final isDesktop = screenSize.width >= platform.desktopMinWidth;
+    final theme = Theme.of(context);
+    return Scaffold(
+      body: SafeArea(
+        // Affiche juste apres la premiere connexion : il doit tenir en
+        // paysage et avec une grande police, donc defiler plutot que deborder.
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: BlocBuilder<AuthBloc, AuthState>(
+                builder: (context, state) {
+                  final message = state is AuthSyncPending
+                      ? state.message ?? 'Synchronisation en cours...'
+                      : 'Synchronisation en cours...';
+                  final busy = state is AuthJoinBusinessUnitInProgress;
 
-    return BlocBuilder<AuthBloc, AuthState>(
-      builder: (context, state) {
-        final message = state is AuthSyncPending ? state.message : null;
-
-        return Scaffold(
-          backgroundColor: WanzoColors.primary,
-          body: Center(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: isDesktop ? 500 : double.infinity,
-              ),
-              padding: EdgeInsets.symmetric(
-                horizontal: isDesktop ? 48 : 24,
-                vertical: 32,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Icône animée
-                  AnimatedBuilder(
-                    animation: _pulseController,
-                    builder: (context, child) {
-                      return Transform.scale(
-                        scale: 0.9 + (_pulseController.value * 0.1),
-                        child: Container(
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: const Icon(
-                            Icons.cloud_sync,
-                            size: 80,
-                            color: Colors.white,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Titre
-                  Text(
-                    'Configuration en cours',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: isDesktop ? 28 : 24,
-                      fontWeight: WanzoTypography.fontWeightBold,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Message
-                  Text(
-                    message ??
-                        'Vos données entreprise sont en cours de synchronisation. '
-                            'Cela peut prendre quelques instants...',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: isDesktop ? 16 : 14,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Progress indicator
-                  const CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Compteur de tentatives
-                  Text(
-                    'Tentative $_retryCount / $_maxRetries',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      fontSize: isDesktop ? 14 : 12,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Bouton réessayer
-                  OutlinedButton.icon(
-                    onPressed: _manualRetry,
-                    icon: const Icon(Icons.refresh, color: Colors.white),
-                    label: Text(
-                      'Réessayer manuellement',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.white54),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 12,
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Icon(Icons.sync, size: 64, color: Colors.orange),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Configuration en cours',
+                        style: theme.textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Bouton déconnexion
-                  TextButton.icon(
-                    onPressed: () async {
-                      final confirmed = await confirmLogout(context);
-                      if (confirmed && context.mounted) {
-                        context.read<AuthBloc>().add(
-                          const AuthLogoutRequested(),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.logout, color: Colors.white54),
-                    label: Text(
-                      'Se déconnecter',
-                      style: const TextStyle(color: Colors.white54),
-                    ),
-                  ),
-                ],
+                      const SizedBox(height: 12),
+                      Text(
+                        message,
+                        style: theme.textTheme.bodyLarge
+                            ?.copyWith(color: Colors.grey[600]),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      if (!_exhausted)
+                        const Center(child: CircularProgressIndicator())
+                      else
+                        Text(
+                          'La configuration prend plus de temps que prévu.',
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: Colors.red[400]),
+                          textAlign: TextAlign.center,
+                        ),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: busy ? null : _manualRetry,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Réessayer'),
+                      ),
+                      const SizedBox(height: 28),
+                      const Divider(),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Vous rejoignez une entreprise existante ?',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        "Saisissez le code reçu de votre administrateur. Il "
+                        "recevra votre demande et vous donnera accès.",
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      const JoinCodeForm(),
+                      const SizedBox(height: 24),
+                      JoinAccountFooter(enabled: !busy),
+                    ],
+                  );
+                },
               ),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

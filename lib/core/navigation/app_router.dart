@@ -9,6 +9,7 @@ import '../../features/auth/screens/auth0_redirect_screen.dart';
 import '../../features/auth/screens/auth0_info_screen.dart';
 import '../../features/auth/screens/sync_pending_screen.dart';
 import '../../features/auth/screens/join_business_unit_screen.dart';
+import '../../features/auth/screens/join_request_status_screen.dart';
 import '../../features/dashboard/screens/dashboard_screen.dart';
 import '../../features/inventory/models/product.dart';
 import '../../features/inventory/repositories/inventory_repository.dart';
@@ -104,6 +105,7 @@ class AppRouter {
       final isBusinessUnitRequired = authState is AuthBusinessUnitRequired;
       final isJoiningBU = authState is AuthJoinBusinessUnitInProgress;
       final isJoinBUFailure = authState is AuthJoinBusinessUnitFailure;
+      final isJoinRequest = authState is AuthJoinRequestState;
       final isProfileUpdate =
           authState is AuthProfileUpdateInProgress ||
           authState is AuthProfileUpdateSuccess;
@@ -117,7 +119,8 @@ class AppRouter {
       final onSplashScreen = state.matchedLocation == '/';
       final onSyncPending = state.matchedLocation == '/sync-pending';
       final onJoinBU = state.matchedLocation == '/join-business-unit';
-      final onIntermediateScreens = onSyncPending || onJoinBU;
+      final onJoinRequest = state.matchedLocation == '/join-request';
+      final onIntermediateScreens = onSyncPending || onJoinBU || onJoinRequest;
 
       // Ne pas rediriger pendant le chargement, les mises à jour de profil, ou sur splash avec état initial
       if (isAuthenticating ||
@@ -125,6 +128,17 @@ class AppRouter {
           isJoiningBU ||
           (onSplashScreen && authState is AuthInitial)) {
         return null;
+      }
+
+      // Code refusé : l'écran d'origine reste affiché (le bloc y revient
+      // aussitôt, message affiché), on ne l'interrompt pas par une redirection.
+      if (isJoinBUFailure) {
+        return null;
+      }
+
+      // Compte sans entreprise avec une demande de rattachement : écran dédié.
+      if (isJoinRequest) {
+        return onJoinRequest ? null : '/join-request';
       }
 
       // Sync Kafka en cours → rediriger vers l'écran d'attente
@@ -159,6 +173,7 @@ class AppRouter {
           !isSyncPending &&
           !isBusinessUnitRequired &&
           !isJoinBUFailure &&
+          !isJoinRequest &&
           !onAuthScreens &&
           !onSplashScreen) {
         return '/auth0_info';
@@ -282,6 +297,10 @@ class AppRouter {
       GoRoute(
         path: '/join-business-unit',
         builder: (context, state) => const JoinBusinessUnitScreen(),
+      ),
+      GoRoute(
+        path: '/join-request',
+        builder: (context, state) => const JoinRequestStatusScreen(),
       ),
       // Routes legacy - redirigent vers auth0_info pour compatibilité
       // Note: forgot-password n'est plus nécessaire car géré par Auth0 Universal Login

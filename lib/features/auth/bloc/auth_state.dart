@@ -109,3 +109,41 @@ class AuthJoinBusinessUnitFailure extends AuthState {
   @override
   List<Object?> get props => [error, user];
 }
+
+/// Compte sans entreprise : une demande de rattachement par code attend la
+/// décision de l'administrateur (`pending`), ou vient d'être refusée
+/// (`refused`, le motif est affiché et un autre code peut être saisi).
+class AuthJoinRequestState extends AuthState {
+  final User user;
+  final JoinRequest request;
+
+  /// Message ponctuel (toujours en attente, pas de réseau, etc.).
+  final String? notice;
+
+  /// Une vérification ou une annulation est en cours.
+  final bool busy;
+
+  const AuthJoinRequestState(
+    this.user,
+    this.request, {
+    this.notice,
+    this.busy = false,
+  });
+
+  AuthJoinRequestState copyWith({
+    JoinRequest? request,
+    String? notice,
+    bool clearNotice = false,
+    bool? busy,
+  }) {
+    return AuthJoinRequestState(
+      user,
+      request ?? this.request,
+      notice: clearNotice ? null : (notice ?? this.notice),
+      busy: busy ?? this.busy,
+    );
+  }
+
+  @override
+  List<Object?> get props => [user, request, notice, busy];
+}

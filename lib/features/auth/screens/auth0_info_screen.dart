@@ -27,6 +27,8 @@ class Auth0InfoScreen extends StatelessWidget {
           context.go('/sync-pending');
         } else if (state is AuthBusinessUnitRequired) {
           context.go('/join-business-unit');
+        } else if (state is AuthJoinRequestState) {
+          context.go('/join-request');
         } else if (state is AuthFailure) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -45,6 +47,7 @@ class Auth0InfoScreen extends StatelessWidget {
             state is AuthLoading ||
             state is AuthAuthenticated ||
             state is AuthSyncPending ||
+            state is AuthJoinRequestState ||
             state is AuthBusinessUnitRequired;
 
         if (isBusy) {

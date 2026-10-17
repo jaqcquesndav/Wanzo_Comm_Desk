@@ -78,3 +78,20 @@ class AuthJoinBusinessUnitRequested extends AuthEvent {
 class AuthRefreshProfileRequested extends AuthEvent {
   const AuthRefreshProfileRequested();
 }
+
+/// Vérifie le statut de ma demande de rattachement (bouton « Vérifier »,
+/// retour au premier plan, vérifications espacées). `silent` : sans
+/// indicateur ni message « toujours en attente ».
+class AuthJoinRequestCheckRequested extends AuthEvent {
+  final bool silent;
+
+  const AuthJoinRequestCheckRequested({this.silent = false});
+
+  @override
+  List<Object?> get props => [silent];
+}
+
+/// Annule ma demande de rattachement en attente.
+class AuthJoinRequestCancelRequested extends AuthEvent {
+  const AuthJoinRequestCancelRequested();
+}

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../core/services/business_context_service.dart';
 import '../../../services/cache_management_service.dart';
 import '../../auth/services/auth_backend_service.dart';
+import '../../auth/services/join_request_service.dart';
+import '../../../core/exceptions/api_exceptions.dart';
 
 /// Changer d'unité d'affaires en saisissant son code.
 ///
@@ -96,6 +98,17 @@ class _JoinBusinessUnitDialogState extends State<JoinBusinessUnitDialog> {
 
     try {
       final reponse = await AuthBackendService().joinBusinessUnit(code);
+      if (reponse.isPending) {
+        // Le serveur a créé une demande au lieu de changer l'unité : rien à
+        // appliquer localement, l'administrateur décidera.
+        if (!mounted) return;
+        setState(() {
+          _busy = false;
+          _error = reponse.message ??
+              "Demande envoyée. Vous aurez accès dès que l'administrateur l'aura acceptée.";
+        });
+        return;
+      }
       await _appliquer(reponse);
 
       if (!mounted) return;
@@ -112,6 +125,7 @@ class _JoinBusinessUnitDialogState extends State<JoinBusinessUnitDialog> {
   /// Le service remonte déjà un message explicite par cas (code inconnu, unité
   /// inactive, accès refusé) ; on l'affiche tel quel plutôt qu'un code d'état.
   String _message(Object erreur) {
+    if (erreur is ApiException) return joinRequestErrorMessage(erreur);
     final texte = erreur.toString().replaceFirst('Exception: ', '').trim();
     return texte.isEmpty
         ? "L'unité n'a pas pu être rejointe. Vérifiez votre connexion."

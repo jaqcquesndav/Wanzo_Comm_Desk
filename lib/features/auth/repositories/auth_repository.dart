@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 import '../services/auth0_service.dart';
 import '../services/auth_backend_service.dart';
+import '../services/join_request_service.dart';
+import '../models/join_request.dart';
 import '../services/desktop_auth_service.dart';
 import '../../../core/utils/connectivity_service.dart';
 
@@ -389,6 +391,14 @@ class AuthRepository {
   ) async {
     final authBackendService = AuthBackendService();
     return await authBackendService.joinBusinessUnit(businessUnitCode);
+  }
+
+  /// Ma dernière demande de rattachement (null si aucune). Exige le réseau.
+  Future<JoinRequest?> fetchMyJoinRequest() => JoinRequestService().fetchMine();
+
+  /// Annule ma demande de rattachement en attente. Exige le réseau.
+  Future<void> cancelMyJoinRequest() async {
+    await JoinRequestService().cancelMine();
   }
 
   /// Rafraîchir le profil utilisateur depuis /auth/me
