@@ -201,6 +201,58 @@ class Customer extends Equatable {
   /// Convertit une instance de Customer en carte JSON
   Map<String, dynamic> toJson() => _$CustomerToJson(this);
 
+  /// Corps envoyé au serveur (`POST /customers`, `PATCH /customers/:id`).
+  ///
+  /// [toJson] reste la forme complète (cache, échanges) ; ici on retire ce que
+  /// le serveur refuse ou doit seul tenir :
+  /// - la photo LOCALE (chemin sur l'appareil) : le DTO exige une URL, un
+  ///   chemin `C:\...` faisait refuser toute la fiche (400) ;
+  /// - les chaînes vides (email, adresse, notes, NIF) à la création :
+  ///   `@IsOptional` ne saute pas `''`. En modification, une chaîne vide est
+  ///   gardée pour email, adresse et notes : c'est la seule façon d'effacer
+  ///   l'ancienne valeur, et le DTO l'accepte (ValidateIf) ;
+  /// - le total et la date du dernier achat, tenus par les ventes côté
+  ///   serveur : renvoyer la copie locale écrasait le vrai cumul ;
+  /// - les contacts sans nom (le serveur exige un nom par contact).
+  Map<String, dynamic> toApiJson({bool forUpdate = false}) {
+    final json = toJson();
+    json.remove('totalPurchases');
+    json.remove('lastPurchaseDate');
+    json.remove('updatedAt');
+    // Le DTO attend l'enum en minuscules (company / branch / pos), comme les
+    // ventes : `apiValue` (MAJUSCULES, gardé pour le cache) faisait un 400.
+    if (businessUnitType != null) {
+      json['businessUnitType'] = businessUnitType!.code;
+    }
+    final photo = profilePicture?.trim() ?? '';
+    if (!(photo.startsWith('http://') || photo.startsWith('https://'))) {
+      json.remove('profilePicture');
+    }
+    const clearable = {'email', 'address', 'notes'};
+    for (final key in const ['email', 'address', 'notes', 'taxId']) {
+      final value = json[key];
+      if (value is String) {
+        final trimmed = value.trim();
+        if (trimmed.isEmpty && !(forUpdate && clearable.contains(key))) {
+          json.remove(key);
+        } else {
+          json[key] = trimmed;
+        }
+      }
+    }
+    json['contacts'] = [
+      for (final c in contacts)
+        if (c.name.trim().isNotEmpty)
+          {
+            'name': c.name.trim(),
+            if ((c.role ?? '').trim().isNotEmpty) 'role': c.role!.trim(),
+            if ((c.phone ?? '').trim().isNotEmpty) 'phone': c.phone!.trim(),
+            if ((c.email ?? '').trim().isNotEmpty) 'email': c.email!.trim(),
+          },
+    ];
+    return json;
+  }
+
   // Helpers pour la sérialisation des enums
   static BusinessUnitType? _businessUnitTypeFromJson(String? value) =>
       value != null ? BusinessUnitTypeExtension.fromApiValue(value) : null;

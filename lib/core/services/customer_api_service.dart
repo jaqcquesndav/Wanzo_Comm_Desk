@@ -12,12 +12,15 @@ class CustomerApiService {
 
   Future<ApiResponse<List<Customer>>> getCustomers({
     Map<String, String>? queryParams,
+    // Inclure companyId / businessUnitId du contexte (isolation par unité)
+    bool includeBusinessContext = true,
   }) async {
     try {
       final response = await _apiClient.get(
         'customers',
         queryParameters: queryParams,
         requiresAuth: true,
+        includeBusinessContext: includeBusinessContext,
       );
       if (response != null && response['data'] != null) {
         var data = response['data'];
@@ -116,8 +119,11 @@ class CustomerApiService {
     try {
       final response = await _apiClient.post(
         'customers',
-        body: customer.toJson(),
+        body: customer.toApiJson(),
         requiresAuth: true,
+        // Appelé par la synchro, qui rejoue elle-même les clients « pending » :
+        // la file HTTP en ferait un doublon.
+        queueOffline: false,
       );
       if (response != null && response['data'] != null) {
         final createdCustomer = Customer.fromJson(
@@ -152,10 +158,14 @@ class CustomerApiService {
     Customer customer,
   ) async {
     try {
-      final response = await _apiClient.put(
+      // PATCH : le serveur n'expose pas de PUT sur /customers/:id (404), les
+      // modifications faites hors ligne n'étaient donc jamais envoyées.
+      final response = await _apiClient.patch(
         'customers/$id',
-        body: customer.toJson(),
+        body: customer.toApiJson(forUpdate: true),
         requiresAuth: true,
+        // Reprise hors ligne par le statut « pending_update » (synchro).
+        queueOffline: false,
       );
       if (response != null && response['data'] != null) {
         final updatedCustomer = Customer.fromJson(
@@ -190,12 +200,15 @@ class CustomerApiService {
       final response = await _apiClient.delete(
         'customers/$id',
         requiresAuth: true,
+        // Suppression confirmée par le serveur, jamais rejouée à l'insu.
+        queueOffline: false,
       );
+      // 204 sans corps : `response` est null, ce n'est pas un échec.
       return ApiResponse<void>(
         success: true,
         message:
-            response['message'] as String? ?? 'Customer deleted successfully.',
-        statusCode: response['statusCode'] as int? ?? 200,
+            response?['message'] as String? ?? 'Customer deleted successfully.',
+        statusCode: response?['statusCode'] as int? ?? 200,
       );
     } on ApiException {
       rethrow;

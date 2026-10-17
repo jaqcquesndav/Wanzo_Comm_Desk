@@ -49,6 +49,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
 
   String? _customerId;
   String? _customerName;
+  String? _customerPhone;
   // ── Véhicule du client (mode garage) : la commande référence un véhicule
   // de la fiche client, dont elle alimente la fiche de suivi. ──
   String? _vehicleId;
@@ -168,6 +169,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       _customerId = o.customerId;
       _vehicleId = o.vehicleId;
       _customerName = o.customerName;
+      _customerPhone = o.customerPhone;
       _metier = o.metier;
       _labelCtrl.text = o.label;
       _modelCtrl.text = o.modelDetails ?? '';
@@ -509,11 +511,11 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     } else if (has) {
       icon = Icons.check_circle;
       color = const Color(0xFF16A34A);
-      text = 'Mesures déjà enregistrées — réutilisées pour cette commande';
+      text = 'Mesures déjà enregistrées, réutilisées pour cette commande';
     } else {
       icon = Icons.straighten;
       color = const Color(0xFFF59E0B);
-      text = 'Aucune mesure — à saisir une seule fois (réutilisée ensuite)';
+      text = 'Aucune mesure : à saisir une seule fois (réutilisée ensuite)';
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -557,6 +559,8 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
         setState(() {
           _customerId = c?.id;
           _customerName = c?.name;
+          _customerPhone =
+              (c?.phoneNumber ?? '').isEmpty ? null : c!.phoneNumber;
         });
         if (c != null) _checkMeasurements(c.id);
         // Nouveau client : on repart d'une liste de véhicules vierge.
@@ -990,7 +994,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
         _tf(_faultCtrl, 'Panne signalée par le client',
             hint: 'Symptômes, circonstances…', min: 2, max: 3),
         const SizedBox(height: 20),
-        _sectionTitle('Diagnostic & réparation'),
+        _sectionTitle('Diagnostic et réparation'),
         _tf(_diagnosticCtrl, 'Diagnostic technique', min: 2, max: 3),
         const SizedBox(height: 12),
         _tf(_repairCtrl, 'Réparation / réglage effectué', min: 2, max: 3),
@@ -1513,6 +1517,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
       id: widget.order?.id ?? '',
       customerId: _customerId!,
       customerName: _customerName,
+      customerPhone: _customerPhone,
       vehicleId: _isGarage ? _vehicleId : null,
       label: _labelCtrl.text.trim(),
       metier: _metier,
@@ -1544,8 +1549,17 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     setState(() => _saving = false);
 
     if (!result.ok) {
+      // Le motif du serveur est affiché : un échec muet pousse à ressaisir.
+      final motif = cubit.state.error;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Echec de l enregistrement')),
+        SnackBar(
+          content: Text(
+            motif == null || motif.isEmpty
+                ? 'Échec de l\'enregistrement'
+                : 'Échec de l\'enregistrement : $motif',
+          ),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
       );
       return;
     }

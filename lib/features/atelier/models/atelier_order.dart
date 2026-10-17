@@ -274,13 +274,14 @@ extension AtelierMetierX on AtelierMetier {
   /// Pièce imprimable remise au client.
   String get workSlipLabel {
     switch (this) {
-      case AtelierMetier.maintenance:
       case AtelierMetier.garage:
         return "Ordre d'intervention / imprimer";
-      case AtelierMetier.pressing:
-        return 'Bon de dépôt / imprimer';
+      case AtelierMetier.maintenance:
+        return 'Fiche de réparation / imprimer';
       case AtelierMetier.imprimerie:
-        return 'Bon de travail / imprimer';
+        return "Fiche travail d'impression / imprimer";
+      case AtelierMetier.pressing:
+        return 'Fiche de dépôt / imprimer';
       case AtelierMetier.couture:
       case AtelierMetier.cordonnerie:
         return 'Bon de commande / imprimer';
@@ -698,6 +699,8 @@ class AtelierOrder extends Equatable {
   final String id;
   final String customerId;
   final String? customerName;
+  /// Téléphone du client, transmis à la création (DTO `customerPhone`).
+  final String? customerPhone;
   /// Véhicule du client concerné (mode garage), pour la fiche de suivi.
   final String? vehicleId;
   final String label;
@@ -731,6 +734,7 @@ class AtelierOrder extends Equatable {
     required this.id,
     required this.customerId,
     this.customerName,
+    this.customerPhone,
     this.vehicleId,
     required this.label,
     this.modelDetails,
@@ -772,6 +776,9 @@ class AtelierOrder extends Equatable {
       customerName: (customer is Map<String, dynamic>)
           ? customer['fullName'] as String?
           : json['customerName'] as String?,
+      customerPhone: (customer is Map<String, dynamic>)
+          ? customer['phoneNumber'] as String?
+          : json['customerPhone'] as String?,
       vehicleId: json['vehicleId'] as String?,
       label: json['label'] as String? ?? '',
       modelDetails: json['modelDetails'] as String?,
@@ -819,6 +826,7 @@ class AtelierOrder extends Equatable {
     'id': id,
     'customerId': customerId,
     if (customerName != null) 'customerName': customerName,
+    if (customerPhone != null) 'customerPhone': customerPhone,
     if (vehicleId != null) 'vehicleId': vehicleId,
     'label': label,
     if (modelDetails != null) 'modelDetails': modelDetails,
@@ -851,6 +859,12 @@ class AtelierOrder extends Equatable {
   /// Payload de création/mise à jour (les champs null sont omis).
   Map<String, dynamic> toCreateJson() => {
     'customerId': customerId,
+    // Nom et téléphone du client (DTO : customerName / customerPhone
+    // facultatifs) ; jamais de chaîne vide.
+    if ((customerName ?? '').trim().isNotEmpty)
+      'customerName': customerName!.trim(),
+    if ((customerPhone ?? '').trim().isNotEmpty)
+      'customerPhone': customerPhone!.trim(),
     if (vehicleId != null) 'vehicleId': vehicleId,
     'label': label,
     if (modelDetails != null) 'modelDetails': modelDetails,
@@ -883,6 +897,7 @@ class AtelierOrder extends Equatable {
       id: id,
       customerId: customerId,
       customerName: customerName,
+      customerPhone: customerPhone,
       vehicleId: vehicleId,
       label: label,
       modelDetails: modelDetails,

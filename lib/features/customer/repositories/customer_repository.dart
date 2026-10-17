@@ -9,6 +9,9 @@ import '../../../core/utils/logger.dart';
 
 /// Repository pour la gestion des clients (API-First + Offline Fallback)
 class CustomerRepository {
+  // 'customers' (le mobile utilise 'customersBox') : nom propre au desktop,
+  // partagé avec hive_setup et sync_service. Ne pas le renommer, ce serait
+  // perdre les fiches déjà enregistrées sur les postes.
   static const _customersBoxName = 'customers';
   late Box<Customer> _customersBox;
   final _uuid = const Uuid();
@@ -33,19 +36,25 @@ class CustomerRepository {
     // Essayer d'abord l'API
     if (_apiService != null) {
       try {
-        final apiResponse = await _apiService.getCustomers().timeout(
-          const Duration(seconds: 10),
-        );
-
-        if (apiResponse.success &&
-            apiResponse.data != null &&
-            apiResponse.data!.isNotEmpty) {
+        // Le serveur ne renvoie que 10 clients par défaut : sans pagination la
+        // liste s'arrêtait aux 10 derniers créés dès qu'on était en ligne.
+        final fromApi = await _fetchAllPages();
+        if (fromApi.isNotEmpty) {
           Logger.info(
-            '📦 [CustomerRepository] API: ${apiResponse.data!.length} clients récupérés',
+            '📦 [CustomerRepository] API: ${fromApi.length} clients récupérés',
           );
-          // Fusionner avec le cache local
-          await _mergeCustomers(apiResponse.data!);
-          return apiResponse.data!;
+          // Fusionner avec le cache local (sans écraser une saisie en attente).
+          await _mergeCustomers(fromApi);
+          // Les fiches créées hors ligne, pas encore connues du serveur,
+          // restent visibles (sinon elles disparaissaient de la liste).
+          final ids = fromApi.map((c) => c.id).toSet();
+          final pendingLocal = _customersBox.values
+              .where((c) => c.syncStatus == 'pending' && !ids.contains(c.id))
+              .toList();
+          // Après fusion, le cache porte la bonne version : modification
+          // locale pas encore envoyée, ou copie serveur avec la photo locale.
+          final shown = fromApi.map((c) => _customersBox.get(c.id) ?? c);
+          return [...pendingLocal, ...shown];
         }
       } catch (e) {
         Logger.error(
@@ -75,9 +84,13 @@ class CustomerRepository {
             .getCustomerById(id)
             .timeout(const Duration(seconds: 5));
         if (apiResponse.success && apiResponse.data != null) {
-          // Mettre à jour le cache
-          await _customersBox.put(id, apiResponse.data!);
-          return apiResponse.data;
+          // Une modification locale pas encore envoyée prime.
+          if (localCustomer != null && _isPendingSync(localCustomer)) {
+            return localCustomer;
+          }
+          final fresh = _withLocalPhoto(apiResponse.data!, localCustomer);
+          await _customersBox.put(id, fresh);
+          return fresh;
         }
       } catch (e) {
         Logger.error(
@@ -104,56 +117,130 @@ class CustomerRepository {
             .createCustomer(newCustomer)
             .timeout(const Duration(seconds: 10));
         if (apiResponse.success && apiResponse.data != null) {
-          // Sauvegarder la version serveur localement
-          await _customersBox.put(apiResponse.data!.id, apiResponse.data!);
+          // Sauvegarder la version serveur localement (photo locale gardée).
+          final created = _withLocalPhoto(apiResponse.data!, newCustomer);
+          await _customersBox.put(created.id, created);
           Logger.info(
-            '✅ [CustomerRepository] Client créé via API: ${apiResponse.data!.id}',
+            '✅ [CustomerRepository] Client créé via API: ${created.id}',
           );
-          return apiResponse.data!;
+          return created;
         }
       } catch (e) {
+        // Refus du serveur (validation, droits) : on le dit. Avant, toute
+        // erreur finissait en copie locale marquée « synchronisée » : succès
+        // affiché, fiche jamais envoyée ni rejouée.
+        if (!isConnectivityFailure(e)) throw Exception(describeFailure(e));
         Logger.error(
-          '⚠️ [CustomerRepository] Erreur API create, sauvegarde locale',
+          '⚠️ [CustomerRepository] Hors ligne, client conservé pour la synchro',
           error: e,
         );
       }
     }
 
-    // Fallback: Sauvegarder localement
-    await _customersBox.put(newCustomer.id, newCustomer);
-    return newCustomer;
+    // Hors ligne : conservé sur l'appareil, envoyé par la synchro (« pending »).
+    final pending = newCustomer.copyWith(syncStatus: 'pending');
+    await _customersBox.put(pending.id, pending);
+    return pending;
   }
 
   /// Met à jour un client existant (API + Local)
   Future<Customer> updateCustomer(Customer customer) async {
-    // Essayer d'abord l'API
+    final local = _customersBox.get(customer.id);
+    // Fiche jamais envoyée : le serveur ne la connaît pas (PATCH = 404). On
+    // modifie la copie locale, la synchro l'enverra en création.
+    if (local?.syncStatus == 'pending') {
+      final pending = customer.copyWith(syncStatus: 'pending');
+      await _customersBox.put(pending.id, pending);
+      return pending;
+    }
     if (_apiService != null) {
       try {
         final apiResponse = await _apiService
             .updateCustomer(customer.id, customer)
             .timeout(const Duration(seconds: 10));
         if (apiResponse.success && apiResponse.data != null) {
-          await _customersBox.put(apiResponse.data!.id, apiResponse.data!);
+          final updated = _withLocalPhoto(apiResponse.data!, customer);
+          await _customersBox.put(updated.id, updated);
           Logger.info(
-            '✅ [CustomerRepository] Client mis à jour via API: ${apiResponse.data!.id}',
+            '✅ [CustomerRepository] Client mis à jour via API: ${updated.id}',
           );
-          return apiResponse.data!;
+          return updated;
         }
+      } on api.OfflineQueuedException {
+        // La modification est dans la file HTTP et sera rejouée : la copie
+        // locale la reflète, sans la marquer à renvoyer une seconde fois.
+        final queued = customer.copyWith(syncStatus: local?.syncStatus ?? 'synced');
+        await _customersBox.put(queued.id, queued);
+        return queued;
       } catch (e) {
+        if (!isConnectivityFailure(e)) throw Exception(describeFailure(e));
         Logger.error(
-          '⚠️ [CustomerRepository] Erreur API update, sauvegarde locale',
+          '⚠️ [CustomerRepository] Hors ligne, modification conservée',
           error: e,
         );
       }
     }
 
-    // Fallback: Sauvegarder localement
-    await _customersBox.put(customer.id, customer);
-    return customer;
+    // Hors ligne : modification conservée, renvoyée par la synchro.
+    final pending = customer.copyWith(syncStatus: 'pending_update');
+    await _customersBox.put(pending.id, pending);
+    return pending;
+  }
+
+  /// Vrai quand l'échec vient du réseau (rien n'a été refusé par le serveur).
+  static bool isConnectivityFailure(Object e) {
+    if (e is TimeoutException) return true;
+    if (e is api.NetworkException) return true;
+    if (e is api.ApiException) {
+      final code = e.statusCode;
+      return code == null || code == 408 || code == 429 || code >= 500;
+    }
+    return false;
+  }
+
+  /// Message lisible d'un refus serveur.
+  static String describeFailure(Object e) =>
+      e is api.ApiException ? e.message : '$e'.replaceFirst('Exception: ', '');
+
+  /// La photo d'un client reste sur l'appareil (jamais envoyée) : la copie
+  /// serveur, sans photo, ne doit pas l'effacer du cache.
+  static Customer _withLocalPhoto(Customer server, Customer? local) {
+    final serverPhoto = server.profilePicture ?? '';
+    final localPhoto = local?.profilePicture ?? '';
+    if (serverPhoto.isEmpty && localPhoto.isNotEmpty) {
+      return server.copyWith(profilePicture: localPhoto);
+    }
+    return server;
+  }
+
+  static bool _isPendingSync(Customer c) =>
+      c.syncStatus == 'pending' || c.syncStatus == 'pending_update';
+
+  /// Liste complète des clients, page par page (le serveur en sert 10 par
+  /// défaut). Une page en erreur interrompt sans rien perdre de ce qui précède.
+  Future<List<Customer>> _fetchAllPages() async {
+    const pageSize = 200;
+    const maxPages = 50;
+    final all = <Customer>[];
+    for (var page = 1; page <= maxPages; page++) {
+      final response = await _apiService!
+          .getCustomers(page: page, limit: pageSize)
+          .timeout(const Duration(seconds: 10));
+      final data = response.data;
+      if (!response.success || data == null) break;
+      all.addAll(data);
+      if (data.length < pageSize) break;
+    }
+    return all;
   }
 
   /// Supprime un client (API + Local)
   Future<void> deleteCustomer(String id) async {
+    // Fiche créée hors ligne et jamais envoyée : rien à demander au serveur.
+    if (_customersBox.get(id)?.syncStatus == 'pending') {
+      await _customersBox.delete(id);
+      return;
+    }
     // Le serveur D'ABORD : un refus (historique de ventes ou de dépenses) ou
     // une coupure doit être dit à l'utilisateur. Avant, l'erreur était avalée
     // et la fiche supprimée localement réapparaissait au prochain sync.
@@ -399,7 +486,10 @@ class CustomerRepository {
   /// Méthode helper pour fusionner les clients API avec local
   Future<void> _mergeCustomers(List<Customer> apiCustomers) async {
     for (final apiCustomer in apiCustomers) {
-      await _customersBox.put(apiCustomer.id, apiCustomer);
+      // Une modification locale en attente d'envoi n'est pas écrasée.
+      final local = _customersBox.get(apiCustomer.id);
+      if (local != null && _isPendingSync(local)) continue;
+      await _customersBox.put(apiCustomer.id, _withLocalPhoto(apiCustomer, local));
     }
 
     // Forcer la persistance immédiate

@@ -92,7 +92,7 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
         emit(AtelierOrdersState(
           orders: cached,
           loading: false,
-          error: 'Hors ligne — dernières commandes connues',
+          error: 'Hors ligne : dernières commandes connues',
         ));
       } else {
         emit(state.copyWith(loading: false, error: e.toString()));
@@ -120,7 +120,8 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
       await _cache.save(_businessUnitId, orders, metier: _metier?.apiValue);
       return AtelierOrderSaveResult(order: draft, horsLigne: true);
     } catch (e) {
-      emit(state.copyWith(error: e.toString()));
+      // Le motif du refus (validation, droits) doit atteindre l'ecran.
+      emit(state.copyWith(error: e is ApiException ? e.message : e.toString()));
       return const AtelierOrderSaveResult();
     }
   }
@@ -174,7 +175,8 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
       }
       return AtelierOrderSaveResult(order: local, horsLigne: true);
     } catch (e) {
-      emit(state.copyWith(error: e.toString()));
+      // Le motif du refus (validation, droits) doit atteindre l'ecran.
+      emit(state.copyWith(error: e is ApiException ? e.message : e.toString()));
       return const AtelierOrderSaveResult();
     }
   }

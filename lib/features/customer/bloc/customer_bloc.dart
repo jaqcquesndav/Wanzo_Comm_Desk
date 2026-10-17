@@ -66,7 +66,9 @@ class CustomerBloc extends Bloc<CustomerEvent, CustomerState> {
       final newCustomer = await customerRepository.addCustomer(event.customer);
       emit(
         CustomerOperationSuccess(
-          message: 'Client ajouté avec succès',
+          message: newCustomer.syncStatus == 'pending'
+              ? 'Client enregistré sur cet appareil, envoyé au retour du réseau.'
+              : 'Client ajouté avec succès',
           customer: newCustomer,
         ),
       );
@@ -74,7 +76,7 @@ class CustomerBloc extends Bloc<CustomerEvent, CustomerState> {
       // Recharge la liste des clients après ajout
       add(const LoadCustomers());
     } catch (e) {
-      emit(CustomerError('Erreur lors de l\'ajout du client: $e'));
+      emit(CustomerError("Ajout refusé : ${'$e'.replaceFirst('Exception: ', '')}"));
     }
   }
 
@@ -91,7 +93,9 @@ class CustomerBloc extends Bloc<CustomerEvent, CustomerState> {
       );
       emit(
         CustomerOperationSuccess(
-          message: 'Client mis à jour avec succès',
+          message: updatedCustomer.syncStatus == 'pending_update'
+              ? 'Modification enregistrée sur cet appareil, envoyée au retour du réseau.'
+              : 'Client mis à jour avec succès',
           customer: updatedCustomer,
         ),
       );
@@ -99,7 +103,7 @@ class CustomerBloc extends Bloc<CustomerEvent, CustomerState> {
       // Recharge la liste des clients après mise à jour
       add(const LoadCustomers());
     } catch (e) {
-      emit(CustomerError('Erreur lors de la mise à jour du client: $e'));
+      emit(CustomerError("Modification refusée : ${'$e'.replaceFirst('Exception: ', '')}"));
     }
   }
 

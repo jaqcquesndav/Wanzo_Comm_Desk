@@ -419,7 +419,7 @@ class AtelierSheetPdf {
       order.label,
       if (order.modelDetails != null && order.modelDetails!.trim().isNotEmpty)
         order.modelDetails!,
-    ].join(' — ');
+    ].join(', ');
 
     return [
       _sectionTitle('DÉSIGNATION', bold),
@@ -795,7 +795,7 @@ class AtelierSheetPdf {
       ShareParams(
         files: [XFile(file.path)],
         subject: 'Fiche atelier ${_shortId(order.id)}',
-        text: 'Fiche atelier — ${order.label}',
+        text: 'Fiche atelier : ${order.label}',
       ),
     );
   }

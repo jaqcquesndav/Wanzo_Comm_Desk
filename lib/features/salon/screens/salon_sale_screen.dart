@@ -10,6 +10,8 @@ import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/services/currency_service.dart';
+import 'package:wanzo/core/utils/price_plausibility.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/core/shared_widgets/payment_method_selector.dart';
 import 'package:wanzo/features/customer/widgets/customer_picker_field.dart';
@@ -774,7 +776,33 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
   }
 
   // ── Règlement ───────────────────────────────────────────────────────────
-  void _confirm() {
+  Future<void> _confirm() async {
+    // Devise sans taux connu : refus, jamais une conversion au taux 1.
+    final selected = _selectedTransactionCurrency;
+    if (selected != null &&
+        selected != Currency.CDF &&
+        !((_exchangeRates[selected] ?? 0) > 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(CurrencyService.missingRateMessage(selected.code)),
+      ));
+      return;
+    }
+    // Garde-fou : une ligne au prix anormalement bas trahit souvent un tarif
+    // saisi dans la mauvaise devise (21 FC au lieu de 21 $).
+    for (final l in _lines) {
+      final unit = _convertFromCdf(l.unitPriceCdf);
+      if (!prixAnormalementBas(unit, _currencyCode)) continue;
+      final choix = await confirmerPrixVenteBas(
+        context,
+        article: l.name,
+        prix: unit,
+        codeDevise: _currencyCode,
+        peutCorriger: false,
+      );
+      if (!mounted || choix != ChoixPrixVente.continuer) return;
+      break;
+    }
+    if (!mounted) return;
     final code = _currencyCode;
     final rate = _transactionExchangeRate;
     final totalCdf = _total;

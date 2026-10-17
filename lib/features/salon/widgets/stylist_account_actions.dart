@@ -109,7 +109,7 @@ class _StatementDialogState extends State<_StatementDialog> {
     final s = _statement!;
     final lignes = s.ledger;
     return TableExportConfig(
-      title: 'Relevé de compte — ${s.stylistName}',
+      title: 'Relevé de compte, ${s.stylistName}',
       subtitle: 'Du ${_dateFmt.format(_from)} au ${_dateFmt.format(_to)} '
           '(montants en CDF)',
       headers: const ['Date', 'Libellé', 'Nature', 'Gagné', 'Versé', 'Solde'],

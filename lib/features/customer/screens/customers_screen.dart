@@ -789,6 +789,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
   /// Navigation vers l'écran de détails d'un client
   void _navigateToCustomerDetails(BuildContext context, Customer customer) {
+    final bloc = context.read<CustomerBloc>();
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -796,9 +797,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       ),
     ).then((_) {
       // Recharger les clients après retour des détails (au cas où il y a eu modification/suppression)
-      if (mounted) {
-        context.read<CustomerBloc>().add(const LoadCustomers());
-      }
+      if (mounted) bloc.add(const LoadCustomers());
     });
   }
 

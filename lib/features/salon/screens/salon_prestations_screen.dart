@@ -10,6 +10,8 @@ import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/enums/currency_enum.dart';
 import 'package:wanzo/core/models/currency_settings_model.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/services/currency_service.dart';
+import 'package:wanzo/core/utils/price_plausibility.dart';
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
 
 import '../cubit/salon_cubit.dart';
@@ -495,6 +497,34 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    // Devise de saisie sans taux : refus, jamais une conversion au taux 1.
+    if (_inputCurrency != Currency.CDF && !((_rates[_inputCurrency] ?? 0) > 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(CurrencyService.missingRateMessage(_inputCurrency.code)),
+      ));
+      return;
+    }
+    // Garde-fou : un tarif en CDF trop bas est souvent un montant en dollars
+    // saisi dans la mauvaise devise (21 FC au lieu de 21 $).
+    final saisi = double.tryParse(_priceController.text.trim()) ?? 0;
+    final choix = await verifierPrixSaisi(
+      context,
+      prix: saisi,
+      codeDevise: _inputCurrency.code,
+    );
+    if (!mounted || choix == ChoixDevisePrix.annule) return;
+    if (choix == ChoixDevisePrix.enDollars) {
+      if (!((_rates[Currency.USD] ?? 0) > 0)) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(CurrencyService.missingRateMessage('USD')),
+        ));
+        return;
+      }
+      if (!_currencies.contains(Currency.USD)) {
+        _currencies = [..._currencies, Currency.USD];
+      }
+      setState(() => _inputCurrency = Currency.USD);
+    }
     setState(() => _saving = true);
     final entered = double.tryParse(_priceController.text.trim()) ?? 0;
     // Le CDF reste la base enregistrée ; la devise de saisie et son montant

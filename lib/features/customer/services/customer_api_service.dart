@@ -85,8 +85,11 @@ class CustomerApiService {
     try {
       final response = await _apiClient.post(
         'customers',
-        body: customer.toJson(),
+        body: customer.toApiJson(),
         requiresAuth: true,
+        // Les clients ont leur propre reprise hors ligne (statut « pending »
+        // rejoue par la synchro) : la file HTTP en ferait un doublon.
+        queueOffline: false,
       );
 
       if (response != null && response['data'] != null) {
@@ -156,8 +159,10 @@ class CustomerApiService {
     try {
       final response = await _apiClient.patch(
         'customers/$id',
-        body: customer.toJson(),
+        body: customer.toApiJson(forUpdate: true),
         requiresAuth: true,
+        // Reprise hors ligne par le statut « pending_update » (synchro).
+        queueOffline: false,
       );
 
       if (response != null && response['data'] != null) {

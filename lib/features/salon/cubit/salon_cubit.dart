@@ -114,7 +114,7 @@ class SalonCubit extends Cubit<SalonState> {
       final cached = await _stylistCache.load();
       if (cached.isNotEmpty) {
         stylists = cached;
-        error = 'Coiffeurs hors ligne — dernières données connues';
+        error = 'Coiffeurs hors ligne : dernières données connues';
       } else {
         error = 'Coiffeurs indisponibles hors ligne';
       }

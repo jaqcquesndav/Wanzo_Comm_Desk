@@ -111,7 +111,7 @@ class _SalonPerformanceScreenState extends State<SalonPerformanceScreen> {
                   onPressed: _pickRange,
                   icon: const Icon(Icons.date_range, size: 18),
                   label: Text(
-                      '${_fmtDate(_range.start)} — ${_fmtDate(_range.end)}'),
+                      'Du ${_fmtDate(_range.start)} au ${_fmtDate(_range.end)}'),
                 ),
                 const Spacer(),
                 if (!_loading && _error == null && _rows.isNotEmpty)

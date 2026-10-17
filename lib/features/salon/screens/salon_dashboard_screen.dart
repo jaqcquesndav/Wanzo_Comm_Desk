@@ -106,6 +106,12 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
       currentIndex: index < 0 ? 0 : index,
       title: 'Tableau de bord',
       appBarActions: [
+        // Pas de « tirer pour actualiser » au desktop : bouton explicite.
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          tooltip: 'Actualiser',
+          onPressed: _rafraichir,
+        ),
         IconButton(
           icon: const Icon(Icons.content_cut),
           tooltip: 'Composer la tarification',

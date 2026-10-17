@@ -391,6 +391,15 @@ class _CustomerFormModalState extends State<CustomerFormModal> {
     );
   }
 
+  /// Champ facultatif : absent (null) s'il est vide à la création, jamais `''`
+  /// (le DTO serveur refuse la chaîne vide). En modification, `''` efface
+  /// l'ancienne valeur.
+  String? _optional(TextEditingController c) {
+    final v = c.text.trim();
+    if (v.isNotEmpty) return v;
+    return _isEditing ? '' : null;
+  }
+
   void _saveCustomer() {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() => _isSubmitting = true);
@@ -399,10 +408,10 @@ class _CustomerFormModalState extends State<CustomerFormModal> {
         id: widget.customer?.id ?? '',
         name: _nameController.text.trim(),
         phoneNumber: _phoneController.text.trim(),
-        email: _emailController.text.trim(),
-        address: _addressController.text.trim(),
+        email: _optional(_emailController),
+        address: _optional(_addressController),
         createdAt: widget.customer?.createdAt ?? DateTime.now(),
-        notes: _notesController.text.trim(),
+        notes: _optional(_notesController),
         totalPurchases: widget.customer?.totalPurchases ?? 0.0,
         lastPurchaseDate: widget.customer?.lastPurchaseDate,
         category: _selectedCategory,

@@ -140,7 +140,7 @@ class _AtelierClientProfileScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Mesures — ${widget.customerName ?? 'Client'}'),
+        title: Text('Mesures de ${widget.customerName ?? 'Client'}'),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -151,7 +151,7 @@ class _AtelierClientProfileScreenState
                   padding: const EdgeInsets.all(16),
                   children: [
                     if (_showCouture) ...[
-                      _sectionTitle(context, 'Couture — mesures corporelles (cm)'),
+                      _sectionTitle(context, 'Couture, mesures corporelles (cm)'),
                       _grid(_fields, _c),
                       const SizedBox(height: 20),
                     ],

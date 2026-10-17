@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:wanzo/core/widgets/desktop/adaptive_image_picker.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wanzo/l10n/app_localizations.dart'; // Import AppLocalizations
@@ -38,9 +41,28 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
 
   bool get _isEditing => widget.customer != null;
 
+  /// Chemin LOCAL de la photo du client (pas d'upload serveur), comme le
+  /// formulaire en dialogue. Avant, cet écran la perdait à chaque modification.
+  String? _imagePath;
+
+  bool get _hasLocalPhoto =>
+      _imagePath != null &&
+      _imagePath!.isNotEmpty &&
+      !_imagePath!.startsWith('http');
+
+  /// Champ facultatif : absent (null) s'il est vide à la création, jamais `''`
+  /// (le DTO serveur refuse la chaîne vide). En modification, `''` efface
+  /// l'ancienne valeur.
+  String? _optional(TextEditingController c) {
+    final v = c.text.trim();
+    if (v.isNotEmpty) return v;
+    return _isEditing ? '' : null;
+  }
+
   @override
   void initState() {
     super.initState();
+    _imagePath = widget.customer?.profilePicture;
 
     // Initialise les contrôleurs avec les valeurs du client si on est en mode édition
     _nameController = TextEditingController(text: widget.customer?.name ?? '');
@@ -113,6 +135,37 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Photo du client, stockée LOCALEMENT sur cet appareil.
+                  Center(
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          width: 104,
+                          height: 104,
+                          child: AdaptiveImagePickerWithPreview(
+                            initialImage:
+                                _hasLocalPhoto ? File(_imagePath!) : null,
+                            imageUrl: (_imagePath != null &&
+                                    _imagePath!.startsWith('http'))
+                                ? _imagePath
+                                : null,
+                            placeholder: 'Photo',
+                            onImageChanged:
+                                (file) => setState(() => _imagePath = file?.path),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Photo stockée localement sur cet appareil',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color:
+                                    Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   Text(
                     localizations.customerInformation, // Localized
                     style: const TextStyle(
@@ -298,10 +351,10 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         id: widget.customer?.id ?? '',
         name: _nameController.text.trim(),
         phoneNumber: _phoneController.text.trim(),
-        email: _emailController.text.trim(),
-        address: _addressController.text.trim(),
+        email: _optional(_emailController),
+        address: _optional(_addressController),
         createdAt: widget.customer?.createdAt ?? DateTime.now(),
-        notes: _notesController.text.trim(),
+        notes: _optional(_notesController),
         totalPurchases: widget.customer?.totalPurchases ?? 0.0,
         lastPurchaseDate: widget.customer?.lastPurchaseDate,
         category: _selectedCategory,
@@ -310,6 +363,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
             ? _taxIdController.text.trim()
             : null,
         contacts: _customerType.isOrganization ? _contacts : const [],
+        profilePicture: _imagePath,
       );
 
       if (_isEditing) {

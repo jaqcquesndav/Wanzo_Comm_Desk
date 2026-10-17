@@ -5,8 +5,12 @@ import 'package:equatable/equatable.dart';
 double _numToDouble(dynamic v) =>
     v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
 
-int _numToInt(dynamic v) =>
-    v is num ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
+int _numToInt(dynamic v) => v is num
+    ? v.toInt()
+    // "3.00" (numeric) se lit aussi : int.tryParse seul rendait 0.
+    : int.tryParse(v?.toString() ?? '') ??
+        double.tryParse(v?.toString() ?? '')?.toInt() ??
+        0;
 
 /// Variante nullable : `null` si la valeur est absente/illisible (ne force pas 0).
 double? _numToDoubleOrNull(dynamic v) =>
