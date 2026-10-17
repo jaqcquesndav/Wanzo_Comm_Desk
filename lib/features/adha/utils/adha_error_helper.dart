@@ -11,8 +11,13 @@ class AdhaErrorHelper {
     final lowerError = errorMessage.toLowerCase();
 
     // Erreurs de quota/abonnement (détection par mots clés dans le message)
+    // Codes backend (snake_case) et libellés, comme sur le mobile.
     if (lowerError.contains('quota') && lowerError.contains('exhausted') ||
+        lowerError.contains('quota_exhausted') ||
         lowerError.contains('quota épuisé') ||
+        lowerError.contains('tokens exhausted') ||
+        lowerError.contains('insufficient_tokens') ||
+        lowerError.contains('insufficient tokens') ||
         lowerError.contains('tokens insuffisants')) {
       return const AdhaFriendlyError(
         type: AdhaErrorType.quotaExhausted,
@@ -27,6 +32,7 @@ class AdhaErrorHelper {
     }
 
     if (lowerError.contains('subscription expired') ||
+        lowerError.contains('subscription_expired') ||
         lowerError.contains('abonnement expiré')) {
       return const AdhaFriendlyError(
         type: AdhaErrorType.subscriptionExpired,
@@ -41,6 +47,8 @@ class AdhaErrorHelper {
     }
 
     if (lowerError.contains('past due') ||
+        lowerError.contains('past_due') ||
+        lowerError.contains('grace period') ||
         lowerError.contains('paiement en attente') ||
         lowerError.contains('période de grâce')) {
       return const AdhaFriendlyError(
@@ -56,6 +64,9 @@ class AdhaErrorHelper {
     }
 
     if (lowerError.contains('feature not available') ||
+        lowerError.contains('feature_not_available') ||
+        lowerError.contains('upgrade_required') ||
+        lowerError.contains('plan insuffisant') ||
         lowerError.contains('fonctionnalité non disponible') ||
         lowerError.contains('upgrade required')) {
       return const AdhaFriendlyError(

@@ -37,6 +37,10 @@ import 'package:wanzo/core/modules/mode_vocabulary.dart';
 
 enum _ExpandedView { none, operationsJournal }
 
+/// Sortie du PDF du journal : aperçu avant impression (usage desktop), fichier
+/// enregistré à l'endroit choisi, ou partage système.
+enum _JournalPdfAction { print, save, share }
+
 // Model for KPI data
 class KpiData {
   final double salesTodayCdf;
@@ -212,10 +216,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  /// Exporte les opérations du journal en PDF
+  /// Exporte les opérations du journal (filtre actif) en PDF
   void _exportJournalOperations(
     BuildContext context,
     OperationJournalLoaded journalState,
+    _JournalPdfAction action,
   ) async {
     try {
       // Affichage d'un indicateur de chargement
@@ -243,26 +248,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final activeFilter =
           journalState.activeFilter ?? JournalFilter.defaultFilter();
 
-      // Export du PDF - on laisse les paramètres de l'entreprise être récupérés du service
-      await JournalExportService.exportAndShare(
-        operations: journalState.operations,
-        filter: activeFilter,
-        currentUser: currentUser,
-        currencyService: _currencyServiceOf(context),
-      );
+      final currencyService = _currencyServiceOf(context);
+      String? successMessage;
+      switch (action) {
+        case _JournalPdfAction.print:
+          await JournalExportService.exportAndPrint(
+            operations: journalState.operations,
+            filter: activeFilter,
+            currentUser: currentUser,
+            currencyService: currencyService,
+          );
+          break;
+        case _JournalPdfAction.save:
+          final path = await JournalExportService.exportAndSave(
+            operations: journalState.operations,
+            filter: activeFilter,
+            currentUser: currentUser,
+            currencyService: currencyService,
+          );
+          if (path != null) successMessage = 'Journal enregistré : $path';
+          break;
+        case _JournalPdfAction.share:
+          await JournalExportService.exportAndShare(
+            operations: journalState.operations,
+            filter: activeFilter,
+            currentUser: currentUser,
+            currencyService: currencyService,
+          );
+          break;
+      }
 
       // Fermeture de l'indicateur de chargement
       if (context.mounted) {
         Navigator.of(context).pop();
-
-        // Message de succès
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('PDF généré et partagé avec succès'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
-          ),
-        );
+        if (successMessage != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(successMessage),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
       }
     } catch (e) {
       // Fermeture de l'indicateur de chargement en cas d'erreur
@@ -367,12 +394,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
             final hasData =
                 journalState is OperationJournalLoaded &&
                 journalState.operations.isNotEmpty;
-            return IconButton(
+            return PopupMenuButton<_JournalPdfAction>(
               icon: const Icon(Icons.picture_as_pdf),
               tooltip: l10n.dashboardJournalExportExportButton,
-              onPressed: hasData
-                  ? () => _exportJournalOperations(context, journalState)
-                  : null,
+              enabled: hasData,
+              onSelected: (action) {
+                if (journalState is OperationJournalLoaded) {
+                  _exportJournalOperations(context, journalState, action);
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: _JournalPdfAction.print,
+                  child: ListTile(
+                    leading: Icon(Icons.print_outlined),
+                    title: Text('Aperçu et impression'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _JournalPdfAction.save,
+                  child: ListTile(
+                    leading: Icon(Icons.save_alt),
+                    title: Text('Enregistrer le PDF'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _JournalPdfAction.share,
+                  child: ListTile(
+                    leading: Icon(Icons.share_outlined),
+                    title: Text('Partager'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
             );
           },
         ),

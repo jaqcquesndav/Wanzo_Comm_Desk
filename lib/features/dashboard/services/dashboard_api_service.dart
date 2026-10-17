@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import '../../../core/enums/currency_enum.dart';
 import '../../../core/models/api_response.dart';
@@ -308,6 +309,48 @@ class DashboardApiService {
 
   /// Calcule les données de flux de trésorerie à partir du journal d'opérations Hive
   Future<Map<String, double>> _computeCashFlowData() async {
+    try {
+      // IMPORTANT : la synchro écrit dans 'operation_journal_entries'
+      // (cf. OperationJournalRepository). L'ancien nom 'offline_operation_journal'
+      // n'était jamais alimenté → trésorerie/graphiques toujours à zéro.
+      // La box est ouverte par OperationJournalRepository au démarrage ;
+      // tant qu'elle ne l'est pas, la trésorerie reste à zéro.
+      const boxName = 'operation_journal_entries';
+      if (!Hive.isBoxOpen(boxName)) {
+        return computeCashFlow(const [], DateTime.now(), (_) => 0);
+      }
+      final box = Hive.box<OperationJournalEntry>(boxName);
+      if (box.isEmpty) return computeCashFlow(const [], DateTime.now(), (_) => 0);
+      final rates = await _rates();
+      return computeCashFlow(
+        box.values,
+        DateTime.now(),
+        (entry) => _entryAmountInCdf(entry, rates),
+      );
+    } catch (e) {
+      LoggingService.instance.error(
+        'Erreur calcul flux de trésorerie',
+        error: e,
+      );
+      return computeCashFlow(const [], DateTime.now(), (_) => 0);
+    }
+  }
+
+  /// Agrégation pure de la trésorerie (testable) :
+  /// - la caisse ne compte QUE les opérations qui la touchent
+  ///   ([OperationType.impactsCash]) : une vente au comptant produit aussi un
+  ///   encaissement, l'additionner deux fois gonflerait la caisse ;
+  /// - soldes et flux du jour tenus par devise, une devise autre que CDF ou
+  ///   USD n'est jamais rangée sous USD ;
+  /// - flux par catégorie consolidés en CDF via [toCdf] (SA devise) ;
+  /// - solde final : dernier instantané par devise PAR DATE (l'ordre
+  ///   d'insertion Hive n'est pas chronologique après une synchro).
+  @visibleForTesting
+  static Map<String, double> computeCashFlow(
+    Iterable<OperationJournalEntry> entries,
+    DateTime now,
+    double Function(OperationJournalEntry entry) toCdf,
+  ) {
     final result = <String, double>{
       'cashBalanceCdf': 0.0,
       'cashBalanceUsd': 0.0,
@@ -319,106 +362,70 @@ class DashboardApiService {
       'cashInTodayUsd': 0.0,
       'cashOutTodayUsd': 0.0,
     };
+    final todayStart = DateTime(now.year, now.month, now.day);
 
-    try {
-      // IMPORTANT : la synchro écrit dans 'operation_journal_entries'
-      // (cf. OperationJournalRepository). L'ancien nom 'offline_operation_journal'
-      // n'était jamais alimenté → trésorerie/graphiques toujours à zéro.
-      const boxName = 'operation_journal_entries';
-      if (!Hive.isBoxOpen(boxName)) {
-        return result;
+    double cashBalanceCdf = 0.0;
+    double cashBalanceUsd = 0.0;
+    OperationJournalEntry? latestSnapshot;
+
+    for (final entry in entries) {
+      final currencyCode = (entry.currencyCode ?? 'CDF').toUpperCase();
+      final isCdf = currencyCode == 'CDF';
+      final isUsd = currencyCode == 'USD';
+      final amount = entry.amount;
+
+      if (entry.type.impactsCash) {
+        if (isCdf) {
+          cashBalanceCdf += amount;
+        } else if (isUsd) {
+          cashBalanceUsd += amount;
+        }
+        final snapshot = entry.cashBalancesByCurrency;
+        if (snapshot != null &&
+            snapshot.isNotEmpty &&
+            (latestSnapshot == null ||
+                !entry.date.isBefore(latestSnapshot.date))) {
+          latestSnapshot = entry;
+        }
       }
 
-      final box = Hive.box<OperationJournalEntry>(boxName);
-      if (box.isEmpty) return result;
-      final rates = await _rates();
-
-      final now = DateTime.now();
-      final todayStart = DateTime(now.year, now.month, now.day);
-
-      double cashBalanceCdf = 0.0;
-      double cashBalanceUsd = 0.0;
-
-      for (final entry in box.values) {
-        // Soldes et flux du jour tenus par devise : une devise autre que CDF
-        // ou USD n'est jamais rangée sous USD.
-        final currencyCode = (entry.currencyCode ?? 'CDF').toUpperCase();
-        final isCdf = currencyCode == 'CDF';
-        final isUsd = currencyCode == 'USD';
-        final amount = entry.amount;
-
-        // Solde de caisse global (toutes les opérations impactant la trésorerie)
+      if (!entry.date.isBefore(todayStart)) {
         if (entry.type.impactsCash) {
-          if (isCdf) {
-            cashBalanceCdf += amount;
-          } else if (isUsd) {
-            cashBalanceUsd += amount;
-          }
+          final key =
+              amount > 0
+                  ? (isCdf ? 'cashInTodayCdf' : (isUsd ? 'cashInTodayUsd' : null))
+                  : (isCdf ? 'cashOutTodayCdf' : (isUsd ? 'cashOutTodayUsd' : null));
+          if (key != null) result[key] = result[key]! + amount.abs();
         }
 
-        // Flux du jour uniquement
-        if (entry.date.isAfter(todayStart) ||
-            entry.date.isAtSameMomentAs(todayStart)) {
-          // Encaissements / décaissements du jour
-          if (entry.type.impactsCash) {
-            if (amount > 0) {
-              if (isCdf) {
-                result['cashInTodayCdf'] = result['cashInTodayCdf']! + amount;
-              } else if (isUsd) {
-                result['cashInTodayUsd'] = result['cashInTodayUsd']! + amount;
-              }
-            } else {
-              if (isCdf) {
-                result['cashOutTodayCdf'] =
-                    result['cashOutTodayCdf']! + amount.abs();
-              } else if (isUsd) {
-                result['cashOutTodayUsd'] =
-                    result['cashOutTodayUsd']! + amount.abs();
-              }
-            }
-          }
-
-          // Flux par catégorie, consolidés en CDF : chaque opération est
-          // convertie avec SA devise avant d'être additionnée.
-          final amountCdf = _entryAmountInCdf(entry, rates);
-          switch (entry.type.cashFlowCategory) {
-            case CashFlowCategory.exploitation:
-              result['exploitationFlowsCdf'] =
-                  result['exploitationFlowsCdf']! + amountCdf;
-              break;
-            case CashFlowCategory.investissement:
-              result['investmentFlowsCdf'] =
-                  result['investmentFlowsCdf']! + amountCdf;
-              break;
-            case CashFlowCategory.financement:
-              result['financingFlowsCdf'] =
-                  result['financingFlowsCdf']! + amountCdf;
-              break;
-            case CashFlowCategory.nonApplicable:
-              break;
-          }
+        final amountCdf = toCdf(entry);
+        switch (entry.type.cashFlowCategory) {
+          case CashFlowCategory.exploitation:
+            result['exploitationFlowsCdf'] =
+                result['exploitationFlowsCdf']! + amountCdf;
+            break;
+          case CashFlowCategory.investissement:
+            result['investmentFlowsCdf'] =
+                result['investmentFlowsCdf']! + amountCdf;
+            break;
+          case CashFlowCategory.financement:
+            result['financingFlowsCdf'] =
+                result['financingFlowsCdf']! + amountCdf;
+            break;
+          case CashFlowCategory.nonApplicable:
+            break;
         }
       }
-
-      // Utiliser les soldes calculés depuis cashBalances si l'entry les a
-      final lastEntry = box.values.last;
-      if (lastEntry.cashBalancesByCurrency != null &&
-          lastEntry.cashBalancesByCurrency!.isNotEmpty) {
-        cashBalanceCdf =
-            lastEntry.cashBalancesByCurrency!['CDF'] ?? cashBalanceCdf;
-        cashBalanceUsd =
-            lastEntry.cashBalancesByCurrency!['USD'] ?? cashBalanceUsd;
-      }
-
-      result['cashBalanceCdf'] = cashBalanceCdf;
-      result['cashBalanceUsd'] = cashBalanceUsd;
-    } catch (e) {
-      LoggingService.instance.error(
-        'Erreur calcul flux de trésorerie',
-        error: e,
-      );
     }
 
+    final snapshot = latestSnapshot?.cashBalancesByCurrency;
+    if (snapshot != null) {
+      cashBalanceCdf = snapshot['CDF'] ?? cashBalanceCdf;
+      cashBalanceUsd = snapshot['USD'] ?? cashBalanceUsd;
+    }
+
+    result['cashBalanceCdf'] = cashBalanceCdf;
+    result['cashBalanceUsd'] = cashBalanceUsd;
     return result;
   }
 }

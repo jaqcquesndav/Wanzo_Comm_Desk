@@ -12,7 +12,7 @@ import '../models/operation_journal_entry.dart';
 /// Une ligne de journal est le reflet d'un document : une vente, une dépense,
 /// un règlement, un mouvement de stock. Taper dessus ouvre ce document :
 ///  - vente, règlement client, encaissement : la vente (sinon la fiche client) ;
-///  - dépense, règlement fournisseur : la dépense ;
+///  - dépense, règlement fournisseur : la dépense (sinon le fournisseur) ;
 ///  - entrée ou sortie de stock : la fiche produit.
 /// La pièce est cherchée dans les données locales avant d'y aller : une ligne
 /// dont la pièce a disparu (dépense supprimée) affiche un message au lieu
@@ -24,6 +24,7 @@ Future<void> openJournalOperationDocument(
   final id = operation.relatedDocumentId?.trim() ?? '';
   final productId = operation.productId?.trim() ?? '';
   final customerId = operation.customerId?.trim() ?? '';
+  final supplierId = operation.supplierId?.trim() ?? '';
 
   // Mouvement de stock : la fiche produit répond à « quel article ? ».
   if (operation.type == OperationType.stockIn ||
@@ -54,9 +55,23 @@ Future<void> openJournalOperationDocument(
   }
   if (!context.mounted) return;
 
+  // Règlement fournisseur ou sortie de caisse sans dépense retrouvée : la
+  // fiche du fournisseur (comme sur le mobile).
+  final isSupplierSide =
+      operation.type == OperationType.supplierPayment ||
+      operation.type == OperationType.cashOut;
+  if (isSupplierSide && supplierId.isNotEmpty) {
+    context.push('/suppliers/detail/$supplierId');
+    return;
+  }
+
   // Règlement ou encaissement sans vente retrouvée : la fiche du client.
   if (customerId.isNotEmpty) {
     context.push('/customers/detail/$customerId');
+    return;
+  }
+  if (supplierId.isNotEmpty) {
+    context.push('/suppliers/detail/$supplierId');
     return;
   }
   _noDocument(context);

@@ -7,6 +7,7 @@ import '../bloc/adha_state.dart';
 import '../models/adha_message.dart';
 import '../models/adha_attachment.dart';
 import '../widgets/adha_error_widget.dart';
+import '../widgets/adha_subscription_error_widget.dart';
 import '../screens/chat_message_widget.dart';
 import '../screens/streaming_message_widget.dart';
 import '../screens/audio_chat_widget.dart';
@@ -195,6 +196,18 @@ class _AdhaChatPanelState extends State<AdhaChatPanel>
                     true,
                     state.partialContent,
                     state.toolStatus,
+                  );
+                } else if (state is AdhaSubscriptionError) {
+                  // Quota épuisé, abonnement expiré ou fonctionnalité hors
+                  // plan : on l'explique avec le lien de renouvellement au
+                  // lieu de retomber muettement sur les suggestions.
+                  return AdhaSubscriptionErrorWidget(
+                    error: state,
+                    onNewConversation: () {
+                      context.read<AdhaBloc>().add(
+                        const ClearCurrentConversation(),
+                      );
+                    },
                   );
                 } else if (state is AdhaError) {
                   return AdhaErrorWidget(

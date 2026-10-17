@@ -5,17 +5,20 @@ import 'package:wanzo/core/navigation/app_router.dart';
 import 'package:intl/intl.dart';
 
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
+import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
 import 'package:wanzo/core/services/form_navigation_service.dart';
-import 'package:wanzo/core/widgets/table_export_button.dart';
-import 'package:wanzo/services/export/table_export_service.dart';
+import 'package:wanzo/core/widgets/desktop/desktop_data_table.dart';
+import 'package:wanzo/core/widgets/desktop/row_actions_menu.dart';
+import 'package:wanzo/features/dashboard/bloc/dashboard_bloc.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/expenses/repositories/expense_repository.dart';
 import 'package:wanzo/features/sales/repositories/sales_repository.dart';
 
 import '../bloc/operations_bloc.dart';
+import '../models/operation_row.dart';
 import 'package:wanzo/core/modules/mode_vocabulary.dart';
 
 // Extension for SaleStatus to get a display name
@@ -61,13 +64,16 @@ class _OperationsViewState extends State<_OperationsView>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   VoidCallback? _tabListener;
+
+  static final DateFormat _dateFormat = DateFormat('dd/MM/yyyy', 'fr_FR');
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _tabListener = () {
       if (mounted) {
-        setState(() {}); // To rebuild FAB if its properties change with tab
+        setState(() {}); // Libellé du bouton de création selon l'onglet
       }
     };
     _tabController.addListener(_tabListener!);
@@ -82,8 +88,21 @@ class _OperationsViewState extends State<_OperationsView>
     super.dispose();
   }
 
+  String get _createLabel =>
+      _tabController.index <= 1
+          // « Ajouter une prestation » en salon, « une commande » en
+          // restaurant : le bouton nomme ce que l'exploitant enregistre.
+          ? ModeVocabulary.current.addSaleLabel
+          : 'Ajouter une dépense';
+
   Future<void> _openCreateFromOperations(BuildContext context) async {
     final operationsBloc = context.read<OperationsBloc>();
+    DashboardBloc? dashboardBloc;
+    try {
+      dashboardBloc = context.read<DashboardBloc>();
+    } catch (_) {
+      dashboardBloc = null;
+    }
 
     // Même porte que le reste de l'app : dialogue sur grand écran, page
     // complète sur fenêtre étroite.
@@ -94,58 +113,67 @@ class _OperationsViewState extends State<_OperationsView>
       await forms.openExpenseForm(context);
     }
 
-    // Toujours recharger après retour de la navigation
+    // Toujours recharger après retour : la table ET les vignettes du tableau
+    // de bord (revenus, charges), comme sur le mobile.
     if (mounted) {
       operationsBloc.add(const LoadOperations());
+      dashboardBloc?.add(LoadDashboardData(date: DateTime.now()));
+    }
+  }
+
+  void _openSale(BuildContext context, Sale sale) {
+    context.pushNamed(
+      AppRoute.saleDetail.name,
+      pathParameters: {'id': sale.id},
+      extra: sale,
+    );
+  }
+
+  void _openExpense(BuildContext context, Expense expense) {
+    final String idForNavigation = expense.hiveKey;
+    if (idForNavigation.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible d\'ouvrir le détail de cette dépense.'),
+        ),
+      );
+      return;
+    }
+    context.pushNamed(
+      AppRoute.expenseDetail.name,
+      pathParameters: {'id': idForNavigation},
+    );
+  }
+
+  void _openRow(BuildContext context, OperationRow row) {
+    if (row.sale != null) {
+      _openSale(context, row.sale!);
+    } else if (row.expense != null) {
+      _openExpense(context, row.expense!);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     const int operationsPageIndex = 1; // Index for Operations in BottomNavBar
-    final dateFormat = DateFormat('dd/MM/yyyy', 'fr_FR');
     final bool isNarrow =
         MediaQuery.sizeOf(context).width <
         PlatformService.instance.tabletMinWidth;
-    final String createLabel =
-        _tabController.index <= 1
-            // « Ajouter une prestation » en salon, « une commande » en
-            // restaurant : le bouton nomme ce que l'exploitant enregistre.
-            ? ModeVocabulary.current.addSaleLabel
-            : 'Ajouter une dépense';
 
     return BlocBuilder<OperationsBloc, OperationsState>(
       builder: (context, state) {
         return WanzoScaffold(
           currentIndex: operationsPageIndex,
-          title: 'Opérations', // Title for the WanzoAppBar
+          title: 'Opérations',
           appBarActions: [
-            // Bouton d'export
-            if (state is OperationsLoaded)
-              _buildExportButton(context, state, dateFormat),
-            // Actions for the WanzoAppBar
             IconButton(
               icon: const Icon(Icons.filter_list),
-              onPressed: () {
-                _showFilterDialog(context);
-              },
+              tooltip: 'Filtrer les opérations',
+              onPressed: () => _showFilterDialog(context),
             ),
           ],
           body: Column(
             children: [
-              if (!isNarrow)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: Row(
-                    children: [
-                      FilledButton.icon(
-                        onPressed: () => _openCreateFromOperations(context),
-                        icon: const Icon(Icons.add),
-                        label: Text(createLabel),
-                      ),
-                    ],
-                  ),
-                ),
               TabBar(
                 controller: _tabController,
                 tabs: [
@@ -156,14 +184,16 @@ class _OperationsViewState extends State<_OperationsView>
                 labelColor: Theme.of(context).primaryColor,
                 unselectedLabelColor: Colors.grey,
               ),
-              Expanded(child: _buildTabContent(context, state)),
+              Expanded(child: _buildTabContent(context, state, isNarrow)),
             ],
           ),
+          // Fenêtre étroite : bouton flottant icône seule (libellé en
+          // tooltip) ; sinon le bouton de création vit dans la barre de table.
           floatingActionButton:
               isNarrow
                   ? FloatingActionButton(
                     onPressed: () => _openCreateFromOperations(context),
-                    tooltip: createLabel,
+                    tooltip: _createLabel,
                     child: const Icon(Icons.add),
                   )
                   : null,
@@ -172,108 +202,23 @@ class _OperationsViewState extends State<_OperationsView>
     );
   }
 
-  Widget _buildExportButton(
+  Widget _buildTabContent(
     BuildContext context,
-    OperationsLoaded state,
-    DateFormat dateFormat,
+    OperationsState state,
+    bool isNarrow,
   ) {
-    // Déterminer les données à exporter selon l'onglet actif
-    final tabIndex = _tabController.index;
-
-    String title;
-    String fileName;
-    List<String> headers;
-    List<List<dynamic>> rows;
-
-    switch (tabIndex) {
-      case 0: // Tout
-        title = 'Toutes les opérations';
-        fileName = 'operations';
-        headers = ['Type', 'Date', 'Description', 'Montant', 'Statut'];
-        rows = [
-          ...state.sales.map(
-            (s) => [
-              'Vente',
-              dateFormat.format(s.date),
-              s.customerName,
-              formatCurrency(s.totalAmountInCdf, 'CDF'),
-              s.status.displayName,
-            ],
-          ),
-          ...state.expenses.map(
-            (e) => [
-              'Dépense',
-              dateFormat.format(e.date),
-              e.motif,
-              formatCurrency(e.amount, e.effectiveCurrencyCode),
-              e.category.displayName,
-            ],
-          ),
-        ];
-        break;
-      case 1: // Ventes
-        title = 'Liste des ventes';
-        fileName = 'ventes';
-        headers = ['Date', 'Client', 'Total', 'Statut', 'Paiement'];
-        rows =
-            state.sales
-                .map(
-                  (s) => [
-                    dateFormat.format(s.date),
-                    s.customerName,
-                    formatCurrency(s.totalAmountInCdf, 'CDF'),
-                    s.status.displayName,
-                    s.paymentMethod ?? '',
-                  ],
-                )
-                .toList();
-        break;
-      case 2: // Dépenses
-        title = 'Liste des dépenses';
-        fileName = 'depenses';
-        headers = ['Date', 'Motif', 'Catégorie', 'Montant'];
-        rows =
-            state.expenses
-                .map(
-                  (e) => [
-                    dateFormat.format(e.date),
-                    e.motif,
-                    e.category.displayName,
-                    formatCurrency(e.amount, e.effectiveCurrencyCode),
-                  ],
-                )
-                .toList();
-        break;
-      default:
-        title = 'Opérations';
-        fileName = 'operations';
-        headers = [];
-        rows = [];
-    }
-
-    return TableExportIconButton(
-      config: TableExportConfig(
-        title: title,
-        subtitle: 'Exporté le ${dateFormat.format(DateTime.now())}',
-        headers: headers,
-        rows: rows,
-        fileName: fileName,
-        companyName: 'Wanzo',
-      ),
-    );
-  }
-
-  Widget _buildTabContent(BuildContext context, OperationsState state) {
     if (state is OperationsLoading) {
       return const Center(child: CircularProgressIndicator());
     }
     if (state is OperationsLoaded) {
+      final VoidCallback? onAdd =
+          isNarrow ? null : () => _openCreateFromOperations(context);
       return TabBarView(
         controller: _tabController,
         children: [
-          _buildAllOperationsView(context, state.sales, state.expenses),
-          _buildSalesView(context, state.sales),
-          _buildExpensesView(context, state.expenses),
+          _buildAllOperationsView(context, state, onAdd),
+          _buildSalesView(context, state.sales, onAdd),
+          _buildExpensesView(context, state.expenses, onAdd),
         ],
       );
     }
@@ -299,10 +244,6 @@ class _OperationsViewState extends State<_OperationsView>
                 onPressed: () {
                   context.read<OperationsBloc>().add(const LoadOperations());
                 },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).primaryColor,
-                  foregroundColor: Colors.white,
-                ),
               ),
             ],
           ),
@@ -312,351 +253,428 @@ class _OperationsViewState extends State<_OperationsView>
     return const Center(child: Text('Veuillez charger les opérations.'));
   }
 
+  // ===========================================================================
+  // Onglet « Tout »
+  // ===========================================================================
+
   Widget _buildAllOperationsView(
     BuildContext context,
-    List<Sale> sales,
-    List<Expense> expenses,
+    OperationsLoaded state,
+    VoidCallback? onAdd,
   ) {
-    List<dynamic> allOperations = [...sales, ...expenses];
-    allOperations.sort((a, b) {
-      DateTime dateA;
-      DateTime dateB;
-
-      if (a is Sale) {
-        dateA = a.date;
-      } else if (a is Expense) {
-        dateA = a.date;
-      } else {
-        dateA = DateTime.now();
-      }
-
-      if (b is Sale) {
-        dateB = b.date;
-      } else if (b is Expense) {
-        dateB = b.date;
-      } else {
-        dateB = DateTime.now();
-      }
-
-      return dateB.compareTo(dateA); // Sort in descending order (newest first)
-    });
-
-    if (allOperations.isEmpty) {
-      return const Center(child: Text('Aucune opération à afficher.'));
+    final rows = OperationRow.merge(state.sales, state.expenses);
+    if (rows.isEmpty) {
+      return EmptyStateView(
+        icon: Icons.receipt_long,
+        message: 'Aucune opération à afficher.',
+        actionLabel: onAdd != null ? _createLabel : null,
+        onAction: onAdd,
+        actionIcon: Icons.add,
+      );
     }
 
-    return _AllOperationsDataTable(
-      sales: sales,
-      expenses: expenses,
-      onSaleTap: (sale) {
-        context.pushNamed(
-          AppRoute.saleDetail.name,
-          pathParameters: {'id': sale.id},
-          extra: sale,
+    return DesktopDataTable<OperationRow>(
+      data: rows,
+      onAdd: onAdd,
+      addButtonLabel: _createLabel,
+      searchHint: 'Rechercher une opération...',
+      searchFilter:
+          (row, query) =>
+              row.description.toLowerCase().contains(query) ||
+              _rowStatus(row).toLowerCase().contains(query),
+      columns: const [
+        DataColumn(label: Text('Type')),
+        DataColumn(label: Text('Description')),
+        DataColumn(label: Text('Statut')),
+        DataColumn(label: Text('Date')),
+        DataColumn(label: Text('Montant'), numeric: true),
+        DataColumn(label: Text('')),
+      ],
+      rowBuilder: (row) {
+        void open() => _openRow(context, row);
+        final color = row.isSale ? Colors.green : Colors.red;
+        return DataRow(
+          cells: [
+            DataCell(
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    row.isSale ? Icons.shopping_cart : Icons.money_off,
+                    size: 18,
+                    color: color,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(row.isSale ? ModeVocabulary.current.sale : 'Dépense'),
+                ],
+              ),
+              onTap: open,
+            ),
+            DataCell(
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 260),
+                child: Text(
+                  row.description,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
+              onTap: open,
+            ),
+            DataCell(_statusCell(row), onTap: open),
+            DataCell(Text(_dateFormat.format(row.date)), onTap: open),
+            DataCell(
+              Text(
+                formatCurrency(row.amount, row.currencyCode),
+                style: TextStyle(fontWeight: FontWeight.bold, color: color),
+              ),
+              onTap: open,
+            ),
+            DataCell(_openMenu(open)),
+          ],
         );
       },
-      onExpenseTap: (expense) {
-        final String idForNavigation = expense.hiveKey;
-        if (idForNavigation.isNotEmpty) {
-          context.pushNamed(
-            AppRoute.expenseDetail.name,
-            pathParameters: {'id': idForNavigation},
-          );
-        }
-      },
+      exportHeaders: const [
+        'Type',
+        'Date',
+        'Description',
+        'Statut',
+        'Montant',
+        'Devise',
+      ],
+      exportConfig: DataTableExportConfig(
+        title: 'Toutes les opérations',
+        subtitle: 'Exporté le ${_dateFormat.format(DateTime.now())}',
+        fileName: 'operations',
+        rowDataExtractor: (item) {
+          final row = item as OperationRow;
+          return [
+            row.isSale ? ModeVocabulary.current.sale : 'Dépense',
+            row.date,
+            row.description,
+            _rowStatus(row),
+            row.amount,
+            row.currencyCode,
+          ];
+        },
+      ),
     );
   }
 
-  Widget _buildSalesView(BuildContext context, List<Sale> sales) {
+  // ===========================================================================
+  // Onglet Ventes
+  // ===========================================================================
+
+  Widget _buildSalesView(
+    BuildContext context,
+    List<Sale> sales,
+    VoidCallback? onAdd,
+  ) {
     if (sales.isEmpty) {
-      return const Center(child: Text('Aucune vente à afficher.'));
+      return EmptyStateView(
+        icon: Icons.point_of_sale,
+        message: 'Aucune vente à afficher.',
+        actionLabel: onAdd != null ? _createLabel : null,
+        onAction: onAdd,
+        actionIcon: Icons.add,
+      );
     }
-    return _SalesDataTable(
-      sales: sales,
-      onSaleTap: (sale) {
-        context.pushNamed(
-          AppRoute.saleDetail.name,
-          pathParameters: {'id': sale.id},
-          extra: sale,
+    final rows =
+        sales.map((s) => OperationRow.fromSale(s)).toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
+
+    return DesktopDataTable<OperationRow>(
+      data: rows,
+      onAdd: onAdd,
+      addButtonLabel: _createLabel,
+      searchHint: 'Rechercher un client...',
+      searchFilter:
+          (row, query) =>
+              row.description.toLowerCase().contains(query) ||
+              _rowStatus(row).toLowerCase().contains(query),
+      columns: const [
+        DataColumn(label: Text('Client')),
+        DataColumn(label: Text('Articles'), numeric: true),
+        DataColumn(label: Text('Date')),
+        DataColumn(label: Text('Statut')),
+        DataColumn(label: Text('Payé'), numeric: true),
+        DataColumn(label: Text('Total'), numeric: true),
+        DataColumn(label: Text('')),
+      ],
+      rowBuilder: (row) {
+        final sale = row.sale!;
+        void open() => _openSale(context, sale);
+        return DataRow(
+          cells: [
+            DataCell(
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor:
+                        Theme.of(context).colorScheme.primaryContainer,
+                    child: Text(
+                      sale.customerName.isNotEmpty
+                          ? sale.customerName[0].toUpperCase()
+                          : '?',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 220),
+                    child: Text(
+                      sale.customerName,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              onTap: open,
+            ),
+            DataCell(Text('${sale.items.length}'), onTap: open),
+            DataCell(Text(_dateFormat.format(sale.date)), onTap: open),
+            DataCell(_statusCell(row), onTap: open),
+            DataCell(
+              Text(formatCurrency(row.paid, row.currencyCode)),
+              onTap: open,
+            ),
+            DataCell(
+              Text(
+                formatCurrency(row.amount, row.currencyCode),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              onTap: open,
+            ),
+            DataCell(_openMenu(open)),
+          ],
         );
       },
+      exportHeaders: const [
+        'Date',
+        'Client',
+        'Statut',
+        'Paiement',
+        'Payé',
+        'Total',
+        'Devise',
+      ],
+      exportConfig: DataTableExportConfig(
+        title: 'Liste des ${ModeVocabulary.current.sales.toLowerCase()}',
+        subtitle: 'Exporté le ${_dateFormat.format(DateTime.now())}',
+        fileName: 'ventes',
+        rowDataExtractor: (item) {
+          final row = item as OperationRow;
+          return [
+            row.date,
+            row.description,
+            _rowStatus(row),
+            row.sale?.paymentMethod ?? '',
+            row.paid,
+            row.amount,
+            row.currencyCode,
+          ];
+        },
+      ),
     );
   }
 
-  Widget _buildExpensesView(BuildContext context, List<Expense> expenses) {
+  // ===========================================================================
+  // Onglet Dépenses
+  // ===========================================================================
+
+  Widget _buildExpensesView(
+    BuildContext context,
+    List<Expense> expenses,
+    VoidCallback? onAdd,
+  ) {
     if (expenses.isEmpty) {
-      return const Center(child: Text('Aucune dépense à afficher.'));
+      return EmptyStateView(
+        icon: Icons.money_off,
+        message: 'Aucune dépense à afficher.',
+        actionLabel: onAdd != null ? _createLabel : null,
+        onAction: onAdd,
+        actionIcon: Icons.add,
+      );
     }
-    return _ExpensesDataTable(
-      expenses: expenses,
-      onExpenseTap: (expense) {
-        final String idForNavigation = expense.hiveKey;
-        if (idForNavigation.isNotEmpty) {
-          context.pushNamed(
-            AppRoute.expenseDetail.name,
-            pathParameters: {'id': idForNavigation},
-          );
-        }
-      },
-    );
-  }
+    final rows =
+        expenses.map(OperationRow.fromExpense).toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
 
-  Future<void> _showFilterDialog(BuildContext context) async {
-    DateTime? selectedStartDate;
-    DateTime? selectedEndDate = DateTime.now();
-    // String? paymentStatus; // Old: using string
-    SaleStatus? selectedSaleStatus; // New: using SaleStatus enum
-
-    // Access BLoC via context.read within the builder or where needed
-    final operationsBloc = BlocProvider.of<OperationsBloc>(context);
-
-    return showDialog<void>(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return StatefulBuilder(
-          builder: (stfContext, stfSetState) {
-            return AlertDialog(
-              title: const Text('Filtrer les Opérations'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    TextButton(
-                      onPressed: () async {
-                        final picked = await showDatePicker(
-                          context: stfContext,
-                          initialDate: selectedStartDate ?? DateTime.now(),
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime(2101),
-                        );
-                        if (picked != null) {
-                          stfSetState(() {
-                            selectedStartDate = picked;
-                          });
-                        }
-                      },
-                      child: Text(
-                        'Date de début: ${selectedStartDate != null ? DateFormat('dd/MM/yyyy').format(selectedStartDate!) : 'Non définie'}',
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () async {
-                        final picked = await showDatePicker(
-                          context: stfContext,
-                          initialDate: selectedEndDate ?? DateTime.now(),
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime(2101),
-                        );
-                        if (picked != null) {
-                          stfSetState(() {
-                            selectedEndDate = picked;
-                          });
-                        }
-                      },
-                      child: Text(
-                        'Date de fin: ${DateFormat('dd/MM/yyyy').format(selectedEndDate!)}',
-                      ),
-                    ),
-                    DropdownButtonFormField<SaleStatus?>(
-                      value: selectedSaleStatus,
-                      decoration: const InputDecoration(
-                        labelText: 'Statut de Vente',
-                      ),
-                      hint: const Text(
-                        'Tous les statuts',
-                      ), // Shown when value is null
-                      isExpanded: true,
-                      items: [
-                        const DropdownMenuItem<SaleStatus?>(
-                          value: null, // Represents "All"
-                          child: Text('Tous les statuts'),
-                        ),
-                        ...SaleStatus.values.map((SaleStatus status) {
-                          return DropdownMenuItem<SaleStatus?>(
-                            value: status,
-                            child: Text(status.displayName),
-                          );
-                        }),
-                      ],
-                      onChanged: (SaleStatus? newValue) {
-                        stfSetState(() {
-                          selectedSaleStatus = newValue;
-                        });
-                      },
-                    ),
-                  ],
+    return DesktopDataTable<OperationRow>(
+      data: rows,
+      onAdd: onAdd,
+      addButtonLabel: _createLabel,
+      searchHint: 'Rechercher une dépense...',
+      searchFilter:
+          (row, query) =>
+              row.description.toLowerCase().contains(query) ||
+              row.expense!.category.displayName.toLowerCase().contains(query),
+      columns: const [
+        DataColumn(label: Text('Catégorie')),
+        DataColumn(label: Text('Motif')),
+        DataColumn(label: Text('Date')),
+        DataColumn(label: Text('Paiement')),
+        DataColumn(label: Text('Montant'), numeric: true),
+        DataColumn(label: Text('')),
+      ],
+      rowBuilder: (row) {
+        final expense = row.expense!;
+        void open() => _openExpense(context, expense);
+        return DataRow(
+          cells: [
+            DataCell(
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _getCategoryIcon(expense.category),
+                    size: 18,
+                    color: Colors.orange,
+                  ),
+                  const SizedBox(width: 6),
+                  _chip(expense.category.displayName, Colors.orange),
+                ],
+              ),
+              onTap: open,
+            ),
+            DataCell(
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 260),
+                child: Text(
+                  expense.motif,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
               ),
-              actions: <Widget>[
-                TextButton(
-                  child: const Text('Annuler'),
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop();
-                  },
+              onTap: open,
+            ),
+            DataCell(Text(_dateFormat.format(expense.date)), onTap: open),
+            DataCell(Text(expense.paymentMethod ?? '-'), onTap: open),
+            DataCell(
+              Text(
+                formatCurrency(expense.amount, expense.effectiveCurrencyCode),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
                 ),
-                TextButton(
-                  child: const Text('Appliquer'),
-                  onPressed: () {
-                    operationsBloc.add(
-                      LoadOperations(
-                        startDate: selectedStartDate,
-                        endDate: selectedEndDate,
-                        // Convert SaleStatus? to String? for the event
-                        paymentStatus:
-                            selectedSaleStatus?.toString().split('.').last,
-                      ),
-                    );
-                    Navigator.of(dialogContext).pop();
-                  },
-                ),
-              ],
-            );
-          },
+              ),
+              onTap: open,
+            ),
+            DataCell(_openMenu(open)),
+          ],
         );
       },
+      exportHeaders: const [
+        'Date',
+        'Motif',
+        'Catégorie',
+        'Paiement',
+        'Montant',
+        'Devise',
+      ],
+      exportConfig: DataTableExportConfig(
+        title: 'Liste des dépenses',
+        subtitle: 'Exporté le ${_dateFormat.format(DateTime.now())}',
+        fileName: 'depenses',
+        rowDataExtractor: (item) {
+          final row = item as OperationRow;
+          final expense = row.expense!;
+          return [
+            expense.date,
+            expense.motif,
+            expense.category.displayName,
+            expense.paymentMethod ?? '',
+            expense.amount,
+            expense.effectiveCurrencyCode,
+          ];
+        },
+      ),
     );
   }
-}
 
-// =============================================
-// DataTable Widgets pour affichage tabulaire
-// =============================================
+  // ===========================================================================
+  // Cellules partagées
+  // ===========================================================================
 
-/// Widget DataTable pour l'onglet "Tout" combinant ventes et dépenses
-class _AllOperationsDataTable extends StatelessWidget {
-  final List<Sale> sales;
-  final List<Expense> expenses;
-  final Function(Sale) onSaleTap;
-  final Function(Expense) onExpenseTap;
+  /// Actions de ligne en menu 3 points (règle des tables desktop).
+  Widget _openMenu(VoidCallback open) {
+    return RowActionsMenu(
+      actions: [
+        RowAction(label: 'Ouvrir', icon: Icons.open_in_new, onSelected: open),
+      ],
+    );
+  }
 
-  const _AllOperationsDataTable({
-    required this.sales,
-    required this.expenses,
-    required this.onSaleTap,
-    required this.onExpenseTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Créer une liste unifiée d'opérations triées par date
-    final List<_OperationItem> allOperations = [
-      ...sales.map(
-        (s) => _OperationItem(
-          type: 'Vente',
-          description: s.customerName,
-          amount: s.totalAmountInCdf,
-          currencyCode: 'CDF',
-          date: s.date,
-          icon: Icons.shopping_cart,
-          color: Colors.green,
-          onTap: () => onSaleTap(s),
-          status: s.status.displayName,
-          statusColor: _getSaleStatusColor(s.status),
-        ),
-      ),
-      ...expenses.map(
-        (e) => _OperationItem(
-          type: 'Dépense',
-          description: e.motif,
-          amount: -e.amount,
-          currencyCode: e.effectiveCurrencyCode,
-          date: e.date,
-          icon: Icons.money_off,
-          color: Colors.red,
-          onTap: () => onExpenseTap(e),
-          status: e.category.displayName,
-          statusColor: Colors.orange,
-        ),
-      ),
-    ];
-
-    // Trier par date décroissante
-    allOperations.sort((a, b) => b.date.compareTo(a.date));
-
-    if (allOperations.isEmpty) {
-      return const Center(child: Text('Aucune opération à afficher.'));
+  String _rowStatus(OperationRow row) {
+    if (row.sale != null) {
+      return row.isOverdue
+          ? '${row.sale!.status.displayName} (en retard)'
+          : row.sale!.status.displayName;
     }
+    return row.expense?.category.displayName ?? '';
+  }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 600;
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: constraints.maxWidth),
-            child: DataTable(
-              showCheckboxColumn: false,
-              columnSpacing: isCompact ? 16 : 24,
-              headingRowColor: WidgetStateProperty.all(
-                Theme.of(context).colorScheme.surfaceContainerHighest,
-              ),
-              columns: [
-                const DataColumn(label: Text('Type')),
-                const DataColumn(label: Text('Description')),
-                if (!isCompact) const DataColumn(label: Text('Statut')),
-                const DataColumn(label: Text('Date')),
-                const DataColumn(label: Text('Montant'), numeric: true),
-              ],
-              rows:
-                  allOperations.map((op) {
-                    return DataRow(
-                      onSelectChanged: (_) => op.onTap(),
-                      cells: [
-                        DataCell(
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(op.icon, size: 18, color: op.color),
-                              const SizedBox(width: 8),
-                              Text(op.type),
-                            ],
-                          ),
-                        ),
-                        DataCell(
-                          Text(
-                            op.description,
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
-                        ),
-                        if (!isCompact)
-                          DataCell(
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: op.statusColor.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                op.status,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: op.statusColor,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ),
-                        DataCell(Text(DateFormat('dd/MM/yy').format(op.date))),
-                        DataCell(
-                          Text(
-                            formatCurrency(op.amount, op.currencyCode),
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: op.amount >= 0 ? Colors.green : Colors.red,
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  }).toList(),
+  Widget _statusCell(OperationRow row) {
+    if (row.sale == null) {
+      return _chip(row.expense?.category.displayName ?? '', Colors.orange);
+    }
+    final sale = row.sale!;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _chip(sale.status.displayName, _getSaleStatusColor(sale.status)),
+        if (row.isOverdue) ...[const SizedBox(width: 6), _buildOverdueBadge()],
+      ],
+    );
+  }
+
+  Widget _chip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  /// Petit badge « En retard » pour une créance échue (parité mobile).
+  Widget _buildOverdueBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.red.withAlpha((0.12 * 255).round()),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: Colors.red.shade300),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.warning_amber_rounded, size: 12, color: Colors.red),
+          SizedBox(width: 3),
+          Text(
+            'En retard',
+            style: TextStyle(
+              color: Colors.red,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
             ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -671,265 +689,6 @@ class _AllOperationsDataTable extends StatelessWidget {
       case SaleStatus.cancelled:
         return Colors.red;
     }
-  }
-}
-
-/// Modèle interne pour unifier les opérations
-class _OperationItem {
-  final String type;
-  final String description;
-  final double amount;
-  final String currencyCode;
-  final DateTime date;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-  final String status;
-  final Color statusColor;
-
-  _OperationItem({
-    required this.type,
-    required this.description,
-    required this.amount,
-    required this.currencyCode,
-    required this.date,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-    required this.status,
-    required this.statusColor,
-  });
-}
-
-/// Widget DataTable pour l'onglet Ventes
-class _SalesDataTable extends StatelessWidget {
-  final List<Sale> sales;
-  final Function(Sale) onSaleTap;
-
-  const _SalesDataTable({required this.sales, required this.onSaleTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 600;
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: constraints.maxWidth),
-            child: DataTable(
-              showCheckboxColumn: false,
-              columnSpacing: isCompact ? 12 : 20,
-              headingRowColor: WidgetStateProperty.all(
-                Theme.of(context).colorScheme.surfaceContainerHighest,
-              ),
-              columns: [
-                const DataColumn(label: Text('Client')),
-                if (!isCompact) const DataColumn(label: Text('Articles')),
-                const DataColumn(label: Text('Date')),
-                const DataColumn(label: Text('Statut')),
-                if (!isCompact) const DataColumn(label: Text('Payé')),
-                const DataColumn(label: Text('Total'), numeric: true),
-              ],
-              rows:
-                  sales.map((sale) {
-                    final articlesCount = sale.items.length;
-                    return DataRow(
-                      onSelectChanged: (_) => onSaleTap(sale),
-                      cells: [
-                        DataCell(
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              CircleAvatar(
-                                radius: 16,
-                                backgroundColor:
-                                    Theme.of(
-                                      context,
-                                    ).colorScheme.primaryContainer,
-                                child: Text(
-                                  sale.customerName.isNotEmpty
-                                      ? sale.customerName[0].toUpperCase()
-                                      : '?',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color:
-                                        Theme.of(
-                                          context,
-                                        ).colorScheme.onPrimaryContainer,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                sale.customerName,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (!isCompact) DataCell(Text('$articlesCount')),
-                        DataCell(
-                          Text(DateFormat('dd/MM/yy').format(sale.date)),
-                        ),
-                        DataCell(
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _getStatusColor(
-                                sale.status,
-                              ).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              sale.status.displayName,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: _getStatusColor(sale.status),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (!isCompact)
-                          DataCell(
-                            Text(
-                              formatCurrency(sale.paidAmountInCdf, 'CDF'),
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ),
-                        DataCell(
-                          Text(
-                            formatCurrency(sale.totalAmountInCdf, 'CDF'),
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    );
-                  }).toList(),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Color _getStatusColor(SaleStatus status) {
-    switch (status) {
-      case SaleStatus.completed:
-        return Colors.green;
-      case SaleStatus.pending:
-        return Colors.orange;
-      case SaleStatus.partiallyPaid:
-        return Colors.blue;
-      case SaleStatus.cancelled:
-        return Colors.red;
-    }
-  }
-}
-
-/// Widget DataTable pour l'onglet Dépenses
-class _ExpensesDataTable extends StatelessWidget {
-  final List<Expense> expenses;
-  final Function(Expense) onExpenseTap;
-
-  const _ExpensesDataTable({
-    required this.expenses,
-    required this.onExpenseTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 600;
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: constraints.maxWidth),
-            child: DataTable(
-              showCheckboxColumn: false,
-              columnSpacing: isCompact ? 12 : 20,
-              headingRowColor: WidgetStateProperty.all(
-                Theme.of(context).colorScheme.surfaceContainerHighest,
-              ),
-              columns: [
-                const DataColumn(label: Text('Catégorie')),
-                const DataColumn(label: Text('Motif')),
-                const DataColumn(label: Text('Date')),
-                if (!isCompact) const DataColumn(label: Text('Paiement')),
-                const DataColumn(label: Text('Montant'), numeric: true),
-              ],
-              rows:
-                  expenses.map((expense) {
-                    return DataRow(
-                      onSelectChanged: (_) => onExpenseTap(expense),
-                      cells: [
-                        DataCell(
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _getCategoryIcon(expense.category),
-                                size: 18,
-                                color: Colors.orange,
-                              ),
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  expense.category.displayName,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.orange,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        DataCell(
-                          Text(
-                            expense.motif,
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
-                        ),
-                        DataCell(
-                          Text(DateFormat('dd/MM/yy').format(expense.date)),
-                        ),
-                        if (!isCompact)
-                          DataCell(Text(expense.paymentMethod ?? '-')),
-                        DataCell(
-                          Text(
-                            formatCurrency(
-                              expense.amount,
-                              expense.effectiveCurrencyCode,
-                            ),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.red,
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  }).toList(),
-            ),
-          ),
-        );
-      },
-    );
   }
 
   IconData _getCategoryIcon(ExpenseCategory category) {
@@ -985,5 +744,116 @@ class _ExpensesDataTable extends StatelessWidget {
       case ExpenseCategory.other:
         return Icons.more_horiz;
     }
+  }
+
+  Future<void> _showFilterDialog(BuildContext context) async {
+    DateTime? selectedStartDate;
+    DateTime? selectedEndDate = DateTime.now();
+    SaleStatus? selectedSaleStatus;
+
+    final operationsBloc = BlocProvider.of<OperationsBloc>(context);
+
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (stfContext, stfSetState) {
+            return AlertDialog(
+              title: const Text('Filtrer les opérations'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    TextButton(
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: stfContext,
+                          initialDate: selectedStartDate ?? DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2101),
+                        );
+                        if (picked != null) {
+                          stfSetState(() {
+                            selectedStartDate = picked;
+                          });
+                        }
+                      },
+                      child: Text(
+                        'Date de début: ${selectedStartDate != null ? DateFormat('dd/MM/yyyy').format(selectedStartDate!) : 'Non définie'}',
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: stfContext,
+                          initialDate: selectedEndDate ?? DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2101),
+                        );
+                        if (picked != null) {
+                          stfSetState(() {
+                            selectedEndDate = picked;
+                          });
+                        }
+                      },
+                      child: Text(
+                        'Date de fin: ${DateFormat('dd/MM/yyyy').format(selectedEndDate!)}',
+                      ),
+                    ),
+                    DropdownButtonFormField<SaleStatus?>(
+                      value: selectedSaleStatus,
+                      decoration: const InputDecoration(
+                        labelText: 'Statut de vente',
+                      ),
+                      hint: const Text('Tous les statuts'),
+                      isExpanded: true,
+                      items: [
+                        const DropdownMenuItem<SaleStatus?>(
+                          value: null,
+                          child: Text('Tous les statuts'),
+                        ),
+                        ...SaleStatus.values.map((SaleStatus status) {
+                          return DropdownMenuItem<SaleStatus?>(
+                            value: status,
+                            child: Text(status.displayName),
+                          );
+                        }),
+                      ],
+                      onChanged: (SaleStatus? newValue) {
+                        stfSetState(() {
+                          selectedSaleStatus = newValue;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text('Annuler'),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                  },
+                ),
+                TextButton(
+                  child: const Text('Appliquer'),
+                  onPressed: () {
+                    operationsBloc.add(
+                      LoadOperations(
+                        startDate: selectedStartDate,
+                        endDate: selectedEndDate,
+                        paymentStatus:
+                            selectedSaleStatus?.toString().split('.').last,
+                      ),
+                    );
+                    Navigator.of(dialogContext).pop();
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 }

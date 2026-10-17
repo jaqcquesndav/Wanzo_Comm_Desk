@@ -100,6 +100,11 @@ class AudioStreamingService {
   bool _isRecordingActive = false;
   bool _isPlayingActive = false;
 
+  /// Vrai tant que du TTS est en file ou en lecture : le bloc ne rouvre pas
+  /// le micro tant qu'Adha parle (il capterait sa propre voix).
+  bool get hasPendingAudio =>
+      _audioQueue.isNotEmpty || _isPlayingActive || _isProcessingQueue;
+
   AudioStreamingService() {
     _initPlayerListener();
   }

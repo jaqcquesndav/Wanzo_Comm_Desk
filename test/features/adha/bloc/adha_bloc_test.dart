@@ -28,6 +28,12 @@ class _AudioFactice extends Fake implements audio.AudioStreamingService {
   @override
   Stream<double> get audioLevel => const Stream.empty();
   @override
+  Stream<void> get silenceDetected => const Stream.empty();
+  @override
+  Stream<void> get playbackComplete => const Stream.empty();
+  @override
+  bool get hasPendingAudio => false;
+  @override
   void dispose() {}
 }
 
@@ -112,5 +118,58 @@ void main() {
         await attendu;
       },
     );
+
+    group('conversation active', () {
+      final conversation = AdhaConversation(
+        id: 'conv-1',
+        title: 'Ventes',
+        createdAt: DateTime(2026, 10, 1),
+        updatedAt: DateTime(2026, 10, 1),
+        messages: const [],
+      );
+
+      setUp(() {
+        when(
+          mockAdhaRepository.getConversation('conv-1'),
+        ).thenAnswer((_) async => conversation);
+        when(
+          mockAdhaRepository.saveActiveConversationId(any),
+        ).thenAnswer((_) async {});
+      });
+
+      test('ouvrir une conversation la persiste pour la prochaine '
+          'ouverture d\'Adha', () async {
+        final attendu = expectLater(
+          adhaBloc.stream,
+          emitsThrough(isA<AdhaConversationActive>()),
+        );
+        adhaBloc.add(const LoadConversation('conv-1'));
+        await attendu;
+        verify(mockAdhaRepository.saveActiveConversationId('conv-1')).called(1);
+      });
+
+      test('une fin de flux sans contenu n\'ajoute pas de bulle vide', () async {
+        final ouverte = expectLater(
+          adhaBloc.stream,
+          emitsThrough(isA<AdhaConversationActive>()),
+        );
+        adhaBloc.add(const LoadConversation('conv-1'));
+        await ouverte;
+
+        adhaBloc.add(
+          const StreamCompleted(
+            conversationId: 'conv-1',
+            fullContent: '',
+            requestMessageId: 'req-1',
+            totalChunks: 0,
+          ),
+        );
+        // État identique : le bloc n'émet rien de nouveau, on lit l'état.
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        final state = adhaBloc.state;
+        expect(state, isA<AdhaConversationActive>());
+        expect((state as AdhaConversationActive).conversation.messages, isEmpty);
+      });
+    });
   });
 }

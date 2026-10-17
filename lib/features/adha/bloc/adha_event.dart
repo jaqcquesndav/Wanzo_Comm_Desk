@@ -287,7 +287,8 @@ class StreamError extends AdhaEvent {
       errorType == 'quota_exhausted' ||
       errorType == 'subscription_expired' ||
       errorType == 'subscription_past_due' ||
-      errorType == 'feature_not_available';
+      errorType == 'feature_not_available' ||
+      upgradeRequired == true;
 
   @override
   List<Object?> get props => [

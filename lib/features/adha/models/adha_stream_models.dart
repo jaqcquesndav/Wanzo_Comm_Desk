@@ -271,7 +271,8 @@ class AdhaStreamMetadata extends Equatable {
       isQuotaExhausted ||
       isFeatureNotAvailable ||
       isSubscriptionExpired ||
-      isSubscriptionPastDue;
+      isSubscriptionPastDue ||
+      upgradeRequired == true;
 
   @override
   List<Object?> get props => [

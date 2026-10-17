@@ -18,6 +18,8 @@ import 'streaming_message_widget.dart'; // Import du widget de streaming
 import '../models/adha_context_info.dart'; // Added for AdhaContextInfo
 import 'conversations_bottom_sheet.dart'; // Import du bottom sheet des conversations
 import '../../auth/bloc/auth_bloc.dart'; // Pour AuthBloc et AuthAuthenticated
+import '../adha_suggestions.dart';
+import 'package:wanzo/core/services/business_context_service.dart';
 
 class AdhaScreen extends StatefulWidget {
   const AdhaScreen({super.key});
@@ -273,8 +275,12 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
                           );
                         },
                         onReauth: () {
-                          // Naviguer vers l'écran de connexion
-                          Navigator.of(context).pushReplacementNamed('/login');
+                          // Session refusée : déconnexion, le routeur mène
+                          // à l'écran de connexion (Navigator.pushReplacementNamed
+                          // levait une exception sous go_router).
+                          context.read<AuthBloc>().add(
+                            const AuthLogoutRequested(),
+                          );
                         },
                       );
                     } else if (state is AdhaSubscriptionError) {
@@ -1133,128 +1139,68 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildFeatureSuggestions(BuildContext context) {
-    final AdhaBaseContext placeholderBaseContext = AdhaBaseContext(
-      operationJournalSummary: const AdhaOperationJournalSummary(
-        recentEntries: [],
-      ),
-      businessProfile: const AdhaBusinessProfile(name: 'Entreprise'),
-    );
-    final List<Map<String, dynamic>> features = [
-      {
-        'icon': Icons.analytics,
-        'title': "Analyses de ventes",
-        'description': "Quelles sont mes ventes du mois dernier ?",
-        'prompt': "Montre-moi les analyses de ventes du mois dernier.",
-      },
-      {
-        'icon': Icons.inventory_2,
-        'title': "Gestion de stock",
-        'description': "Quels produits sont en faible stock ?",
-        'prompt': "Liste les produits avec un stock faible.",
-      },
-      {
-        'icon': Icons.people,
-        'title': "Relations clients",
-        'description': "Donne-moi des conseils pour fidéliser mes clients.",
-        'prompt': "Comment puis-je améliorer la fidélisation de mes clients ?",
-      },
-      {
-        'icon': Icons.calculate,
-        'title': "Calculs financiers",
-        'description': "Calcule ma marge brute pour le produit X.",
-        'prompt': "Calcule la marge brute pour le produit X.",
-      },
-    ];
+    final theme = Theme.of(context);
+    // Suggestions DÉRIVÉES du métier actif (boutique, restaurant, salon,
+    // atelier...), source unique partagée avec le panneau Adha et le mobile :
+    // un restaurant ne se voit pas proposer la « gestion de stock » boutique.
+    final suggestions = suggestionsFor(BusinessContextService().activityMode);
 
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              "Que puis-je faire pour vous aujourd'hui ?",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 16,
-                crossAxisSpacing: 16,
-                childAspectRatio: 0.9,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                "Que puis-je faire pour vous aujourd'hui ?",
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
               ),
-              itemCount: features.length,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemBuilder: (context, index) {
-                final feature = features[index];
-                return InkWell(
-                  onTap: () {
-                    final interactionContext = AdhaInteractionContext(
-                      interactionType: AdhaInteractionType.genericCardAnalysis,
-                      sourceIdentifier:
-                          'suggestion_card_${feature['title']?.toString().replaceAll(' ', '_').toLowerCase() ?? 'unknown'}',
-                      interactionData: {
-                        'cardTitle': feature['title'],
-                        'cardPrompt': feature['prompt'],
-                      },
-                    );
-                    final contextInfo = AdhaContextInfo(
-                      baseContext: placeholderBaseContext,
-                      interactionContext: interactionContext,
-                    );
-                    // Utiliser le streaming par défaut selon la documentation (Janvier 2026)
-                    context.read<AdhaBloc>().add(
-                      SendStreamingMessage(
-                        feature['prompt'] as String,
-                        contextInfo: contextInfo,
-                        streaming: true,
-                      ),
-                    );
-                  },
-                  child: Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            feature['icon'] as IconData,
-                            size: 36,
-                            color: Theme.of(context).primaryColor,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            feature['title'] as String,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
+              const SizedBox(height: 24),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children:
+                    suggestions.map((s) {
+                      return ActionChip(
+                        avatar: Icon(
+                          s.icon,
+                          size: 18,
+                          color: theme.colorScheme.primary,
+                        ),
+                        label: Text(s.title),
+                        tooltip: s.prompt,
+                        onPressed: () {
+                          final contextInfo = AdhaContextInfo(
+                            baseContext: _buildPlaceholderBaseContext(),
+                            interactionContext: AdhaInteractionContext(
+                              interactionType:
+                                  AdhaInteractionType.genericCardAnalysis,
+                              sourceIdentifier: 'suggestion_chip',
+                              interactionData: {
+                                'cardTitle': s.title,
+                                'cardPrompt': s.prompt,
+                              },
                             ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            feature['description'] as String,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.black54,
+                          );
+                          context.read<AdhaBloc>().add(
+                            SendStreamingMessage(
+                              s.prompt,
+                              contextInfo: contextInfo,
+                              streaming: true,
                             ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
+                          );
+                        },
+                      );
+                    }).toList(),
+              ),
+            ],
+          ),
         ),
       ),
     );

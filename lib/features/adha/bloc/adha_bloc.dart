@@ -64,6 +64,18 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
   // VAD/silence d'éviter de relancer l'écoute après EndAudioSession.
   bool _isAudioSessionActive = false;
 
+  // Cycle vocal continu (parité mobile) : silence détecté → envoi, fin de
+  // lecture d'Adha → nouvelle écoute. Garde-fous contre la boucle chaude
+  // (captures vides répétées) et contre un tour sans réponse (watchdog).
+  StreamSubscription<void>? _silenceDetectedSubscription;
+  StreamSubscription<void>? _playbackCompleteSubscription;
+  int _consecutiveEmptyAudio = 0;
+  static const int _maxConsecutiveEmptyAudio = 25;
+  static const Duration _emptyAudioBackoff = Duration(milliseconds: 250);
+  bool _autoRestartInFlight = false;
+  Timer? _voiceTurnWatchdog;
+  static const Duration _voiceTurnTimeout = Duration(seconds: 75);
+
   // ──────────────────────────────────────────────────────────────────────
   // Chunk batching pour fluidité du rendu (Phase 2D)
   // ──────────────────────────────────────────────────────────────────────
@@ -130,6 +142,36 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
 
     // Initialiser les listeners pour le streaming
     _initStreamListeners();
+  }
+
+  /// Relance l'écoute de façon AUTOMATIQUE (cycle VAD), par opposition à un
+  /// clic. Jamais tant que du TTS reste à jouer : le micro capterait la voix
+  /// d'Adha.
+  void _autoListenAgain() {
+    _cancelVoiceTurnWatchdog();
+    if (!_isAudioSessionActive) return;
+    if (_audioStreamingService.hasPendingAudio) return;
+    _autoRestartInFlight = true;
+    add(const ToggleRecording(true));
+  }
+
+  /// Filet de sécurité du tour vocal : sans réponse ni audio après
+  /// [_voiceTurnTimeout], on rouvre le micro au lieu de rester bloqué.
+  void _armVoiceTurnWatchdog() {
+    _cancelVoiceTurnWatchdog();
+    _voiceTurnWatchdog = Timer(_voiceTurnTimeout, () {
+      if (!_isAudioSessionActive) return;
+      if (_audioStreamingService.hasPendingAudio) {
+        _armVoiceTurnWatchdog();
+        return;
+      }
+      _autoListenAgain();
+    });
+  }
+
+  void _cancelVoiceTurnWatchdog() {
+    _voiceTurnWatchdog?.cancel();
+    _voiceTurnWatchdog = null;
   }
 
   /// Map audio service connection state to BLoC state
@@ -432,7 +474,7 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       );
 
       await adhaRepository.saveConversation(finalConversation);
-      _currentlyActiveConversationId = finalConversation.id; // Set active ID
+      _setActiveConversation(finalConversation.id);
 
       emit(
         AdhaConversationActive(
@@ -479,7 +521,7 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     if (event.initialMessage.isEmpty &&
         event.contextInfo.interactionContext.sourceIdentifier ==
             'new_conversation_button') {
-      _currentlyActiveConversationId = null; // Clear active ID
+      _setActiveConversation(null);
       emit(const AdhaInitial());
       // Optionally, if you want to ensure a default "empty" conversation is ready in the background
       // you could load conversations which might create one if none exist.
@@ -532,7 +574,7 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         if (event.contextInfo.interactionContext.sourceIdentifier !=
             'new_conversation_button') {
           await adhaRepository.saveConversation(newConversation);
-          _currentlyActiveConversationId = newConversation.id;
+          _setActiveConversation(newConversation.id);
           emit(
             AdhaConversationActive(
               conversation: newConversation,
@@ -582,8 +624,7 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
           );
 
       await adhaRepository.saveConversation(updatedConversationWithResponse);
-      _currentlyActiveConversationId =
-          updatedConversationWithResponse.id; // Set active ID
+      _setActiveConversation(updatedConversationWithResponse.id);
 
       emit(
         AdhaConversationActive(
@@ -625,12 +666,11 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       } else {
         // The active conversation ID was stored, but the conversation is gone from the repo.
         // This is an inconsistent state. Fallback: clear the active ID and go to AdhaInitial.
-        _currentlyActiveConversationId = null; // Clear the bad ID
+        _setActiveConversation(null);
         emit(const AdhaInitial()); // Go to initial screen as a safe fallback
       }
     } catch (e) {
-      _currentlyActiveConversationId =
-          null; // Clear on error to prevent broken state
+      _setActiveConversation(null);
       emit(AdhaError('Erreur lors du chargement des conversations: $e'));
       // Optionally, after error, try to emit AdhaInitial so user is not stuck on error screen.
       // emit(const AdhaInitial());
@@ -647,7 +687,7 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         event.conversationId,
       );
       if (conversation != null) {
-        _currentlyActiveConversationId = conversation.id; // Set active ID
+        _setActiveConversation(conversation.id);
         emit(AdhaConversationActive(conversation: conversation));
       } else {
         emit(const AdhaError('Conversation non trouvée'));
@@ -665,8 +705,7 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     try {
       await adhaRepository.deleteConversation(event.conversationId);
       if (_currentlyActiveConversationId == event.conversationId) {
-        _currentlyActiveConversationId =
-            null; // Clear active ID if it was deleted
+        _setActiveConversation(null);
       }
       add(
         const LoadConversations(),
@@ -785,7 +824,7 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       );
 
       await adhaRepository.saveConversation(finalConversation);
-      _currentlyActiveConversationId = finalConversation.id;
+      _setActiveConversation(finalConversation.id);
 
       emit(
         AdhaConversationActive(
@@ -901,6 +940,21 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         ),
       );
     });
+
+    // VAD : silence détecté après de la parole → arrêter et envoyer.
+    _silenceDetectedSubscription = _audioStreamingService.silenceDetected
+        .listen((_) {
+          if (!_isAudioSessionActive) return;
+          add(const ToggleRecording(false));
+        });
+
+    // Fin de lecture d'Adha → relancer l'écoute : le cycle reste continu,
+    // sans nouveau clic par tour (comme sur le mobile).
+    _playbackCompleteSubscription = _audioStreamingService.playbackComplete
+        .listen((_) {
+          if (!_isAudioSessionActive) return;
+          _autoListenAgain();
+        });
   }
 
   /// Démarre une session audio
@@ -925,12 +979,30 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         messages: [],
       );
       await adhaRepository.saveConversation(newConversation);
+      _setActiveConversation(newConversationId);
       emit(AdhaConversationActive(conversation: newConversation));
     }
 
     final currentState = state as AdhaConversationActive;
 
     try {
+      // Le contexte entreprise (companyId) est requis par l'envoi audio :
+      // le vérifier dès l'ouverture plutôt qu'au premier tour de parole.
+      final businessContextService = BusinessContextService();
+      if (!businessContextService.isInitialized ||
+          businessContextService.companyId == null) {
+        await authRepository.getUser(forceRemote: true);
+      }
+      if (!businessContextService.isInitialized ||
+          businessContextService.companyId == null) {
+        emit(
+          const AdhaError(
+            'Contexte entreprise non initialisé. Reconnectez-vous.',
+          ),
+        );
+        return;
+      }
+
       // Initialiser la session audio locale (permission micro + état).
       // Pas de WebSocket dédié : l'audio sera envoyé via REST
       // POST /commerce/adha/audio/stream et les chunks TTS de réponse
@@ -953,8 +1025,10 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       _isAudioSessionActive = true;
       _accumulatedStreamContent.clear();
 
-      // Approche Gemini Live : pas de greeting forcé. La session est juste
-      // "prête". L'utilisateur tape sur le micro quand il veut parler.
+      // Pas de greeting forcé, mais le micro s'ouvre tout de suite : le mode
+      // vocal, c'est UN démarrage puis un cycle VAD automatique (parité
+      // mobile). Un clic sur le micro reste possible pour reprendre la main.
+      _consecutiveEmptyAudio = 0;
       emit(
         currentState.copyWith(
           isAudioStreamingActive: true,
@@ -962,6 +1036,9 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
           isProcessing: false,
         ),
       );
+
+      _autoRestartInFlight = true;
+      add(const ToggleRecording(true));
     } catch (e) {
       emit(AdhaError("Erreur de démarrage de la session audio: $e"));
     }
@@ -977,6 +1054,9 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     final currentState = state as AdhaConversationActive;
 
     try {
+      _cancelVoiceTurnWatchdog();
+      _autoRestartInFlight = false;
+      _consecutiveEmptyAudio = 0;
       _isAudioSessionActive = false;
       await _audioStreamingService.endSession();
 
@@ -1010,8 +1090,18 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
 
     try {
       if (event.enabled) {
-        // Barge-in : si Adha parle, interrompre la lecture pour écouter.
-        if (currentState.isAdhaPlaying) {
+        final isAutoRestart = _autoRestartInFlight;
+        _autoRestartInFlight = false;
+        if (!isAutoRestart) {
+          // Démarrage MANUEL : l'utilisateur reprend la main, le garde-fou
+          // des captures vides repart de zéro.
+          _consecutiveEmptyAudio = 0;
+        }
+        // Barge-in : si Adha parle (ou a encore du TTS en file), interrompre
+        // la lecture pour écouter. On interroge aussi le service : l'état
+        // du bloc est en retard d'un événement.
+        if (currentState.isAdhaPlaying ||
+            _audioStreamingService.hasPendingAudio) {
           debugPrint('[AdhaBloc] ⛔ Barge-in: interruption Adha pour écouter');
           await _audioStreamingService.interrupt();
         }
@@ -1022,13 +1112,25 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
             await _audioStreamingService.stopRecordingAndGetBase64();
 
         if (audioBase64 == null) {
-          debugPrint('[AdhaBloc] Audio trop court ou vide, on relance l\'écoute');
-          if (_isAudioSessionActive) {
-            await Future.delayed(const Duration(milliseconds: 300));
-            add(ToggleRecording(true));
+          // Cycle continu avec petit délai et garde-fou haut contre une
+          // boucle infinie si le micro ne capte rien.
+          _consecutiveEmptyAudio++;
+          if (_isAudioSessionActive &&
+              _consecutiveEmptyAudio < _maxConsecutiveEmptyAudio) {
+            emit(
+              currentState.copyWith(isRecording: false, isProcessing: false),
+            );
+            await Future<void>.delayed(_emptyAudioBackoff);
+            _autoListenAgain();
+          } else if (_consecutiveEmptyAudio >= _maxConsecutiveEmptyAudio) {
+            // Session gardée ouverte : un clic sur le micro relance.
+            emit(
+              currentState.copyWith(isRecording: false, isProcessing: false),
+            );
           }
           return;
         }
+        _consecutiveEmptyAudio = 0;
 
         final conversationId = currentState.conversation.id;
         final contextInfo = await _buildContextInfo(
@@ -1098,6 +1200,8 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
             userId: userId,
           );
           debugPrint('[AdhaBloc] ✅ Audio envoyé (voice=nova) via REST');
+          // Filet : si aucune réponse ni audio n'arrive, le micro se rouvre.
+          _armVoiceTurnWatchdog();
         } on AdhaServiceException catch (e) {
           add(
             StreamError(
@@ -1117,7 +1221,19 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
         }
       }
     } catch (e) {
-      emit(AdhaError("Erreur de contrôle de l'enregistrement: $e"));
+      debugPrint('[AdhaBloc] ❌ Erreur de contrôle de l\'enregistrement: $e');
+      // Pendant une session vocale, ne pas remplacer l'état actif par
+      // AdhaError : cela rendait le micro inerte jusqu'à la réouverture.
+      if (_isAudioSessionActive && state is AdhaConversationActive) {
+        emit(
+          (state as AdhaConversationActive).copyWith(
+            isRecording: false,
+            isProcessing: false,
+          ),
+        );
+      } else {
+        emit(AdhaError("Erreur de contrôle de l'enregistrement: $e"));
+      }
     }
   }
 
@@ -1997,6 +2113,13 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     StreamChunkReceived event,
     Emitter<AdhaState> emit,
   ) async {
+    // En mode audio, l'état reste AdhaConversationActive : on accumule le
+    // texte sans quitter l'écran vocal (avant, ces chunks étaient perdus).
+    if (state is AdhaConversationActive && _isAudioSessionActive) {
+      _accumulatedStreamContent.write(event.content);
+      return;
+    }
+
     if (state is! AdhaStreaming) {
       debugPrint(
         '[AdhaBloc] ⚠️ Chunk reçu mais état n\'est pas AdhaStreaming: ${state.runtimeType}',
@@ -2049,34 +2172,69 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       conversation = conv;
     }
 
-    // Créer le message de réponse d'ADHA
-    final adhaMessage = AdhaMessage(
-      id: _uuid.v4(),
-      content: event.fullContent,
-      timestamp: DateTime.now(),
-      sender: AdhaMessageSender.ai,
-      type: _detectMessageType(event.fullContent),
-    );
+    // Créer le message de réponse d'ADHA (jamais de bulle vide)
+    final finalContent =
+        event.fullContent.isNotEmpty
+            ? event.fullContent
+            : _accumulatedStreamContent.toString();
 
-    final finalMessages = List<AdhaMessage>.from(conversation.messages)
-      ..add(adhaMessage);
-    final finalConversation = conversation.copyWith(
-      messages: finalMessages,
-      updatedAt: DateTime.now(),
-    );
+    AdhaConversation finalConversation;
+    if (finalContent.trim().isNotEmpty) {
+      final adhaMessage = AdhaMessage(
+        id: _uuid.v4(),
+        content: finalContent,
+        timestamp: DateTime.now(),
+        sender: AdhaMessageSender.ai,
+        type: _detectMessageType(finalContent),
+      );
+
+      final finalMessages = List<AdhaMessage>.from(conversation.messages)
+        ..add(adhaMessage);
+      finalConversation = conversation.copyWith(
+        messages: finalMessages,
+        updatedAt: DateTime.now(),
+      );
+    } else {
+      finalConversation = conversation;
+    }
 
     // Sauvegarder la conversation
     await adhaRepository.saveConversation(finalConversation);
-    _currentlyActiveConversationId = finalConversation.id;
+    _setActiveConversation(finalConversation.id);
 
     // Réinitialiser le buffer et l'ID de streaming
     _accumulatedStreamContent.clear();
     _currentStreamingRequestId = null;
 
+    // En mode audio : conserver l'état vocal (sinon le tour suivant tombait
+    // sur « Session audio non active »).
+    if (_isAudioSessionActive && state is AdhaConversationActive) {
+      final audioState = state as AdhaConversationActive;
+      emit(
+        audioState.copyWith(
+          conversation: finalConversation,
+          isProcessing: false,
+        ),
+      );
+      // Sans TTS à jouer, relancer l'écoute ; sinon c'est la fin de lecture
+      // qui la relancera.
+      if (!_audioStreamingService.hasPendingAudio &&
+          !audioState.isAdhaPlaying &&
+          !audioState.isRecording) {
+        _autoListenAgain();
+      }
+      return;
+    }
+
     emit(
       AdhaConversationActive(
         conversation: finalConversation,
         isProcessing: false,
+        isAudioStreamingActive: _isAudioSessionActive,
+        audioConnectionState:
+            _isAudioSessionActive
+                ? AudioConnectionState.connected
+                : AudioConnectionState.disconnected,
       ),
     );
   }
@@ -2121,8 +2279,17 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
           AdhaConversationActive(
             conversation: conversation,
             isProcessing: false,
+            isAudioStreamingActive: _isAudioSessionActive,
+            audioConnectionState:
+                _isAudioSessionActive
+                    ? AudioConnectionState.connected
+                    : AudioConnectionState.disconnected,
           ),
         );
+        // Mode vocal : relancer l'écoute pour ne pas casser le cycle.
+        if (_isAudioSessionActive) {
+          _autoListenAgain();
+        }
       }
     }
   }
@@ -2175,7 +2342,7 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
           updatedAt: DateTime.now(),
         );
         await adhaRepository.saveConversation(conversation);
-        _currentlyActiveConversationId = conversation.id;
+        _setActiveConversation(conversation.id);
       }
 
       _accumulatedStreamContent.clear();
@@ -2191,6 +2358,15 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
       _accumulatedStreamContent.clear();
       _currentStreamingRequestId = null;
     }
+  }
+
+  /// Fixe la conversation active ET la persiste : à la réouverture d'Adha,
+  /// la dernière conversation est restaurée (comme sur le mobile). Avant,
+  /// l'identifiant n'était jamais enregistré, la restauration lisait toujours
+  /// une valeur vide.
+  void _setActiveConversation(String? conversationId) {
+    _currentlyActiveConversationId = conversationId;
+    adhaRepository.saveActiveConversationId(conversationId);
   }
 
   /// Réinitialise l'état pour démarrer une nouvelle conversation
@@ -2288,6 +2464,9 @@ class AdhaBloc extends Bloc<AdhaEvent, AdhaState> {
     await _audioLevelSubscription?.cancel();
     await _isRecordingSubscription?.cancel();
     await _isPlayingSubscription?.cancel();
+    await _silenceDetectedSubscription?.cancel();
+    await _playbackCompleteSubscription?.cancel();
+    _cancelVoiceTurnWatchdog();
 
     // Nettoyer les subscriptions de streaming
     await _streamChunkSubscription?.cancel();

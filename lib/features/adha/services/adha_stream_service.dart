@@ -528,6 +528,20 @@ class AdhaStreamService {
         return;
       }
 
+      // Mode duplex audio : la transcription de la question arrive dans
+      // metadata.audioTranscription ; on la range dans processingDetails,
+      // comme sur le mobile, pour qu'elle suive le message jusqu'au bloc.
+      if (json['metadata'] is Map) {
+        final metadata = json['metadata'] as Map;
+        if (metadata['audioTranscription'] != null) {
+          final details = json['processingDetails'];
+          json['processingDetails'] = <String, dynamic>{
+            if (details is Map) ...Map<String, dynamic>.from(details),
+            'audioTranscription': metadata['audioTranscription'],
+          };
+        }
+      }
+
       final chunk = AdhaStreamChunkEvent.fromJson(json);
       _chunkController.add(chunk);
 

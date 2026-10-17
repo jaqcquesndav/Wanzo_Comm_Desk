@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:csv/csv.dart';
@@ -131,7 +132,7 @@ class TableExportService {
                               (header) => pw.Padding(
                                 padding: const pw.EdgeInsets.all(8),
                                 child: pw.Text(
-                                  header,
+                                  pdfSafeText(header),
                                   style: pw.TextStyle(
                                     fontWeight: pw.FontWeight.bold,
                                     fontSize: 10,
@@ -150,7 +151,7 @@ class TableExportService {
                                 (cell) => pw.Padding(
                                   padding: const pw.EdgeInsets.all(6),
                                   child: pw.Text(
-                                    _formatCellValue(cell),
+                                    pdfSafeText(_formatCellValue(cell)),
                                     style: const pw.TextStyle(fontSize: 9),
                                   ),
                                 ),
@@ -196,7 +197,7 @@ class TableExportService {
               children: [
                 if (config.companyName != null)
                   pw.Text(
-                    config.companyName!,
+                    pdfSafeText(config.companyName!),
                     style: pw.TextStyle(
                       fontSize: 14,
                       fontWeight: pw.FontWeight.bold,
@@ -205,7 +206,7 @@ class TableExportService {
                   ),
                 pw.SizedBox(height: 4),
                 pw.Text(
-                  config.title,
+                  pdfSafeText(config.title),
                   style: pw.TextStyle(
                     fontSize: 18,
                     fontWeight: pw.FontWeight.bold,
@@ -214,7 +215,7 @@ class TableExportService {
                 if (config.subtitle != null) ...[
                   pw.SizedBox(height: 2),
                   pw.Text(
-                    config.subtitle!,
+                    pdfSafeText(config.subtitle!),
                     style: const pw.TextStyle(
                       fontSize: 10,
                       color: PdfColors.grey600,
@@ -283,7 +284,7 @@ class TableExportService {
     ];
 
     final csvString = const ListToCsvConverter().convert(csvData);
-    final bytes = Uint8List.fromList(csvString.codeUnits);
+    final bytes = encodeCsvUtf8(csvString);
     final fileName =
         '${config.fileName}_${_fileNameDateFormat.format(now)}.csv';
 
@@ -376,6 +377,31 @@ class TableExportService {
     if (value is bool) return TextCellValue(value ? 'Oui' : 'Non');
     return TextCellValue(value.toString());
   }
+
+  /// CSV encodé en UTF-8 avec BOM (Excel le relit correctement). Avant, les
+  /// unités de code UTF-16 étaient tronquées en octets : l'espace fine
+  /// insécable des montants (U+202F) devenait « / » et les accents hors
+  /// Latin-1 étaient perdus.
+  @visibleForTesting
+  static Uint8List encodeCsvUtf8(String csv) =>
+      Uint8List.fromList([0xEF, 0xBB, 0xBF, ...utf8.encode(csv)]);
+
+  /// Texte compatible avec la police PDF standard (Helvetica, jeu Latin-1) :
+  /// les espaces insécables des montants formatés en français et quelques
+  /// signes typographiques sont remplacés, sinon ils s'affichent en carrés
+  /// ou disparaissent.
+  @visibleForTesting
+  static String pdfSafeText(String text) => text
+      .replaceAll(' ', ' ')
+      .replaceAll(' ', ' ')
+      .replaceAll(' ', ' ')
+      .replaceAll('’', "'")
+      .replaceAll('‘', "'")
+      .replaceAll('“', '"')
+      .replaceAll('”', '"')
+      .replaceAll('–', '-')
+      .replaceAll('—', '-')
+      .replaceAll('…', '...');
 
   String _formatCellValue(dynamic value) {
     if (value == null) return '';

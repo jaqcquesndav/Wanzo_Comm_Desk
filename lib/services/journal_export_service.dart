@@ -8,6 +8,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:crypto/crypto.dart';
+import 'package:file_picker/file_picker.dart';
 import '../core/enums/currency_enum.dart';
 import '../core/services/currency_service.dart';
 import '../features/dashboard/models/journal_filter.dart';
@@ -182,8 +183,13 @@ class JournalExportService {
       ),
     );
 
-    // Sauvegarde du fichier
-    final directory = await getApplicationDocumentsDirectory();
+    // Fichier de travail : dossier temporaire sur desktop (le dossier
+    // Documents de Windows est celui de l'utilisateur, on ne l'encombre pas ;
+    // « Enregistrer sous » laisse choisir l'emplacement final).
+    final directory =
+        (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
+            ? await getTemporaryDirectory()
+            : await getApplicationDocumentsDirectory();
     final fileName = 'journal_$exportId.pdf';
     final file = File('${directory.path}/$fileName');
     await file.writeAsBytes(await pdf.save());
@@ -1528,13 +1534,67 @@ class JournalExportService {
 
       await Printing.sharePdf(
         bytes: await file.readAsBytes(),
-        filename: file.path.split('/').last,
+        filename: fileBaseName(file.path),
       );
     } catch (e) {
       debugPrint('[JournalExportService] Error during PDF share: $e');
       rethrow;
     }
   }
+
+  /// Ouvre l'aperçu avant impression du PDF (imprimer ou « Microsoft Print
+  /// to PDF » depuis la boîte de dialogue système) : usage courant sur
+  /// desktop, là où le partage mobile n'a pas d'équivalent naturel.
+  static Future<void> exportAndPrint({
+    required List<OperationJournalEntry> operations,
+    required JournalFilter filter,
+    required User? currentUser,
+    CurrencyService? currencyService,
+  }) async {
+    final file = await exportToPdf(
+      operations: operations,
+      filter: filter,
+      currentUser: currentUser,
+      currencyService: currencyService,
+    );
+    final bytes = await file.readAsBytes();
+    await Printing.layoutPdf(
+      onLayout: (_) async => bytes,
+      name: fileBaseName(file.path),
+    );
+  }
+
+  /// Génère le PDF puis demande où l'enregistrer. Renvoie le chemin choisi,
+  /// ou null si l'utilisateur a annulé.
+  static Future<String?> exportAndSave({
+    required List<OperationJournalEntry> operations,
+    required JournalFilter filter,
+    required User? currentUser,
+    CurrencyService? currencyService,
+  }) async {
+    final file = await exportToPdf(
+      operations: operations,
+      filter: filter,
+      currentUser: currentUser,
+      currencyService: currencyService,
+    );
+    final target = await FilePicker.platform.saveFile(
+      dialogTitle: 'Enregistrer le journal des opérations',
+      fileName: fileBaseName(file.path),
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+    );
+    if (target == null) return null;
+    final path = target.toLowerCase().endsWith('.pdf') ? target : '$target.pdf';
+    await File(path).writeAsBytes(await file.readAsBytes());
+    return path;
+  }
+
+  /// Nom du fichier sans le dossier, quel que soit le séparateur (Windows
+  /// sépare les dossiers par une barre oblique inverse : couper sur « / »
+  /// seulement renvoyait le chemin complet).
+  @visibleForTesting
+  static String fileBaseName(String path) => path.split(RegExp(r'[\\/]')).last;
 
   static Future<dynamic> _getBusinessSettings() async {
     try {

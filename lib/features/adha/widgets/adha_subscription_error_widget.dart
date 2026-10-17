@@ -58,6 +58,10 @@ class AdhaSubscriptionErrorWidget extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
 
+            // Options pour continuer quand le quota est épuisé (parité mobile)
+            if (error.errorType == SubscriptionErrorType.quotaExhausted)
+              _buildQuotaOptions(theme),
+
             // Barre de progression d'utilisation (si disponible)
             if (error.currentUsage != null && error.limit != null) ...[
               const SizedBox(height: 20),
@@ -132,6 +136,55 @@ class AdhaSubscriptionErrorWidget extends StatelessWidget {
       case SubscriptionErrorType.featureNotAvailable:
         return l10n.subscriptionFeatureNotAvailableTitle;
     }
+  }
+
+  Widget _buildQuotaOptions(ThemeData theme) {
+    Widget option(String number, String text) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            number,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: theme.textTheme.bodySmall)),
+        ],
+      ),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 420),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.5,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Pour continuer à utiliser Adha :',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            option('1.', 'Passer à un abonnement supérieur'),
+            option('2.', 'Acheter des tokens supplémentaires'),
+            option('3.', 'Attendre le renouvellement du mois prochain'),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildUsageIndicator(ThemeData theme) {
@@ -224,7 +277,7 @@ class AdhaSubscriptionErrorWidget extends StatelessWidget {
         : _defaultRenewalUrl;
     buttons.add(
       FilledButton.icon(
-        onPressed: () => _openRenewalUrl(urlToOpen),
+        onPressed: () => _openRenewalUrl(context, urlToOpen),
         icon: Icon(_getPrimaryActionIcon(), size: 18),
         label: Text(_getPrimaryActionLabel(l10n)),
         style: FilledButton.styleFrom(
@@ -301,10 +354,23 @@ class AdhaSubscriptionErrorWidget extends StatelessWidget {
     }
   }
 
-  Future<void> _openRenewalUrl(String url) async {
+  /// Ouvre la page d'abonnement ; un échec est dit à l'utilisateur avec
+  /// le lien à copier (avant, le clic restait muet).
+  Future<void> _openRenewalUrl(BuildContext context, String url) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
     final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    var opened = false;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('[AdhaSubscriptionErrorWidget] Ouverture URL: $e');
+    }
+    if (!opened) {
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text('Impossible d\'ouvrir le lien. Copiez-le : $url'),
+        ),
+      );
     }
   }
 }

@@ -55,6 +55,59 @@ List<dynamic>? _extractListFromResponse(dynamic data, [List<String>? keys]) {
   return null;
 }
 
+/// Taille de page demandée au backend pour le journal (le DTO
+/// ListBusinessOperationsDto vaut 10 par défaut et n'a pas de maximum).
+const int kJournalPageSize = 200;
+
+/// Garde-fou contre une boucle sans fin si le backend renvoyait toujours
+/// une page pleine.
+const int kJournalMaxPages = 100;
+
+/// Nombre total de pages annoncé par la réponse (`totalPages`), cherché à
+/// tous les niveaux d'enveloppe ({success, data: {status, data: {...}}}).
+int? _totalPagesOf(dynamic data) {
+  if (data is! Map) return null;
+  final value = data['totalPages'];
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value);
+  for (final nested in data.values) {
+    final found = _totalPagesOf(nested);
+    if (found != null) return found;
+  }
+  return null;
+}
+
+/// Récupère TOUTES les pages d'une liste paginée du journal
+/// (`journal/operations` ou `operations`) : `page`, `limit` ajoutés à
+/// [baseQuery], arrêt sur une page incomplète ou à `totalPages`.
+///
+/// Renvoie null si la première page ne contient aucune liste exploitable
+/// (l'appelant se rabat alors sur le cache local). Une erreur sur une page
+/// suivante remonte à l'appelant : rien n'est écrit en local à partir d'une
+/// pagination partielle.
+@visibleForTesting
+Future<List<dynamic>?> fetchAllJournalPages(
+  Future<Map<String, dynamic>> Function(Map<String, dynamic> query) fetchPage,
+  Map<String, dynamic> baseQuery, {
+  int pageSize = kJournalPageSize,
+}) async {
+  List<dynamic>? all;
+  for (var page = 1; page <= kJournalMaxPages; page++) {
+    final response = await fetchPage({
+      ...baseQuery,
+      'page': page,
+      'limit': pageSize,
+    });
+    final items = _extractListFromResponse(response['data']);
+    if (items == null) return all;
+    (all ??= <dynamic>[]).addAll(items);
+    if (items.length < pageSize) break;
+    final totalPages = _totalPagesOf(response['data']);
+    if (totalPages != null && page >= totalPages) break;
+  }
+  return all;
+}
+
 class OperationJournalRepository {
   // Cache en mémoire supprimé pour éviter les problèmes de synchronisation
   // final List<OperationJournalEntry> _entries = [];
@@ -193,45 +246,29 @@ class OperationJournalRepository {
       // TOUJOURS essayer de récupérer les données du backend si disponible
       // Même si _isOfflineMode est true, on tente quand même (offline first, mais sync quand possible)
       try {
-        final response = await _apiService
-            .get(
-              'journal/operations',
-              queryParams: {
-                'dateFrom': startDate.toIso8601String(),
-                'dateTo': endDate.toIso8601String(),
-              },
-            )
-            .timeout(
-              // 15s (au lieu de 5s) : le journal est RECONSTRUIT côté backend
-              // (ventes/dépenses/stock) ; un timeout trop court faisait retomber
-              // sur le cache local — vide sur un nouvel appareil → le journal
-              // « disparaissait ». La source de vérité est le backend.
-              const Duration(seconds: 15),
-              onTimeout: () {
-                debugPrint(
-                  '⏱️ Timeout lors de la récupération des opérations du backend',
-                );
-                return <String, dynamic>{};
-              },
-            );
-
-        // Debug: afficher la structure de la réponse pour diagnostiquer
-        debugPrint('📦 Journal API response structure:');
-        debugPrint('   - response.keys: ${response.keys.toList()}');
-        if (response['data'] != null) {
-          debugPrint(
-            '   - response[data].runtimeType: ${response['data'].runtimeType}',
-          );
-          if (response['data'] is Map) {
-            debugPrint(
-              '   - response[data].keys: ${(response['data'] as Map).keys.toList()}',
-            );
-          }
-        }
-
-        // Utiliser la fonction utilitaire pour extraire la liste
-        // Gère tous les formats: {data: [...]}, {data: {operations: [...]}}, etc.
-        final operationsList = _extractListFromResponse(response['data']);
+        // Toutes les pages de la période : le backend pagine à 10 éléments
+        // par défaut, le journal ne montrait que les 10 dernières opérations.
+        // Rien n'est écrit en local avant la fin de la pagination.
+        final operationsList = await fetchAllJournalPages(
+          (query) => _apiService
+              .get('journal/operations', queryParams: query)
+              .timeout(
+                // 15s (au lieu de 5s) : le journal est RECONSTRUIT côté backend
+                // (ventes/dépenses/stock) ; un timeout trop court faisait
+                // retomber sur le cache local, vide sur un nouvel appareil.
+                const Duration(seconds: 15),
+                onTimeout: () {
+                  debugPrint(
+                    '⏱️ Timeout lors de la récupération des opérations du backend',
+                  );
+                  return <String, dynamic>{};
+                },
+              ),
+          {
+            'dateFrom': startDate.toIso8601String(),
+            'dateTo': endDate.toIso8601String(),
+          },
+        );
 
         if (operationsList != null && operationsList.isNotEmpty) {
           debugPrint(
@@ -718,17 +755,17 @@ class OperationJournalRepository {
       final now = DateTime.now();
       final thirtyDaysAgo = now.subtract(const Duration(days: 30));
 
-      final response = await _apiService
-          .get(
-            'journal/operations',
-            queryParams: {
-              'dateFrom': thirtyDaysAgo.toIso8601String(),
-              'dateTo': now.toIso8601String(),
-            },
-          )
-          .timeout(const Duration(seconds: 10));
-
-      final operationsList = _extractListFromResponse(response['data']);
+      // Toutes les pages (le backend pagine à 10 par défaut) ; le cache local
+      // n'est complété qu'une fois la pagination terminée, jamais purgé.
+      final operationsList = await fetchAllJournalPages(
+        (query) => _apiService
+            .get('journal/operations', queryParams: query)
+            .timeout(const Duration(seconds: 10)),
+        {
+          'dateFrom': thirtyDaysAgo.toIso8601String(),
+          'dateTo': now.toIso8601String(),
+        },
+      );
 
       if (operationsList != null && operationsList.isNotEmpty) {
         final box = await _getBox();
@@ -808,16 +845,15 @@ class OperationJournalRepository {
       }
 
       // Essayer de récupérer les données de l'API
-      final response = await _apiService.get(
-        'operations',
-        queryParams: {
+      // Toutes les pages de la période (pagination backend à 10 par défaut).
+      final operationsList = await fetchAllJournalPages(
+        (query) => _apiService.get('operations', queryParams: query),
+        {
           'dateFrom': startDate.toIso8601String(),
           'dateTo': endDate.toIso8601String(),
           'type': 'sale',
         },
       );
-
-      final operationsList = _extractListFromResponse(response['data']);
       if (operationsList != null && operationsList.isNotEmpty) {
         final apiEntries =
             operationsList
@@ -902,16 +938,15 @@ class OperationJournalRepository {
       }
 
       // Essayer de récupérer les données de l'API
-      final response = await _apiService.get(
-        'operations',
-        queryParams: {
+      // Toutes les pages de la période (pagination backend à 10 par défaut).
+      final operationsList = await fetchAllJournalPages(
+        (query) => _apiService.get('operations', queryParams: query),
+        {
           'dateFrom': startDate.toIso8601String(),
           'dateTo': endDate.toIso8601String(),
           'type': 'expense',
         },
       );
-
-      final operationsList = _extractListFromResponse(response['data']);
       if (operationsList != null && operationsList.isNotEmpty) {
         final apiEntries =
             operationsList
@@ -995,16 +1030,15 @@ class OperationJournalRepository {
       }
 
       // Essayer de récupérer les données de l'API
-      final response = await _apiService.get(
-        'operations',
-        queryParams: {
+      // Toutes les pages de la période (pagination backend à 10 par défaut).
+      final operationsList = await fetchAllJournalPages(
+        (query) => _apiService.get('operations', queryParams: query),
+        {
           'dateFrom': startDate.toIso8601String(),
           'dateTo': endDate.toIso8601String(),
           'type': 'adjustment',
         },
       );
-
-      final operationsList = _extractListFromResponse(response['data']);
       if (operationsList != null && operationsList.isNotEmpty) {
         final apiEntries =
             operationsList
@@ -1088,16 +1122,15 @@ class OperationJournalRepository {
       }
 
       // Essayer de récupérer les données de l'API
-      final response = await _apiService.get(
-        'operations',
-        queryParams: {
+      // Toutes les pages de la période (pagination backend à 10 par défaut).
+      final operationsList = await fetchAllJournalPages(
+        (query) => _apiService.get('operations', queryParams: query),
+        {
           'dateFrom': startDate.toIso8601String(),
           'dateTo': endDate.toIso8601String(),
           'type': type.name,
         },
       );
-
-      final operationsList = _extractListFromResponse(response['data']);
       if (operationsList != null && operationsList.isNotEmpty) {
         final apiEntries =
             operationsList
