@@ -1,4 +1,5 @@
 import '../../../core/exceptions/api_exceptions.dart';
+import '../../../core/services/account_block_notifier.dart';
 import '../../../core/services/api_client.dart';
 import '../models/join_request.dart';
 
@@ -145,6 +146,11 @@ String joinRequestErrorMessage(Object error) {
         'reconnectez-vous puis réessayez.';
   }
   if (error is ApiException) {
+    // Codes stables du serveur : un texte clair plutôt que le message brut.
+    if (AccountBlockNotifier.codeErreur(error.responseBody) ==
+        'ALREADY_MEMBER_ELSEWHERE') {
+      return "Ce compte est déjà membre d'une autre entreprise.";
+    }
     final server = _serverMessage(error.responseBody);
     if (server != null) return server;
     switch (error.statusCode) {

@@ -1,8 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../subscription/widgets/subscription_banner_overlay.dart'
+    show wanzoLandProfileUrl;
 import '../bloc/auth_bloc.dart';
 import '../widgets/join_code_form.dart';
+
+/// Message affiché en tête à un compte retiré de son entreprise.
+const String kRevokedFromCompanyMessage =
+    'Vous ne faites plus partie de cette entreprise. Vous pouvez rejoindre '
+    'une autre entreprise avec un code, ou créer la vôtre sur Wanzo Land.';
 
 /// Écran d'un compte sans entreprise.
 ///
@@ -65,6 +73,15 @@ class _SyncPendingScreenState extends State<SyncPendingScreen> {
     });
   }
 
+  Future<void> _openWanzoLand() async {
+    try {
+      await launchUrl(
+        Uri.parse(wanzoLandProfileUrl),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {}
+  }
+
   void _manualRetry() {
     _retryIndex = 0;
     context.read<AuthBloc>().add(const AuthRefreshProfileRequested());
@@ -89,6 +106,61 @@ class _SyncPendingScreenState extends State<SyncPendingScreen> {
                       ? state.message ?? 'Synchronisation en cours...'
                       : 'Synchronisation en cours...';
                   final busy = state is AuthJoinBusinessUnitInProgress;
+                  // Compte retiré de son entreprise : pas de « configuration
+                  // en cours », un message sobre puis les issues.
+                  final revoked = state is AuthSyncPending && state.revoked;
+
+                  if (revoked) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Icon(
+                          Icons.group_off_outlined,
+                          size: 56,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          kRevokedFromCompanyMessage,
+                          key: const Key('revoked_from_company_message'),
+                          style: theme.textTheme.bodyLarge,
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Center(
+                          child: TextButton.icon(
+                            onPressed: () => _openWanzoLand(),
+                            icon: const Icon(Icons.open_in_new),
+                            label: const Text('Ouvrir Wanzo Land'),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Divider(),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Rejoindre une entreprise',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Saisissez le code reçu de son administrateur.',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 12),
+                        const JoinCodeForm(),
+                        const SizedBox(height: 12),
+                        Center(
+                          child: TextButton.icon(
+                            onPressed: busy ? null : _manualRetry,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Vérifier à nouveau'),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        JoinAccountFooter(enabled: !busy),
+                      ],
+                    );
+                  }
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,

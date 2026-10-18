@@ -573,11 +573,19 @@ class AuthMeResponse {
   /// État de synchronisation (présent uniquement en cas 3)
   final SyncStatus? syncStatus;
 
+  /// Entreprise dont ce compte a été retiré (null si aucune).
+  final String? revokedFromCompanyId;
+
+  /// Date du retrait, si le serveur la donne.
+  final DateTime? membershipRevokedAt;
+
   const AuthMeResponse({
     required this.user,
     this.company,
     this.businessUnit,
     this.syncStatus,
+    this.revokedFromCompanyId,
+    this.membershipRevokedAt,
   });
 
   factory AuthMeResponse.fromJson(Map<String, dynamic> json) {
@@ -586,6 +594,14 @@ class AuthMeResponse {
     final companyData = json['company'] as Map<String, dynamic>?;
     final businessUnitData = json['businessUnit'] as Map<String, dynamic>?;
     final syncStatusData = json['syncStatus'] as Map<String, dynamic>?;
+    String? texte(dynamic valeur) {
+      final s = valeur?.toString().trim();
+      return (s == null || s.isEmpty) ? null : s;
+    }
+
+    final revokedAt = texte(
+      userData['membershipRevokedAt'] ?? json['membershipRevokedAt'],
+    );
 
     return AuthMeResponse(
       user: BackendUserProfile.fromJson(userData),
@@ -597,8 +613,30 @@ class AuthMeResponse {
               : null,
       syncStatus:
           syncStatusData != null ? SyncStatus.fromJson(syncStatusData) : null,
+      revokedFromCompanyId: texte(
+        userData['revokedFromCompanyId'] ?? json['revokedFromCompanyId'],
+      ),
+      membershipRevokedAt:
+          revokedAt == null ? null : DateTime.tryParse(revokedAt),
     );
   }
+
+  /// Entreprise du compte selon le serveur (null : aucune).
+  String? get companyIdOrNull {
+    final id = user.companyId;
+    if (id != null && id.trim().isNotEmpty) return id;
+    final fromCompany = company?.id;
+    return (fromCompany == null || fromCompany.trim().isEmpty)
+        ? null
+        : fromCompany;
+  }
+
+  /// Le serveur renvoie le compte SANS entreprise (retiré, ou jamais
+  /// rattaché) : jamais le tableau de bord.
+  bool get hasNoCompany => company == null && companyIdOrNull == null;
+
+  /// Compte retiré d'une entreprise (et sans entreprise aujourd'hui).
+  bool get wasRevoked => hasNoCompany && revokedFromCompanyId != null;
 
   /// Convertit vers le modèle User de l'app avec toutes les données enrichies
   User toUser({String? token}) {

@@ -77,10 +77,14 @@ class AuthSyncPending extends AuthState {
   final User user;
   final String? message;
 
-  const AuthSyncPending(this.user, {this.message});
+  /// Compte retiré de son entreprise : l'écran le dit en tête et propose de
+  /// rejoindre une autre entreprise, sans « configuration en cours ».
+  final bool revoked;
+
+  const AuthSyncPending(this.user, {this.message, this.revoked = false});
 
   @override
-  List<Object?> get props => [user, message];
+  List<Object?> get props => [user, message, revoked];
 }
 
 /// État indiquant que l'utilisateur non-admin doit confirmer son unité d'affaires

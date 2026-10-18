@@ -16,6 +16,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:wanzo/core/navigation/app_router.dart';
 import 'package:wanzo/core/services/api_client.dart';
+import 'package:wanzo/core/services/company_scope_guard.dart';
 import 'package:wanzo/core/services/logging_service.dart';
 import 'package:wanzo/core/services/app_initialization_service.dart';
 import 'package:wanzo/core/utils/connectivity_service.dart';
@@ -554,6 +555,8 @@ Map<String, dynamic> _initializeBlocsSync(
 
   final authBloc = AuthBloc(
     authRepository: repositories['auth'] as AuthRepository,
+    // Entreprise connue gardée sur disque : purge et reprise hors ligne.
+    scopeGuard: CompanyScopeGuard.instance,
   );
   blocs['auth'] = authBloc;
 

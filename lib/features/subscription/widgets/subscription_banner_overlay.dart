@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../constants/colors.dart';
+import '../../auth/bloc/auth_bloc.dart';
 import '../services/subscription_status_service.dart';
 import '../../../core/services/account_block_notifier.dart';
 
@@ -40,6 +42,7 @@ class _SubscriptionBannerOverlayState extends State<SubscriptionBannerOverlay>
   final SubscriptionStatusService _service = SubscriptionStatusService();
   SubscriptionBannerState? _banner;
   AccountAccessBlock? _accessBlock;
+  AccountBlockDetail? _membershipBlock;
   String? _dismissedSignature;
   Timer? _timer;
 
@@ -57,7 +60,13 @@ class _SubscriptionBannerOverlayState extends State<SubscriptionBannerOverlay>
   /// Un refus du portail vaut verdict : l'ecran de compte ferme prend la main.
   void _surRefusDuPortail() {
     final refus = AccountBlockNotifier.instance.value;
-    if (refus == null || !mounted) return;
+    if (!mounted) return;
+    // Acces a l'entreprise suspendu par son administrateur : ecran a part,
+    // reversible (rien n'est efface).
+    if (refus == null || refus.isMembership) {
+      setState(() => _membershipBlock = refus);
+      return;
+    }
     setState(() {
       _accessBlock = AccountAccessBlock(
         message: refus.message,
@@ -129,6 +138,27 @@ class _SubscriptionBannerOverlayState extends State<SubscriptionBannerOverlay>
         child: _AccountBlockedScreen(
           block: block,
           onOpenProfile: () => _openUrl(wanzoLandProfileUrl),
+        ),
+      );
+    }
+
+    // Membre bloqué par l'administrateur de son entreprise : même principe,
+    // mais l'issue est l'administrateur, et les données locales restent.
+    final membership = _membershipBlock;
+    if (membership != null) {
+      return Directionality(
+        textDirection: Directionality.maybeOf(context) ?? TextDirection.ltr,
+        child: MembershipSuspendedScreen(
+          message: membership.message,
+          onRetry: AccountBlockNotifier.instance.clear,
+          onLogout: () {
+            AccountBlockNotifier.instance.clear();
+            try {
+              context.read<AuthBloc>().add(const AuthLogoutRequested());
+            } catch (e) {
+              debugPrint('SubscriptionBannerOverlay: déconnexion impossible : $e');
+            }
+          },
         ),
       );
     }
@@ -287,6 +317,86 @@ class _AccountBlockedScreen extends StatelessWidget {
                     _supportLine(),
                     style: const TextStyle(fontSize: 13, color: Colors.black54),
                     textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Écran plein présenté quand l'administrateur de l'entreprise a suspendu
+/// l'accès de ce compte (403 MEMBERSHIP_SUSPENDED).
+///
+/// Le compte reste valide et la suspension est réversible : aucune donnée
+/// locale n'est effacée. Il dit quoi faire (voir l'administrateur), permet de
+/// vérifier à nouveau, ou de se déconnecter.
+class MembershipSuspendedScreen extends StatelessWidget {
+  const MembershipSuspendedScreen({
+    super.key,
+    required this.message,
+    required this.onLogout,
+    this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onLogout;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      child: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.person_off_outlined, size: 56, color: WanzoColors.warning),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Accès suspendu',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    message,
+                    style: const TextStyle(fontSize: 14.5, height: 1.5),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    "Contactez l'administrateur de votre entreprise.",
+                    style: TextStyle(fontSize: 13.5, height: 1.5, color: Colors.black54),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  if (onRetry != null) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: onRetry,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Vérifier à nouveau'),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: onLogout,
+                      icon: const Icon(Icons.logout),
+                      label: const Text('Se déconnecter'),
+                    ),
                   ),
                 ],
               ),

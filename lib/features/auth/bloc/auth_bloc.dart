@@ -7,10 +7,15 @@ import '../models/join_request.dart';
 import '../repositories/auth_repository.dart';
 import '../services/join_request_service.dart' show joinRequestErrorMessage;
 import '../../../core/exceptions/api_exceptions.dart';
+import '../../../core/services/company_scope_guard.dart';
 import '../../../core/utils/connectivity_service.dart';
 
 part 'auth_event.dart';
 part 'auth_state.dart';
+
+/// Message d'un compte sans entreprise (aucun texte du serveur).
+const String kNoCompanyMessage =
+    "Ce compte n'est rattaché à aucune entreprise pour le moment.";
 
 /// Bloc gérant l'état d'authentification
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
@@ -19,8 +24,17 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   /// Réseau disponible ? (injectable pour les tests)
   final bool Function() _isOnline;
 
-  AuthBloc({required AuthRepository authRepository, bool Function()? isOnline})
-    : _authRepository = authRepository,
+  /// Dernière entreprise confirmée par le serveur (purge, hors ligne).
+  /// L'application passe [CompanyScopeGuard.instance] ; absent (tests), rien
+  /// n'est noté ni relu.
+  final CompanyScopeGuard? _scopeGuard;
+
+  AuthBloc({
+    required AuthRepository authRepository,
+    bool Function()? isOnline,
+    CompanyScopeGuard? scopeGuard,
+  }) : _authRepository = authRepository,
+      _scopeGuard = scopeGuard,
       _isOnline = isOnline ?? (() => ConnectivityService().isConnected),
       super(const AuthInitial()) {
     on<AuthCheckRequested>(_onAuthCheckRequested);
@@ -40,11 +54,34 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   /// - Cas 1: Profil complet → AuthAuthenticated
   /// - Cas 2: Admin/Manager scope company → AuthAuthenticated, Non-admin sans BU → AuthBusinessUnitRequired
   /// - Cas 3: Sync Kafka en cours → AuthSyncPending
-  AuthState _resolveAuthState(User user) {
+  AuthState _resolveAuthState(User user, {CompanyScopeSnapshot? lastKnown}) {
     final authMeResponse = _authRepository.getLastAuthMeResponse();
+
     if (authMeResponse == null) {
-      // Mode offline ou pas de réponse backend — accès normal
+      // Hors ligne : si la dernière réponse du serveur disait « sans
+      // entreprise » pour ce compte (retiré, ou jamais rattaché), l'ancienne
+      // session ne se rouvre pas.
+      if (lastKnown != null &&
+          lastKnown.userId == user.id &&
+          !lastKnown.hasCompany) {
+        return AuthSyncPending(
+          user,
+          message: kNoCompanyMessage,
+          revoked: lastKnown.wasRevoked,
+        );
+      }
+      // Pas de réponse backend (offline?) -> authentifié avec données locales
       return AuthAuthenticated(user);
+    }
+
+    // Compte sans entreprise (retiré, ou jamais rattaché) : jamais le
+    // tableau de bord, l'écran pour rejoindre une entreprise.
+    if (authMeResponse.hasNoCompany) {
+      return AuthSyncPending(
+        user,
+        message: authMeResponse.syncStatus?.message ?? kNoCompanyMessage,
+        revoked: authMeResponse.wasRevoked,
+      );
     }
 
     // Cas 3: Synchronisation Kafka en cours
@@ -61,12 +98,53 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     return AuthAuthenticated(user);
   }
 
+  /// Note la réponse du serveur (purge des données d'une entreprise quittée)
+  /// ou, sans réponse, rend ce qu'il a dit en dernier. Jamais bloquant.
+  Future<CompanyScopeSnapshot?> _recordCompanyScope(User user) async {
+    final guard = _scopeGuard;
+    if (guard == null) return null;
+    final me = _authRepository.getLastAuthMeResponse();
+    try {
+      if (me == null) return await guard.lastKnown();
+      // Entreprise en cours de synchronisation : rien de sûr à noter.
+      if (me.isSyncPending && !me.hasNoCompany) return null;
+      await guard.recordServerAnswer(
+        userId: user.id,
+        companyId: me.companyIdOrNull,
+        revokedFromCompanyId: me.revokedFromCompanyId,
+      );
+    } catch (e) {
+      debugPrint('AuthBloc: entreprise du compte non notée : $e');
+    }
+    return null;
+  }
+
+  /// Relit /auth/me : si le compte a désormais une entreprise (ajouté
+  /// directement par l'administrateur, demande acceptée), l'état d'entrée ;
+  /// sinon `null`. Une session refusée (401) remonte.
+  Future<AuthState?> _stateIfNowMember() async {
+    User? refreshed;
+    try {
+      refreshed = await _authRepository.refreshUserProfile();
+    } on AuthenticationException {
+      rethrow;
+    } catch (e) {
+      debugPrint('AuthBloc: /auth/me non relu : $e');
+      return null;
+    }
+    final me = _authRepository.getLastAuthMeResponse();
+    if (refreshed == null || me == null || me.hasNoCompany) return null;
+    final next = await _resolveWithJoinRequest(refreshed);
+    return next is AuthSyncPending ? null : next;
+  }
+
   /// Comme [_resolveAuthState], et pour un compte sans entreprise, regarde
   /// s'il a une demande de rattachement en cours : l'écran d'attente de la
   /// demande s'affiche alors directement (au démarrage, après connexion).
   /// Un échec de cette lecture n'empêche jamais l'accès au parcours habituel.
   Future<AuthState> _resolveWithJoinRequest(User user) async {
-    final resolved = _resolveAuthState(user);
+    final lastKnown = await _recordCompanyScope(user);
+    final resolved = _resolveAuthState(user, lastKnown: lastKnown);
     if (resolved is! AuthSyncPending) return resolved;
     try {
       final request = await _authRepository.fetchMyJoinRequest();
@@ -143,7 +221,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final cached = await _authRepository.getLastKnownUser();
       if (cached != null && !isClosed) {
         debugPrint('AuthBloc: reprise de la dernière session connue ($e)');
-        emit(AuthAuthenticated(cached));
+        // Même règle que d'habitude : un compte que le serveur a dit « sans
+        // entreprise » ne rouvre pas l'ancienne session.
+        final lastKnown = await _recordCompanyScope(cached);
+        if (isClosed) return;
+        emit(_resolveAuthState(cached, lastKnown: lastKnown));
         return;
       }
       emit(AuthFailure(e.toString()));
@@ -443,6 +525,15 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
                 : 'Statut indisponible pour le moment. Réessayez dans un instant.',
           ),
         );
+        return;
+      }
+
+      // Demande encore en attente (ou refusée), mais le compte a pu être
+      // ajouté directement par l'administrateur : /auth/me tranche. Une
+      // entreprise présente fait entrer, quelle que soit la demande.
+      final member = await _stateIfNowMember();
+      if (member != null) {
+        emit(member);
         return;
       }
 
