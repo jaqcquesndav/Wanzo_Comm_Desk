@@ -67,6 +67,22 @@ class FolioReservation {
       };
 }
 
+/// Réservation d'une commande sur réservation (chambre ou salle), connue sans réseau : la commande
+/// porte sa réservation dès l'ouverture. À l'encaissement, « Sur une
+/// réservation » est proposé d'office avec ce séjour (même report sur le folio
+/// que le choix manuel, aucune logique de facturation en plus).
+FolioReservation? sejourDeLaCommande(RestaurantOrder order) {
+  if (!order.isOnReservation) return null;
+  return FolioReservation(
+    id: order.reservationId!,
+    spaceName: order.label,
+    customerName: order.customerName,
+    status: 'inProgress',
+    startAt: order.createdAt,
+    endAt: order.createdAt,
+  );
+}
+
 /// Statuts qui acceptent encore des consommations (le serveur refuse une
 /// réservation facturée ou annulée). Devis et options comptent : un traiteur
 /// se commande souvent avant que l'événement soit confirmé.

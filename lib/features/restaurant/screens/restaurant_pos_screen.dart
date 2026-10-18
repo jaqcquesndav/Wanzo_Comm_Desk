@@ -40,6 +40,7 @@ import '../widgets/web_orders_inbox.dart';
 import '../models/menu_course.dart';
 import '../models/menu_item.dart';
 import '../models/restaurant_order.dart';
+import '../widgets/order_type_badge.dart';
 import '../repositories/menu_repository.dart';
 import 'package:wanzo/features/inventory/models/product.dart';
 import 'package:wanzo/features/inventory/repositories/inventory_repository.dart';
@@ -189,6 +190,7 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     super.initState();
     // Pré-sélection depuis le plan de salle (query param `orderId`).
     _selectedOrderId = widget.initialOrderId;
+    _appliquerSejourDeLaCommande();
     _loadMenu();
     _chargerReservations(silencieux: true);
     CurrencyDisplayService.instance.dualCurrency.addListener(_onDualChanged);
@@ -897,13 +899,27 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
           child: Row(
             children: [
               Expanded(
-                child: Text(
-                  order.label,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      order.label,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    // Où part la commande : table, à emporter, chambre, salle.
+                    OrderTypeBadge.of(order, compact: true),
+                  ],
                 ),
               ),
+              if (!order.isEmpty)
+                IconButton(
+                  tooltip: 'Facture proforma',
+                  icon: const Icon(Icons.request_quote_outlined),
+                  onPressed: () => proformaDeCommande(context, order),
+                ),
               if (order.status == RestaurantOrderStatus.open)
                 TextButton.icon(
                   onPressed: order.isEmpty
@@ -1211,7 +1227,21 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
       if (_method == _PayMethod.room || _method == _PayMethod.credit) {
         _method = _PayMethod.cash;
       }
+      _appliquerSejourDeLaCommande();
     });
+  }
+
+  /// Commande sur réservation (chambre, salle) : « Sur une réservation » d'office, avec sa
+  /// réservation (le caissier peut encore choisir un autre mode).
+  void _appliquerSejourDeLaCommande() {
+    final commande = context
+        .read<RestaurantOrdersCubit>()
+        .state
+        .byId(_selectedOrderId ?? '');
+    final sejour = commande == null ? null : sejourDeLaCommande(commande);
+    if (sejour == null) return;
+    _method = _PayMethod.room;
+    _sejour = sejour;
   }
 
   /// Choisit le client qui porte la vente « Compte client ». Sélecteur

@@ -28,6 +28,7 @@ import 'package:wanzo/features/expenses/models/expense.dart';
 import 'package:wanzo/features/supplier/models/supplier.dart';
 import 'package:wanzo/features/transactions/models/financial_transaction.dart';
 import 'package:wanzo/features/settings/models/financial_account.dart';
+import '../../features/proforma/services/proforma_repository.dart';
 
 /// Statut de la synchronisation
 enum SyncStatus {
@@ -225,6 +226,14 @@ class SyncService {
       // Écritures conservées hors ligne par le client HTTP (modules récents) :
       // envoyées AVANT de relire le serveur, pour que la relecture les inclue.
       await _replayOfflineWrites();
+
+      // Proformas émises hors ligne (numéro provisoire) : envoyées pour
+      // recevoir leur numéro définitif, statut compris.
+      try {
+        await ProformaRepository().syncPending();
+      } catch (e) {
+        debugPrint('Proformas non synchronisées : $e');
+      }
 
       // Déterminer si un full sync est nécessaire (>24h depuis le dernier)
       // Cette vérification est faite UNE SEULE FOIS au début pour éviter les boucles

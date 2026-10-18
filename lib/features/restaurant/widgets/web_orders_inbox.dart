@@ -77,7 +77,7 @@ class _WebOrdersInboxState extends State<WebOrdersInbox> {
       if (w.tableId != null) {
         for (final o in cubit.state.active) {
           if (o.tableId == w.tableId &&
-              o.type != RestaurantOrderType.takeaway) {
+              o.type == RestaurantOrderType.dineIn) {
             cible = o;
             break;
           }

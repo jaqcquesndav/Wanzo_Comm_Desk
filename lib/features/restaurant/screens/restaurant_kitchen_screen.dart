@@ -8,6 +8,7 @@ import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../cubit/restaurant_orders_cubit.dart';
 import '../widgets/orders_auto_refresh.dart';
 import '../models/restaurant_order.dart';
+import '../widgets/order_type_badge.dart';
 
 /// Écran cuisine (Kitchen Display System) — vue DESKTOP dédiée au personnel de
 /// cuisine : les commandes envoyées (`sent`) s'affichent en grandes tuiles avec
@@ -126,13 +127,22 @@ class _KitchenTicket extends StatelessWidget {
             ),
             child: Row(
               children: [
+                // Libellé (table, chambre, client) et nature du service : la
+                // cuisine sait où partent les plats (salle, comptoir, étage).
                 Expanded(
-                  child: Text(
-                    order.label,
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        order.label,
+                        style: theme.textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      OrderTypeBadge.of(order, compact: true),
+                    ],
                   ),
                 ),
                 Icon(Icons.schedule, size: 15, color: urgency),

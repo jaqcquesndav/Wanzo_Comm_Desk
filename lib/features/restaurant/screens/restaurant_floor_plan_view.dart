@@ -183,7 +183,7 @@ class _RestaurantFloorPlanViewState extends State<RestaurantFloorPlanView> {
     RestaurantOrder? byLabel;
     final key = _norm(table.label);
     for (final o in active) {
-      if (o.type == RestaurantOrderType.takeaway) continue;
+      if (o.type != RestaurantOrderType.dineIn) continue;
       if (o.tableId != null && o.tableId == table.id) {
         if (byId == null || o.createdAt.isAfter(byId.createdAt)) byId = o;
       } else if (o.tableId == null && _norm(o.label) == key) {

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../proforma/widgets/proforma_sheet.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -119,6 +120,11 @@ class _SalesListScreenState extends State<SalesListScreen> {
           currentIndex: 1, // Index pour Revenus dans le sidebar
           title: 'Revenus', // Terminologie comptable: Revenus = Ventes
           appBarActions: [
+            IconButton(
+              icon: const Icon(Icons.request_quote_outlined),
+              tooltip: 'Factures proforma',
+              onPressed: () => ProformaListScreen.open(context),
+            ),
             // Bouton d'export
             if (state is SalesLoaded && state.sales.isNotEmpty)
               TableExportIconButton(

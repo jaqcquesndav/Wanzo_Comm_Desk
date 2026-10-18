@@ -51,12 +51,24 @@ extension RestaurantOrderStatusX on RestaurantOrderStatus {
       this == RestaurantOrderStatus.served;
 }
 
-/// Nature du service d'une commande : consommée sur place (à une table) ou
-/// emportée. Distingue le flux salle du flux comptoir : une commande à
-/// emporter n'occupe JAMAIS une table sur le plan de salle.
+/// Nature du service d'une commande : consommée sur place (à une table),
+/// emportée, ou SUR UNE RÉSERVATION : servie en chambre (client logé) ou dans
+/// une salle louée (événement, formation, conférence). Une commande à emporter
+/// ou sur réservation n'occupe JAMAIS une table sur le plan de salle.
+///
+/// Sur réservation : la commande porte la réservation ; à l'encaissement elle
+/// rejoint son folio (« Sur une réservation »), facturé une seule fois,
+/// espace et consommations comprises.
 enum RestaurantOrderType {
   dineIn, // Sur place (table)
   takeaway, // À emporter
+  reservation, // Sur une réservation (chambre ou salle, folio)
+}
+
+/// Nature de l'espace d'une commande sur réservation.
+class ReservationSpaceKind {
+  static const room = 'room';
+  static const hall = 'hall';
 }
 
 extension RestaurantOrderTypeX on RestaurantOrderType {
@@ -68,6 +80,8 @@ extension RestaurantOrderTypeX on RestaurantOrderType {
         return 'Sur place';
       case RestaurantOrderType.takeaway:
         return 'À emporter';
+      case RestaurantOrderType.reservation:
+        return 'Réservation';
     }
   }
 
@@ -215,6 +229,17 @@ class RestaurantOrder extends Equatable {
   /// commande n'est pas réglée. Le serveur le conserve (`paymentMethod`).
   final String? paymentMethod;
 
+  /// Commande SUR RÉSERVATION : réservation (séjour ou location de salle) qui
+  /// la reçoit. Ses consommations rejoignent son folio à l'encaissement.
+  /// `null` pour une commande sur place ou à emporter.
+  final String? reservationId;
+
+  /// Commande sur réservation : chambre ou salle (espace) servie.
+  final String? spaceId;
+
+  /// `room` (chambre) ou `hall` (salle), cf. [ReservationSpaceKind].
+  final String? spaceKind;
+
   /// Date du règlement (`paidAt` côté serveur).
   final DateTime? paidAt;
 
@@ -232,7 +257,37 @@ class RestaurantOrder extends Equatable {
     this.stageHistory = const [],
     this.paymentMethod,
     this.paidAt,
+    this.reservationId,
+    this.spaceId,
+    this.spaceKind,
   });
+
+  /// Rattachée à une réservation : se règle « Sur la réservation ».
+  bool get isOnReservation =>
+      type == RestaurantOrderType.reservation &&
+      reservationId != null &&
+      reservationId!.isNotEmpty;
+
+  /// Servie dans une salle louée (événement) plutôt qu'en chambre.
+  bool get isHall => spaceKind == ReservationSpaceKind.hall;
+
+  /// Où part la commande, en clair : « Table 4 », « À emporter »,
+  /// « Chambre 12 », « Salle Lualaba ». Badges, cuisine, listes.
+  String get placeLabel {
+    switch (type) {
+      case RestaurantOrderType.takeaway:
+        return 'À emporter';
+      case RestaurantOrderType.dineIn:
+        return tableId != null ? label : 'Sur place';
+      case RestaurantOrderType.reservation:
+        final mot = isHall ? 'Salle' : 'Chambre';
+        final nom = label.trim();
+        if (nom.isEmpty) return mot;
+        return nom.toLowerCase().startsWith(mot.toLowerCase())
+            ? nom
+            : '$mot $nom';
+    }
+  }
 
   /// La commande est close : elle a été facturée ou annulée, on n'y touche plus.
   bool get isSettled => status.isSettled;
@@ -269,6 +324,9 @@ class RestaurantOrder extends Equatable {
     List<Map<String, dynamic>>? stageHistory,
     String? paymentMethod,
     DateTime? paidAt,
+    String? reservationId,
+    String? spaceId,
+    String? spaceKind,
   }) {
     return RestaurantOrder(
       id: id,
@@ -284,6 +342,9 @@ class RestaurantOrder extends Equatable {
       stageHistory: stageHistory ?? this.stageHistory,
       paymentMethod: paymentMethod ?? this.paymentMethod,
       paidAt: paidAt ?? this.paidAt,
+      reservationId: reservationId ?? this.reservationId,
+      spaceId: spaceId ?? this.spaceId,
+      spaceKind: spaceKind ?? this.spaceKind,
     );
   }
 
@@ -298,6 +359,9 @@ class RestaurantOrder extends Equatable {
     'type': type.apiValue,
     if (customerId != null) 'customerId': customerId,
     if (customerName != null) 'customerName': customerName,
+    if (reservationId != null) 'reservationId': reservationId,
+    if (spaceId != null) 'spaceId': spaceId,
+    if (spaceKind != null) 'spaceKind': spaceKind,
     if (stageHistory.isNotEmpty) 'stageHistory': stageHistory,
     if (paymentMethod != null) 'paymentMethod': paymentMethod,
     if (paidAt != null) 'paidAt': paidAt!.toUtc().toIso8601String(),
@@ -329,6 +393,9 @@ class RestaurantOrder extends Equatable {
           ? null
           : (json['customerId'] as String).trim(),
       customerName: json['customerName'] as String?,
+      reservationId: _texteOuNull(json['reservationId']),
+      spaceId: _texteOuNull(json['spaceId']),
+      spaceKind: _texteOuNull(json['spaceKind']),
       stageHistory: (json['stageHistory'] as List<dynamic>?)
               ?.whereType<Map<String, dynamic>>()
               .toList() ??
@@ -345,7 +412,14 @@ class RestaurantOrder extends Equatable {
   @override
   List<Object?> get props =>
       [id, label, lines, status, createdAt, notes, tableId, type, customerId,
-       customerName, stageHistory, paymentMethod, paidAt];
+       customerName, stageHistory, paymentMethod, paidAt, reservationId,
+       spaceId, spaceKind];
+}
+
+/// Texte nettoyé, `null` si absent ou vide.
+String? _texteOuNull(dynamic v) {
+  final s = v?.toString().trim() ?? '';
+  return s.isEmpty ? null : s;
 }
 
 /// Arrondi bancaire au centime — centralisé pour tout le module.

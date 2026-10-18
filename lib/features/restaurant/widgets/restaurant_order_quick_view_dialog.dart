@@ -56,7 +56,7 @@ void showRestaurantOrderQuickView(
                     Text(order.label,
                         style: Theme.of(ctx).textTheme.titleMedium),
                     const SizedBox(height: 4),
-                    OrderTypeBadge(type: order.type, compact: true),
+                    OrderTypeBadge.of(order, compact: true),
                   ],
                 ),
               ),

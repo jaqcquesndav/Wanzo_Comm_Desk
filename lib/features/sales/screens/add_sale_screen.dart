@@ -39,6 +39,8 @@ import '../../../core/services/barcode_scanner_service.dart'; // Import du servi
 import '../bloc/sales_bloc.dart';
 import '../models/sale.dart';
 import '../models/sale_item.dart';
+import '../../proforma/models/proforma.dart';
+import '../../proforma/widgets/proforma_sheet.dart';
 import 'package:wanzo/features/services/cubit/services_cubit.dart';
 import 'package:wanzo/features/services/models/service_item.dart';
 import 'package:wanzo/features/services/widgets/service_search_results.dart';
@@ -646,6 +648,41 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     return {'amount': totalTVA, 'rate': weightedRate, 'base': totalTTC - totalTVA};
   }
 
+  /// Facture proforma du panier : mêmes lignes (remises comprises), client et
+  /// devise, sans vente, sans stock ni comptabilité. Hors ligne, numéro
+  /// provisoire. Convertie plus tard en facture en un geste.
+  Future<void> _emettreProforma() async {
+    final code = _selectedTransactionCurrency?.code ?? 'CDF';
+    final remise = (1 - _discountPercentage / 100).clamp(0.0, 1.0);
+    final client = _customerNameController.text.trim();
+    await issueProforma(
+      context,
+      sourceType: ProformaSource.sale,
+      customerId: _linkedCustomerId,
+      customerName: client.isEmpty ? null : client,
+      lines: [
+        for (final i in _items)
+          if (i.quantity > 0)
+            ProformaLine(
+              label: i.productName,
+              quantity: i.quantity.toDouble(),
+              unitPriceCdf: i.totalPriceInCdf / i.quantity * remise,
+              itemType: i.itemType == SaleItemType.product && i.productId != null
+                  ? 'product'
+                  : 'service',
+              productId:
+                  i.itemType == SaleItemType.product ? i.productId : null,
+              note: i.notes,
+            ),
+      ],
+      currencyCode: code,
+      exchangeRate: code == 'CDF' ? 1 : _transactionExchangeRate,
+      notes: _notesController.text.trim().isEmpty
+          ? null
+          : _notesController.text.trim(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocListener<CurrencySettingsCubit, CurrencySettingsState>(
@@ -731,6 +768,14 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  if (_items.isNotEmpty) ...[
+                                    OutlinedButton.icon(
+                                      icon: const Icon(Icons.request_quote_outlined),
+                                      label: const Text('Proforma'),
+                                      onPressed: _emettreProforma,
+                                    ),
+                                    const SizedBox(width: WanzoSpacing.sm),
+                                  ],
                                   OutlinedButton.icon(
                                     icon: const Icon(Icons.qr_code_scanner),
                                     label: const Text('Scanner'),

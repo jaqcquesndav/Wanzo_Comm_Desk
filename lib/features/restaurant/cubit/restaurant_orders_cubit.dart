@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../proforma/services/proforma_repository.dart';
 import '../models/restaurant_order.dart';
 import '../repositories/restaurant_order_repository.dart';
 import '../services/restaurant_order_sync.dart';
@@ -197,6 +198,9 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
     RestaurantOrderType? type,
     String? customerId,
     String? customerName,
+    String? reservationId,
+    String? spaceId,
+    String? spaceKind,
   }) async {
     final cleanTableId =
         (tableId != null && tableId.trim().isNotEmpty) ? tableId.trim() : null;
@@ -215,6 +219,16 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
           : null,
       customerName: (customerName != null && customerName.trim().isNotEmpty)
           ? customerName.trim()
+          : null,
+      // Sur réservation : la réservation qui recevra les consommations (folio).
+      reservationId: resolvedType == RestaurantOrderType.reservation
+          ? (reservationId != null && reservationId.trim().isNotEmpty) ? reservationId.trim() : null
+          : null,
+      spaceId: resolvedType == RestaurantOrderType.reservation
+          ? (spaceId != null && spaceId.trim().isNotEmpty) ? spaceId.trim() : null
+          : null,
+      spaceKind: resolvedType == RestaurantOrderType.reservation
+          ? (spaceKind ?? ReservationSpaceKind.room)
           : null,
     );
     await _upsert(order);
@@ -311,7 +325,21 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
       paymentMethod: method,
       paidAt: DateTime.now(),
     ));
+    // Proformas émises pour cette commande : soldées par l'encaissement.
+    unawaited(_solderProformas(orderId));
   }
+
+  Future<void> _solderProformas(String orderId) async {
+    try {
+      final repo = ProformaRepository();
+      for (final p in await repo.forSource(orderId)) {
+        if (p.isOpen) await repo.markConverted(p);
+      }
+    } catch (_) {
+      // Sans proforma (ou stockage indisponible) : rien à solder.
+    }
+  }
+
 
   /// Rattache (ou détache) le client enregistré d'une commande en cours.
   Future<void> setCustomer(
@@ -335,6 +363,9 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
       stageHistory: order.stageHistory,
       paymentMethod: order.paymentMethod,
       paidAt: order.paidAt,
+      reservationId: order.reservationId,
+      spaceId: order.spaceId,
+      spaceKind: order.spaceKind,
     ));
   }
 

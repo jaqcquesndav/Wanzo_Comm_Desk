@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../sales/models/sale.dart';
+import '../../proforma/models/proforma.dart';
 import '../../settings/models/settings.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
@@ -244,7 +245,14 @@ class InvoiceService {
   }
 
   /// Génère un PDF pour une vente et retourne le chemin du fichier
-  Future<String> generateInvoicePdf(Sale sale, Settings settings) async {
+  /// [proforma] : la même pièce rendue en FACTURE PROFORMA (titre, numéro
+  /// PF, numéro provisoire hors ligne, validité, aucune ligne de règlement,
+  /// mention « ce n'est pas une facture »). Aucun moteur dupliqué.
+  Future<String> generateInvoicePdf(
+    Sale sale,
+    Settings settings, {
+    ProformaMention? proforma,
+  }) async {
     final pdf = pw.Document();
 
     final regularFont = pw.Font.helvetica();
@@ -288,17 +296,29 @@ class InvoiceService {
         .replaceAll('{YEAR}', sale.date.year.toString())
         .replaceAll('{MONTH}', sale.date.month.toString().padLeft(2, '0'))
         .replaceAll('{SEQ}', sale.id.substring(0, 8));
+    if (proforma != null) invoiceNumber = proforma.number;
 
     // Pied de pièce depuis la base CDF au taux figé de la vente : lignes,
     // remise, TVA et totaux s'additionnent (voir InvoiceFooter).
     final footer = InvoiceFooter.of(sale, settings);
-    final invoiceQrData = _documentQrData(
+    final invoiceQrDataBrut = _documentQrData(
       issuer: issuer,
       sale: sale,
       footer: footer,
       formattedDate: formattedDate,
       invoiceNumber: invoiceNumber,
     );
+    // Proforma : ni règlement, ni solde dû, ni mode (ce n'est pas une facture).
+    final invoiceQrData = proforma == null
+        ? invoiceQrDataBrut
+        : invoiceQrDataBrut
+            .split('\n')
+            .where((l) =>
+                !l.startsWith('Paye:') &&
+                !l.startsWith('Solde du:') &&
+                !l.startsWith('Mode:') &&
+                !l.startsWith('FAC:'))
+            .join('\n');
 
     pdf.addPage(
       pw.Page(
@@ -371,7 +391,7 @@ class InvoiceService {
                       crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [
                         pw.Text(
-                          'FACTURE',
+                          proforma != null ? 'FACTURE PROFORMA' : 'FACTURE',
                           style: pw.TextStyle(
                             font: boldFont,
                             fontSize: 18,
@@ -383,6 +403,20 @@ class InvoiceService {
                           'N°: $invoiceNumber',
                           style: pw.TextStyle(font: regularFont, fontSize: 10),
                         ),
+                        if (proforma != null && proforma.provisional)
+                          pw.Text(
+                            'Numéro provisoire',
+                            style: pw.TextStyle(
+                              font: boldFont,
+                              fontSize: 9,
+                              color: PdfColors.orange800,
+                            ),
+                          ),
+                        if (proforma?.validUntil != null)
+                          pw.Text(
+                            "Valable jusqu'au ${DateFormat('dd/MM/yyyy').format(proforma!.validUntil!)}",
+                            style: pw.TextStyle(font: regularFont, fontSize: 10),
+                          ),
                         pw.Text(
                           'Date: $formattedDate',
                           style: pw.TextStyle(font: regularFont, fontSize: 10),
@@ -508,7 +542,9 @@ class InvoiceService {
                   children: [
                     for (final l in footer.totals)
                       _invoiceFooterRow(footer, l, regularFont, boldFont),
-                    for (final l in footer.settlement)
+                    for (final l in proforma != null
+                        ? const <InvoiceFooterLine>[]
+                        : footer.settlement)
                       _invoiceFooterRow(
                         footer,
                         l,
@@ -520,6 +556,20 @@ class InvoiceService {
                 ),
               ),
 
+              if (proforma != null) ...[
+                pw.SizedBox(height: 12),
+                if ((proforma.attention ?? '').isNotEmpty)
+                  pw.Text("À l'attention de ${proforma.attention}",
+                      style: pw.TextStyle(font: regularFont, fontSize: 10)),
+                pw.Text(
+                  "Facture proforma : document sans valeur comptable, ce n'est pas une facture.",
+                  style: pw.TextStyle(
+                    font: boldFont,
+                    fontSize: 10,
+                    color: PdfColors.blueGrey700,
+                  ),
+                ),
+              ],
               pw.SizedBox(height: 30),
 
               if (settings.defaultPaymentTerms.isNotEmpty) ...[
@@ -543,7 +593,9 @@ class InvoiceService {
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
                         pw.Text(
-                          'Merci pour votre confiance, merci pour votre achat!',
+                          proforma != null
+                              ? 'Merci pour votre confiance.'
+                              : 'Merci pour votre confiance, merci pour votre achat!',
                           style: pw.TextStyle(font: boldFont, fontSize: 12),
                         ),
                         pw.SizedBox(height: 5),
@@ -575,7 +627,7 @@ class InvoiceService {
     );
 
     final output = await getTemporaryDirectory();
-    final file = File('${output.path}/invoice_${sale.id}.pdf');
+    final file = File('${output.path}/${proforma != null ? 'proforma' : 'invoice'}_${sale.id}.pdf');
     await file.writeAsBytes(await pdf.save());
 
     return file.path;

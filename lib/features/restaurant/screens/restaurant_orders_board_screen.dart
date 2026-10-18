@@ -272,7 +272,7 @@ class _OrderCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: OrderTypeBadge(type: order.type, compact: true),
+                  child: OrderTypeBadge.of(order, compact: true),
                 ),
                 const SizedBox(height: 8),
                 Row(
