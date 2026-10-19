@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../subscription/widgets/subscription_banner_overlay.dart'
     show wanzoLandProfileUrl;
 import '../bloc/auth_bloc.dart';
+import '../widgets/email_confirmation_notice.dart';
 import '../widgets/join_code_form.dart';
 
 /// Message affiché en tête à un compte retiré de son entreprise.
@@ -80,6 +81,22 @@ class _SyncPendingScreenState extends State<SyncPendingScreen> {
         mode: LaunchMode.externalApplication,
       );
     } catch (_) {}
+  }
+
+  bool _verifying = false;
+
+  /// « Vérifier » (email confirmé ?) : retour visuel, un seul appui à la
+  /// fois ; l'invitation est relue à la fin (le widget recharge quand
+  /// [_verifying] retombe).
+  Future<void> _verify() async {
+    if (_verifying) return;
+    final bloc = context.read<AuthBloc>();
+    setState(() => _verifying = true);
+    _manualRetry();
+    try {
+      await bloc.stream.first.timeout(const Duration(seconds: 20));
+    } catch (_) {}
+    if (mounted) setState(() => _verifying = false);
   }
 
   void _manualRetry() {
@@ -181,6 +198,12 @@ class _SyncPendingScreenState extends State<SyncPendingScreen> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),
+                      // Invitation ou demande en attente, email pas encore
+                      // confirmé : le rattachement attend la confirmation.
+                      EmailConfirmationNotice(
+                        onVerify: _verify,
+                        verifying: _verifying || busy,
+                      ),
                       if (!_exhausted)
                         const Center(child: CircularProgressIndicator())
                       else
