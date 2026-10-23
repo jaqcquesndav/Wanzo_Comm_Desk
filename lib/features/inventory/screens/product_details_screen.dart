@@ -20,6 +20,7 @@ import '../models/stock_transaction.dart';
 import 'package:wanzo/features/settings/bloc/settings_bloc.dart';
 import 'package:wanzo/features/settings/bloc/settings_state.dart';
 import 'package:wanzo/core/enums/currency_enum.dart';
+import 'package:wanzo/features/labels/product_labels.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart'
     as currency_util; // Added import for currency_formatter
 
@@ -121,6 +122,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
           title: 'Détails: ${product.name}',
           onBackPressed: () => context.pop(),
           appBarActions: [
+            IconButton(
+              icon: const Icon(Icons.qr_code_2),
+              tooltip: 'Imprimer des étiquettes',
+              onPressed: () =>
+                  printProductLabels(context, products: [product]),
+            ),
             // Bouton pour modifier le produit
             IconButton(
               icon: const Icon(Icons.edit),

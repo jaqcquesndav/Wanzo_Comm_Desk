@@ -31,6 +31,7 @@ import 'package:wanzo/features/services/cubit/services_cubit.dart';
 import 'package:wanzo/features/services/models/service_item.dart';
 import 'package:wanzo/features/services/widgets/services_tab.dart';
 import 'package:wanzo/features/services/widgets/public_catalog_sheet.dart';
+import 'package:wanzo/features/labels/product_labels.dart';
 
 /// Écran principal de gestion de l'inventaire
 class InventoryScreen extends StatefulWidget {
@@ -154,6 +155,14 @@ class _InventoryScreenState extends State<InventoryScreen>
                   fileName: 'inventaire',
                   companyName: 'Wanzo',
                 ),
+              ),
+            // Étiquettes en lot : sélection des articles et quantités.
+            if (state is ProductsLoaded && state.products.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.qr_code_2),
+                tooltip: 'Imprimer des étiquettes',
+                onPressed: () =>
+                    printProductLabels(context, products: state.products),
               ),
             // Catalogue public (vitrine) : QR et lien à partager
             IconButton(
@@ -995,16 +1004,44 @@ class _ProductGridCard extends StatelessWidget {
                       children: [
                         _buildActionButton(
                           context,
-                          Icons.edit,
-                          onEdit,
-                          theme.colorScheme.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        _buildActionButton(
-                          context,
                           Icons.add_box,
                           onAddStock,
                           Colors.green,
+                        ),
+                        const SizedBox(width: 4),
+                        Material(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(8),
+                          child: PopupMenuButton<String>(
+                            tooltip: 'Actions',
+                            padding: EdgeInsets.zero,
+                            iconSize: 18,
+                            constraints: const BoxConstraints(minWidth: 200),
+                            icon: Icon(Icons.more_vert,
+                                color: theme.colorScheme.primary),
+                            onSelected: (v) => v == 'labels'
+                                ? printProductLabels(context,
+                                    products: [product])
+                                : onEdit(),
+                            itemBuilder: (_) => const [
+                              PopupMenuItem(
+                                value: 'edit',
+                                child: ListTile(
+                                  leading: Icon(Icons.edit_outlined),
+                                  title: Text('Modifier'),
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'labels',
+                                child: ListTile(
+                                  leading: Icon(Icons.qr_code_2),
+                                  title: Text('Imprimer des étiquettes'),
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),

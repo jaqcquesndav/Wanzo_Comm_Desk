@@ -63,7 +63,15 @@ class _SalesBarcodeScannerState extends State<SalesBarcodeScanner> {
   }
 
   void _handleInventorySearch(List<Product> products, String barcode) {
-    final product = products.where((p) => p.barcode == barcode).firstOrNull;
+    // Même règle que le lecteur intégré : code-barres ou SKU (étiquettes
+    // Wanzo imprimées avec le SKU), sans tenir compte de la casse.
+    final cle = barcode.trim().toLowerCase();
+    final product = products
+        .where((p) =>
+            cle.isNotEmpty &&
+            (p.barcode.trim().toLowerCase() == cle ||
+                (p.sku?.trim().toLowerCase() ?? '') == cle))
+        .firstOrNull;
 
     setState(() {
       _isSearching = false;
