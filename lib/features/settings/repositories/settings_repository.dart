@@ -3,6 +3,7 @@ import 'package:hive/hive.dart';
 import '../models/settings.dart';
 import '../services/settings_api_service.dart';
 import 'package:wanzo/core/enums/currency_enum.dart';
+import 'package:wanzo/core/utils/document_issuer.dart';
 
 /// Repository pour gérer les paramètres de l'application
 /// Supporte la synchronisation avec l'API et le fallback local Hive
@@ -271,8 +272,22 @@ class SettingsRepository {
   }
 
   /// Mapper les données API vers le modèle Settings
-  Settings _mapApiToSettings(Map<String, dynamic> apiData) {
+  Settings _mapApiToSettings(Map<String, dynamic> apiData) => mapApiOnto(
+    _settingsBox.get(_settingsKey) ?? const Settings(),
+    apiData,
+  );
+
+  /// Profil reçu de `application-settings` posé sur le dernier profil connu
+  /// [currentLocal] (hors ligne d'abord : un champ absent ou vide côté
+  /// serveur garde la valeur locale). Public pour les tests.
+  static Settings mapApiOnto(
+    Settings currentLocal,
+    Map<String, dynamic> apiData,
+  ) {
     debugPrint('📋 [SettingsRepository] Mapping API data to Settings model...');
+    // Adresse et téléphone : chaîne attendue, mais une valeur d'un autre type
+    // (objet d'adresse) ne doit pas faire échouer toute la synchronisation.
+    String text(Object? v) => v is String ? v.trim() : '';
 
     // Log each field mapping
     final companyName = apiData['companyName'] as String? ?? '';
@@ -302,8 +317,11 @@ class SettingsRepository {
     final dateFormat = apiData['dateFormat'] as String? ?? 'DD/MM/YYYY';
     final timeFormat = apiData['timeFormat'] as String? ?? 'HH:mm';
     final contactEmail = apiData['contactEmail'] as String? ?? '';
-    final contactPhone = apiData['contactPhone'] as String? ?? '';
-    final companyAddress = apiData['companyAddress'] as String? ?? '';
+    // Valeur d'attente (« +243 000 000 000 ») jamais prise pour un numéro ;
+    // adresse lisible sur une ligne (jamais un objet sérialisé).
+    final rawPhone = text(apiData['contactPhone']);
+    final contactPhone = formatPhone(rawPhone).isNotEmpty ? rawPhone : '';
+    final companyAddress = cleanAddress(apiData['companyAddress']);
     final maintenanceMode = apiData['maintenanceMode'] as bool? ?? false;
 
     // Social media links
@@ -339,9 +357,7 @@ class SettingsRepository {
       activeCurrency = Currency.CDF;
     }
 
-    // Récupérer les paramètres locaux actuels pour préserver les champs non-API
-    final currentLocal = _settingsBox.get(_settingsKey) ?? const Settings();
-
+    // Les paramètres locaux actuels (currentLocal) préservent les champs non-API.
     // Régime fiscal (source de vérité = accounting, propagé par le backend) :
     // NORMAL ⇒ assujetti TVA ; SMT/FORFAITAIRE ⇒ exonéré (pas de TVA affichée).
     final isTaxSubject =

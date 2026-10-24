@@ -9,7 +9,7 @@ import 'package:printing/printing.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:wanzo/core/utils/document_issuer.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/sales/models/sale_item.dart';
@@ -153,7 +153,7 @@ class ReceiptPrinterService {
   /// Construit les octets ESC/POS bruts du ticket de caisse.
   ///
   /// Mise en page compacte (économie de papier) :
-  /// - En-tête : nom (gras), adresse, tél, NIF/RCCM (sur une ligne), ID NAT
+  /// - En-tête : DocumentIssuer (nom en gras, unité, adresse, tél., RCCM, Id. Nat., NIF)
   /// - Corps   : date+réf sur la même ligne, articles compacts
   /// - Pied    : "Merci", wanzzo.com, QR code → https://wanzzo.com/
   List<int> buildCashReceiptBytes(Sale sale, Settings settings) {
@@ -172,87 +172,21 @@ class ReceiptPrinterService {
 
     bytes.addAll(_escReset());
 
-    // ── En-tête entreprise / unité (centré) ──────────────────────────────
-    //
-    // Quand l'utilisateur est rattaché à une BusinessUnit personne morale
-    // (coopérant entreprise d'une coopérative, succursale immatriculée),
-    // la pièce commerciale doit afficher l'identité légale de CETTE BU
-    // — et non celle de l'entreprise parente.
-    final ctx = BusinessContextService();
-    final useBu = ctx.shouldUseBusinessUnitIdentity;
-    final headerName = useBu
-        ? (ctx.businessUnitName ?? settings.companyName)
-        : settings.companyName;
-    final headerAddress = useBu
-        ? (ctx.businessUnitAddress ?? settings.companyAddress)
-        : settings.companyAddress;
-    final headerPhone = useBu
-        ? (ctx.businessUnitPhone ?? settings.companyPhone)
-        : settings.companyPhone;
-    final headerTaxId = useBu
-        ? (ctx.businessUnitTaxId ?? settings.taxIdentificationNumber)
-        : settings.taxIdentificationNumber;
-    final headerRccm = useBu
-        ? (ctx.businessUnitRccm ?? settings.rccmNumber)
-        : settings.rccmNumber;
-    final headerIdNat = useBu
-        ? (ctx.businessUnitIdNat ?? settings.idNatNumber)
-        : settings.idNatNumber;
-
+    // ── En-tête (centré) : règle unique DocumentIssuer ───────────────────
+    // Raison sociale, nom de l'unité, adresse et téléphone de l'unité ou du
+    // siège, puis RCCM, Id. Nat. et NIF ; chaque ligne repliée entre les mots
+    // (jamais tronquée), aucune ligne vide.
+    final issuer = DocumentIssuer.from(settings);
     bytes.addAll(_escAlign(1));
-
-    // Nom en gras, taille normale (32 chars disponibles, pas 2× qui divise
-    // la largeur utile par 2 et tronque les noms longs).
     bytes.addAll(_escBold(true));
-    bytes.addAll(
-      _escLine(_truncate(headerName.toUpperCase(), _colWidth)),
-    );
+    for (final ln in wrapWords(issuer.name.toUpperCase(), _colWidth)) {
+      bytes.addAll(_escLine(ln));
+    }
     bytes.addAll(_escBold(false));
-
-    // Adresse : wrap auto si trop longue
-    if (headerAddress.isNotEmpty) {
-      for (final ln in _wrapText(headerAddress, _colWidth)) {
+    for (final detail in issuer.detailLines) {
+      for (final ln in wrapWords(detail, _colWidth)) {
         bytes.addAll(_escLine(ln));
       }
-    }
-
-    // Téléphone
-    if (headerPhone.isNotEmpty) {
-      bytes.addAll(_escLine('Tel: $headerPhone'));
-    }
-
-    // NIF et RCCM : sur la même ligne si ça tient (économie de papier)
-    final hasNif = headerTaxId.isNotEmpty;
-    final hasRccm = headerRccm.isNotEmpty;
-    final hasIdNat = headerIdNat.isNotEmpty;
-
-    if (hasNif && hasRccm) {
-      final nifStr = 'NIF:$headerTaxId';
-      final rccmStr = 'RCCM:${_truncate(headerRccm, 14)}';
-      final combined = '$nifStr  $rccmStr';
-      if (combined.length <= _colWidth) {
-        bytes.addAll(_escLine(combined));
-      } else {
-        bytes.addAll(
-          _escLine(_truncate('NIF: $headerTaxId', _colWidth)),
-        );
-        bytes.addAll(
-          _escLine(_truncate('RCCM: $headerRccm', _colWidth)),
-        );
-      }
-    } else if (hasNif) {
-      bytes.addAll(
-        _escLine(_truncate('NIF: $headerTaxId', _colWidth)),
-      );
-    } else if (hasRccm) {
-      bytes.addAll(
-        _escLine(_truncate('RCCM: $headerRccm', _colWidth)),
-      );
-    }
-    if (hasIdNat) {
-      bytes.addAll(
-        _escLine(_truncate('ID NAT: $headerIdNat', _colWidth)),
-      );
     }
 
     bytes.addAll(_escSeparatorDouble());
@@ -563,26 +497,7 @@ class ReceiptPrinterService {
     );
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(sale.date);
 
-    final ctx = BusinessContextService();
-    final useBu = ctx.shouldUseBusinessUnitIdentity;
-    final headerName = useBu
-        ? (ctx.businessUnitName ?? settings.companyName)
-        : settings.companyName;
-    final headerAddress = useBu
-        ? (ctx.businessUnitAddress ?? settings.companyAddress)
-        : settings.companyAddress;
-    final headerPhone = useBu
-        ? (ctx.businessUnitPhone ?? settings.companyPhone)
-        : settings.companyPhone;
-    final headerTaxId = useBu
-        ? (ctx.businessUnitTaxId ?? settings.taxIdentificationNumber)
-        : settings.taxIdentificationNumber;
-    final headerRccm = useBu
-        ? (ctx.businessUnitRccm ?? settings.rccmNumber)
-        : settings.rccmNumber;
-    final headerIdNat = useBu
-        ? (ctx.businessUnitIdNat ?? settings.idNatNumber)
-        : settings.idNatNumber;
+    final issuer = DocumentIssuer.from(settings);
 
     final b = StringBuffer();
     void line(String s) => b.write('<text>${_xmlEscape(s)}&#10;</text>');
@@ -591,13 +506,15 @@ class ReceiptPrinterService {
 
     align('center');
     bold(true);
-    line(headerName.toUpperCase());
+    for (final ln in wrapWords(issuer.name.toUpperCase(), _colWidth)) {
+      line(ln);
+    }
     bold(false);
-    if (headerAddress.isNotEmpty) line(headerAddress);
-    if (headerPhone.isNotEmpty) line('Tel: $headerPhone');
-    if (headerTaxId.isNotEmpty) line('NIF: $headerTaxId');
-    if (headerRccm.isNotEmpty) line('RCCM: $headerRccm');
-    if (headerIdNat.isNotEmpty) line('ID NAT: $headerIdNat');
+    for (final detail in issuer.detailLines) {
+      for (final ln in wrapWords(detail, _colWidth)) {
+        line(ln);
+      }
+    }
     line('=' * _colWidth);
     bold(true);
     line('TICKET DE CAISSE');
@@ -735,26 +652,7 @@ class ReceiptPrinterService {
     );
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(sale.date);
 
-    final ctx = BusinessContextService();
-    final useBu = ctx.shouldUseBusinessUnitIdentity;
-    final headerName = useBu
-        ? (ctx.businessUnitName ?? settings.companyName)
-        : settings.companyName;
-    final headerAddress = useBu
-        ? (ctx.businessUnitAddress ?? settings.companyAddress)
-        : settings.companyAddress;
-    final headerPhone = useBu
-        ? (ctx.businessUnitPhone ?? settings.companyPhone)
-        : settings.companyPhone;
-    final headerTaxId = useBu
-        ? (ctx.businessUnitTaxId ?? settings.taxIdentificationNumber)
-        : settings.taxIdentificationNumber;
-    final headerRccm = useBu
-        ? (ctx.businessUnitRccm ?? settings.rccmNumber)
-        : settings.rccmNumber;
-    final headerIdNat = useBu
-        ? (ctx.businessUnitIdNat ?? settings.idNatNumber)
-        : settings.idNatNumber;
+    final issuer = DocumentIssuer.from(settings);
 
     final doc = pw.Document();
     final mono = pw.Font.courier();
@@ -782,28 +680,14 @@ class ReceiptPrinterService {
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
             pw.Center(
-              child: pw.Text(headerName.toUpperCase(),
+              child: pw.Text(issuer.name.toUpperCase(),
+                  textAlign: pw.TextAlign.center,
                   style: pw.TextStyle(font: monoBold, fontSize: 10)),
             ),
-            if (headerAddress.isNotEmpty)
+            for (final detail in issuer.detailLines)
               pw.Center(
-                  child: pw.Text(headerAddress,
-                      style: pw.TextStyle(font: mono, fontSize: 8))),
-            if (headerPhone.isNotEmpty)
-              pw.Center(
-                  child: pw.Text('Tel: $headerPhone',
-                      style: pw.TextStyle(font: mono, fontSize: 8))),
-            if (headerTaxId.isNotEmpty)
-              pw.Center(
-                  child: pw.Text('NIF: $headerTaxId',
-                      style: pw.TextStyle(font: mono, fontSize: 8))),
-            if (headerRccm.isNotEmpty)
-              pw.Center(
-                  child: pw.Text('RCCM: $headerRccm',
-                      style: pw.TextStyle(font: mono, fontSize: 8))),
-            if (headerIdNat.isNotEmpty)
-              pw.Center(
-                  child: pw.Text('ID NAT: $headerIdNat',
+                  child: pw.Text(detail,
+                      textAlign: pw.TextAlign.center,
                       style: pw.TextStyle(font: mono, fontSize: 8))),
             pw.Divider(thickness: 0.5),
             pw.Center(
@@ -991,20 +875,4 @@ class ReceiptPrinterService {
     return '${text.substring(0, maxLen - 1)}…';
   }
 
-  /// Découpe [text] en lignes de [maxWidth] chars maximum.
-  /// Coupe de préférence aux espaces pour éviter de couper les mots.
-  List<String> _wrapText(String text, int maxWidth) {
-    if (text.length <= maxWidth) return [text];
-    final lines = <String>[];
-    var remaining = text.trim();
-    while (remaining.length > maxWidth) {
-      var split = maxWidth;
-      final spaceIdx = remaining.lastIndexOf(' ', maxWidth);
-      if (spaceIdx > maxWidth ~/ 2) split = spaceIdx;
-      lines.add(remaining.substring(0, split).trim());
-      remaining = remaining.substring(split).trim();
-    }
-    if (remaining.isNotEmpty) lines.add(remaining);
-    return lines;
-  }
 }

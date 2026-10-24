@@ -195,8 +195,10 @@ class BusinessContextService extends ChangeNotifier {
       businessUnitRccm: businessUnit?.registrationNumber,
       businessUnitTaxId: businessUnit?.taxId,
       businessUnitIdNat: businessUnit?.idNat,
-      businessUnitAddress: businessUnit?.address,
-      businessUnitPhone: businessUnit?.phone,
+      // En-tête des pièces : coordonnées résolues sur l'unité et ses
+      // parentes (serveur), sinon celles saisies sur l'unité.
+      businessUnitAddress: businessUnit?.documentAddress ?? businessUnit?.address,
+      businessUnitPhone: businessUnit?.documentPhone ?? businessUnit?.phone,
       scope:
           businessUnit?.scope ??
           (user.businessUnitId == null ? 'company' : 'unit'),
@@ -244,6 +246,19 @@ class BusinessContextService extends ChangeNotifier {
     bool niveauEntreprise = false,
   }) async {
     if (_currentContext == null) return;
+    // L'identité de l'ancienne unité (adresse, téléphone, identifiants
+    // propres) ne doit pas s'imprimer sous la nouvelle : copyWith ne sait pas
+    // remettre à null, on repart d'un contexte purgé. Le prochain /auth/me
+    // apporte celle de la nouvelle unité ; d'ici là, l'en-tête prend le siège.
+    _currentContext = BusinessContext.fromJson({
+      ..._currentContext!.toJson(),
+      'businessUnitAddress': null,
+      'businessUnitPhone': null,
+      'businessUnitIsLegalEntity': false,
+      'businessUnitRccm': null,
+      'businessUnitTaxId': null,
+      'businessUnitIdNat': null,
+    });
     _currentContext = _currentContext!.copyWith(
       businessUnitId: businessUnitId,
       businessUnitCode: businessUnitCode,

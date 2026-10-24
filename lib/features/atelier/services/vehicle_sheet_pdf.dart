@@ -7,7 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
-import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:wanzo/core/utils/document_issuer.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/features/atelier/models/atelier_order.dart';
 import 'package:wanzo/features/atelier/models/customer_vehicle.dart';
@@ -47,16 +47,20 @@ class VehicleSheetPdf {
 
   static String _fmtDate(DateTime? d) => d == null ? '—' : DateFormat('dd/MM/yyyy').format(d);
 
-  static ({String name, String address, String phone}) _issuer(Settings? settings) {
-    final ctx = BusinessContextService();
-    final useBu = ctx.shouldUseBusinessUnitIdentity;
-    String pick(String? bu, String? fallback) => (useBu ? (bu ?? fallback) : fallback) ?? '';
-    final name = pick(ctx.businessUnitName, settings?.companyName);
-    return (
-      name: name.isNotEmpty ? name : 'Garage',
-      address: pick(ctx.businessUnitAddress, settings?.companyAddress),
-      phone: pick(ctx.businessUnitPhone, settings?.companyPhone),
-    );
+  /// En-tête émetteur : règle unique des pièces (DocumentIssuer).
+  static DocumentIssuer _issuer(Settings? settings) {
+    final issuer = DocumentIssuer.from(settings);
+    return issuer.name.isNotEmpty
+        ? issuer
+        : DocumentIssuer(
+            name: 'Garage',
+            unitName: issuer.unitName,
+            address: issuer.address,
+            phone: issuer.phone,
+            rccm: issuer.rccm,
+            idNat: issuer.idNat,
+            taxId: issuer.taxId,
+          );
   }
 
   static Future<pw.Document> build(
@@ -102,8 +106,7 @@ class VehicleSheetPdf {
             children: [
               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
                 pw.Text(issuer.name, style: pw.TextStyle(font: bold, fontSize: 13)),
-                if (issuer.address.isNotEmpty) pw.Text(issuer.address, style: pw.TextStyle(font: regular, fontSize: 8)),
-                if (issuer.phone.isNotEmpty) pw.Text(issuer.phone, style: pw.TextStyle(font: regular, fontSize: 8)),
+                for (final line in issuer.detailLines) pw.Text(line, style: pw.TextStyle(font: regular, fontSize: 8)),
               ]),
               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
                 pw.Text('FICHE DE SUIVI VÉHICULE', style: pw.TextStyle(font: bold, fontSize: 14)),

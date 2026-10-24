@@ -10,63 +10,31 @@ import 'package:share_plus/share_plus.dart';
 import '../../sales/models/sale.dart';
 import '../../proforma/models/proforma.dart';
 import '../../settings/models/settings.dart';
-import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:wanzo/core/utils/document_issuer.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import '../utils/invoice_money.dart';
 
-/// En-tête (identité émettrice) à utiliser sur les pièces commerciales.
-///
-/// Si l'utilisateur courant est rattaché à une BusinessUnit personne morale
-/// (coopérant entreprise dans une coopérative, succursale immatriculée),
-/// les pièces commerciales DOIVENT porter l'identité légale de CETTE BU.
-/// Sinon on retombe sur les Settings de l'entreprise parente.
-class _IssuerIdentity {
-  final String name;
-  final String address;
-  final String phone;
-  final String rccm;
-  final String taxId;
-  final String idNat;
+/// En-tête (identité émettrice) des pièces commerciales : règle unique de
+/// [DocumentIssuer] (raison sociale, nom de l'unité, adresse et téléphone de
+/// l'unité ou du siège, puis RCCM, Id. Nat. et NIF).
+typedef _IssuerIdentity = DocumentIssuer;
 
-  const _IssuerIdentity({
-    required this.name,
-    required this.address,
-    required this.phone,
-    required this.rccm,
-    required this.taxId,
-    required this.idNat,
-  });
-
-  factory _IssuerIdentity.from(Settings settings) {
-    final ctx = BusinessContextService();
-    final useBu = ctx.shouldUseBusinessUnitIdentity;
-    // Repli entreprise : quand l'utilisateur n'a pas renseigné l'identité dans
-    // les Settings locaux, on retombe sur les identifiants de l'entreprise
-    // reçus via /auth/me (Company entity : RCCM/NIF/IdNat).
-    String orCompany(String local, String? fromCtx) =>
-        local.isNotEmpty ? local : (fromCtx ?? '');
-    return _IssuerIdentity(
-      name: useBu
-          ? (ctx.businessUnitName ?? settings.companyName)
-          : orCompany(settings.companyName, ctx.companyName),
-      address: useBu
-          ? (ctx.businessUnitAddress ?? settings.companyAddress)
-          : settings.companyAddress,
-      phone: useBu
-          ? (ctx.businessUnitPhone ?? settings.companyPhone)
-          : settings.companyPhone,
-      rccm: useBu
-          ? (ctx.businessUnitRccm ?? settings.rccmNumber)
-          : orCompany(settings.rccmNumber, ctx.companyRccm),
-      taxId: useBu
-          ? (ctx.businessUnitTaxId ?? settings.taxIdentificationNumber)
-          : orCompany(settings.taxIdentificationNumber, ctx.companyTaxId),
-      idNat: useBu
-          ? (ctx.businessUnitIdNat ?? settings.idNatNumber)
-          : orCompany(settings.idNatNumber, ctx.companyNationalId),
-    );
-  }
-}
+/// Lignes d'en-tête sous la raison sociale, une par widget, aucune vide.
+List<pw.Widget> _issuerDetailWidgets(
+  DocumentIssuer issuer,
+  pw.Font font, {
+  double fontSize = 9,
+  pw.TextAlign? textAlign,
+}) => [
+  for (final line in issuer.detailLines) ...[
+    pw.SizedBox(height: 2),
+    pw.Text(
+      line,
+      style: pw.TextStyle(font: font, fontSize: fontSize),
+      textAlign: textAlign,
+    ),
+  ],
+];
 
 /// Ligne du pied d'une pièce, montant signé dans la devise du document.
 class InvoiceFooterLine {
@@ -345,41 +313,7 @@ class InvoiceService {
                             issuer.name,
                             style: pw.TextStyle(font: boldFont, fontSize: 12),
                           ),
-                        if (issuer.address.isNotEmpty) ...[
-                          pw.SizedBox(height: 2),
-                          pw.Text(
-                            issuer.address,
-                            style: pw.TextStyle(font: regularFont, fontSize: 9),
-                          ),
-                        ],
-                        if (issuer.phone.isNotEmpty) ...[
-                          pw.SizedBox(height: 2),
-                          pw.Text(
-                            'Tél: ${issuer.phone}',
-                            style: pw.TextStyle(font: regularFont, fontSize: 9),
-                          ),
-                        ],
-                        if (issuer.taxId.isNotEmpty) ...[
-                          pw.SizedBox(height: 2),
-                          pw.Text(
-                            'NIF: ${issuer.taxId}',
-                            style: pw.TextStyle(font: regularFont, fontSize: 9),
-                          ),
-                        ],
-                        if (issuer.rccm.isNotEmpty) ...[
-                          pw.SizedBox(height: 2),
-                          pw.Text(
-                            'RCCM: ${issuer.rccm}',
-                            style: pw.TextStyle(font: regularFont, fontSize: 9),
-                          ),
-                        ],
-                        if (issuer.idNat.isNotEmpty) ...[
-                          pw.SizedBox(height: 2),
-                          pw.Text(
-                            'ID NAT: ${issuer.idNat}',
-                            style: pw.TextStyle(font: regularFont, fontSize: 9),
-                          ),
-                        ],
+                        ..._issuerDetailWidgets(issuer, regularFont),
                       ],
                     ),
                   ),
@@ -741,49 +675,7 @@ class InvoiceService {
                 textAlign: pw.TextAlign.center,
               ),
 
-              if (issuer.address.isNotEmpty) ...[
-                pw.SizedBox(height: 2),
-                pw.Text(
-                  issuer.address,
-                  style: pw.TextStyle(font: regularFont, fontSize: 8),
-                  textAlign: pw.TextAlign.center,
-                ),
-              ],
-
-              if (issuer.phone.isNotEmpty) ...[
-                pw.SizedBox(height: 2),
-                pw.Text(
-                  'Tél: ${issuer.phone}',
-                  style: pw.TextStyle(font: regularFont, fontSize: 8),
-                  textAlign: pw.TextAlign.center,
-                ),
-              ],
-              if (issuer.taxId.isNotEmpty) ...[
-                pw.SizedBox(height: 2),
-                pw.Text(
-                  'NIF: ${issuer.taxId}',
-                  style: pw.TextStyle(font: regularFont, fontSize: 8),
-                  textAlign: pw.TextAlign.center,
-                ),
-              ],
-
-              if (issuer.rccm.isNotEmpty) ...[
-                pw.SizedBox(height: 2),
-                pw.Text(
-                  'RCCM: ${issuer.rccm}',
-                  style: pw.TextStyle(font: regularFont, fontSize: 8),
-                  textAlign: pw.TextAlign.center,
-                ),
-              ],
-
-              if (issuer.idNat.isNotEmpty) ...[
-                pw.SizedBox(height: 2),
-                pw.Text(
-                  'ID NAT: ${issuer.idNat}',
-                  style: pw.TextStyle(font: regularFont, fontSize: 8),
-                  textAlign: pw.TextAlign.center,
-                ),
-              ],
+              ..._issuerDetailWidgets(issuer, regularFont, fontSize: 8, textAlign: pw.TextAlign.center),
 
               pw.SizedBox(height: 5),
               pw.Text(
@@ -1024,32 +916,7 @@ class InvoiceService {
                 style: pw.TextStyle(font: boldFont, fontSize: 12),
               ),
             ),
-            if (issuer.address.isNotEmpty)
-              pw.Center(
-                child: pw.Text(
-                  issuer.address,
-                  textAlign: pw.TextAlign.center,
-                  style: pw.TextStyle(font: regularFont, fontSize: 8),
-                ),
-              ),
-            if (issuer.phone.isNotEmpty)
-              pw.Center(
-                child: pw.Text(
-                  'Tél: ${issuer.phone}',
-                  style: pw.TextStyle(font: regularFont, fontSize: 8),
-                ),
-              ),
-            if (issuer.rccm.isNotEmpty || issuer.taxId.isNotEmpty)
-              pw.Center(
-                child: pw.Text(
-                  [
-                    if (issuer.rccm.isNotEmpty) 'RCCM: ${issuer.rccm}',
-                    if (issuer.taxId.isNotEmpty) 'NIF: ${issuer.taxId}',
-                  ].join('  '),
-                  textAlign: pw.TextAlign.center,
-                  style: pw.TextStyle(font: regularFont, fontSize: 7),
-                ),
-              ),
+            ..._issuerDetailWidgets(issuer, regularFont, fontSize: 8, textAlign: pw.TextAlign.center),
             pw.SizedBox(height: 8),
             pw.Divider(thickness: 0.5),
             pw.Center(

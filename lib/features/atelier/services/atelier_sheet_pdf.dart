@@ -8,7 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
-import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:wanzo/core/utils/document_issuer.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/features/atelier/models/atelier_order.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
@@ -25,35 +25,20 @@ import 'package:wanzo/features/settings/models/settings.dart';
 /// et le même point d'entrée d'impression (`Printing.layoutPdf`) que les factures
 /// (`InvoiceService`) — aucune nouvelle dépendance.
 class AtelierSheetPdf {
-  /// En-tête émetteur : identité de la BusinessUnit si l'utilisateur y est
-  /// rattaché (même règle que les pièces commerciales), sinon les Settings.
-  static ({
-    String name,
-    String address,
-    String phone,
-    String rccm,
-    String taxId,
-    String idNat,
-  }) _issuer(
-    Settings? settings,
-  ) {
-    final ctx = BusinessContextService();
-    final useBu = ctx.shouldUseBusinessUnitIdentity;
-    String pick(String? bu, String? fallback) {
-      final v = useBu ? (bu ?? fallback) : fallback;
-      return v ?? '';
-    }
-
-    return (
-      name: pick(ctx.businessUnitName, settings?.companyName).isNotEmpty
-          ? pick(ctx.businessUnitName, settings?.companyName)
-          : 'Atelier',
-      address: pick(ctx.businessUnitAddress, settings?.companyAddress),
-      phone: pick(ctx.businessUnitPhone, settings?.companyPhone),
-      rccm: pick(ctx.businessUnitRccm, settings?.rccmNumber),
-      taxId: pick(ctx.businessUnitTaxId, settings?.taxIdentificationNumber),
-      idNat: pick(ctx.businessUnitIdNat, settings?.idNatNumber),
-    );
+  /// En-tête émetteur : règle unique des pièces (DocumentIssuer).
+  static DocumentIssuer _issuer(Settings? settings) {
+    final issuer = DocumentIssuer.from(settings);
+    return issuer.name.isNotEmpty
+        ? issuer
+        : DocumentIssuer(
+            name: 'Atelier',
+            unitName: issuer.unitName,
+            address: issuer.address,
+            phone: issuer.phone,
+            rccm: issuer.rccm,
+            idNat: issuer.idNat,
+            taxId: issuer.taxId,
+          );
   }
 
   static String _shortId(String id) =>
@@ -181,14 +166,7 @@ class AtelierSheetPdf {
 
   // ── En-tête ─────────────────────────────────────────────────────────────
   static pw.Widget _header(
-    ({
-      String name,
-      String address,
-      String phone,
-      String rccm,
-      String taxId,
-      String idNat,
-    }) issuer,
+    DocumentIssuer issuer,
     String title,
     pw.Widget? logo,
     pw.Font regular,
@@ -215,20 +193,8 @@ class AtelierSheetPdf {
                       children: [
                         pw.Text(issuer.name,
                             style: pw.TextStyle(font: bold, fontSize: 14)),
-                        if (issuer.address.isNotEmpty)
-                          pw.Text(issuer.address,
-                              style: pw.TextStyle(font: regular, fontSize: 9)),
-                        if (issuer.phone.isNotEmpty)
-                          pw.Text('Tél: ${issuer.phone}',
-                              style: pw.TextStyle(font: regular, fontSize: 9)),
-                        if (issuer.taxId.isNotEmpty)
-                          pw.Text('NIF: ${issuer.taxId}',
-                              style: pw.TextStyle(font: regular, fontSize: 9)),
-                        if (issuer.rccm.isNotEmpty)
-                          pw.Text('RCCM: ${issuer.rccm}',
-                              style: pw.TextStyle(font: regular, fontSize: 9)),
-                        if (issuer.idNat.isNotEmpty)
-                          pw.Text('ID NAT: ${issuer.idNat}',
+                        for (final line in issuer.detailLines)
+                          pw.Text(line,
                               style: pw.TextStyle(font: regular, fontSize: 9)),
                       ],
                     ),

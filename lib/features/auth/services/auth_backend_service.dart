@@ -872,6 +872,12 @@ class BackendBusinessUnit {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
+  /// En-tête des pièces émises depuis cette unité : adresse et téléphone de
+  /// l'unité, sinon de ses unités parentes, résolus par le serveur champ par
+  /// champ. null : l'en-tête prend ceux de l'entreprise.
+  final String? documentAddress;
+  final String? documentPhone;
+
   /// Scope d'accès:
   /// - "company": Accès niveau entreprise (admin/super_admin sans businessUnitId)
   /// - "unit": Limité à cette unité (utilisateurs assignés)
@@ -903,6 +909,8 @@ class BackendBusinessUnit {
     this.createdAt,
     this.updatedAt,
     this.scope,
+    this.documentAddress,
+    this.documentPhone,
   });
 
   factory BackendBusinessUnit.fromJson(Map<String, dynamic> json) {
@@ -938,6 +946,8 @@ class BackendBusinessUnit {
               ? DateTime.tryParse(json['updatedAt'] as String)
               : null,
       scope: json['scope'] as String?,
+      documentAddress: json['documentAddress'] as String?,
+      documentPhone: json['documentPhone'] as String?,
     );
   }
 }
