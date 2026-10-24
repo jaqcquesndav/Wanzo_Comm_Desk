@@ -12,6 +12,10 @@ import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/models/currency_settings_model.dart';
 import 'package:wanzo/core/enums/currency_enum.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
+import 'package:wanzo/core/models/payment_method_code.dart';
+import 'package:wanzo/core/services/currency_service.dart';
+import 'package:wanzo/core/shared_widgets/payment_details_fields.dart';
+import 'package:wanzo/core/widgets/operator_logo.dart';
 import 'package:wanzo/core/widgets/dish_thumb_grid.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/core/shared_widgets/payment_method_selector.dart';
@@ -141,6 +145,11 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   String _search = '';
 
   _PayMethod _method = _PayMethod.cash;
+  // Mobile Money : opérateur et référence obligatoires ; compte client :
+  // échéance (J+30 par défaut, modifiable).
+  OperatorBrand? _mobileOperator;
+  final _paymentRefController = TextEditingController();
+  DateTime? _dueDate;
   final _cashController = TextEditingController();
   bool _submitting = false;
 
@@ -231,8 +240,9 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
       _selectedTransactionCurrency = _availableCurrencies.contains(active)
           ? active
           : _availableCurrencies.first;
+      // Sans taux : 0, jamais 1 (le règlement en devise est alors refusé).
       _transactionExchangeRate =
-          _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
+          _exchangeRates[_selectedTransactionCurrency!] ?? 0;
     });
   }
 
@@ -251,10 +261,23 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
       _transactionExchangeRate <= 0 ? cdf : cdf / _transactionExchangeRate;
 
   /// Convertit un montant saisi dans la devise de reglement vers la base CDF.
-  double _versCdf(double montant) => montant * _transactionExchangeRate;
+  double _versCdf(double montant) =>
+      _transactionExchangeRate <= 0 ? montant : montant * _transactionExchangeRate;
 
-  String get _codeDevise =>
-      _selectedTransactionCurrency?.code ?? _defaultCurrency.code;
+  /// Code affiché : celui de la devise choisie seulement si son taux est
+  /// connu. Sans taux, les montants restent en CDF (jamais un montant CDF
+  /// sous le code USD).
+  String get _codeDevise {
+    final code = _selectedTransactionCurrency?.code ?? _defaultCurrency.code;
+    if (code != 'CDF' && _transactionExchangeRate <= 0) return 'CDF';
+    return code;
+  }
+
+  /// Devise choisie sans taux exploitable : règlement refusé.
+  bool get _tauxManquant {
+    final code = _selectedTransactionCurrency?.code ?? _defaultCurrency.code;
+    return code != 'CDF' && _transactionExchangeRate <= 0;
+  }
 
   void _onDualChanged() {
     if (!mounted) return;
@@ -266,6 +289,7 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   void dispose() {
     CurrencyDisplayService.instance.dualCurrency.removeListener(_onDualChanged);
     _cashController.dispose();
+    _paymentRefController.dispose();
     super.dispose();
   }
 
@@ -1083,7 +1107,7 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
                 final c = choix.first;
                 setState(() {
                   _selectedTransactionCurrency = c;
-                  _transactionExchangeRate = _exchangeRates[c] ?? 1.0;
+                  _transactionExchangeRate = _exchangeRates[c] ?? 0;
                   _cashController.clear();
                 });
               },
@@ -1098,7 +1122,10 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
             labelOf: (m) => m.label,
             iconOf: (m) => m.icon,
             onChanged: (m) {
-              setState(() => _method = m);
+              setState(() {
+                _method = m;
+                if (m == _PayMethod.credit) _dueDate ??= defaultCreditDueDate();
+              });
               if (m == _PayMethod.room && _sejour == null) _choisirSejour();
               if (m == _PayMethod.credit && _compteId(order) == null) {
                 _choisirClient(order);
@@ -1136,11 +1163,34 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
                 onTap: () => _choisirClient(order),
               ),
             ),
-          if (_method == _PayMethod.mobileMoney)
+          if (_method == _PayMethod.mobileMoney) ...[
             Text(
               'Paiement reçu sur le compte Mobile Money : la vente est réglée.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+          if (_method == _PayMethod.mobileMoney ||
+              _method == _PayMethod.credit)
+            PaymentDetailsFields(
+              method: _method.apiValue,
+              operator: _mobileOperator,
+              onOperatorChanged: (b) => setState(() => _mobileOperator = b),
+              referenceController: _paymentRefController,
+              dueDate: _dueDate,
+              onDueDateChanged: (d) => setState(() => _dueDate = d),
+            ),
+          if (_tauxManquant)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                CurrencyService.missingRateMessage(
+                  _selectedTransactionCurrency!.code,
+                ),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
               ),
             ),
           if (_method == _PayMethod.cash) ...[
@@ -1459,6 +1509,34 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   }
 
   Future<void> _confirm(RestaurantOrder order) async {
+    // Devise sans taux : refus, jamais un taux 1 silencieux.
+    if (_tauxManquant) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            CurrencyService.missingRateMessage(
+              _selectedTransactionCurrency!.code,
+            ),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    final detailsError = paymentDetailsError(
+      method: _method.apiValue,
+      operator: _mobileOperator,
+      reference: _paymentRefController.text,
+      dueDate: _method == _PayMethod.credit
+          ? (_dueDate ?? defaultCreditDueDate())
+          : null,
+    );
+    if (detailsError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(detailsError), backgroundColor: Colors.red),
+      );
+      return;
+    }
     if (!await _verifierVraisemblance(order) || !mounted) return;
     final total = order.totalCdf;
     // Espèces et Mobile Money sont ENCAISSÉS ; seul le compte client reste dû.
@@ -1520,9 +1598,18 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
       totalAmountInTransactionCurrency: _versDevise(total),
       paidAmountInTransactionCurrency: _versDevise(paid),
       discountPercentage: 0,
-      paymentMethod: _method.apiValue,
+      paymentMethod: paymentMethodCode(_method.apiValue),
+      paymentReference: _method == _PayMethod.mobileMoney
+          ? _paymentRefController.text.trim()
+          : null,
+      dueDate: _method == _PayMethod.credit
+          ? (_dueDate ?? defaultCreditDueDate())
+          : null,
       status: completed ? SaleStatus.completed : SaleStatus.pending,
-      notes: 'Commande restaurant ${order.label}',
+      notes: [
+        'Commande restaurant ${order.label}',
+        if (_method == _PayMethod.mobileMoney) mobileMoneyNote(_mobileOperator),
+      ].join(' · '),
     );
 
     _pendingSale = sale;
@@ -1649,6 +1736,9 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
       _clientCompte = null;
       _sejour = null;
       _method = _PayMethod.cash;
+      _mobileOperator = null;
+      _paymentRefController.clear();
+      _dueDate = null;
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(

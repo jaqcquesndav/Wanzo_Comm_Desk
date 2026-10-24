@@ -486,7 +486,8 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
     if (mounted) setState(() {});
   }
 
-  double rateOf(Currency c) => _rates[c] ?? 1.0;
+  // Taux vers le CDF ; 0 si inconnu (jamais 1 implicite : la saisie est refusée).
+  double rateOf(Currency c) => c == Currency.CDF ? 1.0 : (_rates[c] ?? 0);
 
   @override
   void dispose() {

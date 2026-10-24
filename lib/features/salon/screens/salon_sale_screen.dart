@@ -11,6 +11,9 @@ import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/services/currency_service.dart';
+import 'package:wanzo/core/models/payment_method_code.dart';
+import 'package:wanzo/core/shared_widgets/payment_details_fields.dart';
+import 'package:wanzo/core/widgets/operator_logo.dart';
 import 'package:wanzo/core/utils/price_plausibility.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/core/shared_widgets/payment_method_selector.dart';
@@ -127,6 +130,10 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
   _PickerMode _pickerMode = _PickerMode.services;
   String _search = '';
   _PayMethod _method = _PayMethod.cash;
+  // Mobile Money : opérateur et référence obligatoires ; crédit : échéance.
+  OperatorBrand? _mobileOperator;
+  final _paymentRefController = TextEditingController();
+  DateTime? _dueDate;
   bool _submitting = false;
 
   // Client du ticket : optionnel. On SUGGÈRE les clients enregistrés (recherche
@@ -168,6 +175,7 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
   void dispose() {
     _cashController.dispose();
     _customerNameController.dispose();
+    _paymentRefController.dispose();
     super.dispose();
   }
 
@@ -192,8 +200,9 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
           _availableCurrencies.contains(activeCurrency)
               ? activeCurrency
               : _availableCurrencies.first;
+      // Sans taux : 0, jamais 1 (le règlement en devise est alors refusé).
       _transactionExchangeRate =
-          _exchangeRates[_selectedTransactionCurrency!] ?? 1.0;
+          _exchangeRates[_selectedTransactionCurrency!] ?? 0;
     });
   }
 
@@ -215,8 +224,13 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
     return cdfAmount / _transactionExchangeRate;
   }
 
-  String get _currencyCode =>
-      _selectedTransactionCurrency?.code ?? _defaultCurrency.code;
+  /// Code affiché : la devise choisie seulement si son taux est connu ; sans
+  /// taux, les montants restent en CDF (jamais un montant CDF sous le code USD).
+  String get _currencyCode {
+    final code = _selectedTransactionCurrency?.code ?? _defaultCurrency.code;
+    if (code != 'CDF' && _transactionExchangeRate <= 0) return 'CDF';
+    return code;
+  }
 
   // Totaux (base CDF) et leurs équivalents dans la devise de transaction.
   double get _total => _lines.fold(0, (sum, l) => sum + l.totalCdf);
@@ -659,7 +673,7 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
                   if (c == null) return;
                   setState(() {
                     _selectedTransactionCurrency = c;
-                    _transactionExchangeRate = _exchangeRates[c] ?? 1.0;
+                    _transactionExchangeRate = _exchangeRates[c] ?? 0;
                   });
                 },
               ),
@@ -668,8 +682,15 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
-                    'Taux : 1 ${_selectedTransactionCurrency?.code} = ${formatCurrency(_transactionExchangeRate, 'CDF')}',
-                    style: theme.textTheme.bodySmall,
+                    _transactionExchangeRate > 0
+                        ? 'Taux : 1 ${_selectedTransactionCurrency?.code} = ${formatCurrency(_transactionExchangeRate, 'CDF')}'
+                        : CurrencyService.missingRateMessage(
+                            _selectedTransactionCurrency!.code,
+                          ),
+                    style: _transactionExchangeRate > 0
+                        ? theme.textTheme.bodySmall
+                        : theme.textTheme.bodySmall
+                            ?.copyWith(color: theme.colorScheme.error),
                   ),
                 ),
               const SizedBox(height: 8),
@@ -712,7 +733,18 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
               selected: _method,
               labelOf: (m) => m.label,
               iconOf: (m) => m.icon,
-              onChanged: (m) => setState(() => _method = m),
+              onChanged: (m) => setState(() {
+                _method = m;
+                if (m == _PayMethod.credit) _dueDate ??= defaultCreditDueDate();
+              }),
+            ),
+            PaymentDetailsFields(
+              method: _method.apiValue,
+              operator: _mobileOperator,
+              onOperatorChanged: (b) => setState(() => _mobileOperator = b),
+              referenceController: _paymentRefController,
+              dueDate: _dueDate,
+              onDueDateChanged: (d) => setState(() => _dueDate = d),
             ),
             if (_method == _PayMethod.cash) ...[
               const SizedBox(height: 8),
@@ -787,6 +819,20 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
       ));
       return;
     }
+    final detailsError = paymentDetailsError(
+      method: _method.apiValue,
+      operator: _mobileOperator,
+      reference: _paymentRefController.text,
+      dueDate: _method == _PayMethod.credit
+          ? (_dueDate ?? defaultCreditDueDate())
+          : null,
+    );
+    if (detailsError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(detailsError), backgroundColor: Colors.red),
+      );
+      return;
+    }
     // Garde-fou : une ligne au prix anormalement bas trahit souvent un tarif
     // saisi dans la mauvaise devise (21 FC au lieu de 21 $).
     for (final l in _lines) {
@@ -807,7 +853,8 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
     final rate = _transactionExchangeRate;
     final totalCdf = _total;
     final totalInCurrency = _totalInCurrency;
-    final bool completed = _method == _PayMethod.cash;
+    // Espèces et Mobile Money sont ENCAISSÉS ; seul le crédit reste dû.
+    final bool completed = _method != _PayMethod.credit;
     final paidCdf = completed ? totalCdf : 0.0;
     final paidInCurrency = completed ? totalInCurrency : 0.0;
 
@@ -860,9 +907,18 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
       totalAmountInTransactionCurrency: totalInCurrency,
       paidAmountInTransactionCurrency: paidInCurrency,
       discountPercentage: 0,
-      paymentMethod: _method.apiValue,
+      paymentMethod: paymentMethodCode(_method.apiValue),
+      paymentReference: _method == _PayMethod.mobileMoney
+          ? _paymentRefController.text.trim()
+          : null,
+      dueDate: _method == _PayMethod.credit
+          ? (_dueDate ?? defaultCreditDueDate())
+          : null,
       status: completed ? SaleStatus.completed : SaleStatus.pending,
-      notes: 'Ticket salon',
+      notes: [
+        'Ticket salon',
+        if (_method == _PayMethod.mobileMoney) mobileMoneyNote(_mobileOperator),
+      ].join(' · '),
     );
 
     _pendingSale = sale;
@@ -930,6 +986,9 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
       _customerPhone = null;
       _customerNameController.clear();
       _cashController.clear();
+      _paymentRefController.clear();
+      _mobileOperator = null;
+      _dueDate = null;
       _pendingSale = null;
     });
 
