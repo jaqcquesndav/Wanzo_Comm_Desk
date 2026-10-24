@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/desktop_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -9,7 +10,10 @@ import 'package:printing/printing.dart';
 import '../../../core/services/business_context_service.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../services/receipt_printer_service.dart';
+import '../../../core/services/currency_service.dart';
 import '../../auth/bloc/auth_bloc.dart';
+import '../../settings/models/financial_account.dart';
+import '../../settings/repositories/financial_account_repository.dart';
 import '../models/cash_session.dart';
 import '../services/cash_session_report.dart';
 import '../services/cash_session_service.dart';
@@ -305,19 +309,46 @@ class _OpenSessionViewState extends State<_OpenSessionView> {
   Future<void> _manual(bool entry) async {
     final amountCtrl = TextEditingController();
     final reasonCtrl = TextEditingController();
+    final slipCtrl = TextEditingController();
     String currency = kCashCurrencies.first;
+    bool deposit = false;
+    FinancialAccount? bank;
+    // Comptes bancaires de l'entreprise (Réglages, comptes financiers) :
+    // la destination d'un dépôt se CHOISIT, elle ne se saisit pas.
+    List<FinancialAccount> banks = const [];
+    if (!entry) {
+      try {
+        banks = context.read<FinancialAccountRepository>().getBankAccounts();
+      } catch (_) {
+        banks = const [];
+      }
+      bank = banks.where((a) => a.isDefault).firstOrNull ?? banks.firstOrNull;
+    }
+    final expected = widget.session.expectedCash();
     final formKey = GlobalKey<FormState>();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: Text(entry ? 'Entrée de caisse' : 'Sortie de caisse'),
+          title: Text(entry ? 'Entrée de caisse' : (deposit ? 'Dépôt en banque' : 'Sortie de caisse')),
           content: Form(
             key: formKey,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (!entry)
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Dépôt en banque'),
+                      subtitle: Text(
+                        deposit
+                            ? 'Passé en comptabilité (caisse vers banque).'
+                            : 'Simple sortie de caisse, notée avec son motif.',
+                      ),
+                      value: deposit,
+                      onChanged: (v) => setLocal(() => deposit = v),
+                    ),
                   SegmentedButton<String>(
                     segments: [for (final c in kCashCurrencies) ButtonSegment(value: c, label: Text(c))],
                     selected: {currency},
@@ -328,21 +359,54 @@ class _OpenSessionViewState extends State<_OpenSessionView> {
                     controller: amountCtrl,
                     autofocus: true,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(labelText: 'Montant', suffixText: currency),
+                    decoration: InputDecoration(
+                      labelText: 'Montant',
+                      suffixText: currency,
+                      helperText: deposit ? 'En caisse : ${cashAmount(expected[currency] ?? 0, currency)}' : null,
+                    ),
                     validator: (v) {
                       final n = _parseAmount(v ?? '');
                       if (n == null || n <= 0) return 'Montant supérieur à zéro';
+                      if (deposit && n > (expected[currency] ?? 0) + 0.004) {
+                        return 'Plus que les espèces attendues en caisse';
+                      }
                       return null;
                     },
                   ),
-                  TextFormField(
-                    controller: reasonCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Motif',
-                      hintText: entry ? 'Apport, fonds complémentaire' : 'Dépôt en banque, retrait',
+                  if (deposit) ...[
+                    const SizedBox(height: 8),
+                    if (banks.isEmpty)
+                      const Text(
+                        "Aucun compte bancaire : ajoutez-en un dans Réglages, comptes financiers.",
+                      )
+                    else
+                      DropdownButtonFormField<FinancialAccount>(
+                        value: bank,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'Compte bancaire'),
+                        items: [
+                          for (final a in banks)
+                            DropdownMenuItem(
+                              value: a,
+                              child: Text(a.accountName, overflow: TextOverflow.ellipsis),
+                            ),
+                        ],
+                        onChanged: (a) => setLocal(() => bank = a),
+                        validator: (a) => a == null ? 'Choisissez le compte' : null,
+                      ),
+                    TextFormField(
+                      controller: slipCtrl,
+                      decoration: const InputDecoration(labelText: 'N° de bordereau (facultatif)'),
                     ),
-                    validator: (v) => (v ?? '').trim().isEmpty ? 'Motif obligatoire' : null,
-                  ),
+                  ] else
+                    TextFormField(
+                      controller: reasonCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Motif',
+                        hintText: entry ? 'Apport, fonds complémentaire' : 'Retrait, avance',
+                      ),
+                      validator: (v) => (v ?? '').trim().isEmpty ? 'Motif obligatoire' : null,
+                    ),
                 ],
               ),
             ),
@@ -350,35 +414,59 @@ class _OpenSessionViewState extends State<_OpenSessionView> {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
             FilledButton(
-              onPressed: () {
-                if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
-              },
+              onPressed: deposit && banks.isEmpty
+                  ? null
+                  : () {
+                      if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
+                    },
               child: const Text('Enregistrer'),
             ),
           ],
         ),
       ),
     );
-    if (ok != true) return;
+    if (ok != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
     try {
-      await widget.service.addManual(
-        entry: entry,
-        amount: _parseAmount(amountCtrl.text)!,
-        currency: currency,
-        reason: reasonCtrl.text,
-      );
+      if (deposit) {
+        double? rate;
+        if (currency != 'CDF') {
+          final cs = CurrencyService();
+          await cs.loadSettings();
+          rate = cs.usableRateToCdfForCode(currency);
+        }
+        await widget.service.addBankDeposit(
+          amount: _parseAmount(amountCtrl.text)!,
+          currency: currency,
+          exchangeRate: rate,
+          accountId: bank!.id,
+          accountName: bank!.accountName,
+          slipNumber: slipCtrl.text,
+        );
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Dépôt enregistré. Il part en comptabilité (hors connexion : à la reconnexion).')),
+        );
+      } else {
+        await widget.service.addManual(
+          entry: entry,
+          amount: _parseAmount(amountCtrl.text)!,
+          currency: currency,
+          reason: reasonCtrl.text,
+        );
+      }
+    } on ArgumentError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('${e.message}')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
     }
   }
 
   Future<void> _close() async {
-    final closed = await showModalBottomSheet<CashSession>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _CloseSheet(service: widget.service, session: widget.session),
-    );
+    final closed = await showDesktopModal<CashSession>(
+        context,
+        title: 'TODO_TITLE',
+        builder: (_) => _CloseSheet(service: widget.service, session: widget.session),
+      );
     if (closed == null || !mounted) return;
     await showDialog<void>(
       context: context,

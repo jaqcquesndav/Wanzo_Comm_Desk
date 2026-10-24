@@ -50,6 +50,7 @@ List<String> zTicketLines(
   final expenses = s.totalOf(CashMovementKind.expense, cashOnly: true);
   final ins = s.totalOf(CashMovementKind.manualIn);
   final outs = s.totalOf(CashMovementKind.manualOut);
+  final deposits = s.totalOf(CashMovementKind.bankDeposit);
   lines
     ..add(sep)
     ..add('MOUVEMENTS D\'ESPECES');
@@ -59,10 +60,13 @@ List<String> zTicketLines(
   for (final e in ins.entries) {
     lines.add(_row('Entrees', cashAmount(e.value, e.key), width));
   }
-  for (final e in outs.entries) {
-    lines.add(_row('Sorties', cashAmount(e.value, e.key), width));
+  for (final e in deposits.entries) {
+    lines.add(_row('Depots en banque', cashAmount(e.value, e.key), width));
   }
-  if (expenses.isEmpty && ins.isEmpty && outs.isEmpty) lines.add(_row('Aucun', '0', width));
+  for (final e in outs.entries) {
+    lines.add(_row('Autres sorties', cashAmount(e.value, e.key), width));
+  }
+  if (expenses.isEmpty && ins.isEmpty && outs.isEmpty && deposits.isEmpty) lines.add(_row('Aucun', '0', width));
 
   final expected = s.expected ?? s.expectedCash();
   lines

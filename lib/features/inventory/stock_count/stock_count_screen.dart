@@ -4,7 +4,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/enums/business_unit_enums.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
+import '../../business_unit/models/business_unit.dart';
+import '../../business_unit/repositories/business_unit_repository.dart';
 import '../bloc/inventory_bloc.dart';
 import '../bloc/inventory_event.dart';
 import '../models/product.dart';
@@ -31,6 +34,9 @@ class _StockCountScreenState extends State<StockCountScreen> {
   final _search = TextEditingController();
   StockCountDraft? _draft;
   List<Product> _products = const [];
+  /// Emplacements (unités d'affaires hors entreprise). Le choix n'est proposé
+  /// qu'à partir de deux.
+  List<BusinessUnit> _locations = const [];
   ProductCategory? _category;
   bool _onlyGaps = false;
   int _shown = _page;
@@ -46,6 +52,7 @@ class _StockCountScreenState extends State<StockCountScreen> {
       if (!mounted) return;
       setState(() => _draft = d ?? StockCountDraft.start());
     });
+    _loadLocations();
   }
 
   @override
@@ -92,10 +99,58 @@ class _StockCountScreenState extends State<StockCountScreen> {
       }
       if (_onlyGaps) {
         final c = _draft?.counts[p.id];
-        if (c == null || c == p.stockQuantity) return false;
+        if (c == null || c == _draft!.theoreticalOf(p)) return false;
       }
       return true;
     }).toList();
+  }
+
+  Future<void> _loadLocations() async {
+    try {
+      final units = await context.read<BusinessUnitRepository>().getAllLocalBusinessUnits();
+      if (!mounted) return;
+      setState(() {
+        _locations = units.where((u) => u.type != BusinessUnitType.company).toList()
+          ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      });
+    } catch (_) {
+      // Pas d'unités connues : inventaire global seulement.
+    }
+  }
+
+  /// Change l'emplacement compté (null = tous). Le théorique devient le stock
+  /// de l'emplacement, lu sur le serveur ; les comptages en cours repartent
+  /// de zéro (ils portaient sur un autre stock).
+  Future<void> _changeLocation(String? id) async {
+    final draft = _draft;
+    if (draft == null || id == draft.locationId) return;
+    if (draft.counts.isNotEmpty) {
+      final ok = await _confirm(
+        'Changer d\'emplacement',
+        'Les ${draft.counts.length} comptage(s) en cours seront effacés.',
+      );
+      if (!ok || !mounted) return;
+    }
+    var stock = const <String, double>{};
+    String? name;
+    if (id != null) {
+      name = _locations.where((u) => u.id == id).firstOrNull?.name;
+      setState(() => _busy = true);
+      try {
+        stock = await StockCountService.fetchLocationStock(id);
+      } catch (_) {
+        if (mounted) {
+          setState(() => _busy = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Stock de l\'emplacement indisponible hors connexion. Réessayez une fois connecté.')),
+          );
+        }
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _busy = false);
+    }
+    await _update(draft.forLocation(id, name, stock));
   }
 
   Future<void> _editCount(Product p) async {
@@ -113,7 +168,7 @@ class _StockCountScreenState extends State<StockCountScreen> {
           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
           decoration: InputDecoration(
             labelText: 'Quantité comptée',
-            helperText: 'Théorique : ${_qty.format(p.stockQuantity)}',
+            helperText: 'Théorique : ${_qty.format(_draft!.theoreticalOf(p))}',
           ),
           onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
@@ -139,7 +194,15 @@ class _StockCountScreenState extends State<StockCountScreen> {
   }
 
   Future<void> _validate() async {
-    final draft = _draft!;
+    var draft = _draft!;
+    // Emplacement : théorique relu au moment de valider (dernier connu hors ligne).
+    if (draft.locationId != null) {
+      try {
+        draft = draft.withLocationStock(await StockCountService.fetchLocationStock(draft.locationId!));
+        await _update(draft);
+      } catch (_) {}
+      if (!mounted) return;
+    }
     final gaps = stockCountGaps(_products, draft);
     if (gaps.isEmpty) {
       final ok = await _confirm(
@@ -164,16 +227,13 @@ class _StockCountScreenState extends State<StockCountScreen> {
     final result = await StockCountService.apply(_repo, draft, gaps);
     if (!mounted) return;
     // Seuls les articles refusés restent dans le brouillon.
-    final remaining = StockCountDraft(
-      reference: draft.reference,
-      startedAt: draft.startedAt,
-      counts: {for (final id in result.refused.keys) id: draft.counts[id]!},
-    );
+    final remaining = draft.onlyCounts(result.refused.keys);
     if (remaining.counts.isEmpty) {
       await _service.clear();
     } else {
       await _service.save(remaining);
     }
+    if (!mounted) return;
     setState(() {
       _busy = false;
       _draft = remaining.counts.isEmpty ? StockCountDraft.start() : remaining;
@@ -260,6 +320,28 @@ class _StockCountScreenState extends State<StockCountScreen> {
                           }
                         },
                       ),
+                      if (_locations.length >= 2) ...[
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String?>(
+                          value: _locations.any((u) => u.id == draft.locationId) ? draft.locationId : null,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Emplacement',
+                            helperText: 'Tous : stock de l\'article. Un emplacement : son stock seul.',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          items: [
+                            const DropdownMenuItem<String?>(value: null, child: Text('Tous')),
+                            for (final u in _locations)
+                              DropdownMenuItem<String?>(
+                                value: u.id,
+                                child: Text(u.name, overflow: TextOverflow.ellipsis),
+                              ),
+                          ],
+                          onChanged: _busy ? null : _changeLocation,
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       Row(
                         children: [
@@ -315,11 +397,12 @@ class _StockCountScreenState extends State<StockCountScreen> {
                             }
                             final p = visible[i];
                             final counted = draft.counts[p.id];
-                            final diff = counted == null ? null : counted - p.stockQuantity;
+                            final theoretical = draft.theoreticalOf(p);
+                            final diff = counted == null ? null : counted - theoretical;
                             return ListTile(
                               title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                               subtitle: Text(
-                                'Théorique ${_qty.format(p.stockQuantity)}'
+                                'Théorique ${_qty.format(theoretical)}'
                                 '${diff == null ? '' : ' · écart ${diff > 0 ? '+' : ''}${_qty.format(diff)}'}',
                                 style: TextStyle(
                                   color: diff == null || diff == 0

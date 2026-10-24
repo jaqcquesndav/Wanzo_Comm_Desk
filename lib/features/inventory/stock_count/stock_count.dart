@@ -5,6 +5,7 @@ import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/services/api_client.dart';
 import '../models/product.dart';
 import '../models/stock_transaction.dart';
 import '../repositories/inventory_repository.dart';
@@ -14,6 +15,12 @@ import '../repositories/inventory_repository.dart';
 /// mouvement par article en écart, référence commune `INV-...`).
 
 /// Brouillon de comptage, repris tel quel après fermeture de l'app.
+///
+/// Inventaire par emplacement (facultatif) : avec [locationId], le théorique
+/// de chaque article est son stock DANS cet emplacement ([locationStock],
+/// dernière valeur connue du serveur, gardée pour compter hors ligne) et les
+/// ajustements portent ce `locationId`. Sans emplacement (« Tous »), le
+/// théorique est le stock de l'article, comme avant.
 @immutable
 class StockCountDraft {
   final String reference;
@@ -22,10 +29,20 @@ class StockCountDraft {
   /// Quantités comptées par article (absent = pas encore compté).
   final Map<String, double> counts;
 
+  /// Emplacement compté (unité d'affaires), null = tous.
+  final String? locationId;
+  final String? locationName;
+
+  /// Stock par article dans l'emplacement (absent = 0).
+  final Map<String, double> locationStock;
+
   const StockCountDraft({
     required this.reference,
     required this.startedAt,
     this.counts = const {},
+    this.locationId,
+    this.locationName,
+    this.locationStock = const {},
   });
 
   factory StockCountDraft.start([DateTime? now]) {
@@ -36,6 +53,28 @@ class StockCountDraft {
     );
   }
 
+  /// Nouveau comptage limité à un emplacement (null = tous).
+  StockCountDraft forLocation(String? id, String? name, Map<String, double> stock) => StockCountDraft(
+    reference: reference,
+    startedAt: startedAt,
+    locationId: id,
+    locationName: id == null ? null : name,
+    locationStock: id == null ? const {} : Map.unmodifiable(stock),
+  );
+
+  /// Stock de l'emplacement rafraîchi (mêmes comptages).
+  StockCountDraft withLocationStock(Map<String, double> stock) => StockCountDraft(
+    reference: reference,
+    startedAt: startedAt,
+    counts: counts,
+    locationId: locationId,
+    locationName: locationName,
+    locationStock: Map.unmodifiable(stock),
+  );
+
+  /// Théorique d'un article pour ce comptage.
+  double theoreticalOf(Product p) => locationId == null ? p.stockQuantity : (locationStock[p.id] ?? 0);
+
   StockCountDraft withCount(String productId, double? qty) {
     final next = Map<String, double>.from(counts);
     if (qty == null) {
@@ -43,8 +82,25 @@ class StockCountDraft {
     } else {
       next[productId] = qty;
     }
-    return StockCountDraft(reference: reference, startedAt: startedAt, counts: next);
+    return StockCountDraft(
+      reference: reference,
+      startedAt: startedAt,
+      counts: next,
+      locationId: locationId,
+      locationName: locationName,
+      locationStock: locationStock,
+    );
   }
+
+  /// Ne garde que les comptages de [ids] (articles refusés à la validation).
+  StockCountDraft onlyCounts(Iterable<String> ids) => StockCountDraft(
+    reference: reference,
+    startedAt: startedAt,
+    counts: {for (final id in ids) if (counts[id] != null) id: counts[id]!},
+    locationId: locationId,
+    locationName: locationName,
+    locationStock: locationStock,
+  );
 
   /// +1 sur l'article (lecture d'un code-barres : un article lu = un compté).
   StockCountDraft increment(String productId, [double by = 1]) =>
@@ -54,15 +110,40 @@ class StockCountDraft {
     'reference': reference,
     'startedAt': startedAt.toIso8601String(),
     'counts': counts,
+    if (locationId != null) 'locationId': locationId,
+    if (locationName != null) 'locationName': locationName,
+    if (locationId != null) 'locationStock': locationStock,
   };
 
   factory StockCountDraft.fromJson(Map<String, dynamic> j) => StockCountDraft(
     reference: j['reference'] as String,
     startedAt: DateTime.parse(j['startedAt'] as String),
-    counts: (j['counts'] as Map? ?? const {}).map(
-      (k, v) => MapEntry(k.toString(), (v as num).toDouble()),
-    ),
+    counts: _qtyMap(j['counts']),
+    locationId: j['locationId'] as String?,
+    locationName: j['locationName'] as String?,
+    locationStock: _qtyMap(j['locationStock']),
   );
+}
+
+Map<String, double> _qtyMap(dynamic raw) =>
+    (raw as Map? ?? const {}).map((k, v) => MapEntry(k.toString(), (v as num).toDouble()));
+
+/// Réponse de `stock-transactions/location-stock/:id` (enveloppée ou non) en
+/// stock par article.
+Map<String, double> parseLocationStock(dynamic response) {
+  dynamic body = response;
+  while (body is Map && body['items'] == null && body['data'] != null) {
+    body = body['data'];
+  }
+  final items = body is Map ? body['items'] : null;
+  if (items is! List) return const {};
+  return {
+    for (final it in items)
+      if (it is Map && it['productId'] != null)
+        it['productId'].toString(): (it['quantity'] is num)
+            ? (it['quantity'] as num).toDouble()
+            : double.tryParse('${it['quantity']}') ?? 0,
+  };
 }
 
 /// Écart d'un article : compté - théorique.
@@ -81,13 +162,13 @@ class StockCountGap {
 double _round(double v) => (v * 1000).roundToDouble() / 1000;
 
 /// Écarts non nuls des articles comptés (le théorique est le stock connu au
-/// moment de la validation).
+/// moment de la validation : celui de l'article, ou de l'emplacement compté).
 List<StockCountGap> stockCountGaps(Iterable<Product> products, StockCountDraft draft) {
   final out = <StockCountGap>[];
   for (final p in products) {
     final counted = draft.counts[p.id];
     if (counted == null) continue;
-    final gap = StockCountGap(p, p.stockQuantity, counted);
+    final gap = StockCountGap(p, draft.theoreticalOf(p), counted);
     if (gap.difference != 0) out.add(gap);
   }
   return out;
@@ -117,11 +198,15 @@ StockTransaction adjustmentForGap(StockCountGap gap, StockCountDraft draft, {Str
     date: DateTime.now(),
     referenceId: draft.reference,
     notes:
-        'Inventaire du $date (${draft.reference}) : compté ${_fmt(gap.counted)}, théorique ${_fmt(gap.theoretical)}',
+        'Inventaire du $date (${draft.reference})'
+        '${draft.locationName != null ? ', ${draft.locationName}' : ''}'
+        ' : compté ${_fmt(gap.counted)}, théorique ${_fmt(gap.theoretical)}',
     unitCostInCdf: gap.product.costPriceInCdf,
     totalValueInCdf: gap.valueInCdf,
     currencyCode: 'CDF',
     businessUnitId: gap.product.businessUnitId,
+    // Inventaire d'un emplacement : l'ajustement porte sur son stock.
+    locationId: draft.locationId,
   );
 }
 
@@ -159,6 +244,12 @@ class StockCountService {
   Future<void> save(StockCountDraft draft) async => (await _box()).put(_key, jsonEncode(draft.toJson()));
 
   Future<void> clear() async => (await _box()).delete(_key);
+
+  /// Stock de chaque article dans un emplacement (connexion requise ; le
+  /// brouillon garde la dernière valeur pour compter hors ligne).
+  static Future<Map<String, double>> fetchLocationStock(String locationId) async => parseLocationStock(
+    await ApiClient().get('stock-transactions/location-stock/$locationId', requiresAuth: true),
+  );
 
   /// Passe un ajustement par écart, article par article. Un refus du serveur
   /// (stock, droits) n'arrête pas les autres ; l'article refusé reste dans

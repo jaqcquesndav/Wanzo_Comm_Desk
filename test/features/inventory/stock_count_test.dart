@@ -89,4 +89,64 @@ void main() {
     expect(back.counts, {'a': 3.5});
     expect(back.reference, d.reference);
   });
+
+  group('inventaire par emplacement', () {
+    test('« Tous » par défaut : théorique = stock de l’article, sans locationId', () async {
+      final d = StockCountDraft.start().withCount('a', 8);
+      expect(d.locationId, isNull);
+      expect(d.theoreticalOf(products.first), 10);
+      final repo = _Repo();
+      await StockCountService.apply(repo, d, stockCountGaps(products, d));
+      expect(repo.sent.single.locationId, isNull);
+      expect(repo.sent.single.toApiPayload().containsKey('locationId'), isFalse);
+    });
+
+    test('théorique = stock DE l’emplacement (absent = 0)', () {
+      final stock = parseLocationStock({
+        'success': true,
+        'data': {
+          'businessUnitId': 'goma',
+          'name': 'Magasin Goma',
+          'items': [
+            {'productId': 'a', 'quantity': '4.00'},
+            {'productId': 'b', 'quantity': 5},
+          ],
+        },
+      });
+      expect(stock, {'a': 4.0, 'b': 5.0});
+      final d = StockCountDraft.start()
+          .forLocation('goma', 'Magasin Goma', stock)
+          .withCount('a', 3)
+          .withCount('b', 5)
+          .withCount('c', 1);
+      expect(d.theoreticalOf(products[2]), 0);
+      final gaps = stockCountGaps(products, d);
+      expect({for (final g in gaps) g.product.id: g.difference}, {'a': -1.0, 'c': 1.0});
+    });
+
+    test('ajustements validés avec le locationId de l’emplacement, brouillon conservé', () async {
+      final d = StockCountDraft.start(DateTime(2026, 10, 24, 9))
+          .forLocation('goma', 'Magasin Goma', {'a': 4})
+          .withCount('a', 3);
+      final back = StockCountDraft.fromJson(d.toJson());
+      expect(back.locationId, 'goma');
+      expect(back.locationStock, {'a': 4.0});
+      final repo = _Repo();
+      await StockCountService.apply(repo, back, stockCountGaps(products, back));
+      final t = repo.sent.single;
+      expect(t.quantity, -1);
+      expect(t.locationId, 'goma');
+      expect(t.toApiPayload()['locationId'], 'goma');
+      expect(t.notes, contains('Magasin Goma'));
+      expect(t.notes, contains('compté 3, théorique 4'));
+    });
+
+    test('changer d’emplacement repart d’un comptage vide, revenir à Tous efface le stock d’emplacement', () {
+      final d = StockCountDraft.start().withCount('a', 2).forLocation('goma', 'Goma', {'a': 1});
+      expect(d.counts, isEmpty);
+      final all = d.forLocation(null, null, {'a': 9});
+      expect(all.locationId, isNull);
+      expect(all.locationStock, isEmpty);
+    });
+  });
 }

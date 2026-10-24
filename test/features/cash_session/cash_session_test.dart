@@ -176,4 +176,80 @@ void main() {
     expect(sent.last.value['expected'], {'CDF': 10000.0});
     expect(zTicketLines(closed).join('\n'), contains('Ecart CDF'));
   });
+
+  group('dépôt en banque', () {
+    late List<Map<String, dynamic>> deposits;
+    late CashSessionService svc;
+
+    setUp(() {
+      deposits = [];
+      svc = CashSessionService(
+        store: store,
+        sender: (endpoint, body) async => sent.add(MapEntry(endpoint, body)),
+        depositSender: (body) async => deposits.add(body),
+      );
+    });
+
+    test('sortie comptabilisée : envoi idempotent (localId), théorique diminué', () async {
+      final s = await svc.open({'CDF': 100000});
+      final m = await svc.addBankDeposit(
+        amount: 60000,
+        currency: 'cdf',
+        accountId: 'b1',
+        accountName: 'EquityBCDC courant',
+        slipNumber: ' BV-12 ',
+      );
+      expect(m.kind, CashMovementKind.bankDeposit);
+      expect(m.amount, -60000);
+      expect(deposits.single, {
+        'localId': m.ref,
+        'sessionLocalId': s.localId,
+        'financialAccountId': 'b1',
+        'amount': 60000.0,
+        'currency': 'CDF',
+        'slipNumber': 'BV-12',
+        'depositedAt': deposits.single['depositedAt'],
+      });
+      expect(svc.current.value!.expectedCash()['CDF'], 40000);
+    });
+
+    test('hors CDF : taux exigé, jamais 1 par défaut', () async {
+      await svc.open({'USD': 100});
+      await expectLater(
+        svc.addBankDeposit(amount: 50, currency: 'USD', accountId: 'b2', accountName: 'USD'),
+        throwsArgumentError,
+      );
+      expect(deposits, isEmpty);
+      await svc.addBankDeposit(amount: 50, currency: 'USD', exchangeRate: 2800, accountId: 'b2', accountName: 'USD');
+      expect(deposits.single['exchangeRate'], 2800);
+    });
+
+    test('refus du serveur : rien n’est enregistré dans la caisse', () async {
+      final refused = CashSessionService(
+        store: store,
+        sender: (_, __) async {},
+        depositSender: (_) async => throw const CashDepositRefused('Compte financier introuvable'),
+      );
+      await refused.open({'CDF': 10000});
+      await expectLater(
+        refused.addBankDeposit(amount: 5000, currency: 'CDF', accountId: 'x', accountName: 'X'),
+        throwsA(isA<CashDepositRefused>()),
+      );
+      expect(refused.current.value!.movements, isEmpty);
+    });
+
+    test('rapport de clôture : dépôts en banque distincts des autres sorties', () async {
+      await svc.open({'CDF': 100000});
+      await svc.addBankDeposit(amount: 60000, currency: 'CDF', accountId: 'b1', accountName: 'Banque');
+      await svc.addManual(entry: false, amount: 5000, currency: 'CDF', reason: 'Avance');
+      final closed = await svc.close({'CDF': 35000});
+      expect(closed.expected, {'CDF': 35000.0});
+      final summary = sent.last.value['summary'] as Map;
+      expect(summary['bankDeposits'], {'CDF': -60000.0});
+      expect(summary['manualOut'], {'CDF': -5000.0});
+      final lines = zTicketLines(closed, width: 40);
+      expect(lines.any((l) => l.startsWith('Depots en banque') && l.endsWith(cashAmount(-60000, 'CDF'))), isTrue, reason: lines.join('\n'));
+      expect(lines.any((l) => l.startsWith('Autres sorties') && l.endsWith(cashAmount(-5000, 'CDF'))), isTrue);
+    });
+  });
 }

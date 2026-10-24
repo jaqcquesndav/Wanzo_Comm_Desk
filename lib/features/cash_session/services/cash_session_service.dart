@@ -106,6 +106,30 @@ Future<void> _defaultSender(String endpoint, Map<String, dynamic> body) async {
   }
 }
 
+/// Envoi d'un dépôt en banque (`cash-sessions/bank-deposits`). Mis en file
+/// hors ligne et rejoué ; un REFUS du serveur (compte inconnu, taux) lève
+/// [CashDepositRefused] pour que la saisie ne soit pas enregistrée à tort.
+typedef CashDepositSender = Future<void> Function(Map<String, dynamic> body);
+
+/// Dépôt refusé par le serveur : rien n'est enregistré dans la caisse.
+class CashDepositRefused implements Exception {
+  final String message;
+  const CashDepositRefused(this.message);
+
+  @override
+  String toString() => message;
+}
+
+Future<void> _defaultDepositSender(Map<String, dynamic> body) async {
+  try {
+    await ApiClient().post('cash-sessions/bank-deposits', body: body, requiresAuth: true);
+  } on OfflineQueuedException {
+    // En file : rejoué au retour du réseau (idempotent par localId).
+  } on ApiException catch (e) {
+    throw CashDepositRefused(e.message);
+  }
+}
+
 /// Ouverture, suivi et clôture de la caisse du jour, hors ligne d'abord.
 ///
 /// Une seule session ouverte à la fois sur l'appareil. Les ventes, règlements
@@ -116,15 +140,18 @@ class CashSessionService {
     CashSessionStore? store,
     CashSessionSender? sender,
     CashSessionFetcher? fetcher,
+    CashDepositSender? depositSender,
   }) : _store = store ?? HiveCashSessionStore(),
        _send = sender ?? _defaultSender,
-       _fetch = fetcher ?? _defaultFetcher;
+       _fetch = fetcher ?? _defaultFetcher,
+       _sendDeposit = depositSender ?? _defaultDepositSender;
 
   static CashSessionService instance = CashSessionService();
 
   final CashSessionStore _store;
   final CashSessionSender _send;
   final CashSessionFetcher _fetch;
+  final CashDepositSender _sendDeposit;
   final _uuid = const Uuid();
 
   /// Session ouverte (null si la caisse est fermée). Les écrans l'écoutent.
@@ -336,6 +363,60 @@ class CashSessionService {
         label: reason.trim(),
       ),
     );
+  }
+
+  /// Dépôt des espèces en banque : sortie de caisse COMPTABILISÉE. Le serveur
+  /// passe le virement interne caisse vers banque (585) par la voie comptable
+  /// de la gestion. [accountId] est un compte bancaire de l'entreprise
+  /// (Réglages, comptes financiers). Hors CDF, [exchangeRate] (1 devise = x
+  /// CDF) est exigé : jamais de taux 1 par défaut.
+  ///
+  /// Idempotent : un identifiant local accompagne l'envoi (mis en file hors
+  /// ligne et rejoué). Un refus du serveur lève [CashDepositRefused] et rien
+  /// n'est enregistré dans la caisse.
+  Future<CashMovement> addBankDeposit({
+    required double amount,
+    required String currency,
+    required String accountId,
+    required String accountName,
+    double? exchangeRate,
+    String? slipNumber,
+    DateTime? at,
+  }) async {
+    await load();
+    final s = current.value;
+    if (s == null) throw StateError('Aucune caisse ouverte');
+    if (amount <= 0) throw ArgumentError('Montant invalide');
+    if (accountId.trim().isEmpty) throw ArgumentError('Choisissez le compte bancaire');
+    final code = currency.toUpperCase();
+    if (code != 'CDF' && (exchangeRate == null || exchangeRate <= 1)) {
+      throw ArgumentError('Taux $code non défini : renseignez-le dans les paramètres de devise.');
+    }
+    final slip = slipNumber?.trim();
+    final localId = _uuid.v4();
+    final when = at ?? DateTime.now();
+    final value = cashRound(amount);
+    await _sendDeposit({
+      'localId': localId,
+      'sessionLocalId': s.localId,
+      'financialAccountId': accountId,
+      'amount': value,
+      'currency': code,
+      if (code != 'CDF') 'exchangeRate': exchangeRate,
+      if (slip != null && slip.isNotEmpty) 'slipNumber': slip,
+      'depositedAt': when.toUtc().toIso8601String(),
+    });
+    final movement = CashMovement(
+      at: when,
+      kind: CashMovementKind.bankDeposit,
+      method: 'cash',
+      currency: code,
+      amount: -value,
+      label: 'Dépôt en banque $accountName${slip != null && slip.isNotEmpty ? ' (bordereau $slip)' : ''}',
+      ref: localId,
+    );
+    await recordMovement(movement);
+    return movement;
   }
 
   /// Clôture : montant compté par devise, écart calculé, motif exigé si

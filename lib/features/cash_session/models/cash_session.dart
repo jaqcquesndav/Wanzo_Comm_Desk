@@ -19,11 +19,15 @@ enum CashMovementKind {
   /// Entrée manuelle (apport, fonds complémentaire).
   manualIn,
 
-  /// Sortie manuelle (retrait, dépôt en banque).
+  /// Sortie manuelle (retrait), simple trace.
   manualOut,
 
   /// Contre-passation d'une vente annulée ou supprimée.
   saleReversal,
+
+  /// Dépôt des espèces en banque : sortie de caisse COMPTABILISÉE (virement
+  /// interne caisse vers banque envoyé au serveur, `cash-sessions/bank-deposits`).
+  bankDeposit,
 }
 
 extension CashMovementKindLabel on CashMovementKind {
@@ -41,6 +45,8 @@ extension CashMovementKindLabel on CashMovementKind {
         return 'Sortie de caisse';
       case CashMovementKind.saleReversal:
         return 'Vente annulée';
+      case CashMovementKind.bankDeposit:
+        return 'Dépôt en banque';
     }
   }
 }
@@ -104,6 +110,7 @@ class CashMovement {
   bool get isCash =>
       kind == CashMovementKind.manualIn ||
       kind == CashMovementKind.manualOut ||
+      kind == CashMovementKind.bankDeposit ||
       cashMethodGroupOf(method) == CashMethodGroup.cash;
 
   Map<String, dynamic> toJson() => {
@@ -245,6 +252,7 @@ class CashSession {
     'expensesCash': totalOf(CashMovementKind.expense, cashOnly: true),
     'manualIn': totalOf(CashMovementKind.manualIn),
     'manualOut': totalOf(CashMovementKind.manualOut),
+    'bankDeposits': totalOf(CashMovementKind.bankDeposit),
     'movementsCount': movements.length,
   };
 
