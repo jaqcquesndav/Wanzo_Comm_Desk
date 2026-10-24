@@ -10,6 +10,7 @@ import '../repositories/expense_repository.dart';
 import '../../../core/models/operation_payment.dart';
 import '../../dashboard/models/operation_journal_entry.dart';
 import '../../dashboard/bloc/operation_journal_bloc.dart';
+import 'package:wanzo/features/cash_session/cash_session_hooks.dart';
 
 part 'expense_event.dart';
 part 'expense_state.dart';
@@ -153,6 +154,7 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
         event.expense,
         imageFiles: event.imageFiles,
       );
+      await CashSessionHooks.onExpense(newExpense);
       if (event.saved != null && !event.saved!.isCompleted) {
         event.saved!.complete(newExpense);
       }
@@ -324,6 +326,7 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
         event.expense,
         event.payment,
       );
+      await CashSessionHooks.onExpensePayment(event.expense, event.payment);
 
       // Décaissement au journal : seule la tranche réellement payée impacte la
       // trésorerie (la charge a déjà été enregistrée à la création).

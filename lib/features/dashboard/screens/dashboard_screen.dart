@@ -1098,6 +1098,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
             const SizedBox(height: 4), // Espace réduit
+            // Période et vue en vigueur : ce que l'export reprendra.
+            BlocBuilder<OperationJournalBloc, OperationJournalState>(
+              buildWhen: (_, s) => s is OperationJournalLoaded,
+              builder: (context, journalState) {
+                if (journalState is! OperationJournalLoaded) {
+                  return const SizedBox.shrink();
+                }
+                final view = journalState.activeFilter?.view ?? JournalView.all;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '${view.label} · ${dateFormat.format(journalState.startDate)} au ${dateFormat.format(journalState.endDate)}'
+                    ' · ${journalState.operations.length} opération(s)',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                );
+              },
+            ),
             BlocBuilder<OperationJournalBloc, OperationJournalState>(
               builder: (context, journalState) {
                 if (journalState is OperationJournalLoading) {
@@ -1413,52 +1433,78 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Affiche les filtres rapides pour le journal des opérations
   void _showQuickFilters(BuildContext context, AppLocalizations l10n) {
+    final current = context.read<OperationJournalBloc>().currentFilter;
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       builder:
-          (context) => Container(
-            padding: const EdgeInsets.all(WanzoSpacing.lg),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Filtres Rapides',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: WanzoSpacing.md),
-
-                // Filtres par type d'opération
-                Wrap(
-                  spacing: WanzoSpacing.sm,
-                  runSpacing: WanzoSpacing.sm,
-                  children: [
-                    _buildQuickFilterChip(context, 'Toutes', () {
-                      _applyQuickFilter(context, JournalFilter.defaultFilter());
-                      Navigator.pop(context);
-                    }),
-                    _buildQuickFilterChip(context, ModeVocabulary.current.sales, () {
-                      _applyQuickFilter(context, JournalFilter.salesOnly());
-                      Navigator.pop(context);
-                    }),
-                    _buildQuickFilterChip(context, ModeVocabulary.current.stock, () {
-                      _applyQuickFilter(context, JournalFilter.stockOnly());
-                      Navigator.pop(context);
-                    }),
-                    _buildQuickFilterChip(context, 'Dépenses', () {
-                      _applyQuickFilter(context, JournalFilter.expensesOnly());
-                      Navigator.pop(context);
-                    }),
-                    _buildQuickFilterChip(context, 'Dettes', () {
-                      _applyQuickFilter(context, JournalFilter.customerDebts());
-                      Navigator.pop(context);
-                    }),
-                  ],
-                ),
-
-              ],
+          (sheetContext) => SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(WanzoSpacing.lg),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Vue',
+                    style: Theme.of(sheetContext).textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: WanzoSpacing.sm),
+                  // Tout, Caisse (espèces) ou Comptabilité : la période
+                  // affichée est conservée, l'export suit.
+                  Wrap(
+                    spacing: WanzoSpacing.sm,
+                    runSpacing: WanzoSpacing.sm,
+                    children: [
+                      for (final view in JournalView.values)
+                        ChoiceChip(
+                          label: Text(view.label),
+                          tooltip: view.hint,
+                          selected:
+                              current.view == view &&
+                              current.selectedTypes.isEmpty,
+                          onSelected: (_) {
+                            _applyQuickFilter(
+                              context,
+                              JournalFilter.forView(view),
+                            );
+                            Navigator.pop(sheetContext);
+                          },
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: WanzoSpacing.md),
+                  Text(
+                    'Type',
+                    style: Theme.of(sheetContext).textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: WanzoSpacing.sm),
+                  Wrap(
+                    spacing: WanzoSpacing.sm,
+                    runSpacing: WanzoSpacing.sm,
+                    children: [
+                      _buildQuickFilterChip(context, ModeVocabulary.current.sales, () {
+                        _applyQuickFilter(context, JournalFilter.salesOnly());
+                        Navigator.pop(sheetContext);
+                      }),
+                      _buildQuickFilterChip(context, ModeVocabulary.current.stock, () {
+                        _applyQuickFilter(context, JournalFilter.stockOnly());
+                        Navigator.pop(sheetContext);
+                      }),
+                      _buildQuickFilterChip(context, 'Dépenses', () {
+                        _applyQuickFilter(context, JournalFilter.expensesOnly());
+                        Navigator.pop(sheetContext);
+                      }),
+                      _buildQuickFilterChip(context, 'Dettes', () {
+                        _applyQuickFilter(context, JournalFilter.customerDebts());
+                        Navigator.pop(sheetContext);
+                      }),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
     );

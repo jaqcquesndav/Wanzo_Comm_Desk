@@ -665,6 +665,7 @@ class JournalExportService {
   /// Détermine le titre du rapport selon le filtre actif
   /// Produit un rapport spécifique quand un filtre de catégorie est appliqué
   static String _getReportTitle(JournalFilter filter) {
+    if (filter.view != JournalView.all) return filter.view.exportTitle.toUpperCase();
     if (filter.selectedTypes.isEmpty ||
         filter.selectedTypes.length == OperationType.values.length) {
       return 'JOURNAL DES OPERATIONS';

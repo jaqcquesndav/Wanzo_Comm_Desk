@@ -598,11 +598,14 @@ class MockOperationJournalRepository extends _i1.Mock
 
   @override
   _i5.Future<Map<String, Map<String, double>>> getOpeningBalancesByType(
-          DateTime? forDate) =>
+    DateTime? forDate, {
+    bool Function(_i14.OperationJournalEntry)? where,
+  }) =>
       (super.noSuchMethod(
         Invocation.method(
           #getOpeningBalancesByType,
           [forDate],
+          {#where: where},
         ),
         returnValue: _i5.Future<Map<String, Map<String, double>>>.value(
             <String, Map<String, double>>{}),

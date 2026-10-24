@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:wanzo/core/enums/currency_enum.dart'; // Corrected: Currency is the enum name
@@ -44,6 +45,7 @@ import '../../proforma/widgets/proforma_sheet.dart';
 import 'package:wanzo/features/services/cubit/services_cubit.dart';
 import 'package:wanzo/features/services/models/service_item.dart';
 import 'package:wanzo/features/services/widgets/service_search_results.dart';
+import 'package:wanzo/features/cash_session/services/cash_session_service.dart';
 
 /// Types de postes pour les devis/factures (UI uniquement, stocké dans notes)
 enum QuoteItemCategory {
@@ -706,10 +708,25 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             BlocListener<SalesBloc, SalesState>(
               listener: (context, state) {
                 if (state is SalesOperationSuccess) {
+                  // Vente sans caisse ouverte : invitation, sans blocage.
+                  final caisseFermee =
+                      CashSessionService.instance.current.value == null;
+                  final router = GoRouter.of(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(state.message),
+                      content: Text(
+                        caisseFermee
+                            ? '${state.message}. Aucune caisse ouverte : ouvrez-la pour suivre les espèces du jour.'
+                            : state.message,
+                      ),
                       backgroundColor: Colors.green,
+                      action: caisseFermee
+                          ? SnackBarAction(
+                              label: 'Ouvrir',
+                              textColor: Colors.white,
+                              onPressed: () => router.push('/cash-session'),
+                            )
+                          : null,
                     ),
                   );
                   if (state.saleId != null) {

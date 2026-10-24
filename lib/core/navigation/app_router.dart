@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:wanzo/features/sales/repositories/sales_repository.dart';
+import 'package:wanzo/features/cash_session/screens/cash_session_screen.dart';
+import 'package:wanzo/features/inventory/stock_count/stock_count_screen.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/auth/bloc/auth_bloc.dart';
 import '../../features/auth/screens/splash_screen.dart';
@@ -401,6 +403,11 @@ class AppRouter {
         pageBuilder: (context, state) =>
             _noAnim(state, const InventoryScreen()),
         routes: [
+          // Inventaire physique (comptage, écarts, ajustements).
+          GoRoute(
+            path: 'count',
+            builder: (context, state) => const StockCountScreen(),
+          ),
           GoRoute(
             path: 'add',
             pageBuilder: (context, state) =>
@@ -463,6 +470,12 @@ class AppRouter {
       GoRoute(
         path: '/adha',
         pageBuilder: (context, state) => _noAnim(state, const AdhaScreen()),
+      ),
+      // Caisse : ouverture, clôture quotidienne et rapports.
+      GoRoute(
+        path: '/cash-session',
+        pageBuilder: (context, state) =>
+            _noAnim(state, const CashSessionScreen()),
       ),
       // Créances clients (dette / recouvrement) — table desktop des débiteurs.
       GoRoute(

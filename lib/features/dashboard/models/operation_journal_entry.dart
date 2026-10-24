@@ -295,6 +295,11 @@ class OperationJournalEntry {
   @HiveField(28)
   final BusinessUnitType? businessUnitType; // Type: company, branch, pos
 
+  /// Identifiant hors ligne (localId) de la pièce source, publié par le
+  /// serveur : écarte la ligne locale de la même pièce une fois synchronisée.
+  @HiveField(29)
+  final String? sourceLocalId;
+
   const OperationJournalEntry({
     required this.id,
     required this.date,
@@ -325,6 +330,7 @@ class OperationJournalEntry {
     this.businessUnitId,
     this.businessUnitCode,
     this.businessUnitType,
+    this.sourceLocalId,
   });
   Map<String, dynamic> toJson() {
     return {
@@ -360,6 +366,7 @@ class OperationJournalEntry {
       if (businessUnitId != null) 'businessUnitId': businessUnitId,
       if (businessUnitCode != null) 'businessUnitCode': businessUnitCode,
       if (businessUnitType != null) 'businessUnitType': businessUnitType?.name,
+      if (sourceLocalId != null) 'sourceLocalId': sourceLocalId,
     };
   }
 
@@ -375,7 +382,7 @@ class OperationJournalEntry {
 
     return OperationJournalEntry(
       id: json['id'] as String,
-      date: DateTime.parse(json['date'] as String),
+      date: DateTime.parse(json['date'] as String).toLocal(),
       description: json['description'] as String,
       type: OperationType.fromJson(
         json['type'] as String,
@@ -439,6 +446,7 @@ class OperationJournalEntry {
                 orElse: () => BusinessUnitType.company,
               )
               : null,
+      sourceLocalId: json['sourceLocalId'] as String?,
     );
   }
   OperationJournalEntry copyWith({
@@ -471,6 +479,7 @@ class OperationJournalEntry {
     String? businessUnitId,
     String? businessUnitCode,
     BusinessUnitType? businessUnitType,
+    String? sourceLocalId,
   }) {
     return OperationJournalEntry(
       id: id ?? this.id,
@@ -505,6 +514,7 @@ class OperationJournalEntry {
       businessUnitId: businessUnitId ?? this.businessUnitId,
       businessUnitCode: businessUnitCode ?? this.businessUnitCode,
       businessUnitType: businessUnitType ?? this.businessUnitType,
+      sourceLocalId: sourceLocalId ?? this.sourceLocalId,
     );
   }
 

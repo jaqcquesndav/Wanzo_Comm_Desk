@@ -459,6 +459,52 @@ class ReceiptPrinterService {
     }
   }
 
+  // ── Ticket texte (rapport de clôture de caisse, etc.) ────────────────────
+
+  /// Largeur d'une ligne de ticket, en caractères.
+  static int get ticketWidth => _colWidth;
+
+  /// Deux colonnes alignées sur la largeur du ticket.
+  String ticketRow(String left, String right) => _rowText(left, right);
+
+  /// Imprime un ticket TEXTE sur l'imprimante configurée. [pdf] fournit la
+  /// même page en PDF pour les pilotes image (image) ou système. Renvoie
+  /// false sans imprimante configurée : l'appelant propose alors le PDF.
+  Future<bool> printPlainTicket(
+    List<String> lines, {
+    required pw.Document Function(PdfPageFormat format) pdf,
+  }) async {
+    final printer = await getSavedPrinter();
+    if (printer == null) return false;
+    final bytes = <int>[
+      ..._escReset(),
+      for (final line in lines) ..._escLine(line),
+      ..._escFeed(3),
+      ..._escCut(),
+    ];
+    try {
+      switch (printer.type) {
+        case ThermalConnectionType.bluetooth:
+          return await _printBluetooth(printer, bytes);
+        case ThermalConnectionType.network:
+          return await _printNetwork(printer, bytes);
+        case ThermalConnectionType.usb:
+          return false;
+        case ThermalConnectionType.epos:
+        case ThermalConnectionType.system:
+          final doc = await pdf(PdfPageFormat.roll80).save();
+          return await Printing.layoutPdf(
+            name: 'Ticket',
+            format: PdfPageFormat.roll80,
+            onLayout: (_) async => doc,
+          );
+      }
+    } catch (e) {
+      debugPrint('[ReceiptPrinter] Ticket texte : $e');
+      return false;
+    }
+  }
+
   // ── Epson ePOS-Print (XML sur HTTP) ───────────────────────────────────────
 
   /// Imprime via le protocole Epson ePOS-Print (XML sur HTTP) — imprimantes

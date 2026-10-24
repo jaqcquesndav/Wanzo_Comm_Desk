@@ -12,6 +12,7 @@ import '../../dashboard/repositories/operation_journal_repository.dart'; // Pour
 import '../../inventory/repositories/inventory_repository.dart'; // Ajout pour la gestion du stock
 import '../../inventory/models/stock_transaction.dart'; // Ajout pour les transactions de stock
 import 'package:uuid/uuid.dart';
+import 'package:wanzo/features/cash_session/cash_session_hooks.dart';
 
 part 'sales_event.dart';
 part 'sales_state.dart';
@@ -59,6 +60,7 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
         event.sale,
         event.payment,
       );
+      await CashSessionHooks.onSalePayment(event.sale, event.payment);
 
       // Encaissement au journal des opérations : seule la tranche réellement
       // encaissée impacte la trésorerie (le chiffre d'affaires a déjà été
@@ -192,6 +194,8 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
     try {
       // 1. D'abord, enregistrer la vente
       final Sale savedSale = await _salesRepository.addSale(event.sale);
+      // Caisse ouverte : la vente y est rattachée (rien si elle est fermée).
+      await CashSessionHooks.onSale(savedSale);
 
       // 2. Préparer les entrées du journal d'opérations
       final List<OperationJournalEntry> journalEntries = [];
@@ -254,6 +258,12 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
                 'Encaissement - Vente #${savedSale.id.substring(0, 6)}',
             type: OperationType.cashIn,
             amount: savedSale.paidAmountInCdf, // Montant encaissé UNIQUEMENT
+            // Moyen de la vente : la vue Caisse du journal ne retient que les
+            // espèces. L'acompte d'une vente à crédit est compté en espèces.
+            paymentMethod:
+                saleType == OperationType.saleCash
+                    ? savedSale.paymentMethod
+                    : null,
             relatedDocumentId: savedSale.id,
             currencyCode: 'CDF', // montant en CDF : la devise doit suivre
             isDebit: true, // Caisse = actif donc débit pour augmentation

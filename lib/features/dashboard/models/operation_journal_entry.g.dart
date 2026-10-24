@@ -46,13 +46,14 @@ class OperationJournalEntryAdapter extends TypeAdapter<OperationJournalEntry> {
       businessUnitId: fields[26] as String?,
       businessUnitCode: fields[27] as String?,
       businessUnitType: fields[28] as BusinessUnitType?,
+      sourceLocalId: fields[29] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, OperationJournalEntry obj) {
     writer
-      ..writeByte(29)
+      ..writeByte(30)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -110,7 +111,9 @@ class OperationJournalEntryAdapter extends TypeAdapter<OperationJournalEntry> {
       ..writeByte(27)
       ..write(obj.businessUnitCode)
       ..writeByte(28)
-      ..write(obj.businessUnitType);
+      ..write(obj.businessUnitType)
+      ..writeByte(29)
+      ..write(obj.sourceLocalId);
   }
 
   @override

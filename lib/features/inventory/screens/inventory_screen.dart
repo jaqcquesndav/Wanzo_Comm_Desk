@@ -212,6 +212,11 @@ class _InventoryScreenState extends State<InventoryScreen>
                           onPressed: () => telechargerModeleImport(context),
                           child: const Text('Modèle à remplir'),
                         ),
+                        TextButton.icon(
+                          onPressed: () => context.push('/inventory/count'),
+                          icon: const Icon(Icons.fact_check_outlined, size: 18),
+                          label: const Text('Inventaire'),
+                        ),
                       ],
                     ],
                   ),

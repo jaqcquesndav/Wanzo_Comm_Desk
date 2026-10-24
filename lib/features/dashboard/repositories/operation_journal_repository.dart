@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../models/operation_journal_entry.dart';
+import '../models/journal_filter.dart';
 import '../../../core/services/api_service.dart'; // Import ApiService
 import '../../../core/utils/connectivity_service.dart'; // Import ConnectivityService
 
@@ -212,143 +213,66 @@ class OperationJournalRepository {
     return _entriesBox!;
   }
 
+  /// Lignes du journal de la période [startDate]..[endDate] (bornes
+  /// comprises), rapprochées : une pièce déjà publiée par le serveur ne garde
+  /// pas sa ligne locale. En ligne, la période est relue sur le serveur (bornes
+  /// envoyées en UTC : une vente à 23:30 à Goma reste dans son jour) ; hors
+  /// ligne, le cache local fait foi.
   Future<List<OperationJournalEntry>> getOperations(
     DateTime startDate,
     DateTime endDate,
   ) async {
+    bool inRange(OperationJournalEntry e) =>
+        !e.date.isBefore(startDate) && !e.date.isAfter(endDate);
+
+    Box<OperationJournalEntry> box;
     try {
-      final box = await _getBox();
-
-      debugPrint("📖 getOperations called for range: $startDate to $endDate");
-      debugPrint("💾 Total entries in Hive box: ${box.length}");
-
-      if (box.isNotEmpty) {
-        final allDates = box.values.map((e) => e.date).toList()..sort();
-        debugPrint(
-          '📅 Date range in box: ${allDates.first} to ${allDates.last}',
-        );
-      }
-
-      // Récupérer les données locales comme fallback
-      final localEntries =
-          box.values.where((entry) {
-              final matches =
-                  entry.date.isAfter(
-                    startDate.subtract(const Duration(days: 1)),
-                  ) &&
-                  entry.date.isBefore(endDate.add(const Duration(days: 1)));
-              return matches;
-            }).toList()
-            ..sort((a, b) => b.date.compareTo(a.date));
-
-      debugPrint("📊 Filtered local entries count: ${localEntries.length}");
-
-      // TOUJOURS essayer de récupérer les données du backend si disponible
-      // Même si _isOfflineMode est true, on tente quand même (offline first, mais sync quand possible)
-      try {
-        // Toutes les pages de la période : le backend pagine à 10 éléments
-        // par défaut, le journal ne montrait que les 10 dernières opérations.
-        // Rien n'est écrit en local avant la fin de la pagination.
-        final operationsList = await fetchAllJournalPages(
-          (query) => _apiService
-              .get('journal/operations', queryParams: query)
-              .timeout(
-                // 15s (au lieu de 5s) : le journal est RECONSTRUIT côté backend
-                // (ventes/dépenses/stock) ; un timeout trop court faisait
-                // retomber sur le cache local, vide sur un nouvel appareil.
-                const Duration(seconds: 15),
-                onTimeout: () {
-                  debugPrint(
-                    '⏱️ Timeout lors de la récupération des opérations du backend',
-                  );
-                  return <String, dynamic>{};
-                },
-              ),
-          {
-            'dateFrom': startDate.toIso8601String(),
-            'dateTo': endDate.toIso8601String(),
-          },
-        );
-
-        if (operationsList != null && operationsList.isNotEmpty) {
-          debugPrint(
-            '✅ Données du backend récupérées: ${operationsList.length} opérations',
-          );
-          final apiEntries =
-              operationsList
-                  .map(
-                    (item) => OperationJournalEntry.fromJson(
-                      item as Map<String, dynamic>,
-                    ),
-                  )
-                  .toList();
-
-          // Fusionner les entrées (backend d'abord, puis locales non synchronisées)
-          final mergedEntries = <OperationJournalEntry>[];
-          final seenIds = <String>{};
-
-          // Ajouter et synchroniser les entrées du backend
-          for (final entry in apiEntries) {
-            mergedEntries.add(entry);
-            seenIds.add(entry.id);
-
-            // Mettre à jour Hive avec les données du backend
-            await box.put(entry.id, entry);
-          }
-
-          // Forcer la persistance des données synchronisées
-          try {
-            await box.flush();
-            debugPrint(
-              '💾 ${apiEntries.length} opérations du backend persistées dans Hive',
-            );
-          } catch (e) {
-            debugPrint('⚠️ Erreur lors du flush après sync backend: $e');
-          }
-
-          // Ajouter les entrées locales non encore synchronisées
-          for (final entry in localEntries) {
-            if (!seenIds.contains(entry.id)) {
-              mergedEntries.add(entry);
-              debugPrint(
-                '📤 Entrée locale non synchronisée trouvée: ${entry.id}',
-              );
-            }
-          }
-
-          mergedEntries.sort((a, b) => b.date.compareTo(a.date));
-          debugPrint(
-            '🔄 Total après fusion: ${mergedEntries.length} entrées (${apiEntries.length} du backend, ${mergedEntries.length - apiEntries.length} locales)',
-          );
-          return mergedEntries;
-        }
-      } catch (e) {
-        debugPrint('⚠️ Impossible de récupérer les données du backend: $e');
-        debugPrint('📱 Utilisation des données locales');
-      }
-
-      // Si le backend n'est pas accessible, utiliser les données locales
-      return localEntries;
+      box = await _getBox();
     } catch (e) {
-      debugPrint("❌ Error fetching operations: $e");
-      // En cas d'erreur, essayer d'utiliser les données locales
-      try {
-        final box = await _getBox();
-        return box.values
-            .where(
-              (entry) =>
-                  entry.date.isAfter(
-                    startDate.subtract(const Duration(days: 1)),
-                  ) &&
-                  entry.date.isBefore(endDate.add(const Duration(days: 1))),
-            )
-            .toList()
-          ..sort((a, b) => b.date.compareTo(a.date));
-      } catch (e2) {
-        debugPrint("❌ Critical error fetching operations: $e2");
-        return [];
-      }
+      debugPrint("❌ Journal : cache local illisible ($e)");
+      return [];
     }
+
+    try {
+      // Toutes les pages de la période : le backend pagine à 10 éléments
+      // par défaut. Rien n'est écrit en local avant la fin de la pagination.
+      final operationsList = await fetchAllJournalPages(
+        (query) => _apiService
+            .get('journal/operations', queryParams: query)
+            .timeout(
+              // Le journal est RECONSTRUIT côté backend : un délai trop court
+              // faisait retomber sur le cache local, vide sur un nouvel appareil.
+              const Duration(seconds: 15),
+              onTimeout: () => <String, dynamic>{},
+            ),
+        {
+          'dateFrom': startDate.toUtc().toIso8601String(),
+          'dateTo': endDate.toUtc().toIso8601String(),
+        },
+      );
+
+      if (operationsList != null && operationsList.isNotEmpty) {
+        for (final item in operationsList) {
+          try {
+            final entry = OperationJournalEntry.fromJson(
+              Map<String, dynamic>.from(item as Map),
+            );
+            await box.put(entry.id, entry);
+          } catch (e) {
+            debugPrint('⚠️ Ligne de journal illisible : $e');
+          }
+        }
+        try {
+          await box.flush();
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('📱 Journal hors ligne, cache local utilisé ($e)');
+    }
+
+    final entries = reconcileJournalEntries(box.values.where(inRange))
+      ..sort((a, b) => b.date.compareTo(a.date));
+    return entries;
   }
 
   Future<Map<String, double>> getOpeningBalances(DateTime forDate) async {
@@ -419,98 +343,43 @@ class OperationJournalRepository {
     }
   }
 
-  /// Calcule les soldes d'ouverture par TYPE (caisse, ventes, stock)
+  /// Soldes d'ouverture par TYPE (caisse, ventes, stock) et par devise au
+  /// début de [forDate] : cumul des lignes CONNUES antérieures (rapprochées,
+  /// sans double compte) qui satisfont [where] (la vue et les critères du
+  /// journal : le solde d'ouverture de la vue Caisse ne compte que les
+  /// espèces).
   Future<Map<String, Map<String, double>>> getOpeningBalancesByType(
-    DateTime forDate,
-  ) async {
+    DateTime forDate, {
+    bool Function(OperationJournalEntry entry)? where,
+  }) async {
+    final balances = {
+      'cash': <String, double>{'CDF': 0.0, 'USD': 0.0},
+      'sales': <String, double>{'CDF': 0.0, 'USD': 0.0},
+      'stock': <String, double>{'CDF': 0.0, 'USD': 0.0},
+    };
     try {
       final box = await _getBox();
-      final previousEntries =
-          box.values.where((e) => e.date.isBefore(forDate)).toList()
-            ..sort((a, b) => b.date.compareTo(a.date));
-
-      // Structure: { 'cash': {'CDF': 1000, 'USD': 50}, 'sales': {...}, 'stock': {...} }
-      final balances = {
-        'cash': <String, double>{'CDF': 0.0, 'USD': 0.0},
-        'sales': <String, double>{'CDF': 0.0, 'USD': 0.0},
-        'stock': <String, double>{'CDF': 0.0, 'USD': 0.0},
-      };
-
-      if (previousEntries.isEmpty) return balances;
-
-      // Trouver les dernières entrées par type
-      OperationJournalEntry? lastCashEntry;
-      OperationJournalEntry? lastSalesEntry;
-      OperationJournalEntry? lastStockEntry;
-
-      for (final entry in previousEntries) {
-        if (entry.type.impactsCash && lastCashEntry == null) {
-          lastCashEntry = entry;
-        }
-        if (entry.type.isSalesOperation && lastSalesEntry == null) {
-          lastSalesEntry = entry;
-        }
-        if (entry.type.impactsStock && lastStockEntry == null) {
-          lastStockEntry = entry;
-        }
-        if (lastCashEntry != null &&
-            lastSalesEntry != null &&
-            lastStockEntry != null) {
-          break;
-        }
+      final previous = reconcileJournalEntries(
+        box.values.where((e) => e.date.isBefore(forDate)),
+      );
+      for (final e in previous) {
+        if (where != null && !where(e)) continue;
+        final bucket =
+            e.type.impactsCash
+                ? 'cash'
+                : e.type.isSalesOperation
+                ? 'sales'
+                : e.type.impactsStock
+                ? 'stock'
+                : null;
+        if (bucket == null) continue;
+        final code = e.currencyCode ?? 'CDF';
+        balances[bucket]![code] = (balances[bucket]![code] ?? 0.0) + e.amount;
       }
-
-      // Extraire les soldes des dernières entrées
-      if (lastCashEntry != null) {
-        balances['cash'] =
-            lastCashEntry.cashBalancesByCurrency != null
-                ? Map<String, double>.from(
-                  lastCashEntry.cashBalancesByCurrency!,
-                )
-                : {
-                  lastCashEntry.currencyCode ?? 'CDF':
-                      lastCashEntry.cashBalance ?? 0.0,
-                };
-      }
-
-      if (lastSalesEntry != null) {
-        balances['sales'] =
-            lastSalesEntry.salesBalancesByCurrency != null
-                ? Map<String, double>.from(
-                  lastSalesEntry.salesBalancesByCurrency!,
-                )
-                : {
-                  lastSalesEntry.currencyCode ?? 'CDF':
-                      lastSalesEntry.salesBalance ?? 0.0,
-                };
-      }
-
-      if (lastStockEntry != null) {
-        balances['stock'] =
-            lastStockEntry.stockValuesByCurrency != null
-                ? Map<String, double>.from(
-                  lastStockEntry.stockValuesByCurrency!,
-                )
-                : {
-                  lastStockEntry.currencyCode ?? 'CDF':
-                      lastStockEntry.stockValue ?? 0.0,
-                };
-      }
-
-      debugPrint('📊 Soldes d\'ouverture calculés:');
-      debugPrint('   Caisse: ${balances['cash']}');
-      debugPrint('   Ventes: ${balances['sales']}');
-      debugPrint('   Stock: ${balances['stock']}');
-
-      return balances;
     } catch (e) {
       debugPrint("Erreur calcul soldes d'ouverture par type: $e");
-      return {
-        'cash': {'CDF': 0.0, 'USD': 0.0},
-        'sales': {'CDF': 0.0, 'USD': 0.0},
-        'stock': {'CDF': 0.0, 'USD': 0.0},
-      };
     }
+    return balances;
   }
 
   Future<double> getOpeningBalance(DateTime forDate) async {
@@ -762,8 +631,8 @@ class OperationJournalRepository {
             .get('journal/operations', queryParams: query)
             .timeout(const Duration(seconds: 10)),
         {
-          'dateFrom': thirtyDaysAgo.toIso8601String(),
-          'dateTo': now.toIso8601String(),
+          'dateFrom': thirtyDaysAgo.toUtc().toIso8601String(),
+          'dateTo': now.toUtc().toIso8601String(),
         },
       );
 
