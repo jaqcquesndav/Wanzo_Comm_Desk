@@ -169,6 +169,15 @@ void main() {
           matching: find.byType(Icon),
         ));
         expect(primaryIcon.color, primaryColor);
+        // Couleurs du thème uniquement, jamais de couleur fixe par action.
+        final scheme = Theme.of(tester.element(find.byType(DesktopQuickActionsBar))).colorScheme;
+        for (final icon in tester.widgetList<Icon>(find.descendant(
+          of: find.byType(DesktopQuickActionsBar),
+          matching: find.byType(Icon),
+        ))) {
+          if (icon.color == null) continue;
+          expect(icon.color, anyOf(scheme.primary, scheme.onSurfaceVariant));
+        }
       });
     }
 

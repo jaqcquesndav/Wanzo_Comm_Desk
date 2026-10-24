@@ -143,7 +143,7 @@ class _QuickActionButton extends StatelessWidget {
       icon: Icon(
         action.icon,
         size: 18,
-        color: primary ? scheme.primary : action.color,
+        color: primary ? scheme.primary : scheme.onSurfaceVariant,
       ),
       label: label,
     );
@@ -168,7 +168,11 @@ class _MoreMenu extends StatelessWidget {
             value: a,
             child: Row(
               children: [
-                Icon(a.icon, size: 18, color: a.color),
+                Icon(
+                  a.icon,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
                 const SizedBox(width: 12),
                 Flexible(
                   child: Text(a.label, overflow: TextOverflow.ellipsis),
