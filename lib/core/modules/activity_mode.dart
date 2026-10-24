@@ -12,9 +12,6 @@ enum ActivityMode {
   /// Restaurant, fast-food, bar (commandes, tables, service).
   restaurant,
 
-  /// Hôtellerie (chambres, réservations, séjours).
-  hotel,
-
   /// Prestations de services (interventions, forfaits).
   services,
 
@@ -82,8 +79,11 @@ enum ActivityMode {
     switch (value) {
       case 'restaurant':
         return ActivityMode.restaurant;
+      // L'hôtellerie vit dans Wanzo Assets : une entreprise en mode hôtel
+      // ouvre la boutique en mode Général (le restaurant de l'hôtel reste
+      // accessible par le mode Restaurant).
       case 'hotel':
-        return ActivityMode.hotel;
+        return ActivityMode.retail;
       case 'services':
         return ActivityMode.services;
       case 'atelier':
@@ -111,8 +111,6 @@ enum ActivityMode {
         return 'Général (Point de vente)';
       case ActivityMode.restaurant:
         return 'Restaurant / Fast-food';
-      case ActivityMode.hotel:
-        return 'Hôtellerie';
       case ActivityMode.services:
         return 'Services';
       case ActivityMode.atelier:
@@ -137,8 +135,6 @@ enum ActivityMode {
         return 'Général';
       case ActivityMode.restaurant:
         return 'Resto';
-      case ActivityMode.hotel:
-        return 'Hôtel';
       case ActivityMode.services:
         return 'Services';
       case ActivityMode.atelier:
@@ -163,8 +159,6 @@ enum ActivityMode {
         return 'Ventes, stock et caisse pour un point de vente polyvalent.';
       case ActivityMode.restaurant:
         return 'Commandes par table, service en salle et cuisine.';
-      case ActivityMode.hotel:
-        return 'Chambres, réservations et séjours clients.';
       case ActivityMode.services:
         return 'Prestations, interventions et forfaits.';
       case ActivityMode.atelier:

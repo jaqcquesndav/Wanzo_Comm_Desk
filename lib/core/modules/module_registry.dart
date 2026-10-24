@@ -20,7 +20,6 @@ class ModuleRegistry {
   static const Set<ActivityMode> _allModes = {
     ActivityMode.retail,
     ActivityMode.restaurant,
-    ActivityMode.hotel,
     ActivityMode.services,
     ActivityMode.atelier,
     ActivityMode.atelierMaintenance,
@@ -37,7 +36,6 @@ class ModuleRegistry {
   /// concurrenceraient sans rien apporter.
   static const Set<ActivityMode> _modesWithSplitFinances = {
     ActivityMode.retail,
-    ActivityMode.hotel,
     ActivityMode.services,
     ActivityMode.atelier,
     ActivityMode.atelierMaintenance,
@@ -175,9 +173,7 @@ class ModuleRegistry {
       // La vue « Commandes » est le board Kanban (aperçu par statut, façon
       // Trello) ; la caisse reste à un tap via le bouton dédié du board.
       route: '/restaurant/board',
-      // Restauration/bar en mode restaurant ET hôtellerie (les hôtels
-      // combinent F&B/bar/salle) → prise de commande sur carte disponible.
-      modes: {ActivityMode.restaurant, ActivityMode.hotel},
+      modes: {ActivityMode.restaurant},
       primary: true,
       order: 1,
       inSidebar: true,
@@ -192,7 +188,7 @@ class ModuleRegistry {
       icon: Icons.soup_kitchen_outlined,
       activeIcon: Icons.soup_kitchen,
       route: '/restaurant/kitchen',
-      modes: {ActivityMode.restaurant, ActivityMode.hotel},
+      modes: {ActivityMode.restaurant},
       primary: true,
       order: 2,
       inSidebar: true,
@@ -351,41 +347,6 @@ class ModuleRegistry {
       sidebarOrder: 12,
       section: 'Salon',
       available: true,
-    ),
-    // ── Mode hôtel (à implémenter) ─────────────────────────────────────────
-    // Le module hôtel (feature `features/hotel`, routes `/hotel/rooms` et
-    // `/hotel/reservations`) n'est PAS encore livré. On garde les items déclarés
-    // pour l'architecture mais `available:false` les masque de la navigation
-    // (bottom-nav ET sidebar) : sans écran ni route, les afficher mènerait à une
-    // navigation morte (écran d'erreur). Passer à `available:true` une fois la
-    // feature livrée.
-    AppModule(
-      id: 'hotel_rooms',
-      label: 'Chambres',
-      icon: Icons.hotel,
-      activeIcon: Icons.hotel_outlined,
-      route: '/hotel/rooms',
-      modes: {ActivityMode.hotel},
-      primary: true,
-      order: 1,
-      inSidebar: true,
-      sidebarOrder: 10,
-      section: 'Service',
-      available: false,
-    ),
-    AppModule(
-      id: 'hotel_reservations',
-      label: 'Réservations',
-      icon: Icons.event_available,
-      activeIcon: Icons.event_available_outlined,
-      route: '/hotel/reservations',
-      modes: {ActivityMode.hotel},
-      primary: true,
-      order: 2,
-      inSidebar: true,
-      sidebarOrder: 11,
-      section: 'Service',
-      available: false,
     ),
   ];
 

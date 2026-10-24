@@ -1,8 +1,10 @@
+import 'dart:async';
 // filepath: lib/core/services/business_context_service.dart
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
 import 'package:wanzo/core/modules/activity_mode.dart';
+import 'package:wanzo/core/services/api_client.dart';
 import 'package:wanzo/features/auth/models/user.dart';
 import 'package:wanzo/features/auth/services/auth_backend_service.dart';
 import 'package:wanzo/features/business_unit/models/business_unit.dart';
@@ -64,14 +66,90 @@ class BusinessContextService extends ChangeNotifier {
   ActivityMode get activityMode =>
       ActivityMode.fromString(_currentContext?.activityMode);
 
-  /// Change le mode d'activité, persiste et notifie (nav recomposée).
-  Future<void> setActivityMode(ActivityMode mode) async {
-    if (_currentContext == null) return;
-    if (_currentContext!.activityMode == mode.apiValue) return;
+  /// Seul un administrateur choisit le mode d'activité de l'entreprise.
+  bool get canChangeActivityMode => isAdminRole(_currentContext?.userRole);
+
+  static bool isAdminRole(String? role) {
+    final r = (role ?? '').toLowerCase().replaceAll('-', '_');
+    return r == 'admin' || r == 'super_admin' || r == 'superadmin';
+  }
+
+  /// Écriture du mode côté serveur (remplaçable en test).
+  @visibleForTesting
+  static Future<void> Function(String companyId, String mode)?
+      remoteActivityModeWriter;
+
+  static const String _modeAckKey = 'activity_mode_server_ack';
+
+  /// Vrai quand le mode local a déjà été aligné sur le serveur (lu ou écrit).
+  bool get _modeAck => _box?.get(_modeAckKey)?['ack'] == true;
+  Future<void> _setModeAck() async {
+    try {
+      await _box?.put(_modeAckKey, {'ack': true});
+    } catch (_) {}
+  }
+
+  /// Change le mode d'activité, persiste, notifie (nav recomposée) et
+  /// l'ÉCRIT sur la fiche de l'entreprise (`companies.activityMode`) : le
+  /// mode n'était gardé que sur l'appareil, chaque poste avait le sien.
+  /// Renvoie l'erreur de l'écriture serveur (OfflineQueuedException hors
+  /// ligne : en attente), null si tout est passé.
+  Future<Object?> setActivityMode(ActivityMode mode) async {
+    if (_currentContext == null) return null;
+    if (_currentContext!.activityMode == mode.apiValue) return null;
     _currentContext = _currentContext!.copyWith(activityMode: mode.apiValue);
     await _persistContext();
     notifyListeners();
     debugPrint('BusinessContextService: activityMode → ${mode.apiValue}');
+    return _pushActivityMode(mode.apiValue);
+  }
+
+  Future<Object?> _pushActivityMode(String mode) async {
+    final id = companyId;
+    if (id == null || id.isEmpty) return null;
+    try {
+      final writer = remoteActivityModeWriter ??
+          (String c, String m) => ApiClient().patch(
+                'companies/$c/activity-mode',
+                body: {'activityMode': m},
+                requiresAuth: true,
+              );
+      await writer(id, mode);
+      await _setModeAck();
+      return null;
+    } catch (e) {
+      debugPrint('BusinessContextService: mode non écrit au serveur : $e');
+      return e;
+    }
+  }
+
+  /// Mode retenu à la lecture de /auth/me. Le serveur fait foi ; seul cas
+  /// particulier : un mode choisi sur l'appareil AVANT que le serveur le
+  /// connaisse (serveur encore au défaut « retail », jamais aligné) est
+  /// gardé, et un admin le publie.
+  @visibleForTesting
+  static ({String mode, bool publishLocal}) resolveActivityMode({
+    required String? serverMode,
+    required String? localMode,
+    required bool alreadyAligned,
+    required bool isAdmin,
+  }) {
+    final server = serverMode == null
+        ? null
+        : ActivityMode.fromString(serverMode).apiValue;
+    final local = localMode == null
+        ? null
+        : ActivityMode.fromString(localMode).apiValue;
+    if (server != null && server != 'retail') {
+      return (mode: server, publishLocal: false);
+    }
+    if (server == 'retail' && alreadyAligned) {
+      return (mode: 'retail', publishLocal: false);
+    }
+    if (local != null && local != 'retail') {
+      return (mode: local, publishLocal: server != null && isAdmin);
+    }
+    return (mode: server ?? local ?? 'retail', publishLocal: false);
   }
 
   /// ID de l'unité commerciale courante
@@ -174,6 +252,16 @@ class BusinessContextService extends ChangeNotifier {
     final user = authMeResponse.user;
     final company = authMeResponse.company;
     final businessUnit = authMeResponse.businessUnit;
+    // Mode d'activité : celui de la fiche entreprise (serveur) l'emporte.
+    final modeChoisi = resolveActivityMode(
+      serverMode: company?.activityMode,
+      localMode: _currentContext?.activityMode,
+      alreadyAligned: _modeAck,
+      isAdmin: isAdminRole(user.role),
+    );
+    if (company?.activityMode != null && !modeChoisi.publishLocal) {
+      await _setModeAck();
+    }
 
     _currentContext = BusinessContext(
       companyId: user.companyId ?? company?.id,
@@ -183,7 +271,7 @@ class BusinessContextService extends ChangeNotifier {
       companyRccm: company?.registrationNumber,
       companyTaxId: company?.taxId,
       companyNationalId: company?.nationalId,
-      activityMode: _currentContext?.activityMode ?? 'retail',
+      activityMode: modeChoisi.mode,
       businessUnitId: user.businessUnitId ?? businessUnit?.id,
       businessUnitCode: businessUnit?.code,
       businessUnitType:
@@ -212,6 +300,11 @@ class BusinessContextService extends ChangeNotifier {
     debugPrint(
       'BusinessContextService: Updated context from /users/me - CompanyId: $companyId, BusinessUnitId: $businessUnitId, Scope: $scope',
     );
+    // Mode choisi sur l'appareil avant la version qui l'écrit au serveur :
+    // l'admin le publie une fois (les autres postes le reçoivent ensuite).
+    if (modeChoisi.publishLocal) {
+      unawaited(_pushActivityMode(modeChoisi.mode));
+    }
   }
 
   /// Définit manuellement le BusinessUnit actif (pour changement de contexte)

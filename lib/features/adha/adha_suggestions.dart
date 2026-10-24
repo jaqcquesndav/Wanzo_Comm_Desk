@@ -92,29 +92,6 @@ List<AdhaSuggestion> suggestionsFor(ActivityMode mode) {
           prompt: 'Résume mes dépenses du mois',
         ),
       ];
-    case ActivityMode.hotel:
-      return const [
-        AdhaSuggestion(
-          icon: Icons.hotel_outlined,
-          title: 'Taux d\'occupation',
-          prompt: 'Quel est mon taux d\'occupation des chambres ?',
-        ),
-        AdhaSuggestion(
-          icon: Icons.event_available_outlined,
-          title: 'Réservations à venir',
-          prompt: 'Quelles sont mes réservations à venir ?',
-        ),
-        AdhaSuggestion(
-          icon: Icons.trending_up_outlined,
-          title: 'Performance',
-          prompt: 'Comment se porte mon établissement ce mois-ci ?',
-        ),
-        AdhaSuggestion(
-          icon: Icons.receipt_long_outlined,
-          title: 'Dépenses du mois',
-          prompt: 'Résume mes dépenses du mois',
-        ),
-      ];
     case ActivityMode.services:
       return const [
         AdhaSuggestion(

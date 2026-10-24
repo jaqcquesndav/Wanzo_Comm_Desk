@@ -253,16 +253,6 @@ abstract final class DesktopQuickActionsCatalog {
           _expense(),
           _cashSession(),
         ];
-      case ActivityMode.hotel:
-        // Chambres et réservations vivent dans Wanzo Assets ; ici, le
-        // restaurant et le bar de l'hôtel.
-        return [
-          _restaurantNewOrder(),
-          _restaurantCheckout(),
-          _restaurantMenu(),
-          _expense(),
-          _customer(),
-        ];
       case ActivityMode.salon:
         return [
           DesktopQuickAction(

@@ -40,12 +40,6 @@ class ExpenseCategoryConfig {
       ExpenseCategory.fuel,
       ExpenseCategory.advertising,
     ],
-    ActivityMode.hotel: [
-      ExpenseCategory.inventory,
-      ExpenseCategory.equipment,
-      ExpenseCategory.insurance,
-      ExpenseCategory.advertising,
-    ],
     ActivityMode.services: [
       ExpenseCategory.equipment,
       ExpenseCategory.software,

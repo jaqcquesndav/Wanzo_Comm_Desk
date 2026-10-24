@@ -21,7 +21,6 @@ import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/core/shared_widgets/payment_method_selector.dart';
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart';
 import 'package:wanzo/core/exceptions/api_exceptions.dart';
-import 'package:wanzo/core/modules/activity_mode.dart';
 import 'package:wanzo/core/utils/price_plausibility.dart';
 import 'package:wanzo/features/customer/widgets/customer_picker_field.dart';
 import 'package:wanzo/features/customer/models/customer.dart';
@@ -318,10 +317,9 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     return '≈ ${formatCurrency(cdf / rate, 'USD')}';
   }
 
-  /// Le mode hôtel propose toujours « Sur une réservation » ; ailleurs,
-  /// seulement si l'entreprise a des réservations ouvertes (salle louée…).
+  /// « Sur une réservation » est proposé quand l'entreprise a des
+  /// réservations ouvertes (chambre ou salle gérées dans Wanzo Assets).
   bool get _reservationsProposees =>
-      BusinessContextService().activityMode == ActivityMode.hotel ||
       _reservations.isNotEmpty ||
       _method == _PayMethod.room;
 

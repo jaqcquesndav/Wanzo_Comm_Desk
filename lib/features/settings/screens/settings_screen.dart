@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/offline_write_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -189,8 +190,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _SettingsItem(
             icon: Icons.storefront,
             title: 'Mode d\'activité',
-            subtitle:
-                'Configuration de l\'app : ${BusinessContextService().activityMode.label}',
+            subtitle: BusinessContextService().canChangeActivityMode
+                ? 'Configuration de l\'app : ${BusinessContextService().activityMode.label}'
+                : '${BusinessContextService().activityMode.label} (choisi par l\'administrateur)',
             onTap: _showActivityModePicker,
           ),
           _SettingsItem(
@@ -353,12 +355,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// Sélecteur de mode d'activité — bascule l'app entre boutique/POS,
-  /// restaurant, hôtellerie, services. Persiste localement et recompose la
-  /// navigation (sidebar) via [BusinessContextService.setActivityMode].
+  /// Sélecteur de mode d'activité, réservé aux administrateurs. Le mode est
+  /// écrit sur la fiche de l'entreprise (tous les postes le reçoivent) et
+  /// recompose la navigation via [BusinessContextService.setActivityMode].
   void _showActivityModePicker() {
     final ctx = BusinessContextService();
     final current = ctx.activityMode;
+    if (!ctx.canChangeActivityMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Seul un administrateur de l\'entreprise change le mode d\'activité.',
+          ),
+        ),
+      );
+      return;
+    }
     showDialog<void>(
       context: context,
       builder: (dialogContext) {
@@ -392,12 +404,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onChanged: (selected) async {
                       if (selected == null) return;
                       Navigator.of(dialogContext).pop();
-                      await ctx.setActivityMode(selected);
+                      final erreur = await ctx.setActivityMode(selected);
                       if (!mounted) return;
                       setState(() {}); // rafraîchir le sous-titre de la carte
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Mode : ${selected.label}')),
-                      );
+                      if (erreur != null) {
+                        // Hors ligne : en attente ; refus : motif affiché.
+                        showWriteOutcome(
+                          context,
+                          erreur,
+                          failureLabel: 'Mode non enregistré',
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Mode : ${selected.label}')),
+                        );
+                      }
                       // Le shell écoute BusinessContextService : la nav se
                       // recompose immédiatement. On atterrit sur la 1re
                       // destination du nouveau mode pour ne pas rester sur un

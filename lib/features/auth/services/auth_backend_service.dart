@@ -769,6 +769,9 @@ class BackendCompany {
   /// entreprise ↔ coopérative) sans changer la logique applicative.
   /// Default 'standard' si absent (compat ascendante).
   final String variant;
+
+  /// Mode d'activité enregistré sur la fiche entreprise (null si absent).
+  final String? activityMode;
   final String? logoUrl; // URL du logo
   final String? address;
   final String? city;
@@ -801,6 +804,7 @@ class BackendCompany {
     this.website,
     this.isActive = true,
     this.variant = 'standard',
+    this.activityMode,
     this.createdAt,
     this.updatedAt,
   });
@@ -828,6 +832,7 @@ class BackendCompany {
       variant: (json['variant'] as String?) == 'cooperative'
           ? 'cooperative'
           : 'standard',
+      activityMode: json['activityMode'] as String?,
       createdAt:
           json['createdAt'] != null
               ? DateTime.tryParse(json['createdAt'] as String)

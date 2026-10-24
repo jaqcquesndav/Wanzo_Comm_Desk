@@ -58,9 +58,6 @@ class ModeVocabulary {
       case ActivityMode.restaurant:
         return const ModeVocabulary(
             sale: 'Commande', sales: 'Commandes', revenue: 'Recettes', stock: 'Stock', item: 'Article');
-      case ActivityMode.hotel:
-        return const ModeVocabulary(
-            sale: 'Séjour', sales: 'Séjours', revenue: 'Revenus', stock: 'Stock', item: 'Article', saleIsFeminine: false);
       case ActivityMode.services:
       case ActivityMode.salon:
         return const ModeVocabulary(

@@ -59,8 +59,6 @@ class ServiceSuggestions {
         return const ['Coupe', 'Coiffage', 'Couleur', 'Tresses', 'Défrisage', 'Soins', 'Manucure', 'Pédicure', 'Maquillage'];
       case ActivityMode.restaurant:
         return const ['Service traiteur', 'Livraison', 'Location de salle', 'Animation'];
-      case ActivityMode.hotel:
-        return const ['Blanchisserie', 'Restauration', 'Transfert', 'Excursion', 'Spa'];
       case ActivityMode.services:
       case ActivityMode.retail:
         return const ['Prestation', 'Main d\'œuvre', 'Installation', 'Livraison', 'Location', 'Conseil', 'Formation', 'Maintenance'];

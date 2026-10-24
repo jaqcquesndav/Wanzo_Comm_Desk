@@ -10,8 +10,6 @@ import '../cubit/restaurant_orders_cubit.dart';
 import '../models/restaurant_order.dart';
 import '../services/restaurant_api_service.dart';
 import '../services/restaurant_reservations_service.dart';
-import '../../../core/modules/activity_mode.dart';
-import '../../../core/services/business_context_service.dart';
 
 /// Ouverture d'une commande : UN SEUL parcours, quel que soit le point de
 /// départ (tableau des commandes, liste, plan de salle, caisse).
@@ -60,8 +58,9 @@ Future<RestaurantOrder?> showNewRestaurantOrderDialog(
 
 /// « Réservation » proposé tant qu'on ne sait pas encore si l'établissement a
 /// des chambres ou des salles (premier usage, hors ligne sans liste connue).
-bool _reservationsByDefault() =>
-    BusinessContextService().activityMode == ActivityMode.hotel;
+/// L'hôtellerie vit dans Wanzo Assets : sans liste connue, on ne propose pas
+/// la réservation par défaut (elle apparaît dès que des réservations existent).
+bool _reservationsByDefault() => false;
 
 /// Tables gardées sur l'appareil (même boîte que le plan de salle).
 const _boiteTables = 'restaurant_tables_cache';
