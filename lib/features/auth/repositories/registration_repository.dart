@@ -31,13 +31,8 @@ class RegistrationRepository {
       final errorData = jsonDecode(response.body);
       throw Exception(errorData['message'] ?? 'Échec de l\'inscription');
     } catch (e) {
-      // En mode développement, pour simplifier les tests, on peut simuler une inscription réussie
-      // TODO: Supprimer cette ligne en production
-      if (const bool.fromEnvironment('dart.vm.product') == false) {
-        return true;
-      }
-      
-      // En production, propager l'erreur
+      // Jamais d'inscription simulée : un échec reste un échec, sinon
+      // l'utilisateur croit avoir un compte qui n'existe pas.
       rethrow;
     }
   }

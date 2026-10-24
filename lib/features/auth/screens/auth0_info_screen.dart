@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -258,6 +259,8 @@ class Auth0InfoScreen extends StatelessWidget {
                             icon: const Icon(Icons.arrow_back),
                             label: const Text('Retour à la présentation'),
                           ),
+                          // Compte démo : builds de développement SEULEMENT.
+                          if (kDebugMode) ...[
                           const SizedBox(height: 32),
                           const Divider(),
                           const SizedBox(height: 16),
@@ -316,6 +319,7 @@ class Auth0InfoScreen extends StatelessWidget {
                               ],
                             ),
                           ),
+                          ],
                         ],
                       ),
                     ),
@@ -444,6 +448,9 @@ class Auth0InfoScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                // Compte démo : builds de développement SEULEMENT (jamais en
+                // production, où il contournait l authentification).
+                if (kDebugMode) ...[
                 const SizedBox(height: 32),
                 const Divider(),
                 const SizedBox(height: 16),
@@ -495,6 +502,7 @@ class Auth0InfoScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+                ],
               ],
             ),
           ),

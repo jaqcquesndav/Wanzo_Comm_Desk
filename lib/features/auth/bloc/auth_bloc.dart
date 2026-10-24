@@ -272,6 +272,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     AuthLoginWithDemoAccountRequested event,
     Emitter<AuthState> emit,
   ) async {
+    // Le compte démo contourne l'authentification : jamais hors build de
+    // développement.
+    if (!kDebugMode) {
+      emit(const AuthFailure('Compte démo indisponible.'));
+      return;
+    }
     emit(const AuthLoading());
     try {
       // Ensure demo user key is set before repository call

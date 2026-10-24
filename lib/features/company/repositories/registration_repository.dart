@@ -19,13 +19,7 @@ class RegistrationRepository {
         throw Exception('Aucune connexion Internet disponible. Impossible de créer un compte.');
       }
       
-      // En mode démo/développement, simuler une réponse positive
-      if (request.email.contains('test') || request.email.contains('demo')) {
-        // Simuler un délai réseau
-        await Future.delayed(const Duration(seconds: 2));
-        return true;
-      }
-      
+
       // Appel à l'API réelle
       final response = await http.post(
         Uri.parse('$_baseUrl/register'),
