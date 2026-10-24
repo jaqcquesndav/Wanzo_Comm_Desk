@@ -125,6 +125,11 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
           currentIndex: 2, // Index pour Charges dans le sidebar
           title: 'Charges', // Terminologie comptable: Charges = Dépenses
           appBarActions: [
+            IconButton(
+              icon: const Icon(Icons.filter_list),
+              onPressed: () => _showFilterDialog(context),
+              tooltip: 'Filtrer',
+            ),
             // Bouton d'export
             if (state is ExpensesLoaded && state.expenses.isNotEmpty)
               TableExportIconButton(
@@ -147,11 +152,6 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
                   companyName: 'Wanzo',
                 ),
               ),
-            IconButton(
-              icon: const Icon(Icons.filter_list),
-              onPressed: () => _showFilterDialog(context),
-              tooltip: 'Filtrer',
-            ),
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed:

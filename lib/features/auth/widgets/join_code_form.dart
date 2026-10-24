@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/desktop_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -137,12 +138,11 @@ class JoinAccountFooter extends StatelessWidget {
   }
 }
 
-/// Aide en feuille montante : comment obtenir un code, et contact du support.
+/// Aide en modale : comment obtenir un code, et contact du support.
 Future<void> showJoinHelpSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: false,
+  return showDesktopModal<void>(
+    context,
+    title: 'Rejoindre une entreprise',
     builder: (sheetContext) {
       final theme = Theme.of(sheetContext);
       Widget step(String n, String text) => Padding(
@@ -156,63 +156,34 @@ Future<void> showJoinHelpSheet(BuildContext context) {
           ],
         ),
       );
-      return SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 8, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Rejoindre une entreprise',
-                      style: theme.textTheme.titleLarge,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Fermer',
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.of(sheetContext).pop(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    step('1', "Demandez le code à l'administrateur de votre entreprise. Il le trouve dans la liste de ses unités d'affaires."),
-                    step('2', 'Saisissez le code ici puis envoyez la demande.'),
-                    step('3', "L'administrateur reçoit votre demande et choisit votre rôle. Vous entrez dans l'application dès qu'il l'accepte."),
-                    const SizedBox(height: 8),
-                    Text(
-                      "Si le code désigne plusieurs entreprises, demandez le code de l'entreprise elle-même (il commence par COMP-).",
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final uri = Uri(
-                          scheme: 'mailto',
-                          path: wanzoSupportEmailFallback,
-                          queryParameters: {'subject': 'Rejoindre une entreprise sur Wanzo'},
-                        );
-                        try {
-                          await launchUrl(uri);
-                        } catch (_) {}
-                      },
-                      icon: const Icon(Icons.mail_outline),
-                      label: const Text('Écrire au support Wanzo'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          step('1', "Demandez le code à l'administrateur de votre entreprise. Il le trouve dans la liste de ses unités d'affaires."),
+          step('2', 'Saisissez le code ici puis envoyez la demande.'),
+          step('3', "L'administrateur reçoit votre demande et choisit votre rôle. Vous entrez dans l'application dès qu'il l'accepte."),
+          const SizedBox(height: 8),
+          Text(
+            "Si le code désigne plusieurs entreprises, demandez le code de l'entreprise elle-même (il commence par COMP-).",
+            style: theme.textTheme.bodySmall,
           ),
-        ),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final uri = Uri(
+                scheme: 'mailto',
+                path: wanzoSupportEmailFallback,
+                queryParameters: {'subject': 'Rejoindre une entreprise sur Wanzo'},
+              );
+              try {
+                await launchUrl(uri);
+              } catch (_) {}
+            },
+            icon: const Icon(Icons.mail_outline),
+            label: const Text('Écrire au support Wanzo'),
+          ),
+        ],
       );
     },
   );

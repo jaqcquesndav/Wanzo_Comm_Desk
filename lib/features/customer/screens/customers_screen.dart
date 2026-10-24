@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/desktop_modal.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -660,9 +661,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
   /// Affiche les options de filtrage
   void _showFilterOptions() {
     final localizations = AppLocalizations.of(context)!;
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
+    showDesktopModal(
+        context,
+        title: localizations.filterCustomersTooltip,
+        contentPadding: const EdgeInsets.symmetric(vertical: 8),
+        builder: (context) {
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -706,7 +709,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
           ),
         );
       },
-    );
+      );
   }
 
   /// Affiche les options de filtrage par catégorie

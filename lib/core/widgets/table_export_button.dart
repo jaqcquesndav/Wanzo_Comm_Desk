@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/export/table_export_service.dart';
+import '../shared_widgets/app_bar_actions.dart';
 
 /// Bouton d'export discret pour les tables de données
 /// Affiche un dropdown avec les options PDF, Excel, CSV
@@ -237,7 +238,7 @@ class TableExportButton extends StatelessWidget {
 enum ButtonSize { small, medium, large }
 
 /// Version icône seule du bouton d'export (encore plus discret)
-class TableExportIconButton extends StatelessWidget {
+class TableExportIconButton extends StatelessWidget implements HeaderFoldable {
   final TableExportConfig config;
   final VoidCallback? onExportStart;
   final void Function(bool success)? onExportEnd;
@@ -252,6 +253,19 @@ class TableExportIconButton extends StatelessWidget {
     this.iconSize,
     this.iconColor,
   });
+
+  /// Dans le menu 3 points de l'en-tête : « Exporter », puis le format.
+  @override
+  HeaderMenuEntry get headerEntry => HeaderMenuEntry(
+        icon: const Icon(Icons.file_download_outlined),
+        label: 'Exporter',
+        onTapIn: (context) async {
+          final format = await chooseExportFormat(context);
+          if (format != null && context.mounted) {
+            await _handleExport(context, format);
+          }
+        },
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -319,4 +333,32 @@ class TableExportIconButton extends StatelessWidget {
 
     onExportEnd?.call(success);
   }
+}
+
+/// Choix du format d'export dans une petite boîte de dialogue (utilisé quand
+/// l'export est replié dans le menu 3 points de l'en-tête).
+Future<ExportFormat?> chooseExportFormat(BuildContext context) {
+  return showDialog<ExportFormat>(
+    context: context,
+    builder: (ctx) => SimpleDialog(
+      title: const Text('Exporter'),
+      children: [
+        for (final (format, icon, label, color) in const [
+          (ExportFormat.pdf, Icons.picture_as_pdf, 'PDF', Colors.red),
+          (ExportFormat.xlsx, Icons.table_chart, 'Excel', Colors.green),
+          (ExportFormat.csv, Icons.description, 'CSV', Colors.blue),
+        ])
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, format),
+            child: Row(
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(width: 12),
+                Text(label),
+              ],
+            ),
+          ),
+      ],
+    ),
+  );
 }

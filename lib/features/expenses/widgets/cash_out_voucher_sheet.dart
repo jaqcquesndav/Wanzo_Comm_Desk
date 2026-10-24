@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/desktop_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:wanzo/core/services/platform_share_service.dart';
 
@@ -60,14 +61,13 @@ Future<bool> showCashOutVoucher(
 
   if (!context.mounted) return false;
 
-  await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (sheetContext) => _VoucherSheet(bon: bon, pdfPath: pdfPath),
-  );
+  await showDesktopModal<void>(
+      context,
+      title: 'Bon de sortie de caisse',
+      subtitle: 'N° ${bon.reference}',
+      icon: Icons.receipt_long_outlined,
+      builder: (sheetContext) => _VoucherSheet(bon: bon, pdfPath: pdfPath),
+    );
   return true;
 }
 
@@ -82,43 +82,11 @@ class _VoucherSheet extends StatelessWidget {
     final theme = Theme.of(context);
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        padding: EdgeInsets.zero,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Icon(Icons.receipt_long_outlined,
-                    color: theme.colorScheme.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Bon de sortie de caisse',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'N° ${bon.reference}',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(

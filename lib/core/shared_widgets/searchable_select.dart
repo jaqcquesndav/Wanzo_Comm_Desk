@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../constants/spacing.dart';
+import '../utils/desktop_modal.dart';
 
 /// Ouvre une feuille de sélection **recherchable** : champ de recherche + liste
 /// PARESSEUSE (`ListView.builder`). Adaptée aux listes de plusieurs milliers
@@ -16,13 +17,11 @@ Future<T?> showSearchableSelect<T>(
   T? selected,
   String searchHint = 'Rechercher…',
 }) {
-  return showModalBottomSheet<T>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
+  return showDesktopModal<T>(
+    context,
+    title: title,
+    scrollable: false,
+    contentPadding: EdgeInsets.zero,
     builder: (ctx) => _SearchableSelectSheet<T>(
       title: title,
       items: items,
@@ -81,16 +80,11 @@ class _SearchableSelectSheetState<T> extends State<_SearchableSelectSheet<T>> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.7,
-        minChildSize: 0.4,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) {
+    // Hauteur fixe : la modale ne saute pas pendant la recherche.
+    return SizedBox(
+      height: 520,
+      child: Builder(
+        builder: (context) {
           return Column(
             children: [
               Padding(
@@ -99,9 +93,6 @@ class _SearchableSelectSheetState<T> extends State<_SearchableSelectSheet<T>> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(widget.title,
-                        style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: WanzoSpacing.sm),
                     TextField(
                       controller: _controller,
                       autofocus: true,
@@ -123,7 +114,6 @@ class _SearchableSelectSheetState<T> extends State<_SearchableSelectSheet<T>> {
                         child: Text('Aucun résultat',
                             style: TextStyle(color: Color(0xFF6B7280))))
                     : ListView.builder(
-                        controller: scrollController,
                         itemCount: _filtered.length,
                         itemExtent: 56,
                         itemBuilder: (context, i) {

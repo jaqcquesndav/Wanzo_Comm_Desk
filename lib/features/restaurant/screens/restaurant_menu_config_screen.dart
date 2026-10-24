@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/desktop_modal.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -70,8 +71,9 @@ class _RestaurantMenuConfigScreenState
     });
     // Une photo prise hors ligne est restee sur l'appareil : on la televerse
     // des que possible, sans attendre un bouton. Silencieux en cas d'echec.
-    if (_items.any((i) =>
-        (i.photoPath ?? '').isNotEmpty && (i.photoUrl ?? '').isEmpty)) {
+    if (_items.any(
+      (i) => (i.photoPath ?? '').isNotEmpty && (i.photoUrl ?? '').isEmpty,
+    )) {
       await _uploadPendingPhotos();
       if (mounted) setState(() {});
     }
@@ -156,16 +158,19 @@ class _RestaurantMenuConfigScreenState
       width: size,
       height: size,
       color: theme.colorScheme.surfaceContainerHighest,
-      child: Icon(Icons.restaurant,
-          size: size * 0.42, color: theme.colorScheme.onSurfaceVariant),
+      child: Icon(
+        Icons.restaurant,
+        size: size * 0.42,
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final grouped = _byCourse;
-    final courses = grouped.keys.toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
+    final courses =
+        grouped.keys.toList()..sort((a, b) => a.order.compareTo(b.order));
     // La carte PUBLIQUE (publication + QR + partage du lien) est réservée au
     // mode RESTAURANT. Le salon (coiffure) et les autres modes réutilisent la
     // même carte pour les prestations, mais sans page publique.
@@ -176,85 +181,94 @@ class _RestaurantMenuConfigScreenState
     return WanzoScaffold(
       currentIndex: -1, // élément actif dérivé de la route par le shell
       title: 'Composer la carte',
-      onBackPressed: () =>
-          context.canPop() ? context.pop() : context.go('/dashboard'),
+      onBackPressed:
+          () => context.canPop() ? context.pop() : context.go('/dashboard'),
       appBarActions: [
-          if (isRestaurant) ...[
-            IconButton(
-              tooltip: 'Partager la carte',
-              icon: const Icon(Icons.ios_share),
-              onPressed:
-                  _items.isEmpty ? null : () => shareRestaurantMenu(context, _api),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: FilledButton.icon(
-                onPressed:
-                    (_publishing || _items.isEmpty) ? null : _publishMenu,
-                icon: _publishing
-                    ? const SizedBox(
+        if (isRestaurant) ...[
+          IconButton(
+            tooltip: 'Partager la carte',
+            icon: const Icon(Icons.ios_share),
+            onPressed:
+                _items.isEmpty
+                    ? null
+                    : () => shareRestaurantMenu(context, _api),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: FilledButton.icon(
+              onPressed: (_publishing || _items.isEmpty) ? null : _publishMenu,
+              icon:
+                  _publishing
+                      ? const SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.cloud_upload_outlined),
-                label: const Text('Publier la carte'),
-              ),
+                      : const Icon(Icons.cloud_upload_outlined),
+              label: const Text('Publier la carte'),
             ),
-          ],
+          ),
+        ],
       ],
       floatingActionButton: FloatingActionButton(
         tooltip: 'Ajouter un plat',
         onPressed: () => _openDishForm(),
         child: const Icon(Icons.add),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _items.isEmpty
+      body:
+          _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _items.isEmpty
               ? const EmptyStateView(
-                  icon: Icons.restaurant_menu,
-                  message: 'Votre carte est vide. Ajoutez vos plats.',
-                )
+                icon: Icons.restaurant_menu,
+                message: 'Votre carte est vide. Ajoutez vos plats.',
+              )
               : Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                      child: TextField(
-                        decoration: InputDecoration(
-                          hintText: 'Rechercher un plat…',
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _search.isEmpty
-                              ? null
-                              : IconButton(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: TextField(
+                      decoration: InputDecoration(
+                        hintText: 'Rechercher un plat…',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon:
+                            _search.isEmpty
+                                ? null
+                                : IconButton(
                                   icon: const Icon(Icons.clear),
                                   tooltip: 'Effacer',
                                   onPressed: () => setState(() => _search = ''),
                                 ),
-                          isDense: true,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        onChanged: (v) => setState(() => _search = v),
                       ),
+                      onChanged: (v) => setState(() => _search = v),
                     ),
-                    Expanded(
-                      child: courses.isEmpty
-                          ? const EmptyStateView(
+                  ),
+                  Expanded(
+                    child:
+                        courses.isEmpty
+                            ? const EmptyStateView(
                               icon: Icons.search_off,
                               message: 'Aucun plat ne correspond.',
                             )
-                          : ListView(
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 12, 16, 96),
+                            : ListView(
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                12,
+                                16,
+                                96,
+                              ),
                               children: [
                                 for (final course in courses)
                                   _courseSection(course, grouped[course]!),
                               ],
                             ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
     );
   }
 
@@ -267,22 +281,27 @@ class _RestaurantMenuConfigScreenState
         children: [
           Row(
             children: [
-              Text(course.label,
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                course.label,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(width: 8),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.primary.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text('${dishes.length}',
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: theme.colorScheme.primary)),
+                child: Text(
+                  '${dishes.length}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
               ),
             ],
           ),
@@ -325,49 +344,66 @@ class _RestaurantMenuConfigScreenState
                     Row(
                       children: [
                         Expanded(
-                          child: Text(item.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700, fontSize: 15)),
+                          child: Text(
+                            item.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
                         ),
                         if (!item.available)
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.error
-                                  .withValues(alpha: 0.12),
+                              color: theme.colorScheme.error.withValues(
+                                alpha: 0.12,
+                              ),
                               borderRadius: BorderRadius.circular(6),
                             ),
-                            child: Text('Épuisé',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: theme.colorScheme.error)),
+                            child: Text(
+                              'Épuisé',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: theme.colorScheme.error,
+                              ),
+                            ),
                           ),
                       ],
                     ),
                     const SizedBox(height: 2),
-                    Text(formatCurrency(item.prixSaisi, item.deviseSaisie),
-                        style: TextStyle(
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14)),
+                    Text(
+                      formatCurrency(item.prixSaisi, item.deviseSaisie),
+                      style: TextStyle(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
                     if (description.isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      Text(description,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant)),
+                      Text(
+                        description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ],
                   ],
                 ),
               ),
               // Bascule disponible / épuisé.
               IconButton(
-                tooltip: item.available ? 'Marquer épuisé' : 'Rendre disponible',
+                tooltip:
+                    item.available ? 'Marquer épuisé' : 'Rendre disponible',
                 icon: Icon(
                   item.available
                       ? Icons.check_circle_outline
@@ -386,8 +422,10 @@ class _RestaurantMenuConfigScreenState
               ),
               IconButton(
                 tooltip: 'Supprimer',
-                icon:
-                    Icon(Icons.delete_outline, color: theme.colorScheme.error),
+                icon: Icon(
+                  Icons.delete_outline,
+                  color: theme.colorScheme.error,
+                ),
                 visualDensity: VisualDensity.compact,
                 onPressed: () => _confirmDelete(item),
               ),
@@ -406,20 +444,21 @@ class _RestaurantMenuConfigScreenState
   Future<void> _confirmDelete(MenuItem item) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Supprimer le plat'),
-        content: Text('Retirer « ${item.name} » de la carte ?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Supprimer le plat'),
+            content: Text('Retirer « ${item.name} » de la carte ?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Annuler'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Supprimer'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Supprimer'),
-          ),
-        ],
-      ),
     );
     if (ok == true) {
       await _repo.delete(item.id);
@@ -543,11 +582,15 @@ class _DishFormDialogState extends State<_DishFormDialog> {
     _currencies = available;
     _inputCurrency = chosen;
     if (existing != null) {
-      final shown = existing.priceInInputCurrency ??
-          (rateOf(chosen) > 0 ? existing.priceCdf / rateOf(chosen) : existing.priceCdf);
-      _priceController.text = shown == shown.roundToDouble()
-          ? shown.toStringAsFixed(0)
-          : shown.toStringAsFixed(2);
+      final shown =
+          existing.priceInInputCurrency ??
+          (rateOf(chosen) > 0
+              ? existing.priceCdf / rateOf(chosen)
+              : existing.priceCdf);
+      _priceController.text =
+          shown == shown.roundToDouble()
+              ? shown.toStringAsFixed(0)
+              : shown.toStringAsFixed(2);
     }
     if (mounted) setState(() {});
   }
@@ -559,7 +602,8 @@ class _DishFormDialogState extends State<_DishFormDialog> {
     final e = widget.existing;
     _nameController = TextEditingController(text: e?.name ?? '');
     _priceController = TextEditingController(
-        text: e != null ? e.priceCdf.toStringAsFixed(0) : '');
+      text: e != null ? e.priceCdf.toStringAsFixed(0) : '',
+    );
     _descriptionController = TextEditingController(text: e?.description ?? '');
     _course = e?.course ?? MenuCourse.plat;
     _photoPath = e?.photoPath;
@@ -623,45 +667,52 @@ class _DishFormDialogState extends State<_DishFormDialog> {
   }
 
   void _showImageSourceSheet() {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (bc) => SafeArea(
-        child: Wrap(
-          children: [
-            if (_imagePicker.isGalleryAvailable)
-              ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: const Text('Galerie'),
-                onTap: () {
-                  Navigator.pop(bc);
-                  _pickFromGallery();
-                },
-              ),
-            if (_imagePicker.isCameraAvailable)
-              ListTile(
-                leading: const Icon(Icons.photo_camera),
-                title: const Text('Appareil photo'),
-                onTap: () {
-                  Navigator.pop(bc);
-                  _pickFromCamera();
-                },
-              ),
-            if (SmartImage.hasImage(imageUrl: _photoUrl, imagePath: _photoPath))
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text('Retirer la photo',
-                    style: TextStyle(color: Colors.red)),
-                onTap: () {
-                  Navigator.pop(bc);
-                  setState(() {
-                    _photoPath = null;
-                    _photoUrl = null;
-                  });
-                },
-              ),
-          ],
-        ),
-      ),
+    showDesktopModal<void>(
+      context,
+      title: 'Choisir une photo',
+      builder:
+          (bc) => SafeArea(
+            child: Wrap(
+              children: [
+                if (_imagePicker.isGalleryAvailable)
+                  ListTile(
+                    leading: const Icon(Icons.photo_library),
+                    title: const Text('Galerie'),
+                    onTap: () {
+                      Navigator.pop(bc);
+                      _pickFromGallery();
+                    },
+                  ),
+                if (_imagePicker.isCameraAvailable)
+                  ListTile(
+                    leading: const Icon(Icons.photo_camera),
+                    title: const Text('Appareil photo'),
+                    onTap: () {
+                      Navigator.pop(bc);
+                      _pickFromCamera();
+                    },
+                  ),
+                if (SmartImage.hasImage(
+                  imageUrl: _photoUrl,
+                  imagePath: _photoPath,
+                ))
+                  ListTile(
+                    leading: const Icon(Icons.delete, color: Colors.red),
+                    title: const Text(
+                      'Retirer la photo',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                    onTap: () {
+                      Navigator.pop(bc);
+                      setState(() {
+                        _photoPath = null;
+                        _photoUrl = null;
+                      });
+                    },
+                  ),
+              ],
+            ),
+          ),
     );
   }
 
@@ -671,14 +722,17 @@ class _DishFormDialogState extends State<_DishFormDialog> {
     // saisi dans la mauvaise devise (21 FC au lieu de 21 $).
     if (_inputCurrency == Currency.CDF) {
       final saisi = double.tryParse(_priceController.text.trim()) ?? 0;
-      final choix =
-          await verifierPrixSaisi(context, prix: saisi, codeDevise: 'CDF');
+      final choix = await verifierPrixSaisi(
+        context,
+        prix: saisi,
+        codeDevise: 'CDF',
+      );
       if (!mounted || choix == ChoixDevisePrix.annule) return;
       if (choix == ChoixDevisePrix.enDollars) {
         if (!(rateOf(Currency.USD) > 0)) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(CurrencyService.missingRateMessage('USD')),
-          ));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(CurrencyService.missingRateMessage('USD'))),
+          );
           return;
         }
         setState(() {
@@ -691,9 +745,13 @@ class _DishFormDialogState extends State<_DishFormDialog> {
     }
     // Devise étrangère sans taux : refus, jamais une conversion au taux 1.
     if (!(rateOf(_inputCurrency) > 0)) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(CurrencyService.missingRateMessage(_inputCurrency.code)),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            CurrencyService.missingRateMessage(_inputCurrency.code),
+          ),
+        ),
+      );
       return;
     }
     setState(() => _saving = true);
@@ -708,15 +766,17 @@ class _DishFormDialogState extends State<_DishFormDialog> {
     if (deviseAvant != _inputCurrency.code) {
       _groups = [
         for (final g in _groups)
-          g.copyWith(options: [
-            for (final o in g.options)
-              ModifierOption(
-                name: o.name,
-                priceDeltaCdf: o.priceDeltaCdf,
-                priceDeltaInInputCurrency:
-                    taux > 0 ? o.priceDeltaCdf / taux : o.priceDeltaCdf,
-              ),
-          ]),
+          g.copyWith(
+            options: [
+              for (final o in g.options)
+                ModifierOption(
+                  name: o.name,
+                  priceDeltaCdf: o.priceDeltaCdf,
+                  priceDeltaInInputCurrency:
+                      taux > 0 ? o.priceDeltaCdf / taux : o.priceDeltaCdf,
+                ),
+            ],
+          ),
       ];
     }
     final description = _descriptionController.text.trim();
@@ -755,11 +815,12 @@ class _DishFormDialogState extends State<_DishFormDialog> {
     final result = await showDialog<ModifierGroup>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => _GroupEditorDialog(
-        existing: existing,
-        code: _inputCurrency.code,
-        taux: rateOf(_inputCurrency),
-      ),
+      builder:
+          (ctx) => _GroupEditorDialog(
+            existing: existing,
+            code: _inputCurrency.code,
+            taux: rateOf(_inputCurrency),
+          ),
     );
     if (result == null || !mounted) return;
     setState(() {
@@ -788,29 +849,40 @@ class _DishFormDialogState extends State<_DishFormDialog> {
       children: [
         Row(
           children: [
-            Icon(Icons.tune,
-                size: 20, color: theme.colorScheme.onSurfaceVariant),
+            Icon(
+              Icons.tune,
+              size: 20,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(width: 8),
-            Text('Options / modificateurs',
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700)),
+            Text(
+              'Options / modificateurs',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 4),
         Text(
           'Ce qu\'on demande au client (cuisson, suppléments…). Facultatif.',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 8),
         for (int i = 0; i < _groups.length; i++)
           Card(
             margin: const EdgeInsets.only(bottom: 8),
             child: ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-              title: Text(_groups[i].name,
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 2,
+              ),
+              title: Text(
+                _groups[i].name,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
               subtitle: Text(_groupSummary(_groups[i])),
               onTap: () => _editGroup(existing: _groups[i], index: i),
               trailing: Row(
@@ -820,13 +892,14 @@ class _DishFormDialogState extends State<_DishFormDialog> {
                     tooltip: 'Modifier',
                     icon: const Icon(Icons.edit_outlined),
                     visualDensity: VisualDensity.compact,
-                    onPressed: () =>
-                        _editGroup(existing: _groups[i], index: i),
+                    onPressed: () => _editGroup(existing: _groups[i], index: i),
                   ),
                   IconButton(
                     tooltip: 'Supprimer',
-                    icon: Icon(Icons.delete_outline,
-                        color: theme.colorScheme.error),
+                    icon: Icon(
+                      Icons.delete_outline,
+                      color: theme.colorScheme.error,
+                    ),
                     visualDensity: VisualDensity.compact,
                     onPressed: () => setState(() => _groups.removeAt(i)),
                   ),
@@ -850,8 +923,10 @@ class _DishFormDialogState extends State<_DishFormDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isEditing = widget.existing != null;
-    final hasPhoto =
-        SmartImage.hasImage(imageUrl: _photoUrl, imagePath: _photoPath);
+    final hasPhoto = SmartImage.hasImage(
+      imageUrl: _photoUrl,
+      imagePath: _photoPath,
+    );
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       clipBehavior: Clip.antiAlias,
@@ -874,8 +949,9 @@ class _DishFormDialogState extends State<_DishFormDialog> {
                     Expanded(
                       child: Text(
                         isEditing ? 'Modifier le plat' : 'Nouveau plat',
-                        style: theme.textTheme.titleLarge
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     IconButton(
@@ -901,32 +977,42 @@ class _DishFormDialogState extends State<_DishFormDialog> {
                           color: theme.colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                              color: theme.colorScheme.outline
-                                  .withValues(alpha: 0.4)),
+                            color: theme.colorScheme.outline.withValues(
+                              alpha: 0.4,
+                            ),
+                          ),
                         ),
                         clipBehavior: Clip.antiAlias,
-                        child: hasPhoto
-                            ? SmartImage(
-                                imageUrl: _photoUrl,
-                                imagePath: _photoPath,
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                                height: 160,
-                              )
-                            : Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.add_a_photo,
+                        child:
+                            hasPhoto
+                                ? SmartImage(
+                                  imageUrl: _photoUrl,
+                                  imagePath: _photoPath,
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: 160,
+                                )
+                                : Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.add_a_photo,
                                       size: 36,
-                                      color:
-                                          theme.colorScheme.onSurfaceVariant),
-                                  const SizedBox(height: 8),
-                                  Text('Ajouter une photo (optionnel)',
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                          color: theme
-                                              .colorScheme.onSurfaceVariant)),
-                                ],
-                              ),
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Ajouter une photo (optionnel)',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color:
+                                                theme
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
+                                ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -938,9 +1024,11 @@ class _DishFormDialogState extends State<_DishFormDialog> {
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.restaurant_menu),
                       ),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Le nom est requis'
-                          : null,
+                      validator:
+                          (v) =>
+                              (v == null || v.trim().isEmpty)
+                                  ? 'Le nom est requis'
+                                  : null,
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -953,7 +1041,8 @@ class _DishFormDialogState extends State<_DishFormDialog> {
                             keyboardType: TextInputType.number,
                             inputFormatters: [
                               FilteringTextInputFormatter.allow(
-                                  RegExp(r'^\d+\.?\d{0,2}')),
+                                RegExp(r'^\d+\.?\d{0,2}'),
+                              ),
                             ],
                             decoration: InputDecoration(
                               labelText: 'Prix (${_inputCurrency.code}) *',
@@ -985,10 +1074,14 @@ class _DishFormDialogState extends State<_DishFormDialog> {
                               ),
                               items: [
                                 for (final c in _currencies)
-                                  DropdownMenuItem(value: c, child: Text(c.code)),
+                                  DropdownMenuItem(
+                                    value: c,
+                                    child: Text(c.code),
+                                  ),
                               ],
                               onChanged: (c) {
-                                if (c != null) setState(() => _inputCurrency = c);
+                                if (c != null)
+                                  setState(() => _inputCurrency = c);
                               },
                             ),
                           ),
@@ -1043,22 +1136,25 @@ class _DishFormDialogState extends State<_DishFormDialog> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     TextButton(
-                      onPressed:
-                          _saving ? null : () => Navigator.pop(context),
+                      onPressed: _saving ? null : () => Navigator.pop(context),
                       child: const Text('Annuler'),
                     ),
                     const SizedBox(width: 8),
                     FilledButton.icon(
                       onPressed: _saving ? null : _save,
-                      icon: _saving
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.check),
+                      icon:
+                          _saving
+                              ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                              : const Icon(Icons.check),
                       label: Text(
-                          isEditing ? 'Enregistrer' : 'Ajouter à la carte'),
+                        isEditing ? 'Enregistrer' : 'Ajouter à la carte',
+                      ),
                     ),
                   ],
                 ),
@@ -1077,9 +1173,10 @@ class _OptionDraft {
   final TextEditingController name;
   final TextEditingController delta;
   _OptionDraft({String name = '', double delta = 0})
-      : name = TextEditingController(text: name),
-        delta = TextEditingController(
-            text: delta == 0 ? '' : delta.toStringAsFixed(0));
+    : name = TextEditingController(text: name),
+      delta = TextEditingController(
+        text: delta == 0 ? '' : delta.toStringAsFixed(0),
+      );
 
   void dispose() {
     name.dispose();
@@ -1122,8 +1219,11 @@ class _GroupEditorDialogState extends State<_GroupEditorDialog> {
         for (final o in g.options)
           _OptionDraft(
             name: o.name,
-            delta: o.priceDeltaInInputCurrency ??
-                (widget.taux > 0 ? o.priceDeltaCdf / widget.taux : o.priceDeltaCdf),
+            delta:
+                o.priceDeltaInInputCurrency ??
+                (widget.taux > 0
+                    ? o.priceDeltaCdf / widget.taux
+                    : o.priceDeltaCdf),
           ),
     ];
     if (_options.isEmpty) {
@@ -1146,11 +1246,14 @@ class _GroupEditorDialogState extends State<_GroupEditorDialog> {
     for (final o in _options) {
       final name = o.name.text.trim();
       if (name.isEmpty) continue; // Ligne d'option vide → ignorée.
-      options.add(ModifierOption(
-        name: name,
-        priceDeltaCdf: (double.tryParse(o.delta.text.trim()) ?? 0) * widget.taux,
-        priceDeltaInInputCurrency: double.tryParse(o.delta.text.trim()) ?? 0,
-      ));
+      options.add(
+        ModifierOption(
+          name: name,
+          priceDeltaCdf:
+              (double.tryParse(o.delta.text.trim()) ?? 0) * widget.taux,
+          priceDeltaInInputCurrency: double.tryParse(o.delta.text.trim()) ?? 0,
+        ),
+      );
     }
     if (options.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1196,8 +1299,9 @@ class _GroupEditorDialogState extends State<_GroupEditorDialog> {
                         isEditing
                             ? 'Modifier le groupe'
                             : 'Nouveau groupe d\'options',
-                        style: theme.textTheme.titleLarge
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     IconButton(
@@ -1223,23 +1327,29 @@ class _GroupEditorDialogState extends State<_GroupEditorDialog> {
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.tune),
                       ),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Le nom est requis'
-                          : null,
+                      validator:
+                          (v) =>
+                              (v == null || v.trim().isEmpty)
+                                  ? 'Le nom est requis'
+                                  : null,
                     ),
                     const SizedBox(height: 12),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Obligatoire'),
                       subtitle: const Text(
-                          'Le client doit choisir avant de commander.'),
+                        'Le client doit choisir avant de commander.',
+                      ),
                       value: _required,
                       onChanged: (v) => setState(() => _required = v),
                     ),
                     const SizedBox(height: 4),
-                    Text('Type de choix',
-                        style: theme.textTheme.labelLarge?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant)),
+                    Text(
+                      'Type de choix',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     SegmentedButton<bool>(
                       segments: const [
@@ -1255,13 +1365,16 @@ class _GroupEditorDialogState extends State<_GroupEditorDialog> {
                         ),
                       ],
                       selected: {_singleChoice},
-                      onSelectionChanged: (s) =>
-                          setState(() => _singleChoice = s.first),
+                      onSelectionChanged:
+                          (s) => setState(() => _singleChoice = s.first),
                     ),
                     const SizedBox(height: 20),
-                    Text('Options',
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    Text(
+                      'Options',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     for (int i = 0; i < _options.length; i++)
                       Padding(
@@ -1291,7 +1404,8 @@ class _GroupEditorDialogState extends State<_GroupEditorDialog> {
                                 keyboardType: TextInputType.number,
                                 inputFormatters: [
                                   FilteringTextInputFormatter.allow(
-                                      RegExp(r'^\d+\.?\d{0,2}')),
+                                    RegExp(r'^\d+\.?\d{0,2}'),
+                                  ),
                                 ],
                                 decoration: InputDecoration(
                                   labelText: '+ ${widget.code}',
@@ -1303,12 +1417,15 @@ class _GroupEditorDialogState extends State<_GroupEditorDialog> {
                             ),
                             IconButton(
                               tooltip: 'Retirer',
-                              icon: Icon(Icons.remove_circle_outline,
-                                  color: theme.colorScheme.error),
+                              icon: Icon(
+                                Icons.remove_circle_outline,
+                                color: theme.colorScheme.error,
+                              ),
                               visualDensity: VisualDensity.compact,
-                              onPressed: _options.length == 1
-                                  ? null
-                                  : () => setState(() {
+                              onPressed:
+                                  _options.length == 1
+                                      ? null
+                                      : () => setState(() {
                                         _options.removeAt(i).dispose();
                                       }),
                             ),
@@ -1318,8 +1435,8 @@ class _GroupEditorDialogState extends State<_GroupEditorDialog> {
                     Align(
                       alignment: Alignment.centerLeft,
                       child: TextButton.icon(
-                        onPressed: () =>
-                            setState(() => _options.add(_OptionDraft())),
+                        onPressed:
+                            () => setState(() => _options.add(_OptionDraft())),
                         icon: const Icon(Icons.add),
                         label: const Text('Ajouter une option'),
                       ),
@@ -1341,9 +1458,11 @@ class _GroupEditorDialogState extends State<_GroupEditorDialog> {
                     FilledButton.icon(
                       onPressed: _save,
                       icon: const Icon(Icons.check),
-                      label: Text(isEditing
-                          ? 'Enregistrer le groupe'
-                          : 'Ajouter le groupe'),
+                      label: Text(
+                        isEditing
+                            ? 'Enregistrer le groupe'
+                            : 'Ajouter le groupe',
+                      ),
                     ),
                   ],
                 ),

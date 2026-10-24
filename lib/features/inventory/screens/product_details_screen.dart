@@ -122,16 +122,17 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
           title: 'Détails: ${product.name}',
           onBackPressed: () => context.pop(),
           appBarActions: [
+            // Bouton pour modifier le produit
+            IconButton(
+              icon: const Icon(Icons.edit),
+              tooltip: 'Modifier',
+              onPressed: () => _navigateToEditProduct(context, product),
+            ),
             IconButton(
               icon: const Icon(Icons.qr_code_2),
               tooltip: 'Imprimer des étiquettes',
               onPressed: () =>
                   printProductLabels(context, products: [product]),
-            ),
-            // Bouton pour modifier le produit
-            IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed: () => _navigateToEditProduct(context, product),
             ),
             IconButton(
               icon: const Icon(Icons.delete, color: Colors.red),

@@ -162,11 +162,9 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
             title: widget.title,
             isSidebarExpanded: effectiveSidebarExpanded,
             onToggleSidebar: () => _layoutState.toggleSidebar(),
-            actions: [
-              // Bouton pour ouvrir/fermer Adha
-              _buildAdhaToggleButton(context, isDark),
-              if (widget.appBarActions != null) ...widget.appBarActions!,
-            ],
+            // Adha entre le menu 3 points et les notifications.
+            adha: _buildAdhaToggleButton(context, isDark),
+            actions: widget.appBarActions,
             onBackPressed: widget.onBackPressed,
           ),
 
@@ -309,10 +307,8 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
             title: widget.title,
             isSidebarExpanded: false, // Tablet = toujours compact
             onToggleSidebar: null, // Pas de toggle en mode tablette
-            actions: [
-              _buildAdhaToggleButton(context, isDark),
-              if (widget.appBarActions != null) ...widget.appBarActions!,
-            ],
+            adha: _buildAdhaToggleButton(context, isDark),
+            actions: widget.appBarActions,
             onBackPressed: widget.onBackPressed,
           ),
 

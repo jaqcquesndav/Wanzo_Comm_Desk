@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/desktop_modal.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../platform/platform_service.dart';
@@ -68,23 +69,15 @@ class AdaptiveImagePicker extends StatelessWidget {
     }
 
     // Sur mobile, montrer le dialog avec les options
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder:
-          (context) => SafeArea(
+    showDesktopModal(
+        context,
+        title: title ?? 'Sélectionner une image',
+        builder: (context) => SafeArea(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.zero,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    title ?? 'Sélectionner une image',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 16),
                   if (allowGallery && imageService.isGalleryAvailable)
                     ListTile(
                       leading: const Icon(Icons.photo_library),
@@ -109,7 +102,7 @@ class AdaptiveImagePicker extends StatelessWidget {
               ),
             ),
           ),
-    );
+      );
   }
 
   Future<void> _pickFromGallery(BuildContext context) async {

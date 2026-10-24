@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/desktop_modal.dart';
 import 'dart:io'; // Import for File type
 
 import 'package:flutter/material.dart';
@@ -74,9 +75,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showImagePickerOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (BuildContext bc) {
+    showDesktopModal(
+        context,
+        title: 'Choisir une photo',
+        builder: (BuildContext bc) {
         return SafeArea(
           child: Wrap(
             children: <Widget>[
@@ -101,7 +103,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         );
       },
-    );
+      );
   }
 
   /// Enrichit les Settings avec les données du User (une seule fois)

@@ -12,6 +12,7 @@ import '../../../features/settings/bloc/settings_event.dart';
 import '../../../features/settings/bloc/settings_state.dart';
 import '../../../features/settings/models/settings.dart';
 import '../../../features/notifications/bloc/notifications_bloc.dart';
+import '../../shared_widgets/app_bar_actions.dart';
 
 /// Header desktop professionnel pour l'application Wanzo
 /// Couvre toute la largeur de l'écran avec logo à gauche et profil à droite
@@ -19,8 +20,12 @@ class DesktopHeader extends StatelessWidget {
   /// Titre de la page actuelle
   final String title;
 
-  /// Actions additionnelles à afficher
+  /// Actions propres à la page : au plus deux visibles, le reste dans le
+  /// menu 3 points placé juste à gauche d'Adha.
   final List<Widget>? actions;
+
+  /// Bouton Adha, placé entre le menu 3 points et les notifications.
+  final Widget? adha;
 
   /// Callback pour le bouton de retour (null = pas de bouton)
   final VoidCallback? onBackPressed;
@@ -35,6 +40,7 @@ class DesktopHeader extends StatelessWidget {
     super.key,
     required this.title,
     this.actions,
+    this.adha,
     this.onBackPressed,
     this.isSidebarExpanded = true,
     this.onToggleSidebar,
@@ -108,26 +114,36 @@ class DesktopHeader extends StatelessWidget {
                   ],
 
                   // Titre de la page
-                  Text(
-                    title,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.onSurface,
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.onSurface,
+                      ),
                     ),
                   ),
 
-                  const Spacer(),
-
-                  // Actions personnalisées
-                  if (actions != null) ...actions!,
-
-                  const SizedBox(width: 8),
+                  // Ordre lu depuis la droite : profil, notifications, Adha,
+                  // menu 3 points, actions de la page, puis le mode.
 
                   // Badge du MODE COURANT (indicateur). Le CHOIX du mode se fait
                   // UNIQUEMENT dans les Paramètres : un appui y renvoie.
                   _buildModeBadge(context, theme),
 
                   const SizedBox(width: 8),
+
+                  // Actions de la page (deux au plus) et menu 3 points.
+                  ...foldPageActions(actions),
+
+                  if (adha != null) ...[
+                    const SizedBox(width: 4),
+                    adha!,
+                  ],
+
+                  const SizedBox(width: 4),
 
                   // Bouton de notifications
                   _buildNotificationsButton(context, theme),
@@ -250,6 +266,7 @@ class DesktopHeader extends StatelessWidget {
         }
 
         return IconButton(
+          key: const ValueKey('app-bar-notifications'),
           icon: badges.Badge(
             showBadge: unreadCount > 0,
             badgeContent: Text(
@@ -284,6 +301,8 @@ class DesktopHeader extends StatelessWidget {
     String userEmail,
   ) {
     return PopupMenuButton<String>(
+          key: const ValueKey('app-bar-profile'),
+          tooltip: 'Profil',
           offset: const Offset(0, 50),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),

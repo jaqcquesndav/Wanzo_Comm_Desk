@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/desktop_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -222,25 +223,8 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
     AtelierOrdersCubit cubit,
     AtelierOrder order,
   ) {
-    // Présentation adaptative : feuille depuis le bas sur mobile ; dialog centré
-    // et compact sur grand écran.
-    final isWide = MediaQuery.sizeOf(context).width >= 720;
-
+    // Modale centrée (l'app desktop n'ouvre plus de feuille du bas).
     List<Widget> actions(BuildContext ctx) => [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-            child: Text(order.label, style: Theme.of(ctx).textTheme.titleMedium),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              '${order.customerName ?? 'Client'} · ${order.status.labelFor(order.metier)}\n'
-              'Total ${formatCurrency(order.totalAmount, order.currencyCode)}'
-              ' · Reste ${formatCurrency(order.remainingAmount, order.currencyCode)}',
-              style: Theme.of(ctx).textTheme.bodySmall,
-            ),
-          ),
-          const Divider(),
           ListTile(
             leading: const Icon(Icons.print_outlined),
             title: Text(
@@ -315,38 +299,20 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
           ],
         ];
 
-    if (isWide) {
-      showDialog<void>(
-        context: context,
-        builder: (ctx) => Dialog(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: actions(ctx),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    } else {
-      showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        builder: (ctx) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: actions(ctx),
-          ),
-        ),
-      );
-    }
+    showDesktopModal<void>(
+      context,
+      title: order.label,
+      subtitle:
+          '${order.customerName ?? 'Client'} · ${order.status.labelFor(order.metier)}\n'
+          'Total ${formatCurrency(order.totalAmount, order.currencyCode)}'
+          ' · Reste ${formatCurrency(order.remainingAmount, order.currencyCode)}',
+      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: actions(ctx),
+      ),
+    );
   }
 
   /// Génère et ouvre la fiche imprimable (état de sortie) de la commande.

@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/desktop_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -34,8 +35,6 @@ void showRestaurantOrderQuickView(
   RestaurantOrdersCubit cubit,
   RestaurantOrder order,
 ) {
-  final isWide = MediaQuery.sizeOf(context).width >= 720;
-
   // Ouvre la caisse pré-sélectionnée sur la commande (prise de commande OU
   // règlement : c'est le même écran, la colonne de caisse y est intégrée).
   void openPos() => context.push('/restaurant/orders?orderId=${order.id}');
@@ -53,9 +52,6 @@ void showRestaurantOrderQuickView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(order.label,
-                        style: Theme.of(ctx).textTheme.titleMedium),
-                    const SizedBox(height: 4),
                     OrderTypeBadge.of(order, compact: true),
                   ],
                 ),
@@ -133,38 +129,16 @@ void showRestaurantOrderQuickView(
           ),
       ];
 
-  if (isWide) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => Dialog(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: actions(ctx),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  } else {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: actions(ctx),
-        ),
-      ),
-    );
-  }
+  showDesktopModal<void>(
+    context,
+    title: order.label,
+    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+    builder: (ctx) => Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: actions(ctx),
+    ),
+  );
 }
 
 /// Renomme le libellé de la commande (table / client) via une saisie compacte.

@@ -121,6 +121,11 @@ class _SalesListScreenState extends State<SalesListScreen> {
           title: 'Revenus', // Terminologie comptable: Revenus = Ventes
           appBarActions: [
             IconButton(
+              icon: const Icon(Icons.filter_list),
+              onPressed: () => _showFilterDialog(context),
+              tooltip: 'Filtrer',
+            ),
+            IconButton(
               icon: const Icon(Icons.request_quote_outlined),
               tooltip: 'Factures proforma',
               onPressed: () => ProformaListScreen.open(context),
@@ -156,11 +161,6 @@ class _SalesListScreenState extends State<SalesListScreen> {
                   companyName: 'Wanzo',
                 ),
               ),
-            IconButton(
-              icon: const Icon(Icons.filter_list),
-              onPressed: () => _showFilterDialog(context),
-              tooltip: 'Filtrer',
-            ),
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () => context.read<SalesBloc>().add(const LoadSales()),

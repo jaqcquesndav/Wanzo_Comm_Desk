@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/desktop_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -98,31 +99,15 @@ Future<void> _showShareSheet(
   required String url,
   required String message,
 }) {
-  return showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    builder: (bc) => SafeArea(
+  return showDesktopModal<void>(
+      context,
+      title: 'Partager la carte',
+      icon: Icons.restaurant_menu,
+      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+      builder: (bc) => SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-            child: Row(
-              children: [
-                const Icon(Icons.restaurant_menu),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Partager la carte',
-                    style: Theme.of(bc)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ],
-            ),
-          ),
           ListTile(
             leading: const Icon(Icons.chat, color: Colors.green),
             title: const Text('Envoyer par WhatsApp'),
@@ -157,7 +142,7 @@ Future<void> _showShareSheet(
         ],
       ),
     ),
-  );
+    );
 }
 
 /// Ouvre WhatsApp avec un message pre-rempli (meme motif que `messaging_launcher`

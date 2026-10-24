@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/desktop_modal.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -104,9 +105,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   void _showImagePickerOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (BuildContext bc) {
+    showDesktopModal(
+        context,
+        title: 'Choisir une photo',
+        builder: (BuildContext bc) {
         return SafeArea(
           child: Wrap(
             children: <Widget>[
@@ -131,7 +133,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ),
         );
       },
-    );
+      );
   }
 
   void _saveProfile() async {

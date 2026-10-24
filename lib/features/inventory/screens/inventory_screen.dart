@@ -125,6 +125,18 @@ class _InventoryScreenState extends State<InventoryScreen>
           currentIndex: 2, // Stock a l'index 2
           title: l10n.inventoryScreenTitle,
           appBarActions: [
+            // Bouton de recherche
+            IconButton(
+              icon: const Icon(Icons.search),
+              tooltip: 'Rechercher',
+              onPressed: () => _showSearchDialog(context, l10n),
+            ),
+            // Filtrer par catégorie
+            IconButton(
+              icon: const Icon(Icons.filter_list),
+              tooltip: 'Filtrer par catégorie',
+              onPressed: () => _showFilterDialog(context, l10n),
+            ),
             // Bouton d'export
             if (state is ProductsLoaded && state.products.isNotEmpty)
               TableExportIconButton(
@@ -169,16 +181,6 @@ class _InventoryScreenState extends State<InventoryScreen>
               icon: const Icon(Icons.storefront_outlined),
               tooltip: 'Catalogue public',
               onPressed: () => showPublicCatalogSheet(context),
-            ),
-            // Bouton de recherche
-            IconButton(
-              icon: const Icon(Icons.search),
-              onPressed: () => _showSearchDialog(context, l10n),
-            ),
-            // Filtrer par catégorie
-            IconButton(
-              icon: const Icon(Icons.filter_list),
-              onPressed: () => _showFilterDialog(context, l10n),
             ),
           ],
           body: Column(

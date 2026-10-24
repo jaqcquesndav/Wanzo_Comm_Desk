@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/desktop_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
@@ -110,22 +111,12 @@ Future<void> showProformaSheet(
     onCheckoutOrder: onCheckoutOrder,
     hostContext: context,
   );
-  if (MediaQuery.sizeOf(context).width >= 720) {
-    return showDialog<void>(
-      context: context,
-      builder: (_) => Dialog(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520, maxHeight: 680),
-          child: body,
-        ),
-      ),
-    );
-  }
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    showDragHandle: true,
+  return showDesktopModal<void>(
+    context,
+    title: 'Facture proforma',
+    icon: Icons.request_quote_outlined,
+    scrollable: false,
+    contentPadding: EdgeInsets.zero,
     builder: (_) => body,
   );
 }
@@ -323,21 +314,6 @@ class _ProformaSheetState extends State<_ProformaSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.request_quote_outlined),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text('Facture proforma',
-                    style: theme.textTheme.titleMedium),
-              ),
-              IconButton(
-                tooltip: 'Fermer',
-                icon: const Icon(Icons.close),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
-          ),
           Wrap(
             spacing: 8,
             runSpacing: 4,

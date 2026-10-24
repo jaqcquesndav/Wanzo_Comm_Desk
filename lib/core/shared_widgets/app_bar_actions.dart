@@ -219,8 +219,11 @@ class HeaderOverflowMenu extends StatelessWidget {
           entries[value.index].run(context);
           return;
         }
-        final onSelected = pageMenu?.onSelected;
-        if (onSelected != null) (onSelected as dynamic)(value);
+        // Lecture dynamique : le menu de page est typé (PopupMenuButton<String>),
+        // une lecture typée lèverait une erreur de type.
+        final dynamic menu = pageMenu;
+        final dynamic onSelected = menu?.onSelected;
+        if (onSelected != null) onSelected(value);
       },
     );
   }

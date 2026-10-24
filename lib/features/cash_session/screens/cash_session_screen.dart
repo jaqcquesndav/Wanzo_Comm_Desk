@@ -464,7 +464,10 @@ class _OpenSessionViewState extends State<_OpenSessionView> {
   Future<void> _close() async {
     final closed = await showDesktopModal<CashSession>(
         context,
-        title: 'TODO_TITLE',
+        title: 'Clôturer la caisse',
+        subtitle: 'Comptez les espèces du tiroir, devise par devise.',
+        scrollable: false,
+        contentPadding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
         builder: (_) => _CloseSheet(service: widget.service, session: widget.session),
       );
     if (closed == null || !mounted) return;
@@ -658,23 +661,6 @@ class _CloseSheetState extends State<_CloseSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text('Clôturer la caisse', style: Theme.of(context).textTheme.titleMedium),
-                  ),
-                  IconButton(
-                    tooltip: 'Fermer',
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              Text(
-                'Comptez les espèces du tiroir, devise par devise.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 12),
               _AmountFields(
                 controllers: _ctrl,
                 onChanged: () => setState(() {}),

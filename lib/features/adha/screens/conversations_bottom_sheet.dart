@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/adha_message.dart';
 import '../../../core/shared_widgets/adha_logo.dart';
+import '../../../core/utils/desktop_modal.dart';
 
-/// Widget bottom sheet discret pour afficher l'historique des conversations ADHA
-/// S'affiche via un DraggableScrollableSheet pour une expérience similaire
-/// au sélecteur de types de vente
+/// Historique des conversations ADHA, en modale centrée (app desktop).
+/// Le nom de la classe est gardé pour ne pas toucher aux appelants.
 class ConversationsBottomSheet extends StatelessWidget {
   /// Liste des conversations
   final List<AdhaConversation> conversations;
@@ -27,7 +27,7 @@ class ConversationsBottomSheet extends StatelessWidget {
     this.onDeleteConversation,
   });
 
-  /// Affiche le bottom sheet des conversations
+  /// Affiche l'historique des conversations dans une modale centrée.
   static Future<void> show({
     required BuildContext context,
     required List<AdhaConversation> conversations,
@@ -35,10 +35,24 @@ class ConversationsBottomSheet extends StatelessWidget {
     required VoidCallback onNewConversation,
     Function(String)? onDeleteConversation,
   }) {
-    return showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    return showDesktopModal<void>(
+      context,
+      title: 'Conversations',
+      icon: Icons.history,
+      maxWidth: kModalListWidth,
+      scrollable: false,
+      contentPadding: EdgeInsets.zero,
+      footerBuilder: (ctx) => Align(
+        alignment: Alignment.centerRight,
+        child: FilledButton.tonalIcon(
+          onPressed: () {
+            Navigator.pop(ctx);
+            onNewConversation();
+          },
+          icon: const Icon(Icons.add_circle_outline),
+          label: const Text('Nouvelle conversation'),
+        ),
+      ),
       builder:
           (context) => ConversationsBottomSheet(
             conversations: conversations,
@@ -51,111 +65,22 @@ class ConversationsBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.5,
-      minChildSize: 0.3,
-      maxChildSize: 0.85,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: theme.scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 10,
-                offset: const Offset(0, -2),
+    // Hauteur fixe : la modale reste stable, la liste défile.
+    return SizedBox(
+      height: 480,
+      child:
+          conversations.isEmpty
+              ? _buildEmptyState(context)
+              : ListView.separated(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: conversations.length,
+                separatorBuilder:
+                    (_, __) => const Divider(height: 1, indent: 72),
+                itemBuilder: (context, index) {
+                  final conversation = conversations[index];
+                  return _buildConversationTile(context, conversation);
+                },
               ),
-            ],
-          ),
-          child: Column(
-            children: [
-              // Barre de drag
-              Container(
-                margin: const EdgeInsets.only(top: 12, bottom: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-
-              // Header
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.history,
-                          color: theme.primaryColor,
-                          size: 24,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          'Conversations',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    // Bouton nouvelle conversation - discret (juste une icône)
-                    IconButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        onNewConversation();
-                      },
-                      icon: Icon(
-                        Icons.add_circle_outline,
-                        size: 22,
-                        color: Colors.grey[500],
-                      ),
-                      tooltip: 'Nouvelle conversation',
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 36,
-                        minHeight: 36,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const Divider(height: 1),
-
-              // Liste des conversations
-              Expanded(
-                child:
-                    conversations.isEmpty
-                        ? _buildEmptyState(context)
-                        : ListView.separated(
-                          controller: scrollController,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          itemCount: conversations.length,
-                          separatorBuilder:
-                              (_, __) => const Divider(height: 1, indent: 72),
-                          itemBuilder: (context, index) {
-                            final conversation = conversations[index];
-                            return _buildConversationTile(
-                              context,
-                              conversation,
-                            );
-                          },
-                        ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 

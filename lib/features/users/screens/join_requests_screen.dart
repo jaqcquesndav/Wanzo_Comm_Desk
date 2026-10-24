@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/desktop_modal.dart';
 import 'package:flutter/material.dart';
 
 import '../../auth/models/join_request.dart';
@@ -396,53 +397,20 @@ class _Message extends StatelessWidget {
 }
 
 /// En-tête des feuilles montantes : titre et bouton fermer toujours visible.
-class _SheetHeader extends StatelessWidget {
-  final String title;
-  final String? subtitle;
-
-  const _SheetHeader({required this.title, this.subtitle});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 8, 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: theme.textTheme.titleLarge),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 2),
-                  Text(subtitle!, style: theme.textTheme.bodySmall),
-                ],
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: 'Fermer',
-            icon: const Icon(Icons.close),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Feuille montante « Accepter » : choix du rôle (Employé par défaut).
 /// Renvoie la valeur du rôle, ou null si fermée.
 Future<String?> showAcceptJoinRequestSheet(
   BuildContext context,
   JoinRequest request,
 ) {
-  return showModalBottomSheet<String>(
-    context: context,
-    isScrollControlled: true,
-    builder: (sheetContext) {
+  return showDesktopModal<String>(
+      context,
+      title: 'Accepter la demande',
+      subtitle:
+          "${request.requester.displayName} rejoindra l'entreprise avec le rôle choisi.",
+      scrollable: false,
+      contentPadding: const EdgeInsets.only(top: 12),
+      builder: (sheetContext) {
       var selected = kDefaultGrantedRole;
       return StatefulBuilder(
         builder: (ctx, setSheetState) => SafeArea(
@@ -454,11 +422,6 @@ Future<String?> showAcceptJoinRequestSheet(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _SheetHeader(
-                  title: 'Accepter la demande',
-                  subtitle:
-                      '${request.requester.displayName} rejoindra l\'entreprise avec le rôle choisi.',
-                ),
                 Flexible(
                   child: ListView(
                     shrinkWrap: true,
@@ -495,7 +458,7 @@ Future<String?> showAcceptJoinRequestSheet(
         ),
       );
     },
-  );
+    );
 }
 
 /// Feuille montante « Refuser » : motif dans une liste, plus une précision.
@@ -504,11 +467,14 @@ Future<String?> showRefuseJoinRequestSheet(
   BuildContext context,
   JoinRequest request,
 ) {
-  return showModalBottomSheet<String>(
-    context: context,
-    isScrollControlled: true,
-    builder: (sheetContext) => _RefuseSheet(request: request),
-  );
+  return showDesktopModal<String>(
+      context,
+      title: 'Refuser la demande',
+      subtitle: 'Le motif sera montré à ${request.requester.displayName}.',
+      scrollable: false,
+      contentPadding: const EdgeInsets.only(top: 12),
+      builder: (sheetContext) => _RefuseSheet(request: request),
+    );
 }
 
 class _RefuseSheet extends StatefulWidget {
@@ -559,10 +525,6 @@ class _RefuseSheetState extends State<_RefuseSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _SheetHeader(
-                title: 'Refuser la demande',
-                subtitle: 'Le motif sera montré à ${widget.request.requester.displayName}.',
-              ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Wrap(

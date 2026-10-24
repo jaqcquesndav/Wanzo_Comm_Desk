@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/desktop_modal.dart';
 import 'dart:io'; // Added for File support
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -225,9 +226,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
     final l10n = AppLocalizations.of(context)!;
     String source = 'gallery';
     if (_imagePickerService.isCameraAvailable) {
-      final chosen = await showModalBottomSheet<String>(
-        context: context,
-        builder: (BuildContext bc) {
+      final chosen = await showDesktopModal<String>(
+          context,
+          title: 'Choisir une photo',
+          builder: (BuildContext bc) {
           return SafeArea(
             child: Wrap(
               children: <Widget>[
@@ -245,7 +247,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
             ),
           );
         },
-      );
+        );
       if (chosen == null) return [];
       source = chosen;
     }

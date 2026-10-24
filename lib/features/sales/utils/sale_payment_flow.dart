@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/desktop_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -104,36 +105,15 @@ Future<Sale?> pickSaleToSettle(
   if (outstandingSales.isEmpty) return null;
   if (outstandingSales.length == 1) return outstandingSales.first;
 
-  return showModalBottomSheet<Sale>(
-    context: context,
-    showDragHandle: true,
-    builder:
-        (sheetContext) => SafeArea(
+  return showDesktopModal<Sale>(
+      context,
+      title: title,
+      scrollable: false,
+      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+      builder: (sheetContext) => SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Fermer',
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(sheetContext),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
               Flexible(
                 child: ListView.builder(
                   shrinkWrap: true,
@@ -171,5 +151,5 @@ Future<Sale?> pickSaleToSettle(
             ],
           ),
         ),
-  );
+    );
 }

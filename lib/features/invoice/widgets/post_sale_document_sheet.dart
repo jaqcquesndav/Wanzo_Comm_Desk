@@ -43,7 +43,7 @@ Future<PostSaleDocument?> generatePostSaleDocument(
 }
 
 /// Feuille d'options post-vente PARTAGÉE (boutique + salon), adaptative :
-/// `AdaptiveModal` sur desktop (>= 900 px), `BottomSheet` sur mobile. Propose
+/// toujours en `AdaptiveModal` dans l'app desktop. Propose
 /// aperçu, impression système, ticket thermique (si espèces), envoi WhatsApp
 /// au client (repli SMS) et partage du PDF généré (PlatformShareService).
 ///
@@ -63,11 +63,10 @@ void showPostSaleDocumentSheet({
   VoidCallback? onClose,
 }) {
   final invoiceService = InvoiceService();
-  final screenWidth = MediaQuery.of(context).size.width;
-  final isDesktop = screenWidth >= 900;
   final isCash = ReceiptPrinterService.isCashPayment(sale.paymentMethod);
 
-  if (isDesktop) {
+  // App desktop : toujours la modale centrée (plus de feuille du bas).
+  {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -189,161 +188,7 @@ void showPostSaleDocumentSheet({
         );
       },
     );
-    return;
   }
-
-  // Mobile : BottomSheet.
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    constraints: BoxConstraints(
-      maxHeight: MediaQuery.of(context).size.height * 0.85,
-    ),
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (BuildContext bc) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              // En-tête avec message de succès
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16.0, top: 8.0),
-                child: Column(
-                  children: [
-                    const Icon(
-                      Icons.check_circle,
-                      color: Colors.green,
-                      size: 48.0,
-                    ),
-                    const SizedBox(height: 8.0),
-                    Text(
-                      'Vente enregistrée avec succès',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24.0,
-                        vertical: 8.0,
-                      ),
-                      child: Text(
-                        'Montant total: ${_formatSaleAmount(sale)}',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ),
-                    const Divider(),
-                  ],
-                ),
-              ),
-              if (onNewSale != null)
-                ListTile(
-                  leading: const Icon(
-                    Icons.add_circle_outline,
-                    color: Colors.green,
-                  ),
-                  title: const Text('Enregistrer une autre vente'),
-                  subtitle: const Text('Réinitialiser le formulaire'),
-                  onTap: () {
-                    Navigator.pop(bc);
-                    onNewSale();
-                  },
-                ),
-              ListTile(
-                leading: const Icon(Icons.visibility, color: Colors.blue),
-                title: Text('Prévisualiser $documentType'),
-                onTap: () async {
-                  Navigator.pop(bc);
-                  try {
-                    final file = File(pdfPath);
-                    if (await file.exists()) {
-                      final uri = Uri.file(pdfPath);
-                      await launchUrl(uri);
-                    }
-                  } catch (e) {
-                    debugPrint('Erreur lors de l\'ouverture du document: $e');
-                  }
-                  onClose?.call();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.print, color: Colors.blue),
-                title: Text('Imprimer $documentType'),
-                onTap: () async {
-                  Navigator.pop(bc);
-                  await invoiceService.printDocument(pdfPath);
-                  onClose?.call();
-                },
-              ),
-              if (isCash)
-                ListTile(
-                  leading: const Icon(Icons.receipt, color: Colors.teal),
-                  title: const Text('Ticket thermique'),
-                  subtitle: const Text('Imprimante ESC/POS'),
-                  onTap: () async {
-                    Navigator.pop(bc);
-                    final printerService = ReceiptPrinterService();
-                    final success = await printerService.printCashReceipt(
-                      sale,
-                      settings,
-                    );
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            success
-                                ? 'Ticket thermique imprimé'
-                                : 'Échec impression thermique',
-                          ),
-                          backgroundColor: success ? Colors.green : Colors.red,
-                        ),
-                      );
-                    }
-                    onClose?.call();
-                  },
-                ),
-              ListTile(
-                leading: const Icon(Icons.chat, color: Colors.green),
-                title: const Text('Envoyer par WhatsApp'),
-                subtitle: const Text('Résumé au client, avec repli SMS'),
-                onTap: () async {
-                  Navigator.pop(bc);
-                  await launchWhatsAppOrSms(
-                    context,
-                    message: buildPostSaleDocumentMessage(sale, documentType),
-                    phone: customerPhone,
-                  );
-                  onClose?.call();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.share, color: Colors.orange),
-                title: Text('Partager $documentType (PDF)'),
-                onTap: () async {
-                  Navigator.pop(bc);
-                  await _sharePdf(context, pdfPath, documentType, sale);
-                  onClose?.call();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.close, color: Colors.grey),
-                title: const Text('Fermer et continuer'),
-                onTap: () {
-                  Navigator.pop(bc);
-                  onClose?.call();
-                },
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-  );
 }
 
 /// Partage le PDF DÉJÀ généré (la pièce réellement présentée, reçu ou

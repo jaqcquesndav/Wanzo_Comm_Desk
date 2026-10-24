@@ -33,6 +33,7 @@ import 'package:wanzo/features/inventory/bloc/inventory_state.dart';
 import 'package:wanzo/core/services/sync_service.dart';
 import 'package:get_it/get_it.dart';
 import 'package:wanzo/core/modules/mode_vocabulary.dart';
+import 'package:wanzo/core/utils/desktop_modal.dart';
 
 enum _ExpandedView { none, operationsJournal }
 
@@ -1420,9 +1421,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// Affiche les filtres rapides pour le journal des opérations
   void _showQuickFilters(BuildContext context, AppLocalizations l10n) {
     final current = context.read<OperationJournalBloc>().currentFilter;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
+    showDesktopModal(
+      context,
+      title: 'Filtres du journal',
+      contentPadding: EdgeInsets.zero,
       builder:
           (sheetContext) => SafeArea(
             child: SingleChildScrollView(
