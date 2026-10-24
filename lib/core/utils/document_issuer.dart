@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import 'package:hive/hive.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:wanzo/features/business_unit/models/business_unit.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
 
 /// Identité imprimée en tête de TOUTES les pièces (facture, proforma, reçu,
@@ -54,6 +56,36 @@ class DocumentIssuer {
           _orElse(settings?.taxIdentificationNumber ?? '', ctx?.companyTaxId),
       context: ctx,
     );
+  }
+
+  /// Identité d'une pièce DÉJÀ émise (réimpression, ticket, reçu) : celle de
+  /// l'unité qui a porté l'opération ([businessUnitId] de la vente), jamais
+  /// l'unité courante de l'utilisateur, qui peut avoir changé depuis.
+  factory DocumentIssuer.forUnit(Settings? settings, String? businessUnitId) {
+    final ctx = issuerContextForUnit(
+      BusinessContextService().currentContext,
+      businessUnitId,
+      lookup: _localUnit,
+    );
+    return DocumentIssuer.from(settings, context: ctx);
+  }
+
+  /// Unité connue localement (box des unités, hors ligne d'abord).
+  static IssuerUnit? _localUnit(String id) {
+    try {
+      if (!Hive.isBoxOpen('businessUnitsBox')) return null;
+      final u = Hive.box<BusinessUnit>('businessUnitsBox').get(id);
+      if (u == null) return null;
+      return IssuerUnit(
+        name: u.name,
+        code: u.code,
+        type: u.type,
+        address: u.address,
+        phone: u.phone,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Règle pure (testable sans singleton).
@@ -123,6 +155,55 @@ class DocumentIssuer {
     final l = local.trim();
     return l.isNotEmpty ? l : (fallback ?? '').trim();
   }
+}
+
+/// Unité émettrice minimale, lue dans le cache local des unités.
+class IssuerUnit {
+  const IssuerUnit({
+    required this.name,
+    this.code,
+    this.type,
+    this.address,
+    this.phone,
+  });
+  final String name;
+  final String? code;
+  final dynamic type;
+  final String? address;
+  final String? phone;
+}
+
+/// Contexte d'émission d'une pièce portée par l'unité [unitId] :
+/// - unité inconnue de la pièce (anciennes ventes) : contexte courant ;
+/// - même unité que l'utilisateur : contexte courant ;
+/// - autre unité connue localement : ses nom, adresse et téléphone ;
+/// - autre unité inconnue : identité de l'ENTREPRISE, jamais l'unité courante.
+BusinessContext? issuerContextForUnit(
+  BusinessContext? current,
+  String? unitId, {
+  IssuerUnit? Function(String id)? lookup,
+}) {
+  final id = unitId?.trim() ?? '';
+  if (id.isEmpty || current == null) return current;
+  if (current.businessUnitId == id) return current;
+  final unit = lookup?.call(id);
+  return BusinessContext(
+    companyId: current.companyId,
+    companyName: current.companyName,
+    companyVariant: current.companyVariant,
+    companyRccm: current.companyRccm,
+    companyTaxId: current.companyTaxId,
+    companyNationalId: current.companyNationalId,
+    activityMode: current.activityMode,
+    businessUnitId: unit == null ? null : id,
+    businessUnitCode: unit?.code,
+    businessUnitName: unit?.name,
+    businessUnitAddress: unit?.address,
+    businessUnitPhone: unit?.phone,
+    scope: unit == null ? 'company' : 'unit',
+    userId: current.userId,
+    userRole: current.userRole,
+  );
 }
 
 /// Adresse lisible sur une ligne, ou '' : jamais « null », jamais un objet

@@ -226,7 +226,7 @@ class InvoiceService {
     final regularFont = pw.Font.helvetica();
     final boldFont = pw.Font.helveticaBold();
 
-    final issuer = _IssuerIdentity.from(settings);
+    final issuer = DocumentIssuer.forUnit(settings, sale.businessUnitId);
 
     // Devise de présentation du document + conversion de TOUS les montants
     // depuis leur base CDF (voir InvoiceMoney) : une ligne ne peut plus
@@ -608,7 +608,7 @@ class InvoiceService {
     final regularFont = pw.Font.helvetica();
     final boldFont = pw.Font.helveticaBold();
 
-    final issuer = _IssuerIdentity.from(settings);
+    final issuer = DocumentIssuer.forUnit(settings, sale.businessUnitId);
 
     // Devise de présentation du document + conversion de TOUS les montants
     // depuis leur base CDF (voir InvoiceMoney) : une ligne ne peut plus

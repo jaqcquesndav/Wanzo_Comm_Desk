@@ -176,7 +176,7 @@ class ReceiptPrinterService {
     // Raison sociale, nom de l'unité, adresse et téléphone de l'unité ou du
     // siège, puis RCCM, Id. Nat. et NIF ; chaque ligne repliée entre les mots
     // (jamais tronquée), aucune ligne vide.
-    final issuer = DocumentIssuer.from(settings);
+    final issuer = DocumentIssuer.forUnit(settings, sale.businessUnitId);
     bytes.addAll(_escAlign(1));
     bytes.addAll(_escBold(true));
     for (final ln in wrapWords(issuer.name.toUpperCase(), _colWidth)) {
@@ -497,7 +497,7 @@ class ReceiptPrinterService {
     );
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(sale.date);
 
-    final issuer = DocumentIssuer.from(settings);
+    final issuer = DocumentIssuer.forUnit(settings, sale.businessUnitId);
 
     final b = StringBuffer();
     void line(String s) => b.write('<text>${_xmlEscape(s)}&#10;</text>');
@@ -652,7 +652,7 @@ class ReceiptPrinterService {
     );
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(sale.date);
 
-    final issuer = DocumentIssuer.from(settings);
+    final issuer = DocumentIssuer.forUnit(settings, sale.businessUnitId);
 
     final doc = pw.Document();
     final mono = pw.Font.courier();
