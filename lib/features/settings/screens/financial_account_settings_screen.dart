@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:wanzo/core/widgets/operator_logo.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/financial_account_bloc.dart';
 import '../bloc/financial_account_event.dart';
@@ -235,7 +236,9 @@ class _FinancialAccountSettingsScreenState
       elevation: 2,
       child: ListTile(
         contentPadding: const EdgeInsets.all(16),
-        leading: CircleAvatar(
+        leading: account.type == FinancialAccountType.mobileMoney
+          ? OperatorLogo(account.mobileMoneyProvider, size: 40)
+          : CircleAvatar(
           backgroundColor: account.isDefault ? Colors.green : Colors.blue,
           child: Icon(
             account.type == FinancialAccountType.bankAccount

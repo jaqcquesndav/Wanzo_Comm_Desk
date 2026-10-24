@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:wanzo/core/widgets/operator_logo.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
@@ -349,10 +350,13 @@ class _AddFinancialAccountScreenState extends State<AddFinancialAccountScreen>
   Widget _buildProviderSelector() {
     return DropdownButtonFormField<MobileMoneyProvider>(
       value: _selectedProvider,
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         labelText: 'Fournisseur *',
-        border: OutlineInputBorder(),
-        prefixIcon: Icon(Icons.business_center),
+        border: const OutlineInputBorder(),
+        prefixIcon: Padding(
+          padding: const EdgeInsets.all(10),
+          child: OperatorLogo(_selectedProvider, size: 28),
+        ),
       ),
       items:
           MobileMoneyProvider.values.map((provider) {
@@ -360,7 +364,7 @@ class _AddFinancialAccountScreenState extends State<AddFinancialAccountScreen>
               value: provider,
               child: Row(
                 children: [
-                  Icon(_getProviderIcon(provider)),
+                  OperatorLogo(provider, size: 24, excludeSemantics: true),
                   const SizedBox(width: 8),
                   Text(_getProviderName(provider)),
                 ],
@@ -536,16 +540,6 @@ class _AddFinancialAccountScreenState extends State<AddFinancialAccountScreen>
     }
   }
 
-  IconData _getProviderIcon(MobileMoneyProvider provider) {
-    switch (provider) {
-      case MobileMoneyProvider.airtelMoney:
-        return Icons.signal_cellular_alt;
-      case MobileMoneyProvider.orangeMoney:
-        return Icons.signal_cellular_4_bar;
-      case MobileMoneyProvider.mpesa:
-        return Icons.signal_wifi_4_bar;
-    }
-  }
 }
 
 /// Formatter pour convertir en majuscules

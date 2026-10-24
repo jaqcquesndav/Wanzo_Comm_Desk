@@ -146,6 +146,7 @@ flutter:
   assets:
     - assets/images/
     - assets/images/adha/
+    - assets/images/operators/
     - assets/icons/
     - assets/fonts/
     - assets/sounds/
