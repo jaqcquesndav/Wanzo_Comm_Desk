@@ -176,4 +176,12 @@ void main() {
     expect(seen, ["POST stock-transactions", "PATCH products/p-local"]);
     expect(report.remaining, 0);
   });
+
+  test("purge interdite tant qu une transaction financiere attend dans la file", () async {
+    expect(await OfflineWriteQueue.instance.hasPendingFor("financial-transactions"), isFalse);
+    await OfflineWriteQueue.instance.enqueue(
+      method: "POST", endpoint: "/financial-transactions", body: {"amount": 5});
+    expect(await OfflineWriteQueue.instance.hasPendingFor("financial-transactions"), isTrue);
+    expect(await OfflineWriteQueue.instance.hasPendingFor("financial-accounts"), isFalse);
+  });
 }

@@ -115,6 +115,25 @@ class OfflineWriteQueue {
     }
   }
 
+  /// Vrai si une écriture en attente vise un endpoint commençant par
+  /// [endpointPrefix] (ex. « financial-transactions ») : une purge du cache
+  /// local ne doit pas effacer ce qui n'est pas encore parti.
+  Future<bool> hasPendingFor(String endpointPrefix) async {
+    try {
+      final box = await _box();
+      final prefix = endpointPrefix.replaceAll(RegExp(r'^/+'), '');
+      for (final raw in box.values) {
+        if (raw is! Map) continue;
+        final e = '${raw['endpoint'] ?? ''}'.replaceAll(RegExp(r'^/+'), '');
+        if (e.startsWith(prefix)) return true;
+      }
+      return false;
+    } catch (_) {
+      // Stockage illisible : prudence, on suppose qu'il reste des écritures.
+      return true;
+    }
+  }
+
   /// Nombre d'écritures en attente (0 si le stockage est indisponible).
   Future<int> pendingCount() async {
     try {

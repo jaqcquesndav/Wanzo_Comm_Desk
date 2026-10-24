@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:wanzo/core/services/offline_write_queue.dart';
 import 'package:hive/hive.dart';
 import 'package:wanzo/core/utils/connectivity_service.dart';
 import 'package:wanzo/core/services/api_service.dart';
@@ -1176,13 +1177,16 @@ class SyncService {
         queryParams['dateFrom'] = lastSyncDate;
       }
 
-      final apiResponse = await _financialTransactionApiService
-          .getFinancialTransactions(
-            dateFrom:
-                queryParams.containsKey('dateFrom')
-                    ? queryParams['dateFrom']
-                    : null,
-          );
+      // TOUTES les pages : le serveur plafonne sa liste (10 par défaut), une
+      // seule page faisait croire que le reste avait disparu.
+      final paged = await fetchAllPages<FinancialTransaction>(
+        (page, limit) => _financialTransactionApiService.getFinancialTransactions(
+          page: page,
+          limit: limit,
+          dateFrom: queryParams['dateFrom'],
+        ),
+      );
+      final apiResponse = paged.response;
 
       if (apiResponse.success && apiResponse.data != null) {
         for (var transaction in apiResponse.data!) {
@@ -1190,7 +1194,12 @@ class SyncService {
         }
 
         // ====== NETTOYAGE données obsolètes (full sync) ======
-        if (forceFullSync) {
+        // Seulement après une lecture COMPLÈTE, et jamais tant qu'une écriture
+        // de transaction attend dans la file (elle n'est pas encore au serveur).
+        if (forceFullSync &&
+            paged.completed &&
+            !await OfflineWriteQueue.instance
+                .hasPendingFor('financial-transactions')) {
           final stale = await _removeStaleEntries(
             box: transactionBox,
             backendIds: apiResponse.data!.map((t) => t.id).toSet(),
@@ -1235,9 +1244,14 @@ class SyncService {
       );
       final String lastSyncKey = 'financial_account_last_sync';
 
-      // Pour la pagination et les filtres de date
-      final apiResponse =
-          await _financialAccountApiService.getFinancialAccounts();
+      // Toutes les pages (même plafond serveur que les transactions).
+      final paged = await fetchAllPages<FinancialAccount>(
+        (page, limit) => _financialAccountApiService.getFinancialAccounts(
+          page: page,
+          limit: limit,
+        ),
+      );
+      final apiResponse = paged.response;
 
       if (apiResponse.success && apiResponse.data != null) {
         for (var account in apiResponse.data!) {
@@ -1245,7 +1259,11 @@ class SyncService {
         }
 
         // ====== NETTOYAGE données obsolètes (full sync) ======
-        if (forceFullSync) {
+        // Même garde : lecture complète et aucune écriture de compte en file.
+        if (forceFullSync &&
+            paged.completed &&
+            !await OfflineWriteQueue.instance
+                .hasPendingFor('financial-accounts')) {
           final stale = await _removeStaleEntries(
             box: accountBox,
             backendIds: apiResponse.data!.map((a) => a.id).toSet(),
