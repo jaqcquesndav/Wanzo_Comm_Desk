@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../constants/colors.dart';
 
 /// Type de callback pour la navigation
 typedef NavigationCallback = void Function(int index);
@@ -67,8 +66,8 @@ class WanzoBottomNavigationBar extends StatelessWidget {
         );
       }).toList(),
       type: BottomNavigationBarType.fixed,
-      selectedItemColor: WanzoColors.primary,
-      unselectedItemColor: Colors.grey,
+      selectedItemColor: Theme.of(context).colorScheme.primary,
+      unselectedItemColor: Theme.of(context).colorScheme.onSurfaceVariant,
     );
   }
 }
