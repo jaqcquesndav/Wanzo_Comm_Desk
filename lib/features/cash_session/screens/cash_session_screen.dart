@@ -59,6 +59,46 @@ Future<void> shareCashSessionReport(CashSession s) async {
   );
 }
 
+/// Caisse déjà ouverte côté serveur : message clair, jamais silencieux, et
+/// « Reprendre » quand le serveur a renvoyé la session.
+Future<void> showCashSessionConflict(
+  BuildContext context,
+  CashSessionService service,
+  Map<String, dynamic>? serverSession,
+) async {
+  final opened = serverSession?['openedAt'] == null
+      ? null
+      : DateTime.tryParse(serverSession!['openedAt'].toString())?.toLocal();
+  final resume = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Caisse déjà ouverte'),
+      content: Text(
+        const CashSessionConflict().message +
+            (opened != null ? '\n\nOuverte le ${_dt.format(opened)}.' : ''),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Fermer')),
+        if (serverSession != null)
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Reprendre')),
+      ],
+    ),
+  );
+  if (resume != true || serverSession == null || !context.mounted) return;
+  try {
+    await service.resume(serverSession);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Caisse reprise sur cet appareil.')),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+}
+
 /// Caisse : ouverture, suivi de la journée, clôture (onglet « Caisse du
 /// jour ») et rapports passés (onglet « Historique »).
 class CashSessionScreen extends StatefulWidget {
@@ -71,12 +111,17 @@ class CashSessionScreen extends StatefulWidget {
 class _CashSessionScreenState extends State<CashSessionScreen> {
   final _service = CashSessionService.instance;
   bool _ready = false;
+  Map<String, dynamic>? _conflict;
 
   @override
   void initState() {
     super.initState();
-    _service.load().whenComplete(() {
+    _service.load().whenComplete(() async {
       if (mounted) setState(() => _ready = true);
+      // Caisse ouverte sur le serveur mais pas ici (autre appareil, ouverture
+      // refusée au rejeu hors ligne) : on le dit.
+      final conflict = await _service.serverConflict();
+      if (conflict != null && mounted) setState(() => _conflict = conflict);
     });
   }
 
@@ -93,6 +138,25 @@ class _CashSessionScreenState extends State<CashSessionScreen> {
             const TabBar(
               tabs: [Tab(text: 'Caisse du jour'), Tab(text: 'Historique')],
             ),
+            if (_conflict != null)
+              MaterialBanner(
+                content: Text(const CashSessionConflict().message),
+                leading: const Icon(Icons.warning_amber_rounded),
+                actions: [
+                  TextButton(
+                    onPressed: () => setState(() => _conflict = null),
+                    child: const Text('Fermer'),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      final server = _conflict;
+                      setState(() => _conflict = null);
+                      await showCashSessionConflict(context, _service, server);
+                    },
+                    child: const Text('Reprendre'),
+                  ),
+                ],
+              ),
             Expanded(
               child: !_ready
                   ? const Center(child: CircularProgressIndicator())
@@ -185,6 +249,8 @@ class _OpenFormState extends State<_OpenForm> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Caisse ouverte. Les ventes de la journée y sont rattachées.')),
       );
+    } on CashSessionConflict catch (e) {
+      if (mounted) await showCashSessionConflict(context, widget.service, e.serverSession);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));

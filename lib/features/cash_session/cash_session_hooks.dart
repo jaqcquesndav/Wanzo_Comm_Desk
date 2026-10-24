@@ -112,3 +112,16 @@ class CashSessionHooks {
     }
   }
 }
+
+/// Vente annulée ou supprimée : son encaissement est contre-passé dans la
+/// caisse où il avait été rattaché, même déjà clôturée.
+Future<void> cashSessionOnSaleCancelled(Sale sale) async {
+  try {
+    await CashSessionService.instance.reverseSale(
+      {sale.id, sale.localId ?? ''},
+      label: 'Vente annulée #${sale.id.length >= 6 ? sale.id.substring(0, 6) : sale.id}',
+    );
+  } catch (e) {
+    debugPrint('⚠️ Caisse : contre-passation non faite ($e)');
+  }
+}

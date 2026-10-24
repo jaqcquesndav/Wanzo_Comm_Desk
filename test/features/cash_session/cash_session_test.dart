@@ -9,6 +9,8 @@ class _MemoryStore implements CashSessionStore {
   Future<List<Map<String, dynamic>>> loadAll() async => rows.values.toList();
   @override
   Future<void> save(String localId, Map<String, dynamic> json) async => rows[localId] = json;
+  @override
+  Future<void> delete(String localId) async => rows.remove(localId);
 }
 
 CashMovement sale(double amount, {String method = 'Espèces', String currency = 'CDF'}) => CashMovement(
@@ -103,5 +105,75 @@ void main() {
     expect(cashMethodGroupOf('Carte bancaire'), CashMethodGroup.card);
     expect(cashMethodGroupOf('credit'), CashMethodGroup.credit);
     expect(cashMethodGroupOf('Virement bancaire'), CashMethodGroup.other);
+  });
+
+  test('409 : ouverture locale annulée, message clair, reprise de la session du serveur', () async {
+    final server = {
+      'id': '00000000-0000-4000-8000-000000000001',
+      'localId': 'srv-L1',
+      'status': 'open',
+      'openedAt': '2026-10-24T05:00:00.000Z',
+      'openingFloat': {'CDF': 20000},
+    };
+    final conflicted = CashSessionService(
+      store: store,
+      sender: (endpoint, body) async => throw CashSessionConflict(server),
+      fetcher: () async => server,
+    );
+    await expectLater(
+      conflicted.open({'CDF': 1000}),
+      throwsA(isA<CashSessionConflict>().having((e) => e.message, 'message', contains('Clôturez-la ou reprenez-la'))),
+    );
+    expect(conflicted.current.value, isNull);
+    expect(store.rows, isEmpty);
+    expect(await conflicted.serverConflict(), isNotNull);
+    final resumed = await conflicted.resume(server);
+    expect(resumed.localId, 'srv-L1');
+    expect(resumed.openingFloat, {'CDF': 20000.0});
+    expect(await conflicted.serverConflict(), isNull);
+  });
+
+  test('vente annulée : contre-passée dans la caisse ouverte, théorique et rapport justes', () async {
+    await service.open({'CDF': 10000});
+    await service.recordMovement(
+      CashMovement(
+        at: DateTime(2026, 10, 24, 10),
+        kind: CashMovementKind.sale,
+        method: 'Espèces',
+        currency: 'CDF',
+        amount: 5000,
+        label: 'Vente #abc',
+        ref: 'sale-1',
+      ),
+    );
+    expect(await service.reverseSale({'sale-1', 'local-1'}), isTrue);
+    expect(await service.reverseSale({'sale-1'}), isFalse, reason: 'pas deux fois');
+    final s = service.current.value!;
+    expect(s.expectedCash()['CDF'], 10000);
+    expect(s.salesCount, 0);
+    expect(s.receiptsByMethod()[CashMethodGroup.cash], {'CDF': 0.0});
+  });
+
+  test('vente supprimée après la clôture : écart recalculé et correction envoyée', () async {
+    final opened = await service.open({'CDF': 10000});
+    await service.recordMovement(
+      CashMovement(
+        at: DateTime(2026, 10, 24, 10),
+        kind: CashMovementKind.sale,
+        method: 'cash',
+        currency: 'CDF',
+        amount: 5000,
+        label: 'Vente #abc',
+        ref: 'local-1',
+      ),
+    );
+    await service.close({'CDF': 15000});
+    expect(await service.reverseSale({'srv-1', 'local-1'}, label: 'Vente annulée #abc'), isTrue);
+    final closed = (await service.history()).single;
+    expect(closed.expected, {'CDF': 10000.0});
+    expect(closed.difference, {'CDF': 5000.0});
+    expect(sent.last.key, 'cash-sessions/${opened.localId}/corrections');
+    expect(sent.last.value['expected'], {'CDF': 10000.0});
+    expect(zTicketLines(closed).join('\n'), contains('Ecart CDF'));
   });
 }

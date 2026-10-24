@@ -21,6 +21,9 @@ enum CashMovementKind {
 
   /// Sortie manuelle (retrait, dépôt en banque).
   manualOut,
+
+  /// Contre-passation d'une vente annulée ou supprimée.
+  saleReversal,
 }
 
 extension CashMovementKindLabel on CashMovementKind {
@@ -36,6 +39,8 @@ extension CashMovementKindLabel on CashMovementKind {
         return 'Entrée de caisse';
       case CashMovementKind.manualOut:
         return 'Sortie de caisse';
+      case CashMovementKind.saleReversal:
+        return 'Vente annulée';
     }
   }
 }
@@ -189,7 +194,11 @@ class CashSession {
   Map<CashMethodGroup, Map<String, double>> receiptsByMethod() {
     final out = <CashMethodGroup, Map<String, double>>{};
     for (final m in movements) {
-      if (m.kind != CashMovementKind.sale && m.kind != CashMovementKind.customerPayment) continue;
+      if (m.kind != CashMovementKind.sale &&
+          m.kind != CashMovementKind.customerPayment &&
+          m.kind != CashMovementKind.saleReversal) {
+        continue;
+      }
       final g = cashMethodGroupOf(m.method);
       final byCur = out.putIfAbsent(g, () => {});
       byCur[m.currency] = cashRound((byCur[m.currency] ?? 0) + m.amount);
@@ -208,7 +217,10 @@ class CashSession {
     return out;
   }
 
-  int get salesCount => movements.where((m) => m.kind == CashMovementKind.sale).length;
+  /// Ventes de la session, ventes annulées déduites.
+  int get salesCount =>
+      movements.where((m) => m.kind == CashMovementKind.sale).length -
+      movements.where((m) => m.kind == CashMovementKind.saleReversal).map((m) => m.ref).toSet().length;
 
   /// Écart = compté - théorique, par devise.
   static Map<String, double> differenceOf(

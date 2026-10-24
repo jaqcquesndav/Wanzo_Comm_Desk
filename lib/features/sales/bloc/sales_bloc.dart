@@ -477,6 +477,8 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
 
       // Supprimer la vente
       await _salesRepository.deleteSale(event.id);
+      // Encaissement contre-passé dans sa caisse (même clôturée).
+      await cashSessionOnSaleCancelled(saleToDelete);
 
       emit(
         const SalesOperationSuccess(
@@ -501,6 +503,9 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
         final updatedSale = sale.copyWith(status: event.status);
 
         await _salesRepository.updateSale(updatedSale);
+        if (event.status == SaleStatus.cancelled) {
+          await cashSessionOnSaleCancelled(updatedSale);
+        }
         emit(
           const SalesOperationSuccess(
             'Statut de la vente mis à jour avec succès',
