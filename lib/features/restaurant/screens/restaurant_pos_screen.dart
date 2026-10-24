@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:wanzo/core/modules/module_registry.dart';
+import 'package:wanzo/core/quick_actions/desktop_quick_actions.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/services/currency_display_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
@@ -190,6 +191,12 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     super.initState();
     // Pré-sélection depuis le plan de salle (query param `orderId`).
     _selectedOrderId = widget.initialOrderId;
+    // « Nouvelle commande » depuis la barre d'actions rapides.
+    if (QuickActionIntents.take(QuickActionIntents.restaurantNewOrder)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _promptNewOrder();
+      });
+    }
     _appliquerSejourDeLaCommande();
     _loadMenu();
     _chargerReservations(silencieux: true);

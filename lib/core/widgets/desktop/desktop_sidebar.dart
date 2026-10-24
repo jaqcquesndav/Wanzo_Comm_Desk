@@ -106,19 +106,14 @@ class _DesktopSidebarState extends State<DesktopSidebar>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // Couleurs adaptatives pour light/dark mode
-    // En dark mode, utiliser la même couleur que le scaffoldBackgroundColor (bleu foncé 0xFF111827)
+    // Même règle que la barre de navigation principale : fond neutre, aucun
+    // fond ni pastille derrière l'élément actif ; seuls son icône et son
+    // libellé prennent la couleur primaire du thème.
     final backgroundColor =
-        isDark ? const Color(0xFF111827) : WanzoColors.primary;
-    final textColor = Colors.white;
-    final activeItemBg =
-        isDark
-            ? WanzoColors.primary.withValues(alpha: 0.3)
-            : Colors.white.withValues(alpha: 0.2);
-    final hoverColor =
-        isDark
-            ? WanzoColors.primary.withValues(alpha: 0.15)
-            : Colors.white.withValues(alpha: 0.1);
+        isDark ? const Color(0xFF111827) : theme.colorScheme.surface;
+    final textColor = theme.colorScheme.onSurfaceVariant;
+    final activeItemBg = Colors.transparent;
+    final hoverColor = theme.colorScheme.onSurface.withValues(alpha: 0.06);
 
     return AnimatedBuilder(
       animation: _widthAnimation,
@@ -129,7 +124,9 @@ class _DesktopSidebarState extends State<DesktopSidebar>
           width: _widthAnimation.value,
           decoration: BoxDecoration(
             color: backgroundColor,
-            // Pas de shadow - le header est au-dessus
+            border: Border(
+              right: BorderSide(color: theme.colorScheme.outlineVariant),
+            ),
           ),
           child: Column(
             children: [
@@ -294,19 +291,10 @@ class _DesktopSidebarState extends State<DesktopSidebar>
               horizontal: isExpanded ? 16 : 12,
               vertical: 12,
             ),
+            // Aucun fond derrière l'élément actif.
             decoration: BoxDecoration(
-              color: isSelected ? activeItemBg : Colors.transparent,
+              color: Colors.transparent,
               borderRadius: BorderRadius.circular(12),
-              border:
-                  isSelected
-                      ? Border.all(
-                        color:
-                            isDark
-                                ? WanzoColors.primary
-                                : Colors.white.withValues(alpha: 0.3),
-                        width: 1,
-                      )
-                      : null,
             ),
             child: Row(
               mainAxisAlignment:
@@ -319,7 +307,7 @@ class _DesktopSidebarState extends State<DesktopSidebar>
                   isSelected ? (item.activeIcon ?? item.icon) : item.icon,
                   color:
                       isSelected
-                          ? (isDark ? WanzoColors.primary : Colors.white)
+                          ? Theme.of(context).colorScheme.primary
                           : textColor.withValues(alpha: 0.7),
                   size: 22,
                 ),
@@ -333,7 +321,7 @@ class _DesktopSidebarState extends State<DesktopSidebar>
                       style: TextStyle(
                         color:
                             isSelected
-                                ? (isDark ? WanzoColors.primary : Colors.white)
+                                ? Theme.of(context).colorScheme.primary
                                 : textColor.withValues(alpha: 0.85),
                         fontWeight:
                             isSelected ? FontWeight.w600 : FontWeight.w500,
@@ -344,16 +332,6 @@ class _DesktopSidebarState extends State<DesktopSidebar>
                   ),
                 ],
 
-                // Indicateur de sélection
-                if (isExpanded && isSelected)
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: isDark ? WanzoColors.primary : Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
               ],
             ),
           ),
@@ -539,7 +517,6 @@ class _SyncButtonWidgetState extends State<_SyncButtonWidget> {
   Widget build(BuildContext context) {
     final isExpanded = widget.isExpanded;
     final textColor = widget.textColor;
-    final isDark = widget.isDark;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -602,7 +579,7 @@ class _SyncButtonWidgetState extends State<_SyncButtonWidget> {
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                   valueColor: AlwaysStoppedAnimation<Color>(
-                                    isDark ? WanzoColors.primary : Colors.white,
+                                    WanzoColors.primary,
                                   ),
                                 ),
                               )
@@ -651,9 +628,7 @@ class _SyncButtonWidgetState extends State<_SyncButtonWidget> {
                     ? LinearProgressIndicator(
                       backgroundColor: textColor.withValues(alpha: 0.1),
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        isDark
-                            ? WanzoColors.primary
-                            : Colors.white.withValues(alpha: 0.8),
+                        WanzoColors.primary,
                       ),
                     )
                     : const SizedBox.shrink(),

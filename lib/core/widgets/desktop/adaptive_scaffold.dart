@@ -60,6 +60,10 @@ class AdaptiveScaffold extends StatefulWidget {
   final VoidCallback? onBackPressed;
   final List<SidebarNavItem> navigationItems;
 
+  /// Barre posée au-dessus du contenu (desktop et tablette) : la barre
+  /// d'actions rapides du shell. `null` = aucune.
+  final Widget? topBar;
+
   const AdaptiveScaffold({
     super.key,
     required this.currentIndex,
@@ -69,6 +73,7 @@ class AdaptiveScaffold extends StatefulWidget {
     this.floatingActionButton,
     this.appBarActions,
     this.onBackPressed,
+    this.topBar,
   });
 
   @override
@@ -178,10 +183,11 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
 
                 // Zone principale (content + panneau Adha optionnel)
                 Expanded(
-                  child:
-                      _layoutState.isAdhaPanelOpen
-                          ? _buildSplitView(context, isDark)
-                          : widget.body,
+                  child: _withTopBar(
+                    _layoutState.isAdhaPanelOpen
+                        ? _buildSplitView(context, isDark)
+                        : widget.body,
+                  ),
                 ),
               ],
             ),
@@ -192,6 +198,13 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
       floatingActionButton:
           _layoutState.isAdhaPanelOpen ? null : widget.floatingActionButton,
     );
+  }
+
+  /// Contenu principal surmonté de la barre d'actions rapides, si fournie.
+  Widget _withTopBar(Widget content) {
+    final bar = widget.topBar;
+    if (bar == null) return content;
+    return Column(children: [bar, Expanded(child: content)]);
   }
 
   /// Bouton pour toggle le panneau Adha dans le header
@@ -316,10 +329,12 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
                 Container(
                   width: 72,
                   decoration: BoxDecoration(
-                    color:
-                        isDark
-                            ? theme.colorScheme.surface
-                            : theme.colorScheme.primary,
+                    color: theme.colorScheme.surface,
+                    border: Border(
+                      right: BorderSide(
+                        color: theme.colorScheme.outlineVariant,
+                      ),
+                    ),
                   ),
                   child: ListView.builder(
                     padding: const EdgeInsets.symmetric(vertical: 8),
@@ -341,10 +356,11 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
 
                 // Contenu principal
                 Expanded(
-                  child:
-                      _layoutState.isAdhaPanelOpen
-                          ? _buildSplitView(context, isDark)
-                          : widget.body,
+                  child: _withTopBar(
+                    _layoutState.isAdhaPanelOpen
+                        ? _buildSplitView(context, isDark)
+                        : widget.body,
+                  ),
                 ),
               ],
             ),
@@ -365,11 +381,9 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
     bool isDark,
   ) {
     final theme = Theme.of(context);
-    final activeColor = isDark ? theme.colorScheme.primary : Colors.white;
-    final inactiveColor =
-        isDark
-            ? theme.colorScheme.onSurfaceVariant
-            : Colors.white.withValues(alpha: 0.7);
+    // Élément actif : icône et libellé en couleur primaire, sans fond.
+    final activeColor = theme.colorScheme.primary;
+    final inactiveColor = theme.colorScheme.onSurfaceVariant;
 
     return Tooltip(
       message: item.label,
@@ -386,12 +400,6 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(vertical: 12),
               decoration: BoxDecoration(
-                color:
-                    isSelected
-                        ? (isDark
-                            ? theme.colorScheme.primary.withValues(alpha: 0.2)
-                            : Colors.white.withValues(alpha: 0.2))
-                        : Colors.transparent,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(

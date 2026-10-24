@@ -30,7 +30,6 @@ import 'package:wanzo/features/dashboard/widgets/expense_chart_widget.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_bloc.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_event.dart';
 import 'package:wanzo/features/inventory/bloc/inventory_state.dart';
-import 'package:wanzo/features/dashboard/widgets/operations_dock.dart';
 import 'package:wanzo/core/services/sync_service.dart';
 import 'package:get_it/get_it.dart';
 import 'package:wanzo/core/modules/mode_vocabulary.dart';
@@ -543,18 +542,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return WanzoScaffold(
       currentIndex: 0,
       title: l10n.dashboardScreenTitle,
-      body: Stack(
-        children: [
-          // Contenu principal du dashboard
-          _buildDashboardContent(context, l10n, settings, displayCurrencyCode),
-          // Dock des opérations rapides en bas au centre
-          const Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Center(child: OperationsDock()),
-          ),
-        ],
+      // Les actions rapides sont portées par le shell (barre du mode).
+      body: _buildDashboardContent(
+        context,
+        l10n,
+        settings,
+        displayCurrencyCode,
       ),
     );
   }
@@ -649,14 +642,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               context.read<InventoryBloc>().add(const LoadProducts());
             },
             child: ListView(
-              // Padding bas = hauteur du dock flottant (OperationsDock ancré en
-              // bas), pour ne pas masquer la fin du journal / « Voir plus ».
-              padding: const EdgeInsets.fromLTRB(
-                WanzoSpacing.md,
-                WanzoSpacing.md,
-                WanzoSpacing.md,
-                100,
-              ),
+              padding: const EdgeInsets.all(WanzoSpacing.md),
               children: [
                 _buildResponsiveKpiAndChart(
                   context,

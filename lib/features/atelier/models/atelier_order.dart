@@ -1,5 +1,7 @@
 import 'package:equatable/equatable.dart';
 
+import '../../../core/modules/activity_mode.dart';
+
 /// Statuts de fabrication d'une commande d'atelier (miroir du backend
 /// `AtelierOrderStatus`). C'est le mode Atelier qui donne du sens à ce workflow
 /// de production ; le board Kanban affiche une colonne par statut.
@@ -136,6 +138,23 @@ extension AtelierOrderStatusX on AtelierOrderStatus {
 /// Métier de l'atelier (miroir du backend `AtelierMetier`). Rend le mode
 /// Atelier EXPLICITE : chaque métier n'expose que son vocabulaire et ses champs.
 enum AtelierMetier { couture, cordonnerie, maintenance, imprimerie, pressing, garage }
+
+/// Métier d'atelier servi par un mode d'activité (couture par défaut). Source
+/// unique du board Kanban et des actions rapides du shell.
+AtelierMetier atelierMetierForMode(ActivityMode mode) {
+  switch (mode) {
+    case ActivityMode.atelierMaintenance:
+      return AtelierMetier.maintenance;
+    case ActivityMode.garage:
+      return AtelierMetier.garage;
+    case ActivityMode.imprimerie:
+      return AtelierMetier.imprimerie;
+    case ActivityMode.pressing:
+      return AtelierMetier.pressing;
+    default:
+      return AtelierMetier.couture;
+  }
+}
 
 extension AtelierMetierX on AtelierMetier {
   String get apiValue => name;

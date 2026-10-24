@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../constants/colors.dart';
-import '../../../core/modules/activity_mode.dart';
 import '../../../core/modules/module_registry.dart';
+import '../../../core/quick_actions/desktop_quick_actions.dart';
 import '../../../core/services/business_context_service.dart';
 import '../../../core/services/form_navigation_service.dart';
 import '../../../core/shared_widgets/empty_state_view.dart';
@@ -65,16 +65,8 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
   /// Métier courant du board, dérivé du mode d'activité de l'entreprise
   /// (atelier→couture, atelierMaintenance→maintenance, imprimerie→imprimerie).
   /// C'est la clé d'ISOLATION : le board ne charge et n'affiche que ce métier.
-  AtelierMetier get _boardMetier {
-    final mode = BusinessContextService().activityMode;
-    if (mode == ActivityMode.atelierMaintenance) {
-      return AtelierMetier.maintenance;
-    }
-    if (mode == ActivityMode.garage) return AtelierMetier.garage;
-    if (mode == ActivityMode.imprimerie) return AtelierMetier.imprimerie;
-    if (mode == ActivityMode.pressing) return AtelierMetier.pressing;
-    return AtelierMetier.couture;
-  }
+  AtelierMetier get _boardMetier =>
+      atelierMetierForMode(BusinessContextService().activityMode);
 
   @override
   void initState() {
@@ -86,6 +78,11 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         context.read<AtelierOrdersCubit>().load(metier: _boardMetier);
+        // « Nouvelle commande » (ou intervention, dépôt…) depuis la barre
+        // d'actions rapides du shell.
+        if (QuickActionIntents.take(QuickActionIntents.atelierNewWork)) {
+          _openForm(context);
+        }
       }
     });
   }

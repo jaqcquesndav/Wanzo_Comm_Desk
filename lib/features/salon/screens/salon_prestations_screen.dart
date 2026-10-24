@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:wanzo/core/modules/module_registry.dart';
+import 'package:wanzo/core/quick_actions/desktop_quick_actions.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
@@ -45,6 +46,12 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
   void initState() {
     super.initState();
     _load();
+    // « Nouvelle prestation » depuis la barre d'actions rapides.
+    if (QuickActionIntents.take(QuickActionIntents.salonNewService)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openForm();
+      });
+    }
   }
 
   Future<void> _load() async {
