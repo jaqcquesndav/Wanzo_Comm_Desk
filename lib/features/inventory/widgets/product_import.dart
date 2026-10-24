@@ -70,6 +70,8 @@ Future<void> importerProduits(BuildContext context) async {
     context: context,
     builder: (ctx) => AlertDialog(
       title: const Text('Importer des articles'),
+      // Défilable à 320 dp et en grande police (boutons toujours atteignables).
+      scrollable: true,
       content: SizedBox(
         width: 480,
         child: Column(

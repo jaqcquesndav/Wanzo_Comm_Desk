@@ -1,3 +1,6 @@
+import 'package:uuid/uuid.dart';
+import 'package:wanzo/core/exceptions/api_exceptions.dart';
+import 'package:wanzo/core/utils/offline_write_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -407,7 +410,9 @@ class _StylistFormDialogState extends State<_StylistFormDialog> {
     final loyerSaisi = double.tryParse(_boothRentController.text.trim());
     final booth = loyerSaisi == null ? null : loyerSaisi * _tauxLoyer;
     final draft = Stylist(
-      id: widget.existing?.id ?? '',
+      // UUID généré sur l'appareil : un coiffeur créé hors ligne garde son
+      // identifiant (attribuable sur un ticket) et le serveur le conserve.
+      id: widget.existing?.id ?? const Uuid().v4(),
       name: _nameController.text.trim(),
       phone: phone.isEmpty ? null : phone,
       payModel: _payModel,
@@ -426,12 +431,32 @@ class _StylistFormDialogState extends State<_StylistFormDialog> {
       active: _active,
     );
     final cubit = context.read<SalonCubit>();
-    if (widget.existing == null) {
-      await cubit.createStylist(draft);
-    } else {
-      await cubit.updateStylist(widget.existing!.id, draft.toCreateJson());
-    }
+    final result = widget.existing == null
+        ? await cubit.createStylist(draft)
+        : await cubit.updateStylist(
+            widget.existing!.id,
+            draft.toCreateJson(),
+            local: draft,
+          );
     if (!mounted) return;
+    setState(() => _saving = false);
+    if (result.horsLigne) {
+      // En attente, pas en échec : la saisie part au retour du réseau.
+      showWriteOutcome(
+        context,
+        OfflineQueuedException(endpoint: 'salon/stylists'),
+      );
+    } else if (!result.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Échec de l'enregistrement : ${cubit.state.error ?? 'réessayez'}",
+          ),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+      return;
+    }
     Navigator.pop(context);
   }
 

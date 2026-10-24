@@ -5,6 +5,8 @@ import 'package:printing/printing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:wanzo/core/modules/module_registry.dart';
+import 'package:wanzo/core/exceptions/api_exceptions.dart';
+import 'package:wanzo/core/utils/offline_write_feedback.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
@@ -58,8 +60,11 @@ class _RestaurantTablesScreenState extends State<RestaurantTablesScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error =
-            'Impossible de charger les tables. Vérifiez votre connexion.';
+        // Liste déjà affichée : on la garde (hors ligne), sans écran d'erreur.
+        if (_tables.isEmpty) {
+          _error =
+              'Impossible de charger les tables. Vérifiez votre connexion.';
+        }
         _loading = false;
       });
     }
@@ -108,12 +113,9 @@ class _RestaurantTablesScreenState extends State<RestaurantTablesScreen> {
       );
       await _load();
     } catch (e) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Création impossible. Vérifiez votre connexion.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      if (!mounted) return;
+      // Hors ligne : création en attente, pas un échec.
+      showWriteOutcome(context, e, failureLabel: 'Création impossible');
     }
   }
 
@@ -143,13 +145,20 @@ class _RestaurantTablesScreenState extends State<RestaurantTablesScreen> {
         const SnackBar(content: Text('Table supprimée.')),
       );
       await _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode == 404) {
+        // Déjà absente du serveur : supprimée.
+        setState(() => _tables = _tables.where((t) => t.id != table.id).toList());
+        return;
+      }
+      if (e is OfflineQueuedException) {
+        setState(() => _tables = _tables.where((t) => t.id != table.id).toList());
+      }
+      showWriteOutcome(context, e, failureLabel: 'Suppression impossible');
     } catch (e) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Suppression impossible. Vérifiez votre connexion.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      if (!mounted) return;
+      showWriteOutcome(context, e, failureLabel: 'Suppression impossible');
     }
   }
 

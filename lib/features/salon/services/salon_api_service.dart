@@ -194,7 +194,11 @@ class SalonApiService {
   Future<Stylist> createStylist(Stylist stylist) async {
     final response = await _apiClient.post(
       'salon/stylists',
-      body: stylist.toCreateJson(),
+      // Identifiant généré sur l'appareil, conservé par le serveur.
+      body: {
+        if (stylist.id.isNotEmpty) 'id': stylist.id,
+        ...stylist.toCreateJson(),
+      },
       requiresAuth: true,
     );
     return Stylist.fromJson(_asMap(response));

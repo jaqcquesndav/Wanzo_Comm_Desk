@@ -10,6 +10,7 @@ import '../../../core/services/form_navigation_service.dart';
 import '../../../core/shared_widgets/empty_state_view.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../core/utils/offline_write_feedback.dart';
 import '../../../core/widgets/kanban/kanban_board.dart';
 import '../../../core/widgets/photo_gallery_viewer.dart';
 import '../../../core/widgets/smart_image.dart';
@@ -173,7 +174,7 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
                       _settleViaInvoice(context, cubit, order);
                       return;
                     }
-                    cubit.updateStatus(order.id, target);
+                    _ecrire(context, cubit.updateStatus(order.id, target));
                   },
                   onTapItem: (order) => _showActions(context, cubit, order),
                 ),
@@ -243,8 +244,8 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
                 leading: Icon(Icons.arrow_forward, color: _accent[next]),
                 title: Text('Passer à « ${next.labelFor(order.metier)} »'),
                 onTap: () {
-                  cubit.updateStatus(order.id, next);
                   Navigator.pop(ctx);
+                  _ecrire(context, cubit.updateStatus(order.id, next));
                 },
               ),
             ListTile(
@@ -269,8 +270,11 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
               leading: Icon(Icons.cancel_outlined, color: Theme.of(ctx).colorScheme.error),
               title: Text(order.metier.cancelWorkLabel),
               onTap: () {
-                cubit.updateStatus(order.id, AtelierOrderStatus.cancelled);
                 Navigator.pop(ctx);
+                _ecrire(
+                  context,
+                  cubit.updateStatus(order.id, AtelierOrderStatus.cancelled),
+                );
               },
             ),
           ] else ...[
@@ -292,8 +296,8 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
               leading: const Icon(Icons.delete_outline),
               title: const Text('Supprimer'),
               onTap: () {
-                cubit.deleteOrder(order.id);
                 Navigator.pop(ctx);
+                _ecrire(context, cubit.deleteOrder(order.id));
               },
             ),
           ],
@@ -377,10 +381,13 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
               final paid = sale.paidAmountInTransactionCurrency ?? 0;
               final coversBalance = paid + 0.01 >= amountToBill;
               if (coversBalance) {
-                cubit.updateStatus(
-                  order.id,
-                  AtelierOrderStatus.paid,
-                  saleId: sale.id,
+                _ecrire(
+                  context,
+                  cubit.updateStatus(
+                    order.id,
+                    AtelierOrderStatus.paid,
+                    saleId: sale.id,
+                  ),
                 );
               } else {
                 cubit.updateOrder(order.id, {
@@ -408,6 +415,14 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
     if (idx < 0 || idx >= flow.length - 1) return const [];
     return [flow[idx + 1]];
   }
+}
+
+/// Écriture du board : hors ligne = « en attente » (la carte garde sa
+/// colonne), refus du serveur = motif affiché.
+Future<void> _ecrire(BuildContext context, Future<Object?> operation) async {
+  final erreur = await operation;
+  if (erreur == null || !context.mounted) return;
+  showWriteOutcome(context, erreur, failureLabel: 'Échec de la mise à jour');
 }
 
 class _AtelierCard extends StatelessWidget {

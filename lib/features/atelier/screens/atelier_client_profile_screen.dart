@@ -1,3 +1,5 @@
+import 'package:wanzo/core/exceptions/api_exceptions.dart';
+import 'package:wanzo/core/utils/offline_write_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:wanzo/features/atelier/models/atelier_order.dart';
 import 'package:wanzo/features/atelier/services/atelier_api_service.dart';
@@ -85,8 +87,21 @@ class _AtelierClientProfileScreenState
         if (data['footLength'] != null) _shoeCtrl['footLength']!.text = '${data['footLength']}';
         _notesCtrl.text = data['notes'] as String? ?? '';
       }
-    } catch (_) {
-      // Pas de profil encore : formulaire vierge.
+    } catch (e) {
+      // 404 : pas de profil encore, formulaire vierge. Autre erreur (hors
+      // ligne) : le dire, sinon des champs vides passent pour des mesures
+      // absentes.
+      final absent = e is ApiException && e.statusCode == 404;
+      if (!absent && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Mesures non chargées (connexion requise) : seuls les champs '
+              'saisis seront enregistrés.',
+            ),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -128,9 +143,10 @@ class _AtelierClientProfileScreenState
     } catch (e, st) {
       debugPrint('🧵 [Atelier] ÉCHEC save mesures: $e\n$st');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Échec : $e')),
-      );
+      // Hors ligne : mesures en attente (pas un échec), la fiche se ferme.
+      if (showWriteOutcome(context, e, failureLabel: 'Échec')) {
+        Navigator.of(context).pop(true);
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

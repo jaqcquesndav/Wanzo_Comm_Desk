@@ -84,8 +84,14 @@ class AtelierApiService {
   }
 
   Future<AtelierOrder> createOrder(AtelierOrder order) async {
+    // L'identifiant généré sur l'appareil part avec la création : le serveur
+    // le garde (rejeu idempotent, pas de doublon).
     final res = await _apiClient.post('atelier/orders',
-        body: order.toCreateJson(), requiresAuth: true);
+        body: {
+          if (order.id.isNotEmpty) 'id': order.id,
+          ...order.toCreateJson(),
+        },
+        requiresAuth: true);
     return AtelierOrder.fromJson(res['data'] as Map<String, dynamic>);
   }
 

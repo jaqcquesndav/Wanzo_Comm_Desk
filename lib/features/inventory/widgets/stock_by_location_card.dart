@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../constants/spacing.dart';
 import '../../../core/enums/business_unit_enums.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/utils/offline_write_feedback.dart';
 import '../../business_unit/models/business_unit.dart';
 import '../../business_unit/repositories/business_unit_repository.dart';
 import '../models/product.dart';
@@ -249,9 +250,24 @@ class _TransfertDialogState extends State<_TransfertDialog> {
       );
     } catch (e) {
       if (!mounted) return;
+      if (isQueuedOffline(e)) {
+        // Hors ligne : transfert en attente (pas un échec), envoyé au retour
+        // du réseau.
+        final messenger = ScaffoldMessenger.of(context);
+        Navigator.pop(context, false);
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'En attente : transfert enregistré sur cet appareil, envoi '
+              'automatique au retour du réseau.',
+            ),
+          ),
+        );
+        return;
+      }
       setState(() {
         _envoi = false;
-        _erreur = 'Transfert impossible : $e';
+        _erreur = 'Transfert impossible : ${readableWriteError(e)}';
       });
     }
   }
@@ -261,6 +277,9 @@ class _TransfertDialogState extends State<_TransfertDialog> {
     final dispo = _source.quantite;
     return AlertDialog(
       title: Text('Transférer ${widget.product.name}'),
+      // Défilable : à 320 dp ou en grande police, le bouton Valider restait
+      // hors de l'écran.
+      scrollable: true,
       content: SizedBox(
         width: 420,
         child: Column(

@@ -1,3 +1,4 @@
+import 'package:wanzo/core/utils/offline_write_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -185,14 +186,14 @@ class _GaragePriceGridScreenState extends State<GaragePriceGridScreen> {
 
     setState(() => _saving = true);
     final navigator = Navigator.of(context);
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await cubit.importAll(items);
       navigator.pop(true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      messenger.showSnackBar(SnackBar(content: Text('Échec : $e')));
+      // Hors ligne : barème en attente (pas un échec).
+      if (showWriteOutcome(context, e)) navigator.pop(true);
     }
   }
 

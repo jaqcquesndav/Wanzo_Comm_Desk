@@ -106,9 +106,17 @@ class SalonCubit extends Cubit<SalonState> {
     List<Stylist> stylists = state.stylists;
     String? error;
     try {
-      stylists = await _api.getStylists();
-      // Mémoriser pour l'affichage hors-ligne.
-      await _stylistCache.save(stylists);
+      final remote = await _api.getStylists();
+      final cached = await _stylistCache.load();
+      if (remote.isEmpty && cached.isNotEmpty) {
+        // Jamais de purge sur une réponse vide : des coiffeurs créés hors
+        // ligne (en file) ou une réponse tronquée effaceraient l'équipe.
+        stylists = cached;
+      } else {
+        stylists = remote;
+        // Mémoriser pour l'affichage hors-ligne.
+        await _stylistCache.save(stylists);
+      }
     } catch (e) {
       // Hors-ligne : servir la dernière liste connue.
       final cached = await _stylistCache.load();

@@ -126,24 +126,32 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
     }
   }
 
-  Future<void> updateStatus(String id, AtelierOrderStatus status,
+  /// Change le statut d'une fiche (déplacement de carte). Renvoie l'erreur à
+  /// afficher (null si le serveur a accepté). Hors ligne, le changement est
+  /// en file : la carte GARDE sa nouvelle colonne (pas de retour en arrière)
+  /// et l'appelant affiche « en attente » par showWriteOutcome.
+  Future<Object?> updateStatus(String id, AtelierOrderStatus status,
       {String? saleId}) async {
     // Optimiste : refléter tout de suite le déplacement de carte.
     final previous = state.orders;
-    emit(state.copyWith(
-      orders: previous
-          .map((o) => o.id == id ? o.copyWith(status: status) : o)
-          .toList(),
-    ));
+    final optimistic = previous
+        .map((o) => o.id == id ? o.copyWith(status: status) : o)
+        .toList();
+    emit(state.copyWith(orders: optimistic));
     try {
       final updated = await _api.updateStatus(id, status, saleId: saleId);
       emit(state.copyWith(
         orders: state.orders.map((o) => o.id == id ? updated : o).toList(),
       ));
+      return null;
+    } on OfflineQueuedException catch (e) {
+      await _cache.save(_businessUnitId, optimistic, metier: _metier?.apiValue);
+      return e;
     } catch (e) {
       // Rollback via rechargement de la source de vérité.
-      emit(state.copyWith(error: e.toString(), orders: previous));
+      emit(state.copyWith(orders: previous));
       await load();
+      return e;
     }
   }
 
@@ -181,13 +189,30 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
     }
   }
 
-  Future<void> deleteOrder(String id) async {
+  /// Supprime une fiche. Renvoie l'erreur à afficher (null si supprimée).
+  /// Hors ligne : retirée ici, suppression en file. 404 : déjà absente du
+  /// serveur, donc supprimée.
+  Future<Object?> deleteOrder(String id) async {
     final previous = state.orders;
-    emit(state.copyWith(orders: previous.where((o) => o.id != id).toList()));
+    final remaining = previous.where((o) => o.id != id).toList();
+    emit(state.copyWith(orders: remaining));
     try {
       await _api.deleteOrder(id);
+      await _cache.save(_businessUnitId, remaining, metier: _metier?.apiValue);
+      return null;
+    } on OfflineQueuedException catch (e) {
+      await _cache.save(_businessUnitId, remaining, metier: _metier?.apiValue);
+      return e;
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) {
+        await _cache.save(_businessUnitId, remaining, metier: _metier?.apiValue);
+        return null;
+      }
+      emit(state.copyWith(orders: previous));
+      return e;
     } catch (e) {
-      emit(state.copyWith(error: e.toString(), orders: previous));
+      emit(state.copyWith(orders: previous));
+      return e;
     }
   }
 }

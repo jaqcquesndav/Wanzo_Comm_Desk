@@ -1,3 +1,4 @@
+import 'package:uuid/uuid.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -1514,7 +1515,9 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
     _lastMetier = _metier;
     final cubit = context.read<AtelierOrdersCubit>();
     final draft = AtelierOrder(
-      id: widget.order?.id ?? '',
+      // UUID généré sur l'appareil : une fiche créée hors ligne garde son
+      // identifiant (modifiable, imprimable) et le serveur le conserve.
+      id: widget.order?.id ?? const Uuid().v4(),
       customerId: _customerId!,
       customerName: _customerName,
       customerPhone: _customerPhone,

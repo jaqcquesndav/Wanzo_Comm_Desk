@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:wanzo/core/utils/adaptive_pull_up.dart';
+import 'package:wanzo/core/utils/offline_write_feedback.dart';
 
 import '../config/vehicle_catalog.dart';
 import '../models/customer_vehicle.dart';
@@ -149,9 +150,11 @@ class _VehicleFormState extends State<_VehicleForm> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Enregistrement impossible : $e')),
-      );
+      // Hors ligne : la fiche est en attente (pas un échec), le formulaire
+      // se ferme avec la saisie pour l'afficher tout de suite.
+      if (showWriteOutcome(context, e, failureLabel: 'Enregistrement impossible')) {
+        Navigator.of(context).pop(draft);
+      }
     }
   }
 
