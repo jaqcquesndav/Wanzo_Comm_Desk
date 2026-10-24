@@ -542,7 +542,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return WanzoScaffold(
       currentIndex: 0,
       title: l10n.dashboardScreenTitle,
-      // Les actions rapides sont portées par le shell (barre du mode).
+      // Les actions rapides sont portées par le shell (dock du mode).
       body: _buildDashboardContent(
         context,
         l10n,

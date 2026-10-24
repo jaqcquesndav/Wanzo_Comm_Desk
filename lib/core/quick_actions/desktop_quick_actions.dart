@@ -18,20 +18,21 @@ class DesktopQuickAction {
   /// Libellé court, dans le vocabulaire du mode.
   final String label;
 
-  /// Couleur : celle du thème (primaire pour l'action mise en avant,
-  /// onSurfaceVariant sinon), jamais fixée par l'action.
   final IconData icon;
+
+  /// Couleur de la pastille de l'action dans le dock.
+  final Color color;
 
   /// Exécution. Le `context` est celui du shell (sous le routeur et les blocs
   /// globaux) : formulaires modaux de [FormNavigationService] ou navigation.
   final void Function(BuildContext context) run;
 
-  /// Routes où l'écran offre DÉJÀ cette action (bouton propre, FAB) : la barre
+  /// Routes où l'écran offre DÉJÀ cette action (bouton propre, FAB) : le dock
   /// la masque pour ne jamais la proposer deux fois.
   final Set<String> hiddenOn;
 
-  /// Routes où cette action est l'action principale de l'écran : la barre la
-  /// met en avant (bouton plein, en premier).
+  /// Routes où cette action est l'action principale de l'écran : le dock la
+  /// place en premier.
   final Set<String> primaryOn;
 
   /// Module dont la visibilité conditionne l'action (même gating mode et rôle
@@ -45,6 +46,7 @@ class DesktopQuickAction {
     required this.id,
     required this.label,
     required this.icon,
+    required this.color,
     required this.run,
     this.hiddenOn = const {},
     this.primaryOn = const {},
@@ -94,7 +96,7 @@ abstract final class DesktopQuickActionsCatalog {
   /// Au plus 6 actions par mode (pas de surcharge).
   static const int maxActions = 6;
 
-  /// Écrans principaux hors sidebar qui portent aussi la barre (la sidebar
+  /// Écrans principaux hors sidebar qui portent aussi le dock (la sidebar
   /// fournit les autres).
   static const Set<String> _extraMainRoutes = {
     '/operations',
@@ -107,7 +109,7 @@ abstract final class DesktopQuickActionsCatalog {
 
   /// `true` si [path] est un écran principal du [mode] : une entrée de la
   /// sidebar (route exacte) ou un écran de travail connu. Les fiches et
-  /// formulaires (`/inventory/add`, `/sale-detail/…`) n'ont pas la barre.
+  /// formulaires (`/inventory/add`, `/sale-detail/…`) n'ont pas le dock.
   static bool isMainRoute(String path, ActivityMode mode, String? role) {
     if (_extraMainRoutes.contains(path)) return true;
     return ModuleRegistry.sidebar(mode, role).any((m) => m.route == path);
@@ -120,6 +122,7 @@ abstract final class DesktopQuickActionsCatalog {
         id: 'expense',
         label: 'Nouvelle dépense',
         icon: Icons.receipt_long,
+        color: Colors.redAccent,
         hiddenOn: _expenses,
         primaryOn: const {'/expenses'},
         run: (c) => FormNavigationService.instance.openExpenseForm(c),
@@ -129,6 +132,7 @@ abstract final class DesktopQuickActionsCatalog {
         id: 'customer',
         label: 'Nouveau client',
         icon: Icons.person_add_alt_1,
+        color: Colors.blueAccent,
         hiddenOn: const {'/contacts'},
         primaryOn: const {'/receivables'},
         run: (c) => FormNavigationService.instance.openCustomerForm(c),
@@ -138,6 +142,7 @@ abstract final class DesktopQuickActionsCatalog {
         id: 'supplier',
         label: 'Nouveau fournisseur',
         icon: Icons.local_shipping_outlined,
+        color: Colors.purpleAccent,
         hiddenOn: const {'/contacts'},
         run: (c) => FormNavigationService.instance.openSupplierForm(c),
       );
@@ -147,6 +152,7 @@ abstract final class DesktopQuickActionsCatalog {
         id: id,
         label: label,
         icon: Icons.add_shopping_cart,
+        color: Colors.green,
         hiddenOn: _sales,
         run: (c) => FormNavigationService.instance.openSaleForm(c),
       );
@@ -155,6 +161,7 @@ abstract final class DesktopQuickActionsCatalog {
         id: 'item',
         label: label,
         icon: Icons.inventory_2_outlined,
+        color: Colors.orange,
         hiddenOn: const {'/inventory'},
         run: (c) => FormNavigationService.instance.openProductForm(c),
       );
@@ -163,6 +170,7 @@ abstract final class DesktopQuickActionsCatalog {
         id: 'restaurant_new_order',
         label: 'Nouvelle commande',
         icon: Icons.add_shopping_cart,
+        color: const Color(0xFF0EA5E9),
         moduleId: 'restaurant_orders',
         // La caisse et le plan de salle ont leur propre bouton de création.
         hiddenOn: const {'/restaurant/orders', '/restaurant/board'},
@@ -178,6 +186,7 @@ abstract final class DesktopQuickActionsCatalog {
         id: 'restaurant_checkout',
         label: 'Encaisser',
         icon: Icons.point_of_sale,
+        color: const Color(0xFF16A34A),
         moduleId: 'restaurant_orders',
         // Le plan de salle a « Ouvrir la caisse » ; la caisse, c'est ici.
         hiddenOn: const {'/restaurant/orders', '/restaurant/board'},
@@ -190,6 +199,7 @@ abstract final class DesktopQuickActionsCatalog {
         id: 'cash_session',
         label: 'Caisse',
         icon: Icons.point_of_sale_outlined,
+        color: const Color(0xFF0D9488),
         hiddenOn: const {'/cash-session'},
         run: (c) => c.push('/cash-session'),
       );
@@ -198,6 +208,7 @@ abstract final class DesktopQuickActionsCatalog {
         id: 'restaurant_menu',
         label: 'Carte',
         icon: Icons.menu_book,
+        color: const Color(0xFF8B5CF6),
         moduleId: 'restaurant_orders',
         // La caisse a déjà « Composer la carte ».
         hiddenOn: const {'/restaurant/menu', '/restaurant/orders'},
@@ -223,6 +234,7 @@ abstract final class DesktopQuickActionsCatalog {
             id: 'service',
             label: 'Nouveau service',
             icon: Icons.design_services_outlined,
+            color: Colors.orange,
             hiddenOn: const {'/inventory'},
             run: (c) => FormNavigationService.instance.openServiceForm(c),
           ),
@@ -257,6 +269,7 @@ abstract final class DesktopQuickActionsCatalog {
             id: 'salon_ticket',
             label: 'Nouveau ticket',
             icon: Icons.receipt_long,
+            color: const Color(0xFF0EA5E9),
             moduleId: 'salon_prestations',
             hiddenOn: const {'/salon/sale'},
             primaryOn: const {'/dashboard', '/salon/stylists'},
@@ -266,6 +279,7 @@ abstract final class DesktopQuickActionsCatalog {
             id: 'salon_service',
             label: 'Nouvelle prestation',
             icon: Icons.content_cut,
+            color: const Color(0xFF8B5CF6),
             moduleId: 'salon_prestations',
             hiddenOn: const {'/salon/prestations'},
             run: (c) => QuickActionIntents.goWith(
@@ -289,6 +303,7 @@ abstract final class DesktopQuickActionsCatalog {
             id: 'atelier_new_work',
             label: metier.newWorkLabel,
             icon: Icons.add_task,
+            color: const Color(0xFF0EA5E9),
             hiddenOn: const {'/atelier/board'},
             primaryOn: const {'/dashboard', '/garage/parc'},
             run: (c) => QuickActionIntents.goWith(
@@ -350,5 +365,20 @@ abstract final class DesktopQuickActionsCatalog {
       ordered.take(maxActions).toList(),
       primary.id,
     );
+  }
+
+  /// Actions du dock flottant pour l'écran [path] : vide hors écran
+  /// principal (fiches, formulaires), le shell ne pose alors pas de dock.
+  static List<DesktopQuickAction> forScreen({
+    required ActivityMode mode,
+    required String? role,
+    required String path,
+  }) {
+    if (!isMainRoute(path, mode, role)) return const [];
+    return resolve(
+      mode: mode,
+      role: role,
+      path: path,
+    ).actions;
   }
 }

@@ -46,7 +46,7 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
   void initState() {
     super.initState();
     _load();
-    // « Nouvelle prestation » depuis la barre d'actions rapides.
+    // « Nouvelle prestation » depuis le dock d'actions rapides.
     if (QuickActionIntents.take(QuickActionIntents.salonNewService)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _openForm();

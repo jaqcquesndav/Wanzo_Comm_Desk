@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wanzo/constants/colors.dart';
 import 'package:wanzo/core/widgets/desktop/desktop_sidebar.dart';
 
-/// Règle : aucun fond coloré derrière l'élément actif de la sidebar ; seuls
-/// son icône et son libellé prennent la couleur primaire du thème.
+/// Sidebar desktop : fond bleu, texte blanc. L'élément actif n'a ni fond, ni
+/// bordure, ni pastille : son icône et son libellé sont en blanc plein et en
+/// gras, les autres en blanc atténué.
 void main() {
   const items = [
     DesktopNavItem(
@@ -20,7 +22,7 @@ void main() {
   ];
 
   for (final brightness in Brightness.values) {
-    testWidgets('sidebar ${brightness.name} : actif sans fond, en primaire',
+    testWidgets('sidebar ${brightness.name} : actif blanc, gras, sans fond',
         (tester) async {
       tester.view.physicalSize = const Size(1400, 900);
       tester.view.devicePixelRatio = 1;
@@ -42,16 +44,34 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      final primary = theme.colorScheme.primary;
+      // Fond bleu en clair (bleu nuit en sombre), comme à l'origine.
+      final sidebarBox = tester
+          .widgetList<Container>(find.descendant(
+            of: find.byType(DesktopSidebar),
+            matching: find.byType(Container),
+          ))
+          .map((c) => c.decoration)
+          .whereType<BoxDecoration>()
+          .first;
+      expect(
+        sidebarBox.color,
+        brightness == Brightness.light
+            ? WanzoColors.primary
+            : const Color(0xFF111827),
+      );
+
       final activeIcon = tester.widget<Icon>(find.byIcon(Icons.dashboard));
-      expect(activeIcon.color, primary);
+      expect(activeIcon.color, Colors.white);
       final activeLabel = tester.widget<Text>(find.text('Tableau de bord'));
-      expect(activeLabel.style?.color, primary);
+      expect(activeLabel.style?.color, Colors.white);
+      expect(activeLabel.style?.fontWeight, FontWeight.w700);
       final inactiveIcon =
           tester.widget<Icon>(find.byIcon(Icons.groups_outlined));
-      expect(inactiveIcon.color, isNot(primary));
+      expect(inactiveIcon.color, Colors.white.withValues(alpha: 0.7));
+      final inactiveLabel = tester.widget<Text>(find.text('Contacts'));
+      expect(inactiveLabel.style?.fontWeight, isNot(FontWeight.w700));
 
-      // Aucun conteneur coloré (ni bordure) derrière l'élément actif.
+      // Aucun conteneur coloré, bordure ni pastille derrière l'élément actif.
       final decorated = find.ancestor(
         of: find.byIcon(Icons.dashboard),
         matching: find.byType(AnimatedContainer),
@@ -63,6 +83,14 @@ void main() {
           expect(d.border, isNull);
         }
       }
+      final dots = find.descendant(
+        of: find.byType(DesktopSidebar),
+        matching: find.byWidgetPredicate((w) =>
+            w is Container &&
+            w.decoration is BoxDecoration &&
+            (w.decoration as BoxDecoration).shape == BoxShape.circle),
+      );
+      expect(dots, findsNothing);
       expect(tester.takeException(), isNull);
     });
   }

@@ -221,12 +221,12 @@ class WanzoTheme {
           borderRadius: BorderRadius.circular(borderRadiusLg),
         ),
       ),
-      // Supprime l'animation zoom par défaut de Material 3 sur desktop
+      // Desktop : les pages s'ouvrent sans zoom ni fondu (transition instantanée)
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
-          TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
-          TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
-          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.windows: NoPageTransitionsBuilder(),
+          TargetPlatform.linux: NoPageTransitionsBuilder(),
+          TargetPlatform.macOS: NoPageTransitionsBuilder(),
           TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
           TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
         },
@@ -378,16 +378,31 @@ class WanzoTheme {
           borderRadius: BorderRadius.circular(borderRadiusLg),
         ),
       ),
-      // Supprime l'animation zoom par défaut de Material 3 sur desktop
+      // Desktop : les pages s'ouvrent sans zoom ni fondu (transition instantanée)
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
-          TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
-          TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
-          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.windows: NoPageTransitionsBuilder(),
+          TargetPlatform.linux: NoPageTransitionsBuilder(),
+          TargetPlatform.macOS: NoPageTransitionsBuilder(),
           TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
           TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
         },
       ),
     ));
   }
+}
+
+/// Transition de page instantanée (desktop) : la nouvelle page s'affiche
+/// d'un coup, sans zoom, fondu ni glissement.
+class NoPageTransitionsBuilder extends PageTransitionsBuilder {
+  const NoPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => child;
 }

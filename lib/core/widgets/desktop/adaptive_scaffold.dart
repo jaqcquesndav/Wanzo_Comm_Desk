@@ -5,6 +5,8 @@ import '../../platform/platform_service.dart';
 import 'desktop_header.dart';
 import 'desktop_sidebar.dart';
 import 'desktop_layout_state.dart';
+import 'operations_dock.dart';
+import '../../quick_actions/desktop_quick_actions.dart';
 import '../../../features/adha/widgets/adha_chat_panel.dart';
 import '../../../features/adha/bloc/adha_bloc.dart';
 import '../../shared_widgets/adha_logo.dart';
@@ -60,9 +62,10 @@ class AdaptiveScaffold extends StatefulWidget {
   final VoidCallback? onBackPressed;
   final List<SidebarNavItem> navigationItems;
 
-  /// Barre posée au-dessus du contenu (desktop et tablette) : la barre
-  /// d'actions rapides du shell. `null` = aucune.
-  final Widget? topBar;
+  /// Actions rapides du mode pour cet écran principal : le shell les porte
+  /// dans le dock flottant, en bas du contenu. Vide = pas de dock (fiches,
+  /// formulaires).
+  final List<DesktopQuickAction> quickActions;
 
   const AdaptiveScaffold({
     super.key,
@@ -73,7 +76,7 @@ class AdaptiveScaffold extends StatefulWidget {
     this.floatingActionButton,
     this.appBarActions,
     this.onBackPressed,
-    this.topBar,
+    this.quickActions = const [],
   });
 
   @override
@@ -183,11 +186,10 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
 
                 // Zone principale (content + panneau Adha optionnel)
                 Expanded(
-                  child: _withTopBar(
-                    _layoutState.isAdhaPanelOpen
-                        ? _buildSplitView(context, isDark)
-                        : widget.body,
-                  ),
+                  child:
+                      _layoutState.isAdhaPanelOpen
+                          ? _buildSplitView(context, isDark)
+                          : _mainBody,
                 ),
               ],
             ),
@@ -198,13 +200,6 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
       floatingActionButton:
           _layoutState.isAdhaPanelOpen ? null : widget.floatingActionButton,
     );
-  }
-
-  /// Contenu principal surmonté de la barre d'actions rapides, si fournie.
-  Widget _withTopBar(Widget content) {
-    final bar = widget.topBar;
-    if (bar == null) return content;
-    return Column(children: [bar, Expanded(child: content)]);
   }
 
   /// Bouton pour toggle le panneau Adha dans le header
@@ -242,7 +237,7 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
     return Row(
       children: [
         // Contenu principal
-        Expanded(child: widget.body),
+        Expanded(child: _mainBody),
 
         // Divider redimensionnable VS Code style
         ResizableDivider(
@@ -329,12 +324,10 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
                 Container(
                   width: 72,
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.surface,
-                    border: Border(
-                      right: BorderSide(
-                        color: theme.colorScheme.outlineVariant,
-                      ),
-                    ),
+                    color:
+                        isDark
+                            ? theme.colorScheme.surface
+                            : theme.colorScheme.primary,
                   ),
                   child: ListView.builder(
                     padding: const EdgeInsets.symmetric(vertical: 8),
@@ -356,11 +349,10 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
 
                 // Contenu principal
                 Expanded(
-                  child: _withTopBar(
-                    _layoutState.isAdhaPanelOpen
-                        ? _buildSplitView(context, isDark)
-                        : widget.body,
-                  ),
+                  child:
+                      _layoutState.isAdhaPanelOpen
+                          ? _buildSplitView(context, isDark)
+                          : _mainBody,
                 ),
               ],
             ),
@@ -373,6 +365,17 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
     );
   }
 
+  /// Contenu de l'écran surmonté du dock d'actions rapides du mode, s'il y
+  /// en a (porté une seule fois, ici, pour tous les écrans principaux).
+  Widget get _mainBody {
+    if (widget.quickActions.isEmpty) return widget.body;
+    return OperationsDockHost(
+      actions: widget.quickActions,
+      hasFloatingActionButton: widget.floatingActionButton != null,
+      child: widget.body,
+    );
+  }
+
   Widget _buildTabletNavItem(
     BuildContext context,
     SidebarNavItem item,
@@ -381,9 +384,12 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
     bool isDark,
   ) {
     final theme = Theme.of(context);
-    // Élément actif : icône et libellé en couleur primaire, sans fond.
-    final activeColor = theme.colorScheme.primary;
-    final inactiveColor = theme.colorScheme.onSurfaceVariant;
+    // Élément actif : icône et libellé en blanc plein, en gras, sans fond.
+    final activeColor = Colors.white;
+    final inactiveColor =
+        isDark
+            ? theme.colorScheme.onSurfaceVariant
+            : Colors.white.withValues(alpha: 0.7);
 
     return Tooltip(
       message: item.label,
@@ -417,7 +423,7 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
                       color: isSelected ? activeColor : inactiveColor,
                       fontSize: 10,
                       fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.normal,
+                          isSelected ? FontWeight.w700 : FontWeight.normal,
                     ),
                     textAlign: TextAlign.center,
                     maxLines: 1,

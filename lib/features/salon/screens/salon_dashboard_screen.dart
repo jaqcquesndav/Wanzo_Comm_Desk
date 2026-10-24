@@ -129,7 +129,7 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _kpiRow(context, state),
-                    // Nouveau ticket et nouvelle prestation : barre d'actions
+                    // Nouveau ticket et nouvelle prestation : dock d'actions
                     // rapides du shell ; équipe et performances : sidebar.
                   ],
                 ),

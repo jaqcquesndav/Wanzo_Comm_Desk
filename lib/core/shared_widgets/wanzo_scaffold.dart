@@ -6,7 +6,7 @@ import '../platform/platform_service.dart';
 import '../modules/module_registry.dart';
 import '../services/business_context_service.dart';
 import '../widgets/desktop/adaptive_scaffold.dart';
-import '../widgets/desktop/desktop_quick_actions_bar.dart';
+import '../quick_actions/desktop_quick_actions.dart';
 
 /// Structure de base pour les écrans principaux de l'application
 /// Intègre l'AppBar commun et la barre de navigation (bottom sur mobile, sidebar sur desktop)
@@ -126,8 +126,8 @@ class WanzoScaffold extends StatelessWidget {
             floatingActionButton: floatingActionButton,
             appBarActions: appBarActions,
             onBackPressed: onBackPressed,
-            // Barre d'actions rapides du mode, sur chaque écran principal.
-            topBar: DesktopQuickActionsBar.forRoute(
+            // Dock d'actions rapides du mode, sur chaque écran principal.
+            quickActions: DesktopQuickActionsCatalog.forScreen(
               mode: mode,
               role: role,
               path: loc,

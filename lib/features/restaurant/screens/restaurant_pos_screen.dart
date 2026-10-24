@@ -191,7 +191,7 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     super.initState();
     // Pré-sélection depuis le plan de salle (query param `orderId`).
     _selectedOrderId = widget.initialOrderId;
-    // « Nouvelle commande » depuis la barre d'actions rapides.
+    // « Nouvelle commande » depuis le dock d'actions rapides.
     if (QuickActionIntents.take(QuickActionIntents.restaurantNewOrder)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _promptNewOrder();

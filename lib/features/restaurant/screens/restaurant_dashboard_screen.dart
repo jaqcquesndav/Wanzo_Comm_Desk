@@ -37,7 +37,7 @@ class RestaurantDashboardScreen extends StatelessWidget {
     );
 
     // Les actions du service (commande, encaissement, carte…) sont portées
-    // par la barre d'actions rapides du shell, jamais dans le corps.
+    // par le dock d'actions rapides du shell, jamais dans le corps.
     return WanzoScaffold(
       currentIndex: index < 0 ? 0 : index,
       title: 'Tableau de bord',
