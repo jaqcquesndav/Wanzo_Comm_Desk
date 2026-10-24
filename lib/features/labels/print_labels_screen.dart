@@ -8,6 +8,7 @@ import 'label_layout.dart';
 import 'label_preview.dart';
 import 'label_print_service.dart';
 import 'label_printer_bridge.dart';
+import 'label_printer_settings_link.dart';
 
 /// Enregistre sur la fiche le code généré d'un article (API de mise à jour
 /// du produit, file hors ligne comprise). Renvoie faux en cas d'échec.
@@ -46,6 +47,9 @@ class PrintLabelsScreen extends StatefulWidget {
   final LabelTarget? target;
   final LabelSettings? initialSettings;
 
+  /// Service d'impression imposé (tests) ; sinon le service réel.
+  final LabelPrintService? service;
+
   const PrintLabelsScreen({
     super.key,
     required this.items,
@@ -54,6 +58,7 @@ class PrintLabelsScreen extends StatefulWidget {
     this.saveCode,
     this.target,
     this.initialSettings,
+    this.service,
   });
 
   @override
@@ -78,7 +83,12 @@ class _PrintLabelsScreenState extends State<PrintLabelsScreen> {
   late final _customH =
       TextEditingController(text: _fmt(_settings.customHeightMm));
   bool _busy = false;
-  final _service = LabelPrintService();
+  late final LabelPrintService _service = widget.service ?? LabelPrintService();
+
+  /// Impression en cours (non nul) : progression et bouton Arrêter.
+  LabelPrintCancelToken? _cancel;
+  int _printDone = 0;
+  int _printTotal = 0;
 
   static String _fmt(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
@@ -107,6 +117,8 @@ class _PrintLabelsScreenState extends State<PrintLabelsScreen> {
 
   @override
   void dispose() {
+    // Écran fermé pendant l'impression : plus aucune étiquette n'est envoyée.
+    _cancel?.cancel();
     _search.dispose();
     _customW.dispose();
     _customH.dispose();
@@ -210,7 +222,13 @@ class _PrintLabelsScreenState extends State<PrintLabelsScreen> {
 
   Future<void> _print() async {
     if (_total == 0 || _busy) return;
-    setState(() => _busy = true);
+    final token = LabelPrintCancelToken();
+    setState(() {
+      _busy = true;
+      _cancel = token;
+      _printDone = 0;
+      _printTotal = _total;
+    });
     await _settings.save();
     await _saveGeneratedCodes();
     final res = await _service.print(
@@ -218,13 +236,73 @@ class _PrintLabelsScreenState extends State<PrintLabelsScreen> {
       settings: _settings,
       options: _options,
       target: _target,
+      cancel: token,
+      onProgress: (done, total) {
+        if (mounted && identical(_cancel, token)) {
+          setState(() {
+            _printDone = done;
+            _printTotal = total;
+          });
+        }
+      },
     );
     if (!mounted) return;
-    setState(() => _busy = false);
+    setState(() {
+      _busy = false;
+      _cancel = null;
+    });
+    if (!res.ok && res.printerProblem) {
+      await _showPrintError(res);
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(res.message),
       backgroundColor: res.ok ? null : Theme.of(context).colorScheme.error,
     ));
+  }
+
+  void _stopPrint() {
+    final token = _cancel;
+    if (token == null || token.isCancelled) return;
+    setState(token.cancel);
+  }
+
+  /// Échec dû à l'imprimante : message clair, raccourci vers les réglages de
+  /// l'imprimante et PDF en repli.
+  Future<void> _showPrintError(LabelPrintResult res) async {
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.print_disabled_outlined),
+        title: const Text('Impression impossible'),
+        content: Text(res.message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Fermer'),
+          ),
+          TextButton(
+            key: const ValueKey('label-error-pdf'),
+            onPressed: () => Navigator.pop(ctx, 'pdf'),
+            child: const Text('PDF'),
+          ),
+          FilledButton(
+            key: const ValueKey('label-configure-printer'),
+            onPressed: () => Navigator.pop(ctx, 'settings'),
+            child: const Text('Configurer l\'imprimante'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'pdf') {
+      await _pdf();
+    } else if (action == 'settings') {
+      await openLabelPrinterSettings(context);
+      if (!mounted || widget.target != null) return;
+      final t = await resolveLabelTarget();
+      if (mounted) setState(() => _target = t);
+    }
   }
 
   Future<void> _pdf() async {
@@ -636,6 +714,51 @@ class _PrintLabelsScreenState extends State<PrintLabelsScreen> {
     );
   }
 
+  /// Barre d'impression en cours : « Étiquette 3 sur 40 » et Arrêter,
+  /// toujours visible.
+  Widget _printProgressBar() {
+    final theme = Theme.of(context);
+    final stopping = _cancel?.isCancelled ?? false;
+    final total = _printTotal;
+    final current = total == 0 ? 0 : (_printDone + 1).clamp(1, total);
+    final status = stopping
+        ? 'Arrêt après l\'étiquette en cours'
+        : 'Étiquette $current sur $total';
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          border: Border(top: BorderSide(color: theme.dividerColor)),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          LinearProgressIndicator(
+            value: total == 0 ? null : _printDone / total,
+          ),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+              child: Text(
+                status,
+                key: const ValueKey('label-progress'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleSmall,
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              key: const ValueKey('label-stop'),
+              onPressed: stopping ? null : _stopPrint,
+              icon: const Icon(Icons.stop_circle_outlined),
+              label: const Text('Arrêter'),
+            ),
+          ]),
+        ]),
+      ),
+    );
+  }
+
   Widget _stepper(LabelItem item) {
     final v = _copies[item.id] ?? 1;
     return Row(mainAxisSize: MainAxisSize.min, children: [
@@ -669,6 +792,7 @@ class _PrintLabelsScreenState extends State<PrintLabelsScreen> {
   }
 
   Widget _bottomBar() {
+    if (_cancel != null) return _printProgressBar();
     final theme = Theme.of(context);
     final total = _total;
     return SafeArea(

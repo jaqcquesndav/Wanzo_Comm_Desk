@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'nav_bar_theme.dart';
 
 /// Classe utilitaire contenant les couleurs et styles du thème Wanzo
 class WanzoTheme {
@@ -72,7 +73,7 @@ class WanzoTheme {
 
   /// Génère le thème clair
   static ThemeData get lightTheme {
-    return ThemeData(
+    return withWanzoNavStyle(ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme(
         brightness: Brightness.light,
@@ -230,12 +231,12 @@ class WanzoTheme {
           TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
         },
       ),
-    );
+    ));
   }
 
   /// Génère le thème sombre
   static ThemeData get darkTheme {
-    return ThemeData(
+    return withWanzoNavStyle(ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme(
         brightness: Brightness.dark,
@@ -387,6 +388,6 @@ class WanzoTheme {
           TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
         },
       ),
-    );
+    ));
   }
 }
