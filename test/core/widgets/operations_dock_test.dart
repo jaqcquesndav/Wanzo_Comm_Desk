@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -194,6 +196,53 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+
+    testWidgets(
+        'carte du restaurant : dock du mode Restaurant, sans « Carte », '
+        'dernière ligne visible', (tester) async {
+      expect(
+        DesktopQuickActionsCatalog.isMainRoute(
+            '/restaurant/menu', ActivityMode.restaurant, 'admin'),
+        isTrue,
+      );
+      final menuActions = DesktopQuickActionsCatalog.forScreen(
+        mode: ActivityMode.restaurant,
+        role: 'admin',
+        path: '/restaurant/menu',
+      );
+      expect(menuActions, isNotEmpty);
+      final own = _labels(ActivityMode.restaurant);
+      for (final a in menuActions) {
+        expect(own, contains(a.label));
+      }
+      expect(menuActions.map((a) => a.id), isNot(contains('restaurant_menu')));
+      expect(menuActions.map((a) => a.id),
+          containsAll(['restaurant_new_order', 'restaurant_checkout']));
+
+      // L'écran a son bouton « Ajouter un plat » : le dock s'en écarte.
+      await _pumpHost(tester, actions: menuActions, rows: 60, fab: true);
+      for (final a in menuActions) {
+        expect(find.byKey(ValueKey('dock-action-${a.id}')), findsOneWidget);
+      }
+      expect(find.byKey(const ValueKey('dock-action-restaurant_menu')),
+          findsNothing);
+      await tester.scrollUntilVisible(find.text('Ligne 59'), 200,
+          scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+      final dock = tester.getRect(find.byKey(const ValueKey('operations-dock')));
+      expect(tester.getRect(find.text('Ligne 59')).bottom,
+          lessThanOrEqualTo(dock.top));
+      final fab = tester.getRect(find.byType(FloatingActionButton));
+      expect(dock.overlaps(fab), isFalse);
+      expect(tester.takeException(), isNull);
+    });
+
+    test('la carte du restaurant passe par le shell commun', () {
+      final src = File(
+        'lib/features/restaurant/screens/restaurant_menu_config_screen.dart',
+      ).readAsStringSync();
+      expect(src, contains('return WanzoScaffold('));
+    });
 
     testWidgets('replier puis déplier', (tester) async {
       await _pumpHost(tester, actions: actions);

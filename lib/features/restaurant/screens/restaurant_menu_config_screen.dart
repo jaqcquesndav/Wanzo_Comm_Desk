@@ -14,6 +14,7 @@ import 'package:wanzo/core/platform/image_picker/image_picker_service_interface.
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
+import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/utils/price_plausibility.dart';
@@ -170,15 +171,14 @@ class _RestaurantMenuConfigScreenState
     // même carte pour les prestations, mais sans page publique.
     final isRestaurant =
         BusinessContextService().activityMode == ActivityMode.restaurant;
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () =>
-              context.canPop() ? context.pop() : context.go('/dashboard'),
-        ),
-        title: const Text('Composer la carte'),
-        actions: [
+    // Shell desktop commun (sidebar, en-tête, dock d'actions rapides du mode,
+    // marge basse sous la carte), comme les autres pages restaurant.
+    return WanzoScaffold(
+      currentIndex: -1, // élément actif dérivé de la route par le shell
+      title: 'Composer la carte',
+      onBackPressed: () =>
+          context.canPop() ? context.pop() : context.go('/dashboard'),
+      appBarActions: [
           if (isRestaurant) ...[
             IconButton(
               tooltip: 'Partager la carte',
@@ -202,8 +202,7 @@ class _RestaurantMenuConfigScreenState
               ),
             ),
           ],
-        ],
-      ),
+      ],
       floatingActionButton: FloatingActionButton(
         tooltip: 'Ajouter un plat',
         onPressed: () => _openDishForm(),
