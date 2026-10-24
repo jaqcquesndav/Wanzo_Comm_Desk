@@ -4,6 +4,7 @@ import 'package:wanzo/core/services/api_client.dart';
 import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/core/models/api_response.dart';
 import 'package:wanzo/core/models/operation_payment.dart';
+import 'package:wanzo/core/models/payment_method_code.dart';
 import 'package:wanzo/core/exceptions/api_exceptions.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/sales/services/sale_dto.dart';
@@ -433,7 +434,7 @@ class SalesApiService {
         body: <String, dynamic>{
           'paidAmountInCdf': paidAmountInCdf,
           if (paymentMethod != null && paymentMethod.isNotEmpty)
-            'paymentMethod': paymentMethod,
+            'paymentMethod': paymentMethodCode(paymentMethod),
           if (paymentReference != null && paymentReference.trim().isNotEmpty)
             'paymentReference': paymentReference.trim(),
         },

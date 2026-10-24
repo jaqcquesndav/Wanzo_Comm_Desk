@@ -5,6 +5,7 @@ import '../models/sale.dart';
 import '../services/sales_api_service.dart';
 import '../../../core/models/operation_payment.dart';
 import '../../../core/utils/logger.dart';
+import '../../../core/services/business_context_service.dart';
 // Import SaleItem and SaleItemType
 
 /// Résultat d'un règlement enregistré sur une vente.
@@ -133,29 +134,21 @@ class SalesRepository {
   /// Ajouter une nouvelle vente
   Future<Sale> addSale(Sale sale) async {
     final newSaleId = _uuid.v4();
-    final newSale = Sale(
-      id: newSaleId, // Use the generated ID
+    // TOUTE la vente est propagée (échéance, référence de paiement, TVA, HT,
+    // remise, unité d'affaires, pièces jointes, téléphone du client) :
+    // reconstruire la vente champ par champ perdait en silence tout ce qui
+    // n'était pas recopié.
+    // La vente porte l'unité qui l'a émise (réimpression fidèle même si
+    // l'utilisateur change d'unité ensuite).
+    final ctx = BusinessContextService();
+    final newSale = sale.copyWith(
+      id: newSaleId,
       localId: newSaleId, // Track as local ID for sync
-      date: sale.date,
-      customerId: sale.customerId,
-      customerName: sale.customerName,
-      // Propager le telephone pour l'auto-creation du client (fidelite).
-      customerPhoneNumber: sale.customerPhoneNumber,
-      items:
-          sale.items.map((item) {
-            // La mise à jour du stock est maintenant gérée dans le SalesBloc
-            return item;
-          }).toList(),
-      totalAmountInCdf: sale.totalAmountInCdf,
-      paidAmountInCdf: sale.paidAmountInCdf,
-      paymentMethod: sale.paymentMethod,
-      status: sale.status,
-      notes: sale.notes,
-      transactionCurrencyCode: sale.transactionCurrencyCode,
-      transactionExchangeRate: sale.transactionExchangeRate,
-      totalAmountInTransactionCurrency: sale.totalAmountInTransactionCurrency,
-      paidAmountInTransactionCurrency: sale.paidAmountInTransactionCurrency,
       syncStatus: 'pending', // Mark as pending sync
+      companyId: sale.companyId ?? ctx.companyId,
+      businessUnitId: sale.businessUnitId ?? ctx.businessUnitId,
+      businessUnitCode: sale.businessUnitCode ?? ctx.businessUnitCode,
+      businessUnitType: sale.businessUnitType ?? ctx.businessUnitType,
     );
 
     // 1. Save locally first (offline-first)

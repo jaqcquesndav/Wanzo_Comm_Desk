@@ -104,7 +104,8 @@ void main() {
       final dto = saleToApiDto(venteUsd(), sourceMode: 'retail');
       expect(dto['businessUnitType'], 'pos');
       expect(dto.containsKey('notes'), isFalse);
-      expect(dto['paymentMethod'], 'Mobile Money');
+      // Code canonique, jamais le libellé traduit.
+      expect(dto['paymentMethod'], 'mobile_money');
       final sansMode = saleToApiDto(
         venteUsd().copyWith(paymentMethod: ''),
         sourceMode: 'retail',

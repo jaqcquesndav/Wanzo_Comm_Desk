@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../core/enums/business_unit_enums.dart';
+import '../../../core/models/payment_method_code.dart';
 import '../../../core/services/business_context_service.dart';
 import '../models/sale.dart';
 
@@ -48,7 +49,8 @@ Map<String, dynamic> saleToApiDto(
     if (nonEmpty(sale.customerPhoneNumber) != null)
       'customerPhoneNumber': sale.customerPhoneNumber,
     'customerName': sale.customerName,
-    'paymentMethod': nonEmpty(sale.paymentMethod) ?? 'cash',
+    // Code canonique (cash, mobile_money, credit...), jamais le libellé traduit.
+    'paymentMethod': paymentMethodCode(sale.paymentMethod),
     if (nonEmpty(sale.paymentReference) != null)
       'paymentReference': sale.paymentReference,
     'exchangeRate': rate,
@@ -63,6 +65,13 @@ Map<String, dynamic> saleToApiDto(
     'status': sale.status.name,
     if (sale.discountPercentage > 0)
       'discountPercentage': sale.discountPercentage,
+    // Totaux calculés par l'app (après remise globale) : le serveur applique
+    // la même remise et peut contrôler la cohérence.
+    'totalAmountInCdf': sale.totalAmountInCdf,
+    if (sale.amountHT != null) 'amountHT': sale.amountHT,
+    if (sale.taxAmount != null) 'taxAmount': sale.taxAmount,
+    if (sale.totalAmountInTransactionCurrency != null)
+      'totalAmountInTransactionCurrency': sale.totalAmountInTransactionCurrency,
     // Pièces jointes : URLs Cloudinary seulement, jamais les chemins locaux.
     if (sale.attachmentUrls != null && sale.attachmentUrls!.isNotEmpty)
       'attachmentUrls': sale.attachmentUrls,

@@ -5,6 +5,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:wanzo/core/enums/currency_enum.dart'; // Corrected: Currency is the enum name
 import 'package:wanzo/core/models/currency_settings_model.dart';
 import 'package:wanzo/core/services/currency_service.dart';
+import 'package:wanzo/core/models/payment_method_code.dart';
+import 'package:wanzo/core/shared_widgets/payment_details_fields.dart';
+import 'package:wanzo/core/widgets/operator_logo.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/utils/price_plausibility.dart';
 import 'package:wanzo/core/widgets/desktop/responsive_form_container.dart';
@@ -186,7 +189,14 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   Customer? _foundCustomer; // Pour stocker le client trouvé par numéro
 
   // Valeurs par défaut
-  String _paymentMethod = 'Espèces';
+  // Code canonique (cash, mobile_money, credit...) : le libellé est à l'écran.
+  String _paymentMethod = PaymentMethodCode.cash;
+  // Mobile Money : opérateur et référence obligatoires ; crédit : échéance.
+  OperatorBrand? _mobileOperator;
+  final _paymentRefController = TextEditingController();
+  DateTime? _dueDate;
+  // Vente réellement envoyée : la pièce imprimée en reprend tous les champs.
+  Sale? _lastSubmittedSale;
   final List<SaleItem> _items = [];
   double _paidAmount = 0.0;
   // Champ « Montant payé » : TOUJOURS le reflet de _paidAmount. Il
@@ -372,7 +382,10 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       _setPaid(widget.initialPaidAmount!);
     }
     if (widget.initialPaymentMethod != null) {
-      _paymentMethod = widget.initialPaymentMethod!;
+      _paymentMethod = paymentMethodCode(widget.initialPaymentMethod);
+      if (_paymentMethod == PaymentMethodCode.credit) {
+        _dueDate = defaultCreditDueDate();
+      }
     }
     if (widget.initialNotes != null) {
       _notesController.text = widget.initialNotes!;
@@ -460,6 +473,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     _customerNameController.dispose();
     _customerPhoneController.dispose();
     _notesController.dispose();
+    _paymentRefController.dispose();
     _paidController.dispose();
     _productSearchController.dispose();
     _servicesCubit.close();
@@ -881,7 +895,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                                     _selectedTransactionCurrency = newValue;
                                     _transactionExchangeRate =
                                         _exchangeRates[newValue] ?? 0;
-                                    if (_paymentMethod != 'Crédit') {
+                                    if (_paymentMethod != PaymentMethodCode.credit) {
                                       _setPaid(_calculateTotalInTransactionCurrency());
                                     } else {
                                       // Acompte déjà saisi : converti dans la nouvelle devise.
@@ -904,10 +918,20 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                                 padding: const EdgeInsets.only(
                                   bottom: WanzoSpacing.sm,
                                 ),
-                                child: Text(
-                                  'Taux: 1 ${_selectedTransactionCurrency?.code} = ${formatNumber(_transactionExchangeRate)} ${_defaultCurrency.code}',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
+                                child: _transactionExchangeRate > 0
+                                    ? Text(
+                                      'Taux : 1 ${_selectedTransactionCurrency?.code} = ${formatNumber(_transactionExchangeRate)} ${_defaultCurrency.code}',
+                                      style: Theme.of(context).textTheme.bodySmall,
+                                    )
+                                    : Text(
+                                      CurrencyService.missingRateMessage(
+                                        _selectedTransactionCurrency!.code,
+                                      ),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(color: Colors.red),
+                                    ),
                               ),
                           ],
 
@@ -995,7 +1019,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                                         _discountController.text = '100';
                                       }
                                       // Mettre à jour le montant payé si paiement complet
-                                      if (_paymentMethod != 'Crédit') {
+                                      if (_paymentMethod != PaymentMethodCode.credit) {
                                         _setPaid(_calculateTotalInTransactionCurrency());
                                       }
                                     });
@@ -1103,32 +1127,26 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                               labelText: 'Méthode de paiement',
                               border: OutlineInputBorder(),
                             ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'Espèces',
-                                child: Text('Espèces'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'Mobile Money',
-                                child: Text('Mobile Money'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'Carte bancaire',
-                                child: Text('Carte bancaire'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'Virement bancaire',
-                                child: Text('Virement bancaire'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'Crédit',
-                                child: Text('Crédit'),
-                              ),
+                            items: [
+                              for (final code in const [
+                                PaymentMethodCode.cash,
+                                PaymentMethodCode.mobileMoney,
+                                PaymentMethodCode.card,
+                                PaymentMethodCode.bankTransfer,
+                                PaymentMethodCode.credit,
+                              ])
+                                DropdownMenuItem(
+                                  value: code,
+                                  child: Text(paymentMethodLabel(code)),
+                                ),
                             ],
                             onChanged: (value) {
                               setState(() {
                                 _paymentMethod = value!;
-                                if (_paymentMethod != 'Crédit') {
+                                if (_paymentMethod == PaymentMethodCode.credit) {
+                                  _dueDate ??= defaultCreditDueDate();
+                                }
+                                if (_paymentMethod != PaymentMethodCode.credit) {
                                   _setPaid(_calculateTotalInTransactionCurrency());
                                 } else {
                                   // Crédit : rien n'est encore payé (acompte à saisir).
@@ -1136,6 +1154,16 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                                 }
                               });
                             },
+                          ),
+                          PaymentDetailsFields(
+                            method: _paymentMethod,
+                            operator: _mobileOperator,
+                            onOperatorChanged:
+                                (b) => setState(() => _mobileOperator = b),
+                            referenceController: _paymentRefController,
+                            dueDate: _dueDate,
+                            onDueDateChanged:
+                                (d) => setState(() => _dueDate = d),
                           ),
                           const SizedBox(height: WanzoSpacing.md),
                           if (_items.isNotEmpty)
@@ -1317,7 +1345,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
   Color _getPaymentStatusColor() {
     final total = _calculateTotalInTransactionCurrency();
-    if (_paymentMethod == 'Crédit') {
+    if (_paymentMethod == PaymentMethodCode.credit) {
       if (_paidAmount == 0) return Colors.orange;
       if (_paidAmount < total) return Colors.blue;
       return Colors.green;
@@ -1329,7 +1357,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     final total = _calculateTotalInTransactionCurrency();
     final currencyCode =
         _selectedTransactionCurrency?.code ?? _defaultCurrency.code;
-    if (_paymentMethod == 'Crédit') {
+    if (_paymentMethod == PaymentMethodCode.credit) {
       if (_paidAmount == 0) return 'Vente à crédit (aucun acompte)';
       if (_paidAmount < total) {
         return 'Acompte: ${formatCurrency(_paidAmount, currencyCode)}, Reste: ${formatCurrency(total - _paidAmount, currencyCode)}';
@@ -1370,7 +1398,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     final totalInCdf = totalInTransactionCurrency * currentRate;
     final paidInCdf = _paidAmount * currentRate;
 
-    final saleForPdf = Sale(
+    final saleForPdf = _lastSubmittedSale?.copyWith(id: saleId) ?? Sale(
       id: saleId,
       date: DateTime.now(),
       customerId: _linkedCustomerId,
@@ -1401,7 +1429,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     String? pdfPath;
     String documentType = '';
 
-    if (_paymentMethod == 'Crédit' && !_isPaidFully()) {
+    if (_paymentMethod == PaymentMethodCode.credit && !_isPaidFully()) {
       documentType = 'Facture';
       pdfPath = await invoiceService.generateInvoicePdf(
         saleForPdf,
@@ -1508,7 +1536,11 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       _foundCustomer = null;
 
       // Réinitialiser les détails de la vente
-      _paymentMethod = 'Espèces'; // Valeur par défaut
+      _paymentMethod = PaymentMethodCode.cash; // Valeur par défaut
+      _mobileOperator = null;
+      _paymentRefController.clear();
+      _dueDate = null;
+      _lastSubmittedSale = null;
       _items.clear();
       _setPaid(0.0);
       _discountPercentage = 0.0;
@@ -1774,10 +1806,14 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                     if (_serviceResults.isNotEmpty)
                       ServiceSearchResults(
                         services: _serviceResults,
-                        currencyCode: _selectedTransactionCurrency?.code ?? 'CDF',
-                        exchangeRate: _selectedTransactionCurrency == null
-                            ? 1.0
-                            : (_exchangeRates[_selectedTransactionCurrency!] ?? 1.0),
+                        // Sans taux exploitable, les prix restent affichés
+                        // en CDF (jamais un montant CDF sous le code USD).
+                        currencyCode:
+                            _tauxVersCdf(_selectedTransactionCurrency) == null
+                                ? 'CDF'
+                                : (_selectedTransactionCurrency?.code ?? 'CDF'),
+                        exchangeRate:
+                            _tauxVersCdf(_selectedTransactionCurrency) ?? 1.0,
                         onPick: _quickAddService,
                       ),
                     Flexible(
@@ -1835,11 +1871,11 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   /// Construit une tuile de résultat de recherche pour l'ajout rapide
   Widget _buildSearchResultTile(Product product) {
     final primaryColor = Theme.of(context).colorScheme.primary;
+    final tauxAffichage = _tauxVersCdf(_selectedTransactionCurrency);
     final displayPrice =
-        _selectedTransactionCurrency != null
+        (_selectedTransactionCurrency != null && tauxAffichage != null)
             ? formatCurrency(
-              product.sellingPriceInCdf /
-                  (_exchangeRates[_selectedTransactionCurrency!] ?? 1.0),
+              product.sellingPriceInCdf / tauxAffichage,
               _selectedTransactionCurrency!.code,
             )
             : formatCurrency(product.sellingPriceInCdf, 'CDF');
@@ -2469,8 +2505,18 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     }
     final dialogCurrencyCode = dialogCurrency.code;
     final dialogCurrencySymbol = dialogCurrency.symbol;
-    final currentTransactionExchangeRateToCdf =
-        _exchangeRates[dialogCurrency] ?? 1.0;
+    // Devise sans taux : refus, jamais un taux 1 silencieux.
+    final tauxDialogue = _tauxVersCdf(dialogCurrency);
+    if (tauxDialogue == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(CurrencyService.missingRateMessage(dialogCurrencyCode)),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    final currentTransactionExchangeRateToCdf = tauxDialogue;
 
     AdaptiveModal.show<void>(
       context: context,
@@ -3133,7 +3179,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         _items.add(item);
       }
 
-      if (_paymentMethod != 'Crédit') {
+      if (_paymentMethod != PaymentMethodCode.credit) {
         _setPaid(_calculateTotalInTransactionCurrency());
       }
     });
@@ -3384,7 +3430,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
                               setState(() {
                                 _items[index] = updatedItem;
-                                if (_paymentMethod != 'Crédit') {
+                                if (_paymentMethod != PaymentMethodCode.credit) {
                                   _setPaid(_calculateTotalInTransactionCurrency());
                                 }
                               });
@@ -3420,7 +3466,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   void _removeItem(int index) {
     setState(() {
       _items.removeAt(index);
-      if (_paymentMethod != 'Crédit') {
+      if (_paymentMethod != PaymentMethodCode.credit) {
         _setPaid(_calculateTotalInTransactionCurrency());
       }
     });
@@ -3464,7 +3510,11 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   }
 
   double _convertFromCdfToTransactionCurrency(double cdfAmount) {
-    if (_transactionExchangeRate <= 0) return cdfAmount;
+    // Sans taux, aucun montant CDF n'est présenté sous un autre code : 0
+    // (la vente est de toute façon refusée tant que le taux manque).
+    final code = _selectedTransactionCurrency?.code ?? _defaultCurrency.code;
+    if (code == 'CDF') return cdfAmount;
+    if (_transactionExchangeRate <= 0) return 0;
     return cdfAmount / _transactionExchangeRate;
   }
 
@@ -3515,9 +3565,27 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         );
         return;
       }
+      final detailsError = paymentDetailsError(
+        method: _paymentMethod,
+        operator: _mobileOperator,
+        reference: _paymentRefController.text,
+        dueDate:
+            _paymentMethod == PaymentMethodCode.credit
+                ? (_dueDate ?? defaultCreditDueDate())
+                : null,
+      );
+      if (detailsError != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(detailsError), backgroundColor: Colors.red),
+        );
+        return;
+      }
       if (!await _verifierVraisemblance(totalInTransactionCurrency)) return;
       if (!mounted) return;
       final totalInCdf = totalInTransactionCurrency * currentRate;
+      final isMobileMoney = _paymentMethod == PaymentMethodCode.mobileMoney;
+      final operatorNote = isMobileMoney ? mobileMoneyNote(_mobileOperator) : '';
+      final userNotes = _notesController.text.trim();
       final paidInCdf = _paidAmount * currentRate;
 
       final sale = Sale(
@@ -3541,10 +3609,21 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         paidAmountInTransactionCurrency: _paidAmount,
         discountPercentage: _discountPercentage,
         taxAmount: _tvaEnCdf(),
+        amountHT: totalInCdf - _tvaEnCdf(),
         paymentMethod: _paymentMethod,
+        paymentReference:
+            isMobileMoney ? _paymentRefController.text.trim() : null,
+        dueDate:
+            _paymentMethod == PaymentMethodCode.credit
+                ? (_dueDate ?? defaultCreditDueDate())
+                : null,
         status: _isPaidFully() ? SaleStatus.completed : SaleStatus.pending,
-        notes: _notesController.text,
+        notes: [
+          if (operatorNote.isNotEmpty) operatorNote,
+          if (userNotes.isNotEmpty) userNotes,
+        ].join(' · '),
       );
+      _lastSubmittedSale = sale;
       context.read<SalesBloc>().add(AddSale(sale));
     } else if (_items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

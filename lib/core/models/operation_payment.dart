@@ -11,6 +11,8 @@
 /// [OperationPayment] une tranche déjà enregistrée côté serveur.
 library;
 
+import 'payment_method_code.dart';
+
 /// Modes de règlement proposés dans le dialogue « Enregistrer un paiement ».
 ///
 /// Les libellés sont ceux déjà persistés par les écrans de vente et de dépense
@@ -74,7 +76,8 @@ class PaymentDraft {
     'amount': amount,
     'currencyCode': currencyCode,
     if (exchangeRate != null && exchangeRate! > 0) 'exchangeRate': exchangeRate,
-    'method': method,
+    // Code canonique (cash, mobile_money...) : le libellé reste à l'écran.
+    'method': paymentMethodCode(method),
     'paidAt': paidAt.toIso8601String(),
     if (reference != null && reference!.trim().isNotEmpty)
       'reference': reference!.trim(),
