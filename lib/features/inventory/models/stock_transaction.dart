@@ -138,6 +138,9 @@ class StockTransaction extends Equatable {
   Map<String, dynamic> toApiPayload({String? expenseId}) {
     final note = notes?.trim();
     return {
+      // Identifiant généré sur l'appareil : le serveur déduplique sur
+      // (entreprise, localId), un rejeu ne réapplique jamais le mouvement.
+      if (id.isNotEmpty) 'localId': id,
       'productId': productId,
       'type': type.name,
       'quantity':

@@ -56,6 +56,7 @@ class _ImagesFactices implements ImageUploadService {
 }
 
 const _champsServeur = {
+  'localId',
   'productId',
   'type',
   'quantity',
@@ -214,6 +215,51 @@ void main() {
     Future<void> poserArticle(Product p) async {
       await Hive.box<Product>('products').put(p.id, p);
     }
+
+    test('produit créé hors ligne : ses écritures en file attendent sa création',
+        () async {
+      await poserArticle(_article(syncStatus: 'pending'));
+      expect(
+        InventoryRepository.productAwaitingCreation(
+            'PATCH', 'products/p1', {'name': 'x'}),
+        isTrue,
+      );
+      expect(
+        InventoryRepository.productAwaitingCreation(
+            'POST', 'stock-transactions', {'productId': 'p1'}),
+        isTrue,
+      );
+      await poserArticle(_article(syncStatus: 'synced'));
+      expect(
+        InventoryRepository.productAwaitingCreation(
+            'PATCH', 'products/p1', {'name': 'x'}),
+        isFalse,
+      );
+    });
+
+    test('modifier un produit jamais envoyé : aucun PATCH (404 garanti)',
+        () async {
+      await poserArticle(_article(syncStatus: 'pending'));
+      final maj = await repo.updateProduct(
+        _article(syncStatus: 'pending').copyWith(name: 'Riz 50 kg'),
+      );
+      expect(http.appels, isEmpty);
+      expect(maj.syncStatus, 'pending');
+      expect(repo.getProductById('p1')!.name, 'Riz 50 kg');
+    });
+
+    test('mouvement envoyé avec son localId (dédupliqué au rejeu)', () async {
+      await poserArticle(_article(stock: 10));
+      http.repondre = (_) => {
+            'success': true,
+            'data': {'id': 'srv-1'},
+          };
+      await repo.recordStockMovement(
+        _mouvement(StockTransactionType.damaged, 1),
+      );
+      final corps = http.appels.single.corps as Map;
+      expect(corps['localId'], isNotEmpty);
+    });
 
     test('retrait accepté : corps envoyé puis stock baissé', () async {
       await poserArticle(_article(stock: 10));

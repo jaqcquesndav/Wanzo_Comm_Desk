@@ -136,4 +136,44 @@ void main() {
     );
     expect(OfflineWriteQueue.instance.pending.value, 0);
   });
+
+  test("une ecriture qui vise un produit pas encore cree attend sa creation", () async {
+    // Ordre réel en prod : mouvement de stock et PATCH d un produit créé
+    // hors ligne partaient avant sa création (404 puis abandon définitif).
+    await OfflineWriteQueue.instance.enqueue(
+      method: "POST",
+      endpoint: "stock-transactions",
+      body: {"productId": "p-local", "quantity": 2},
+    );
+    await OfflineWriteQueue.instance.enqueue(
+      method: "PATCH", endpoint: "products/p-local", body: {"name": "Riz"});
+    await OfflineWriteQueue.instance.enqueue(
+      method: "POST", endpoint: "customers", body: {"name": "Awa"});
+
+    var produitCree = false;
+    OfflineWriteQueue.waitsForPendingCreation = (m, e, b) {
+      if (produitCree) return false;
+      if (e.startsWith("products/p-local")) return true;
+      return b is Map && b["productId"] == "p-local";
+    };
+    addTearDown(() => OfflineWriteQueue.waitsForPendingCreation = null);
+
+    final seen = <String>[];
+    var report = await OfflineWriteQueue.instance.replay(
+      send: (m, e, b, a) async => seen.add("$m $e"),
+      isPermanentFailure: (_) => true,
+    );
+    expect(seen, ["POST customers"]);
+    expect(report.abandoned, 0);
+    expect(report.remaining, 2);
+
+    produitCree = true;
+    seen.clear();
+    report = await OfflineWriteQueue.instance.replay(
+      send: (m, e, b, a) async => seen.add("$m $e"),
+      isPermanentFailure: (_) => true,
+    );
+    expect(seen, ["POST stock-transactions", "PATCH products/p-local"]);
+    expect(report.remaining, 0);
+  });
 }

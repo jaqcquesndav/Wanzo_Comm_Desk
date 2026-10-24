@@ -155,6 +155,9 @@ class ProductApiService {
         'products',
         body: productBody,
         requiresAuth: true,
+        // Hors ligne : le produit reste pending et la synchro le recrée ; le
+        // mettre aussi en file l'enverrait deux fois.
+        queueOffline: false,
       );
       if (response != null && response['data'] != null) {
         final createdProduct = Product.fromJson(
@@ -218,6 +221,8 @@ class ProductApiService {
         'products/$id',
         body: productBody,
         requiresAuth: true,
+        // Même règle : pending_update est renvoyé par la synchro.
+        queueOffline: false,
       );
       if (response != null && response['data'] != null) {
         final updatedProduct = Product.fromJson(

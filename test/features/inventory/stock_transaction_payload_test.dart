@@ -22,6 +22,7 @@ void main() {
       );
 
   const champsAutorises = {
+    'localId',
     'productId',
     'type',
     'quantity',
@@ -43,6 +44,8 @@ void main() {
     expect(corps['quantity'], 10);
     expect(corps['unitCostPrice'], 2500);
     expect(corps['expenseId'], 'exp-1');
+    // Identifiant de l'appareil : dédupliqué par le serveur au rejeu.
+    expect(corps['localId'], 'local-1');
     expect(corps['date'], '2026-10-15T08:00:00.000Z');
   });
 

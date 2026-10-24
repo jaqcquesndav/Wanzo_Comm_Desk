@@ -4,6 +4,7 @@ import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import 'package:wanzo/core/exceptions/api_exceptions.dart'
     show OfflineQueuedException;
+import 'package:wanzo/core/services/offline_write_queue.dart';
 import '../models/product.dart';
 import '../models/stock_transaction.dart'; // Import StockTransaction
 import '../services/inventory_api_service.dart';
@@ -38,6 +39,31 @@ class InventoryRepository {
     _transactionsBox = await Hive.openBox<StockTransaction>(
       _transactionsBoxName,
     );
+    // Les écritures en file qui visent un produit créé hors ligne attendent
+    // sa création (sinon 404 et abandon définitif).
+    OfflineWriteQueue.waitsForPendingCreation = productAwaitingCreation;
+  }
+
+  /// Vrai si l'écriture [method] [endpoint] vise un produit encore
+  /// `pending` (jamais créé sur le serveur) dans la box locale.
+  static bool productAwaitingCreation(
+    String method,
+    String endpoint,
+    dynamic body,
+  ) {
+    if (!Hive.isBoxOpen(_productsBoxName)) return false;
+    final box = Hive.box<Product>(_productsBoxName);
+    final path = endpoint.split('?').first.replaceAll(RegExp(r'^/+'), '');
+    String? productId;
+    final m = RegExp(r'^products/([^/]+)').firstMatch(path);
+    if (m != null) {
+      productId = m.group(1);
+    } else if (path.startsWith('stock-transactions') && body is Map) {
+      final id = body['productId'];
+      if (id is String) productId = id;
+    }
+    if (productId == null || productId.isEmpty) return false;
+    return box.get(productId)?.syncStatus == 'pending';
   }
 
   /// Fermer les boxes Hive
@@ -295,6 +321,10 @@ class InventoryRepository {
     // 1. Update locally first
     await _productsBox.put(product.id, updatedProduct);
     debugPrint('💾 Produit mis à jour localement: ${product.id}');
+
+    // Produit jamais créé sur le serveur : un PATCH recevrait un 404. Sa
+    // création (synchronisation) portera la fiche à jour.
+    if (existingProduct.syncStatus == 'pending') return updatedProduct;
 
     // 2. Try to sync with API
     if (_apiService != null) {

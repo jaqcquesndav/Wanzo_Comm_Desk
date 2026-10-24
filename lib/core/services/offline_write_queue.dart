@@ -29,6 +29,15 @@ class OfflineWriteQueue {
 
   static final OfflineWriteQueue instance = OfflineWriteQueue._();
 
+  /// Dépendance pas encore créée sur le serveur : une écriture qui vise un
+  /// produit créé hors ligne (PATCH products/:id, POST stock-transactions de
+  /// ce produit) partait AVANT la création du produit, recevait un 404 et
+  /// était abandonnée pour toujours. Quand ce prédicat répond vrai, l'écriture
+  /// est GARDÉE en file (sans être envoyée) jusqu'au passage suivant, une fois
+  /// le produit créé. Enregistré par les dépôts qui créent hors ligne.
+  static bool Function(String method, String endpoint, dynamic body)?
+      waitsForPendingCreation;
+
   static const String _boxName = 'offline_write_queue';
 
   /// Nombre maximal d'écritures conservées. Au delà, la plus ancienne est
@@ -200,6 +209,23 @@ class OfflineWriteQueue {
           abandoned++;
           continue;
         }
+      }
+
+      final method = entry['method'] as String? ?? 'POST';
+      final endpoint = entry['endpoint'] as String? ?? '';
+      bool attend = false;
+      try {
+        attend =
+            waitsForPendingCreation?.call(method, endpoint, body) ?? false;
+      } catch (_) {
+        attend = false;
+      }
+      if (attend) {
+        debugPrint(
+          '[OfflineWriteQueue] $method $endpoint gardée : sa dépendance '
+          "n'est pas encore créée sur le serveur",
+        );
+        continue;
       }
 
       try {

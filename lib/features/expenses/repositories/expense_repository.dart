@@ -178,6 +178,7 @@ class ExpenseRepository {
       subCategory: expenseToSave.subCategory,
       beneficiary: expenseToSave.beneficiary,
       notes: expenseToSave.notes,
+      localId: expenseToSave.localId,
     );
 
     if (apiResponse.success && apiResponse.data != null) {

@@ -5,6 +5,7 @@ import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
 import 'package:wanzo/core/models/api_response.dart';
 import 'package:wanzo/core/models/operation_payment.dart';
+import 'package:wanzo/core/models/payment_method_code.dart';
 
 /// Interface standardisée pour les opérations d'API des dépenses
 abstract class ExpenseApiService {
@@ -44,6 +45,9 @@ abstract class ExpenseApiService {
     // Justificatif libre (ex. « 10 x 2 500 CDF » d un réapprovisionnement) :
     // accepté par le DTO serveur, il n était jamais envoyé.
     String? notes,
+    // Identifiant généré sur l'appareil : le serveur déduplique sur
+    // (entreprise, localId), une dépense renvoyée n'est jamais doublée.
+    String? localId,
   });
 
   /// Récupère une dépense par son ID
@@ -226,6 +230,7 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
     // Justificatif libre (ex. « 10 x 2 500 CDF » d un réapprovisionnement) :
     // accepté par le DTO serveur, il n était jamais envoyé.
     String? notes,
+    String? localId,
   }) async {
     try {
       List<String>? attachmentUrls;
@@ -263,11 +268,13 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
 
       // Construire le corps de la requête JSON
       final Map<String, dynamic> body = {
+        if (localId != null && localId.isNotEmpty) 'localId': localId,
         'date': date.toIso8601String(),
         'motif': motif,
         'amount': amount,
         'category': categoryId,
-        if (paymentMethod != null && paymentMethod.isNotEmpty) 'paymentMethod': paymentMethod,
+        if (paymentMethod != null && paymentMethod.isNotEmpty)
+          'paymentMethod': paymentMethodCode(paymentMethod),
         if (supplierId != null && supplierId.isNotEmpty) 'supplierId': supplierId,
         if (paidAmount != null) 'paidAmount': paidAmount,
         if (paymentStatus != null) 'paymentStatus': paymentStatus,
@@ -438,7 +445,8 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
         if (amount != null) 'amount': amount,
         if (motif != null) 'motif': motif,
         if (categoryId != null) 'category': categoryId,
-        if (paymentMethod != null && paymentMethod.isNotEmpty) 'paymentMethod': paymentMethod,
+        if (paymentMethod != null && paymentMethod.isNotEmpty)
+          'paymentMethod': paymentMethodCode(paymentMethod),
         if (supplierId != null && supplierId.isNotEmpty) 'supplierId': supplierId,
         if (paidAmount != null) 'paidAmount': paidAmount,
         if (paymentStatus != null) 'paymentStatus': paymentStatus,

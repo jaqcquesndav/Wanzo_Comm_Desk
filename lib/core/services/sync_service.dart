@@ -225,6 +225,9 @@ class SyncService {
     try {
       // Écritures conservées hors ligne par le client HTTP (modules récents) :
       // envoyées AVANT de relire le serveur, pour que la relecture les inclue.
+      // Produits créés hors ligne D'ABORD : la file contient leurs mouvements
+      // de stock et leurs modifications, qui exigent le produit côté serveur.
+      await _pushPendingProducts();
       await _replayOfflineWrites();
 
       // Proformas émises hors ligne (numéro provisoire) : envoyées pour
@@ -376,19 +379,16 @@ class SyncService {
   /// Synchronise les produits
   /// ÉTAPE 1: Upload des pending vers le backend
   /// ÉTAPE 2: Download des données du backend
-  Future<void> _syncProducts({bool forceFullSync = false}) async {
-    debugPrint('Synchronisation des produits...');
+  /// Envoie les produits créés ou modifiés hors ligne. Appelé AVANT le rejeu
+  /// de la file des écritures : un mouvement de stock ou un PATCH visant un
+  /// produit créé hors ligne partait avant la création du produit (404, puis
+  /// abandon définitif de l'écriture).
+  Future<void> _pushPendingProducts() async {
     try {
-      // Vérifier si la box est ouverte
       if (!Hive.isBoxOpen('products')) {
-        debugPrint('⚠️ productsBox non ouverte, tentative d\'ouverture...');
         await Hive.openBox<Product>('products');
       }
       final productBox = Hive.box<Product>('products');
-      debugPrint(
-        '✅ productsBox ouverte avec ${productBox.length} produits existants',
-      );
-
       // ========== ÉTAPE 1: UPLOAD des produits pending ==========
       final pendingProducts =
           productBox.values
@@ -398,12 +398,12 @@ class SyncService {
                     p.syncStatus == 'pending_update',
               )
               .toList();
-
+  
       if (pendingProducts.isNotEmpty) {
         debugPrint(
           '📤 ${pendingProducts.length} produits en attente d\'upload',
         );
-
+  
         for (var product in pendingProducts) {
           try {
             if (product.syncStatus == 'pending') {
@@ -440,6 +440,26 @@ class SyncService {
           }
         }
       }
+    } catch (e) {
+      debugPrint('⚠️ Envoi des produits en attente impossible : $e');
+    }
+  }
+
+  Future<void> _syncProducts({bool forceFullSync = false}) async {
+    debugPrint('Synchronisation des produits...');
+    try {
+      // Vérifier si la box est ouverte
+      if (!Hive.isBoxOpen('products')) {
+        debugPrint('⚠️ productsBox non ouverte, tentative d\'ouverture...');
+        await Hive.openBox<Product>('products');
+      }
+      final productBox = Hive.box<Product>('products');
+      debugPrint(
+        '✅ productsBox ouverte avec ${productBox.length} produits existants',
+      );
+
+      // ========== ÉTAPE 1: UPLOAD des produits pending ==========
+      await _pushPendingProducts();
 
       // ========== ÉTAPE 2: DOWNLOAD depuis le backend ==========
       final String lastSyncKey = 'product_last_sync';
@@ -860,6 +880,12 @@ class SyncService {
                 currencyCode: expense.currencyCode,
                 exchangeRate: expense.exchangeRate,
                 notes: expense.notes,
+                // Même dépense que l'envoi direct : dédupliquée par localId.
+                localId: expense.localId,
+                performerId: expense.performerId,
+                performerName: expense.performerName,
+                subCategory: expense.subCategory,
+                beneficiary: expense.beneficiary,
               );
               if (response.success && response.data != null) {
                 final syncedExpense = response.data!.copyWith(
@@ -1450,6 +1476,9 @@ class SyncService {
     try {
       // Bouton Sync : les écritures conservées hors ligne par le client HTTP
       // partent d'abord (même file que celle rejouée au retour du réseau).
+      // Produits créés hors ligne D'ABORD : la file contient leurs mouvements
+      // de stock et leurs modifications, qui exigent le produit côté serveur.
+      await _pushPendingProducts();
       await _replayOfflineWrites();
 
       // Appeler directement les méthodes internes sans passer par syncAll
