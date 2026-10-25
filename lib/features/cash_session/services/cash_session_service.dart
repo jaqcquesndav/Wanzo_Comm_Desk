@@ -60,6 +60,17 @@ class CashSessionConflict implements Exception {
   String toString() => message;
 }
 
+/// Refus du serveur (4xx autre que le conflit 409) : droits, validation.
+/// La caisse reste valable sur l'appareil, mais le motif doit atteindre
+/// l'ecran au lieu de disparaitre dans les journaux.
+class CashSessionRefused implements Exception {
+  final String message;
+  const CashSessionRefused(this.message);
+
+  @override
+  String toString() => message;
+}
+
 Map<String, dynamic>? _sessionIn(dynamic body) {
   if (body is! Map) return null;
   if (body['openedAt'] != null && body['status'] != null) {
@@ -99,7 +110,13 @@ Future<void> _defaultSender(String endpoint, Map<String, dynamic> body) async {
     if (e.statusCode == 409) {
       throw CashSessionConflict(_sessionIn(e.responseBody) ?? await _defaultFetcher());
     }
-    // Autre refus ou panne : la session reste valable sur l'appareil.
+    final code = e.statusCode ?? 0;
+    if (code >= 400 && code < 500) {
+      throw CashSessionRefused(e.message.isNotEmpty
+          ? e.message
+          : 'La caisse a été refusée par le serveur ($code).');
+    }
+    // Panne du serveur : la session reste valable sur l'appareil.
     debugPrint('⚠️ Caisse : envoi $endpoint non abouti ($e)');
   } catch (e) {
     debugPrint('⚠️ Caisse : envoi $endpoint non abouti ($e)');
@@ -156,6 +173,20 @@ class CashSessionService {
 
   /// Session ouverte (null si la caisse est fermée). Les écrans l'écoutent.
   final ValueNotifier<CashSession?> current = ValueNotifier<CashSession?>(null);
+
+  /// Dernier refus du serveur (4xx) a afficher sur l'ecran Caisse ; null
+  /// quand il n'y a rien a signaler ou que l'utilisateur l'a ferme.
+  final ValueNotifier<String?> serverRefusal = ValueNotifier<String?>(null);
+
+  /// Envoi au serveur : un refus 4xx est retenu dans [serverRefusal], la
+  /// caisse locale reste acquise. Le conflit 409 remonte a l'appelant.
+  Future<void> _envoyer(String endpoint, Map<String, dynamic> body) async {
+    try {
+      await _send(endpoint, body);
+    } on CashSessionRefused catch (e) {
+      serverRefusal.value = e.message;
+    }
+  }
   bool _loaded = false;
   List<CashSession> _all = [];
 
@@ -225,7 +256,7 @@ class CashSessionService {
     await _persist(session);
     current.value = session;
     try {
-      await _send('cash-sessions', _openPayload(session));
+      await _envoyer('cash-sessions', _openPayload(session));
     } on CashSessionConflict {
       // Le serveur a déjà une caisse ouverte pour ce caissier : l'ouverture
       // locale est annulée, l'écran propose de reprendre celle du serveur.
@@ -320,7 +351,7 @@ class CashSessionService {
       if (updated.isOpen) {
         current.value = updated;
       } else {
-        await _send('cash-sessions/${s.localId}/corrections', {
+        await _envoyer('cash-sessions/${s.localId}/corrections', {
           'expected': updated.expected,
           'summary': updated.summaryJson(),
           'note': reversals.first.label,
@@ -454,7 +485,7 @@ class CashSessionService {
     await _persist(closed);
     current.value = null;
     try {
-      await _send('cash-sessions/${s.localId}/close', {
+      await _envoyer('cash-sessions/${s.localId}/close', {
       'closedAt': closed.closedAt!.toUtc().toIso8601String(),
       'expected': expected,
       'counted': countedClean,

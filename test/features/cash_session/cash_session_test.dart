@@ -107,6 +107,17 @@ void main() {
     expect(cashMethodGroupOf('Virement bancaire'), CashMethodGroup.other);
   });
 
+  test('refus 4xx du serveur : caisse gardee sur l appareil, motif expose a l ecran', () async {
+    final refused = CashSessionService(
+      store: store,
+      sender: (endpoint, body) async =>
+          throw const CashSessionRefused('Droits insuffisants pour ouvrir la caisse'),
+    );
+    final s = await refused.open({'CDF': 1000});
+    expect(refused.current.value?.localId, s.localId);
+    expect(refused.serverRefusal.value, contains('Droits insuffisants'));
+  });
+
   test('409 : ouverture locale annulée, message clair, reprise de la session du serveur', () async {
     final server = {
       'id': '00000000-0000-4000-8000-000000000001',

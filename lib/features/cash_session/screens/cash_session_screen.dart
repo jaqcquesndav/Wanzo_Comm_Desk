@@ -161,6 +161,23 @@ class _CashSessionScreenState extends State<CashSessionScreen> {
                   ),
                 ],
               ),
+            // Refus du serveur (droits, validation) : affiche, jamais avale.
+            ValueListenableBuilder<String?>(
+              valueListenable: _service.serverRefusal,
+              builder: (context, refus, _) => refus == null
+                  ? const SizedBox.shrink()
+                  : MaterialBanner(
+                      content: Text('Refus du serveur : $refus'),
+                      leading: Icon(Icons.block,
+                          color: Theme.of(context).colorScheme.error),
+                      actions: [
+                        TextButton(
+                          onPressed: () => _service.serverRefusal.value = null,
+                          child: const Text('Fermer'),
+                        ),
+                      ],
+                    ),
+            ),
             Expanded(
               child: !_ready
                   ? const Center(child: CircularProgressIndicator())
