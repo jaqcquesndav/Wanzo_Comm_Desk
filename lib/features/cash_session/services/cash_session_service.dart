@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/exceptions/api_exceptions.dart';
@@ -346,6 +347,33 @@ Future<CashHistoryPage?> _defaultHistoryFetcher(int page, int limit) async {
 /// Filtre d'historique : l'entreprise générale (unité racine).
 const kCashRootUnit = '__company__';
 
+final _floatFormat = NumberFormat('#,##0.##', 'fr');
+
+/// Ligne d'information du fonds d'ouverture au journal (vue Caisse) : montant
+/// nul, le fonds figure dans le libellé. Le fonds n'est pas un mouvement de
+/// caisse : compté en mouvement, le même argent s'ajoutait au solde cumulé à
+/// chaque ouverture.
+@visibleForTesting
+OperationJournalEntry openingFloatJournalEntry({
+  required String id,
+  required DateTime at,
+  required String currency,
+  required double amount,
+  required String ref,
+}) => OperationJournalEntry(
+  id: id,
+  date: at,
+  description: 'Fonds d\'ouverture de caisse : ${_floatFormat.format(amount)} $currency (information, hors solde)',
+  type: OperationType.cashIn,
+  amount: 0,
+  paymentMethod: 'cash',
+  relatedDocumentId: ref,
+  currencyCode: currency,
+  isDebit: false,
+  isCredit: false,
+  balanceAfter: 0,
+);
+
 /// Écriture au journal des opérations (vue Caisse). Branchée au démarrage.
 typedef CashJournalSink = Future<void> Function(OperationJournalEntry entry);
 
@@ -392,8 +420,10 @@ class CashSessionService {
   CashUnitScope get unitScope => _unitScope();
   final _uuid = const Uuid();
 
-  /// Journal des opérations (vue Caisse) : fonds d'ouverture, entrées et
-  /// sorties manuelles, dépôts en banque. Null : rien n'est journalisé.
+  /// Journal des opérations (vue Caisse) : entrées et sorties manuelles et
+  /// dépôts en banque, qui font bouger le solde ; fonds d'ouverture en ligne
+  /// d'information à montant nul (le même argent, recompté chaque matin,
+  /// gonflait le solde cumulé). Null : rien n'est journalisé.
   CashJournalSink? journal;
 
   final CashRateProvider _rate;
@@ -835,10 +865,13 @@ class CashSessionService {
       current.value = null;
       rethrow;
     }
+    // Fonds d'ouverture : l'argent déjà dans le tiroir, pas un mouvement. Ligne
+    // d'information à montant nul (le fonds est dans le libellé) : le solde
+    // de caisse n'est jamais modifié, ouverture après ouverture.
     for (final e in float.entries) {
-      await _journal(_cashEntry(
+      await _journal(openingFloatJournalEntry(
+        id: _uuid.v4(),
         at: session.openedAt,
-        description: 'Fonds d\'ouverture de caisse',
         currency: e.key,
         amount: e.value,
         ref: session.localId,

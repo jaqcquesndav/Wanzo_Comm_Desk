@@ -41,12 +41,25 @@ String? currentUserRole([BuildContext? context]) {
 /// La caisse est-elle visible pour l'utilisateur connecté ?
 bool canSeeCash([BuildContext? context]) => canAccessCashSession(currentUserRole(context));
 
+/// Administrateur (owner, sme_owner, sme_admin, super_admin, superadmin) et
+/// comptable (accountant, avec_treasurer) : comme le serveur, ils voient et
+/// gèrent toutes les unités, et sont seuls à clôturer la session d'un autre.
+const kCashSupervisorRoles = {
+  'admin', 'superadmin', 'super_admin', 'sme_admin', 'sme_owner', 'owner',
+  'accountant', 'avec_treasurer',
+};
+
+/// Administrateur ou comptable de la caisse.
+bool isCashSupervisor(String? role) =>
+    kCashSupervisorRoles.contains((role ?? '').trim().toLowerCase());
+
 /// Périmètre d'unité de la caisse, comme le serveur (403
-/// CASH_SESSION_OTHER_UNIT) : un utilisateur rattaché à une unité qui n'est
-/// pas l'entreprise générale (unité racine COMPANY) ne voit et n'ouvre que
-/// les sessions de SON unité, sans choix d'une autre. À la racine (aucune
-/// unité, unité = entreprise, ou unité de type COMPANY), il voit toutes les
-/// unités, avec un filtre.
+/// CASH_SESSION_OTHER_UNIT) : seul le caissier rattaché à une unité qui n'est
+/// pas l'entreprise générale (unité racine COMPANY) est limité aux sessions
+/// de SON unité, sans choix d'une autre. L'administrateur et le comptable,
+/// quelle que soit leur unité, et le caissier de la racine (aucune unité,
+/// unité = entreprise, ou unité de type COMPANY) voient toutes les unités,
+/// avec un filtre.
 @immutable
 class CashUnitScope {
   /// Unité imposée (null : toutes les unités, filtre libre).
@@ -65,6 +78,7 @@ CashUnitScope cashUnitScopeFor({
   String? companyId,
   BusinessUnitType? unitType,
 }) {
+  if (isCashSupervisor(role)) return const CashUnitScope();
   final unit = (businessUnitId ?? '').trim();
   final atRoot = unit.isEmpty || unit == companyId || unitType == BusinessUnitType.company;
   return atRoot ? const CashUnitScope() : CashUnitScope(unit);
