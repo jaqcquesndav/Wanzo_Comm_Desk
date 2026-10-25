@@ -1,27 +1,36 @@
 // filepath: lib/features/business_unit/services/business_unit_api_service.dart
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:wanzo/config/environment.dart';
+import 'package:wanzo/core/services/api_client.dart';
 import 'package:wanzo/features/auth/services/auth0_service.dart';
 import '../models/business_unit.dart';
 
-/// Service API pour la gestion des unités d'affaires
+/// Service API pour la gestion des unités d'affaires.
+///
+/// Passe par [ApiClient] (jeton, disjoncteur, file hors ligne) : l'ancien
+/// service appelait `http` directement, une création ou une modification
+/// d'unité faite hors ligne était perdue sans le dire.
 class BusinessUnitApiService {
-  final String _baseUrl = Environment.commerceApiBaseUrl;
-  final Auth0Service _auth0Service;
+  final ApiClient _api;
 
-  BusinessUnitApiService({required Auth0Service auth0Service})
-    : _auth0Service = auth0Service;
+  BusinessUnitApiService({Auth0Service? auth0Service, ApiClient? apiClient})
+    : _api = apiClient ?? ApiClient();
 
-  /// Headers avec authentification
-  Future<Map<String, String>> get _authHeaders async {
-    final token = await _auth0Service.getAccessToken();
-    return {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
-    };
+  static dynamic _data(dynamic res) {
+    dynamic d = res is Map ? res['data'] ?? res : res;
+    return d;
   }
+
+  static List<BusinessUnit> _list(dynamic res) {
+    dynamic d = _data(res);
+    if (d is Map && d['data'] is List) d = d['data'];
+    if (d is Map && d['items'] is List) d = d['items'];
+    return (d is List ? d : const [])
+        .whereType<Map>()
+        .map((e) => BusinessUnit.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  static BusinessUnit _one(dynamic res) =>
+      BusinessUnit.fromJson(Map<String, dynamic>.from(_data(res) as Map));
 
   /// Récupère toutes les unités d'affaires
   ///
@@ -44,93 +53,37 @@ class BusinessUnitApiService {
     if (status != null) queryParams['status'] = status;
     if (includeInactive) queryParams['includeInactive'] = 'true';
 
-    final uri = Uri.parse(
-      '$_baseUrl/business-units',
-    ).replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
-
-    final response = await http.get(uri, headers: await _authHeaders);
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      final List<dynamic> items = data['data'] ?? [];
-      return items.map((item) => BusinessUnit.fromJson(item)).toList();
-    } else {
-      throw Exception(
-        'Erreur lors de la récupération des unités: ${response.statusCode}',
-      );
-    }
+    final res = await _api.get(
+      'business-units',
+      queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      requiresAuth: true,
+    );
+    return _list(res);
   }
 
   /// Récupère la hiérarchie complète de l'entreprise
   Future<BusinessUnitHierarchy> getHierarchy() async {
-    final response = await http.get(
-      Uri.parse('$_baseUrl/business-units/hierarchy'),
-      headers: await _authHeaders,
+    final res = await _api.get('business-units/hierarchy', requiresAuth: true);
+    return BusinessUnitHierarchy.fromJson(
+      Map<String, dynamic>.from(_data(res) as Map),
     );
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return BusinessUnitHierarchy.fromJson(data['data']);
-    } else {
-      throw Exception(
-        'Erreur lors de la récupération de la hiérarchie: ${response.statusCode}',
-      );
-    }
   }
 
   /// Récupère l'unité courante de l'utilisateur
   Future<BusinessUnit> getCurrentBusinessUnit() async {
-    final response = await http.get(
-      Uri.parse('$_baseUrl/business-units/current'),
-      headers: await _authHeaders,
-    );
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return BusinessUnit.fromJson(data['data']);
-    } else {
-      throw Exception(
-        'Erreur lors de la récupération de l\'unité courante: ${response.statusCode}',
-      );
-    }
+    return _one(await _api.get('business-units/current', requiresAuth: true));
   }
 
   /// Récupère une unité par son ID
   Future<BusinessUnit> getBusinessUnitById(String id) async {
-    final response = await http.get(
-      Uri.parse('$_baseUrl/business-units/$id'),
-      headers: await _authHeaders,
-    );
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return BusinessUnit.fromJson(data['data']);
-    } else if (response.statusCode == 404) {
-      throw Exception('Unité d\'affaires non trouvée');
-    } else {
-      throw Exception(
-        'Erreur lors de la récupération de l\'unité: ${response.statusCode}',
-      );
-    }
+    return _one(await _api.get('business-units/$id', requiresAuth: true));
   }
 
   /// Récupère une unité par son code
   Future<BusinessUnit> getBusinessUnitByCode(String code) async {
-    final response = await http.get(
-      Uri.parse('$_baseUrl/business-units/code/$code'),
-      headers: await _authHeaders,
+    return _one(
+      await _api.get('business-units/code/$code', requiresAuth: true),
     );
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return BusinessUnit.fromJson(data['data']);
-    } else if (response.statusCode == 404) {
-      throw Exception('Unité d\'affaires avec le code $code non trouvée');
-    } else {
-      throw Exception(
-        'Erreur lors de la récupération de l\'unité: ${response.statusCode}',
-      );
-    }
   }
 
   /// Crée une nouvelle unité d'affaires
@@ -169,21 +122,10 @@ class BusinessUnitApiService {
       if (metadata != null) 'metadata': metadata,
     };
 
-    final response = await http.post(
-      Uri.parse('$_baseUrl/business-units'),
-      headers: await _authHeaders,
-      body: json.encode(body),
+    // Hors ligne : mise en file par le client (OfflineQueuedException).
+    return _one(
+      await _api.post('business-units', body: body, requiresAuth: true),
     );
-
-    if (response.statusCode == 201) {
-      final data = json.decode(response.body);
-      return BusinessUnit.fromJson(data['data']);
-    } else {
-      final errorData = json.decode(response.body);
-      throw Exception(
-        errorData['message'] ?? 'Erreur lors de la création de l\'unité',
-      );
-    }
   }
 
   /// Met à jour une unité d'affaires
@@ -218,71 +160,30 @@ class BusinessUnitApiService {
     if (settings != null) body['settings'] = settings;
     if (metadata != null) body['metadata'] = metadata;
 
-    final response = await http.put(
-      Uri.parse('$_baseUrl/business-units/$id'),
-      headers: await _authHeaders,
-      body: json.encode(body),
+    return _one(
+      await _api.put('business-units/$id', body: body, requiresAuth: true),
     );
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return BusinessUnit.fromJson(data['data']);
-    } else {
-      final errorData = json.decode(response.body);
-      throw Exception(
-        errorData['message'] ?? 'Erreur lors de la mise à jour de l\'unité',
-      );
-    }
   }
 
   /// Supprime une unité d'affaires (soft delete)
   Future<void> deleteBusinessUnit(String id) async {
-    final response = await http.delete(
-      Uri.parse('$_baseUrl/business-units/$id'),
-      headers: await _authHeaders,
-    );
-
-    if (response.statusCode != 200) {
-      final errorData = json.decode(response.body);
-      throw Exception(
-        errorData['message'] ?? 'Erreur lors de la suppression de l\'unité',
-      );
-    }
+    await _api.delete('business-units/$id', requiresAuth: true);
   }
 
   /// Récupère les unités enfants d'une unité
   Future<List<BusinessUnit>> getChildren(String parentId) async {
-    final response = await http.get(
-      Uri.parse('$_baseUrl/business-units/$parentId/children'),
-      headers: await _authHeaders,
+    return _list(
+      await _api.get('business-units/$parentId/children', requiresAuth: true),
     );
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      final List<dynamic> items = data['data'] ?? [];
-      return items.map((item) => BusinessUnit.fromJson(item)).toList();
-    } else {
-      throw Exception(
-        'Erreur lors de la récupération des unités enfants: ${response.statusCode}',
-      );
-    }
   }
 
   /// Récupère le chemin vers l'entreprise
   Future<List<BusinessUnit>> getPathToCompany(String unitId) async {
-    final response = await http.get(
-      Uri.parse('$_baseUrl/business-units/$unitId/path-to-company'),
-      headers: await _authHeaders,
+    return _list(
+      await _api.get(
+        'business-units/$unitId/path-to-company',
+        requiresAuth: true,
+      ),
     );
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      final List<dynamic> items = data['data'] ?? [];
-      return items.map((item) => BusinessUnit.fromJson(item)).toList();
-    } else {
-      throw Exception(
-        'Erreur lors de la récupération du chemin: ${response.statusCode}',
-      );
-    }
   }
 }

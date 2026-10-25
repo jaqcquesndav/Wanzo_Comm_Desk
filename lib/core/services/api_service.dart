@@ -1,3 +1,4 @@
+import 'package:wanzo/core/exceptions/api_exceptions.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
@@ -125,12 +126,8 @@ class ApiService {
         fileField: fileField,
         fields: fields,
       );
-      return {
-        'success': true,
-        'message':
-            'Fichier enregistré pour téléversement ultérieur en mode hors ligne.',
-        'offline_pending': true,
-      };
+      // Jamais de faux succès : l'appelant sait que le fichier attend.
+      throw OfflineQueuedException(endpoint: endpoint);
     }
 
     try {
