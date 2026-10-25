@@ -21,7 +21,6 @@ import 'backup_settings_screen.dart';
 import 'notification_settings_screen.dart';
 import 'financial_account_settings_screen.dart';
 import 'printer_settings_screen.dart';
-import '../../security/screens/security_settings_screen.dart';
 import '../../business_unit/widgets/join_business_unit_dialog.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../auth/models/join_request.dart' show canDecideJoinRequests;
@@ -586,10 +585,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _navigateToSecuritySettings() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const SecuritySettingsScreen()),
-    );
+    // Par le routeur : l'ecran porte le shell commun (WanzoScaffold), qui lit
+    // l'etat de la route courante.
+    context.push('/settings/security');
   }
 }
 

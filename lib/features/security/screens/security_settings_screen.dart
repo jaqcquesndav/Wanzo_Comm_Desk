@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/constants/constants.dart';
 import '../services/local_security_service.dart';
 
@@ -47,12 +49,12 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sécurité locale'),
-        backgroundColor: WanzoColors.primary,
-        foregroundColor: Colors.white,
-      ),
+    // Shell commun (sidebar, en-tete, dock d'actions rapides).
+    return WanzoScaffold(
+      currentIndex: -1,
+      title: 'Sécurité locale',
+      onBackPressed: () =>
+          context.canPop() ? context.pop() : context.go('/settings'),
       body:
           _isLoading
               ? const Center(child: CircularProgressIndicator())

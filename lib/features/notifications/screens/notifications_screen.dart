@@ -7,6 +7,7 @@ import '../models/notification_model.dart';
 import '../utils/notification_router.dart';
 import '../../../constants/colors.dart';
 import '../../../constants/spacing.dart';
+import '../../../core/shared_widgets/wanzo_scaffold.dart';
 
 /// Écran qui affiche toutes les notifications à l'utilisateur
 class NotificationsScreen extends StatefulWidget {
@@ -27,21 +28,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton( // Added leading IconButton for back navigation
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) { // Check if there's a route to pop
-              context.pop();
-            } else {
-              // If not, navigate to a default route (e.g., dashboard)
-              context.go('/dashboard'); 
-            }
-          },
-        ),
-        title: const Text('Notifications'),
-        actions: [
+    // Shell commun (sidebar, en-tete, dock d'actions rapides) comme les
+    // autres pages de premier niveau.
+    return WanzoScaffold(
+      currentIndex: -1,
+      title: 'Notifications',
+      onBackPressed: () =>
+          context.canPop() ? context.pop() : context.go('/dashboard'),
+      appBarActions: [
           // Bouton pour marquer toutes les notifications comme lues
           IconButton(
             icon: const Icon(Icons.done_all),
@@ -75,8 +69,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ),
             ],
           ),
-        ],
-      ),
+      ],
       body: BlocBuilder<NotificationsBloc, NotificationsState>(
         builder: (context, state) {
           if (state is NotificationsLoading) {
