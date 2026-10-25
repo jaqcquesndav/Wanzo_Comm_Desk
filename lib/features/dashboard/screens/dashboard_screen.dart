@@ -9,7 +9,6 @@ import 'package:wanzo/l10n/app_localizations.dart'; // Corrected import path
 
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
-import 'package:wanzo/core/services/currency_display_service.dart';
 import 'package:wanzo/features/dashboard/bloc/dashboard_bloc.dart';
 import 'package:wanzo/features/dashboard/bloc/operation_journal_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -70,6 +69,79 @@ class KpiData {
   });
 }
 
+/// Vignettes du tableau de bord Général, par paires CDF | USD.
+///
+/// Le CDF est la devise de base (OHADA) ; l'USD est le montant REELLEMENT
+/// enregistre en dollars (ventes et depenses saisies en USD), jamais une
+/// conversion du CDF. Les deux devises sont toujours montrees, comme dans
+/// l'app Assets, pour suivre l'USD de bout en bout.
+List<KpiTile> generalKpiTiles(
+  KpiData kpiData, {
+  required String revenueLabel,
+  required Color receivablesColor,
+  VoidCallback? onReceivables,
+}) {
+  return [
+    // Chiffre d'affaires du jour : CDF | USD.
+    KpiTile(
+      weight: KpiWeight.pilote,
+      label: '$revenueLabel (CDF)',
+      value: formatCurrency(kpiData.salesTodayCdf, 'CDF'),
+      secondary: 'Chiffre d\'affaires',
+      icon: Icons.trending_up,
+      color: Colors.green,
+    ),
+    KpiTile(
+      weight: KpiWeight.pilote,
+      label: '$revenueLabel (USD)',
+      value: formatCurrency(kpiData.salesTodayUsd, 'USD'),
+      secondary: 'Chiffre d\'affaires',
+      icon: Icons.trending_up,
+      color: Colors.green,
+    ),
+    // Charges du jour : CDF | USD.
+    KpiTile(
+      weight: KpiWeight.pilote,
+      label: 'Charges (CDF)',
+      value: formatCurrency(kpiData.expensesCdf, 'CDF'),
+      secondary: 'Dépenses engagées',
+      icon: Icons.trending_down,
+      color: Colors.red,
+    ),
+    KpiTile(
+      weight: KpiWeight.pilote,
+      label: 'Charges (USD)',
+      value: formatCurrency(kpiData.expensesUsd, 'USD'),
+      secondary: 'Dépenses engagées',
+      icon: Icons.trending_down,
+      color: Colors.red,
+    ),
+    KpiTile(
+      label: 'Valeur du stock',
+      value: formatCurrency(kpiData.stockValueAtCost, 'CDF'),
+      icon: Icons.inventory_2,
+      color: Colors.blueGrey,
+    ),
+    // Benefice potentiel du stock : sa propre vignette (une vignette de suivi
+    // porte un chiffre seul ; en sous-ligne il debordait a grande police).
+    if (kpiData.stockValueAtCost > 0)
+      KpiTile(
+        label: 'Bénéfice potentiel',
+        value: '+${formatCurrency(kpiData.potentialProfit, 'CDF')}',
+        icon: Icons.savings_outlined,
+        color: Colors.green,
+      ),
+    KpiTile(
+      label: 'À encaisser',
+      value: formatCurrency(kpiData.receivables, 'CDF'),
+      icon: Icons.schedule_send,
+      color: receivablesColor,
+      // Ouvre les ventes a encaisser (non payees ou partielles).
+      onTap: onReceivables,
+    ),
+  ];
+}
+
 /// Écran principal du tableau de bord
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -87,9 +159,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime? _selectedEndDate;
   _ExpandedView _expandedView = _ExpandedView.none;
   bool _isChartExpanded = false;
-
-  /// Affichage double devise (CDF + USD). Piloté par [CurrencyDisplayService].
-  bool _dualCurrency = false;
 
   // Souscription pour écouter les changements de dépenses
   StreamSubscription? _expenseSubscription;
@@ -130,13 +199,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _expenseBloc.add(
       LoadExpensesByDateRange(now.subtract(const Duration(days: 365)), now),
     );
-
-    // Préférence d'affichage double devise (CDF + USD).
-    _dualCurrency = CurrencyDisplayService.instance.dualCurrency.value;
-    CurrencyDisplayService.instance.dualCurrency.addListener(
-      _onDualCurrencyChanged,
-    );
-    CurrencyDisplayService.instance.load();
 
     // Écouter les changements d'état de l'ExpenseBloc pour rafraîchir le dashboard
     _expenseSubscription = _expenseBloc.stream.listen((expenseState) {
@@ -182,21 +244,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  void _onDualCurrencyChanged() {
-    if (!mounted) return;
-    setState(() {
-      _dualCurrency = CurrencyDisplayService.instance.dualCurrency.value;
-    });
-  }
-
   @override
   void dispose() {
     // Annuler les souscriptions pour éviter les fuites de mémoire
     _expenseSubscription?.cancel();
     _syncSubscription?.cancel();
-    CurrencyDisplayService.instance.dualCurrency.removeListener(
-      _onDualCurrencyChanged,
-    );
     super.dispose();
   }
 
@@ -672,9 +724,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Indicateurs du tableau de bord Général, puis la courbe en dessous.
   ///
-  /// Meme regle que les autres tableaux de bord : [KpiBoard] hierarchise
-  /// (chiffre d'affaires et charges d'abord) et n'etire jamais les vignettes
-  /// sur grand ecran.
+  /// Les deux devises sont TOUJOURS montrees cote a cote, comme dans l'app
+  /// Assets : le CDF (devise de base OHADA) et l'USD REELLEMENT encaisse ou
+  /// depense en dollars (ventes et depenses saisies en USD, jamais une
+  /// conversion). Chiffre d'affaires et charges en tete, par paires CDF | USD ;
+  /// [KpiBoard] n'etire jamais les vignettes sur grand ecran.
   Widget _buildResponsiveKpiAndChart(
     BuildContext context,
     KpiData kpiData,
@@ -682,54 +736,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     AppLocalizations l10n,
     String displayCurrencyCode,
   ) {
-    // Devise fonctionnelle = CDF (OHADA). L'USD n'apparait QUE si
-    // l'utilisateur a active la double devise, en montant secondaire,
-    // a partir des montants USD REELLEMENT enregistres (pas de conversion).
-    final bool dual = _dualCurrency;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         KpiBoard(
-          tiles: [
-            KpiTile(
-              weight: KpiWeight.pilote,
-              label: ModeVocabulary.current.revenue,
-              value: formatCurrency(kpiData.salesTodayCdf, 'CDF'),
-              secondary: dual
-                  ? formatCurrency(kpiData.salesTodayUsd, 'USD')
-                  : null,
-              icon: Icons.trending_up,
-              color: Colors.green,
-            ),
-            KpiTile(
-              weight: KpiWeight.pilote,
-              label: 'Charges',
-              value: formatCurrency(kpiData.expensesCdf, 'CDF'),
-              secondary: dual
-                  ? formatCurrency(kpiData.expensesUsd, 'USD')
-                  : null,
-              icon: Icons.trending_down,
-              color: Colors.red,
-            ),
-            KpiTile(
-              label: 'Valeur du stock',
-              value: formatCurrency(kpiData.stockValueAtCost, 'CDF'),
-              secondary: kpiData.stockValueAtCost > 0
-                  ? '+${formatCurrency(kpiData.potentialProfit, 'CDF')} potentiel'
-                  : null,
-              icon: Icons.inventory_2,
-              color: Colors.blueGrey,
-            ),
-            KpiTile(
-              label: 'À encaisser',
-              value: formatCurrency(kpiData.receivables, 'CDF'),
-              icon: Icons.schedule_send,
-              color: Theme.of(context).colorScheme.primary,
-              // Ouvre les ventes a encaisser (non payees ou partielles).
-              onTap: () => context.go('/sales?filtre=a_encaisser'),
-            ),
-          ],
+          tiles: generalKpiTiles(
+            kpiData,
+            revenueLabel: ModeVocabulary.current.revenue,
+            receivablesColor: Theme.of(context).colorScheme.primary,
+            onReceivables: () => context.go('/sales?filtre=a_encaisser'),
+          ),
         ),
         const SizedBox(height: WanzoSpacing.md),
         ConstrainedBox(
