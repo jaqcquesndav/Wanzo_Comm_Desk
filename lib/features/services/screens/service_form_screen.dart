@@ -217,7 +217,8 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
       final price = _parsePrice(row.price.text);
       if (label.isEmpty || price == null) continue;
       tiers.add(ServicePriceTier(
-        code: row.code ?? ServicePriceTier.codeFromLabel(label),
+        code: ServicePriceTier.clampCode(
+            row.code ?? ServicePriceTier.codeFromLabel(label)),
         label: label,
         // Stockage en CDF (devise de base) via le taux central.
         priceCdf: _currency.convertToCdf(price, _inputCurrency),
@@ -241,7 +242,7 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
       var code = tiers[i].code;
       var n = 2;
       while (seen.contains(code)) {
-        code = '${tiers[i].code}_$n';
+        code = ServicePriceTier.clampCode(tiers[i].code, '_$n');
         n++;
       }
       seen.add(code);

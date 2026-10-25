@@ -29,7 +29,7 @@ class ServicePriceTier extends Equatable {
   }
 
   Map<String, dynamic> toJson() => {
-        'code': code,
+        'code': clampCode(code),
         'label': label,
         'priceCdf': priceCdf,
         'isDefault': isDefault,
@@ -65,7 +65,19 @@ class ServicePriceTier extends Equatable {
         .replaceAll(RegExp(r'[ùûü]'), 'u')
         .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
         .replaceAll(RegExp(r'^_+|_+$'), '');
-    return normalized.isEmpty ? 'standard' : normalized;
+    return normalized.isEmpty ? 'standard' : clampCode(normalized);
+  }
+
+  /// Taille de la colonne `code` d'un palier cote serveur : au-dela, la
+  /// creation du service est refusee.
+  static const int maxCodeLength = 30;
+
+  /// Code borne a [maxCodeLength], [suffix] compris (« _2 » d'un doublon).
+  static String clampCode(String code, [String suffix = '']) {
+    final room = maxCodeLength - suffix.length;
+    var base = code.length > room ? code.substring(0, room) : code;
+    base = base.replaceAll(RegExp(r'_+$'), '');
+    return '$base$suffix';
   }
 
   @override
