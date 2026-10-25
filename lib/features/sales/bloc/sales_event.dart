@@ -52,10 +52,15 @@ class LoadSalesByDateRange extends SalesEvent {
 class AddSale extends SalesEvent {
   final Sale sale;
 
-  const AddSale(this.sale);
+  /// Moyen de paiement de l'ACOMPTE d'une vente à crédit (espèces, Mobile
+  /// Money...). La vente garde « crédit » comme moyen ; l'acompte, lui, est
+  /// compté en caisse et au journal avec ce moyen. Null : espèces.
+  final String? downPaymentMethod;
+
+  const AddSale(this.sale, {this.downPaymentMethod});
 
   @override
-  List<Object?> get props => [sale];
+  List<Object?> get props => [sale, downPaymentMethod];
 }
 
 /// Événement pour mettre à jour une vente

@@ -41,7 +41,9 @@ Map<String, dynamic> saleToApiDto(
     // Mode métier ayant produit la vente (colonne mode du journal comptable).
     'sourceMode':
         sourceMode ?? BusinessContextService().activityMode.apiValue,
-    'date': sale.date.toIso8601String(),
+    // Instant UTC (suffixe Z), comme opened_at de la caisse : l'heure
+    // locale du poste ne decale plus la vente d'un jour. Affichage : local.
+    'date': sale.date.toUtc().toIso8601String(),
     if (sale.dueDate != null) 'dueDate': sale.dueDate!.toIso8601String(),
     if (nonEmpty(sale.customerId) != null) 'customerId': sale.customerId,
     // Client de passage : si aucun customerId réel, le backend fait un

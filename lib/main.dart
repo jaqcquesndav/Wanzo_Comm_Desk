@@ -83,6 +83,7 @@ import 'package:wanzo/features/settings/models/settings.dart';
 import 'package:wanzo/features/settings/bloc/financial_account_bloc.dart';
 import 'package:wanzo/features/notifications/bloc/notifications_bloc.dart';
 import 'package:wanzo/features/dashboard/bloc/operation_journal_bloc.dart';
+import 'package:wanzo/features/cash_session/services/cash_session_service.dart';
 import 'package:wanzo/features/expenses/bloc/expense_bloc.dart';
 import 'package:wanzo/features/dashboard/bloc/dashboard_bloc.dart';
 
@@ -366,6 +367,10 @@ Future<void> main() async {
       // Écritures conservées hors ligne lors d'une session précédente :
       // rejouées au lancement, une fois Hive et la session prêts (le premier
       // état réseau ne les rejoue pas, il arrive trop tôt).
+      // Caisse : envois restés en attente (5xx, délai, hors ligne).
+      CashSessionService.instance.syncPending().catchError((Object e) {
+        debugPrint('Main: rejeu de la caisse impossible : $e');
+      });
       if (connectivityService.isConnected) {
         ApiClient().replayPendingWrites().then((report) {
           if (!report.isEmpty) {
@@ -564,6 +569,17 @@ Map<String, dynamic> _initializeBlocsSync(
     repository: repositories['operationJournal'] as OperationJournalRepository,
   );
   blocs['operationJournal'] = operationJournalBloc;
+
+  // Caisse : fonds d'ouverture, entrées et sorties manuelles et dépôts en
+  // banque écrits au journal (vue Caisse) ; envois en attente rejoués au
+  // retour du réseau.
+  CashSessionService.instance.journal = (entry) async {
+    await operationJournalBloc.repository.addOperation(entry);
+    operationJournalBloc.add(const RefreshJournal());
+  };
+  CashSessionService.instance.listenForReconnect(
+    ConnectivityService().connectionStatus,
+  );
 
   final inventoryBloc = InventoryBloc(
     inventoryRepository: repositories['inventory'] as InventoryRepository,

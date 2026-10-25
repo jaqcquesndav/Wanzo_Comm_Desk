@@ -22,6 +22,7 @@ import '../../settings/bloc/settings_state.dart';
 import '../../settings/models/settings.dart';
 import '../cubit/atelier_orders_cubit.dart';
 import '../models/atelier_order.dart';
+import '../services/atelier_advance.dart';
 import '../services/atelier_perf.dart';
 import '../services/atelier_sheet_pdf.dart';
 import '../widgets/atelier_actor_chip.dart';
@@ -366,8 +367,16 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
     AtelierOrder order,
   ) {
     final salesBloc = context.read<SalesBloc>();
-    final amountToBill =
-        order.remainingAmount > 0 ? order.remainingAmount : order.totalAmount;
+    // Reste à facturer, avance (déjà encaissée) déduite.
+    final amountToBill = atelierAmountToBill(order);
+    if (amountToBill <= 0) {
+      // L'avance couvre toute la commande : rien à facturer une 2e fois.
+      cubit.updateStatus(order.id, AtelierOrderStatus.paid);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Commande déjà réglée par l\'avance.')),
+      );
+      return;
+    }
     final line = SaleItem.withCalculatedTotal(
       // UUID de la commande (pas un produit du stock) : le backend crée l'item
       // sans référence produit ni décrément de stock (article de service).

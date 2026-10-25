@@ -49,6 +49,8 @@ import 'package:wanzo/features/services/cubit/services_cubit.dart';
 import 'package:wanzo/features/services/models/service_item.dart';
 import 'package:wanzo/features/services/widgets/service_search_results.dart';
 import 'package:wanzo/features/cash_session/services/cash_session_service.dart';
+import 'package:wanzo/features/cash_session/cash_access.dart';
+import 'package:wanzo/features/cash_session/widgets/down_payment_method_field.dart';
 
 /// Types de postes pour les devis/factures (UI uniquement, stocké dans notes)
 enum QuoteItemCategory {
@@ -191,6 +193,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   // Valeurs par défaut
   // Code canonique (cash, mobile_money, credit...) : le libellé est à l'écran.
   String _paymentMethod = PaymentMethodCode.cash;
+  /// Moyen de l'acompte d'une vente à crédit (espèces par défaut).
+  String _acompteMethod = PaymentMethodCode.cash;
   // Mobile Money : opérateur et référence obligatoires ; crédit : échéance.
   OperatorBrand? _mobileOperator;
   final _paymentRefController = TextEditingController();
@@ -724,7 +728,9 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                 if (state is SalesOperationSuccess) {
                   // Vente sans caisse ouverte : invitation, sans blocage.
                   final caisseFermee =
-                      CashSessionService.instance.current.value == null;
+                      CashSessionService.instance.current.value == null &&
+                      // Rôles sans caisse : aucune invitation (masquée).
+                      canSeeCash(context);
                   final router = GoRouter.of(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -1165,6 +1171,16 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                             onDueDateChanged:
                                 (d) => setState(() => _dueDate = d),
                           ),
+                          // Acompte d'une vente à crédit : moyen réel.
+                          if (_paymentMethod == PaymentMethodCode.credit &&
+                              _paidAmount > 0) ...[
+                            const SizedBox(height: WanzoSpacing.md),
+                            DownPaymentMethodField(
+                              value: _acompteMethod,
+                              onChanged: (v) =>
+                                  setState(() => _acompteMethod = v),
+                            ),
+                          ],
                           const SizedBox(height: WanzoSpacing.md),
                           if (_items.isNotEmpty)
                             Container(
@@ -3630,7 +3646,13 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         ].join(' · '),
       );
       _lastSubmittedSale = sale;
-      context.read<SalesBloc>().add(AddSale(sale));
+      context.read<SalesBloc>().add(
+        AddSale(
+          sale,
+          downPaymentMethod:
+              _paymentMethod == PaymentMethodCode.credit ? _acompteMethod : null,
+        ),
+      );
     } else if (_items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Veuillez ajouter au moins un article.')),

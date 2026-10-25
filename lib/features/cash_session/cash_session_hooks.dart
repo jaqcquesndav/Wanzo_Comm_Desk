@@ -21,12 +21,13 @@ import 'services/cash_session_service.dart';
 }
 
 /// Mouvement de caisse d'une vente (montant payé à la vente). Null si rien
-/// n'a été payé. L'acompte d'une vente à crédit est compté en espèces.
+/// n'a été payé. L'acompte d'une vente à crédit est compté avec le moyen
+/// SAISI pour l'acompte ([downPaymentMethod]) : un acompte payé en Mobile
+/// Money n'entre pas dans le tiroir. Sans moyen saisi, il est en espèces
+/// (valeur par défaut de l'écran de vente).
 @visibleForTesting
-CashMovement? cashMovementForSale(Sale sale) {
+CashMovement? cashMovementForSale(Sale sale, {String? downPaymentMethod}) {
   if (sale.paidAmountInCdf <= 0) return null;
-  final pm = (sale.paymentMethod ?? '').toLowerCase();
-  final isCredit = pm.contains('crédit') || pm.contains('credit') || pm.contains('échel') || pm.contains('echel');
   final own = _inOwnCurrency(
     sale.transactionCurrencyCode,
     sale.transactionExchangeRate,
@@ -35,10 +36,54 @@ CashMovement? cashMovementForSale(Sale sale) {
   return CashMovement(
     at: sale.date,
     kind: CashMovementKind.sale,
-    method: isCredit ? 'cash' : sale.paymentMethod,
+    method: cashMethodOfSale(sale, downPaymentMethod: downPaymentMethod),
     currency: own.currency,
     amount: own.amount,
     label: 'Vente #${sale.id.length >= 6 ? sale.id.substring(0, 6) : sale.id}',
+    ref: sale.id,
+  );
+}
+
+/// Encaissement d'une vente pour le journal (vue Caisse) : dans la devise
+/// remise, au taux figé de la pièce, comme la caisse le compte. Sans taux
+/// exploitable, il reste en CDF.
+({String currency, double amount}) saleCashJournalAmount(Sale sale) =>
+    _inOwnCurrency(
+      sale.transactionCurrencyCode,
+      sale.transactionExchangeRate,
+      sale.paidAmountInCdf,
+    );
+
+/// Moyen par lequel l'argent d'une vente a réellement été reçu : celui de la
+/// vente, ou pour une vente à crédit celui de l'acompte (espèces par défaut).
+String? cashMethodOfSale(Sale sale, {String? downPaymentMethod}) {
+  final pm = (sale.paymentMethod ?? '').toLowerCase();
+  final isCredit = pm.contains('crédit') || pm.contains('credit') || pm.contains('échel') || pm.contains('echel');
+  if (!isCredit) return sale.paymentMethod;
+  final chosen = (downPaymentMethod ?? '').trim();
+  return chosen.isEmpty ? 'cash' : chosen;
+}
+
+/// Crédit accordé par une vente : la part NON encaissée (vente à crédit, ou
+/// reste à payer). Null si la vente est soldée. N'entre jamais dans les
+/// espèces attendues.
+@visibleForTesting
+CashMovement? creditGrantedForSale(Sale sale) {
+  final unpaidCdf = sale.totalAmountInCdf - sale.paidAmountInCdf;
+  if (unpaidCdf < 0.01) return null;
+  final own = _inOwnCurrency(
+    sale.transactionCurrencyCode,
+    sale.transactionExchangeRate,
+    unpaidCdf,
+  );
+  if (own.amount <= 0) return null;
+  return CashMovement(
+    at: sale.date,
+    kind: CashMovementKind.creditGranted,
+    method: 'credit',
+    currency: own.currency,
+    amount: own.amount,
+    label: 'Crédit ${sale.customerName} #${sale.id.length >= 6 ? sale.id.substring(0, 6) : sale.id}',
     ref: sale.id,
   );
 }
@@ -81,7 +126,10 @@ CashMovement _forPayment(
 /// Points d'accroche appelés par les blocs : la caisse ouverte reçoit le
 /// mouvement ; sans caisse ouverte, rien n'est bloqué.
 class CashSessionHooks {
-  static Future<void> onSale(Sale sale) => _safe(cashMovementForSale(sale));
+  static Future<void> onSale(Sale sale, {String? downPaymentMethod}) async {
+    await _safe(cashMovementForSale(sale, downPaymentMethod: downPaymentMethod));
+    await _safe(creditGrantedForSale(sale));
+  }
 
   static Future<void> onSalePayment(Sale sale, PaymentDraft payment) => _safe(
     _forPayment(

@@ -251,6 +251,14 @@ class Sale extends Equatable {
       if (v is String) normalized[key] = double.tryParse(v.trim());
     }
     normalized['totalAmountInCdf'] ??= 0.0;
+    // Date envoyée et rendue en UTC (suffixe Z) : affichée en heure locale.
+    final rawDate = normalized['date'];
+    if (rawDate is String) {
+      final parsed = DateTime.tryParse(rawDate);
+      if (parsed != null && parsed.isUtc) {
+        normalized['date'] = parsed.toLocal().toIso8601String();
+      }
+    }
     // Le serveur ne renvoie pas le taux des lignes : une ligne en devise
     // étrangère prend le taux figé de la vente (jamais un taux 1 implicite).
     final saleRate = normalized['exchangeRate'];

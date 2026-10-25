@@ -25,6 +25,10 @@ import 'package:wanzo/features/services/config/service_suggestions.dart';
 import '../../services/cubit/services_cubit.dart';
 import '../../services/models/service_item.dart';
 import '../../../core/utils/adaptive_pull_up.dart';
+import 'package:wanzo/core/models/payment_method_code.dart';
+import 'package:wanzo/features/atelier/services/atelier_advance.dart';
+import 'package:wanzo/features/cash_session/widgets/down_payment_method_field.dart';
+import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
 
 /// Formulaire de création / modification d'une commande de confection.
 ///
@@ -331,6 +335,16 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   /// Confection (couture / cordonnerie) : modèle, tissu, mesures.
   bool get _isConfection => !_isMaintenance && !_isImprimerie && !_isPressing;
 
+  /// Moyen de paiement de l'avance (espèces par défaut).
+  String _advanceMethod = PaymentMethodCode.cash;
+
+  /// Avance à encaisser maintenant : la nouvelle avance moins celle déjà
+  /// encaissée (une commande rouverte n'encaisse pas deux fois).
+  double get _advanceToCollect => atelierAdvanceToCollect(
+    newAdvance: double.tryParse(_advanceCtrl.text) ?? 0,
+    previousAdvance: widget.order?.advanceAmount ?? 0,
+  );
+
   double get _remaining {
     final t = double.tryParse(_totalCtrl.text) ?? 0;
     final a = double.tryParse(_advanceCtrl.text) ?? 0;
@@ -461,6 +475,16 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
                     ),
                   ],
                 ),
+                // L'avance est ENCAISSÉE à l'enregistrement (vente de
+                // l'avance) : son moyen de paiement se choisit ici.
+                if (_advanceToCollect > 0) ...[
+                  const SizedBox(height: 16),
+                  DownPaymentMethodField(
+                    label: 'Avance payée par',
+                    value: _advanceMethod,
+                    onChanged: (v) => setState(() => _advanceMethod = v),
+                  ),
+                ],
                 if (_currency != 'CDF') ...[
                   const SizedBox(height: 16),
                   TextFormField(
@@ -1565,6 +1589,30 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
         ),
       );
       return;
+    }
+
+    // Avance saisie : encaissée comme une vente (caisse, journal, écriture du
+    // serveur) par la voie normale des ventes, une seule fois.
+    final aEncaisser = atelierAdvanceToCollect(
+      newAdvance: draft.advanceAmount,
+      previousAdvance: widget.order?.advanceAmount ?? 0,
+    );
+    if (aEncaisser > 0) {
+      try {
+        context.read<SalesBloc>().add(
+          AddSale(
+            atelierAdvanceSale(
+              order: draft,
+              amount: aEncaisser,
+              paymentMethod: _advanceMethod,
+            ),
+          ),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Avance non encaissée : $e')),
+        );
+      }
     }
 
     // Hors ligne, la fiche est conservee et sera envoyee au retour du

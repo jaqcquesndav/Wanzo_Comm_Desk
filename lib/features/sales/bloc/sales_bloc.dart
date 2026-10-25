@@ -195,7 +195,10 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
       // 1. D'abord, enregistrer la vente
       final Sale savedSale = await _salesRepository.addSale(event.sale);
       // Caisse ouverte : la vente y est rattachée (rien si elle est fermée).
-      await CashSessionHooks.onSale(savedSale);
+      await CashSessionHooks.onSale(
+        savedSale,
+        downPaymentMethod: event.downPaymentMethod,
+      );
 
       // 2. Préparer les entrées du journal d'opérations
       final List<OperationJournalEntry> journalEntries = [];
@@ -249,7 +252,8 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
       // SEULEMENT si un paiement est effectué (comptant ou partiel)
       // Pour les ventes à crédit pur, il n'y a PAS d'encaissement immédiat
       if (savedSale.paidAmountInCdf > 0) {
-        // Acompte d'une vente à crédit compris : il entre aussi en caisse.
+        // Acompte d'une vente à crédit compris, avec son propre moyen.
+        final encaisse = saleCashJournalAmount(savedSale);
         journalEntries.add(
           OperationJournalEntry(
             id: _uuid.v4(),
@@ -257,15 +261,21 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
             description:
                 'Encaissement - Vente #${savedSale.id.substring(0, 6)}',
             type: OperationType.cashIn,
-            amount: savedSale.paidAmountInCdf, // Montant encaissé UNIQUEMENT
-            // Moyen de la vente : la vue Caisse du journal ne retient que les
-            // espèces. L'acompte d'une vente à crédit est compté en espèces.
+            // Montant réellement encaissé, dans la devise remise (10 USD
+            // restent 10 USD dans la vue Caisse, pas 28 000 CDF).
+            amount: encaisse.amount,
+            // Moyen réel : la vue Caisse du journal ne retient que les
+            // espèces. L'acompte d'une vente à crédit suit le moyen saisi
+            // pour l'acompte (espèces par défaut).
             paymentMethod:
                 saleType == OperationType.saleCash
                     ? savedSale.paymentMethod
-                    : null,
+                    : cashMethodOfSale(
+                      savedSale,
+                      downPaymentMethod: event.downPaymentMethod,
+                    ),
             relatedDocumentId: savedSale.id,
-            currencyCode: 'CDF', // montant en CDF : la devise doit suivre
+            currencyCode: encaisse.currency,
             isDebit: true, // Caisse = actif donc débit pour augmentation
             isCredit: false,
             balanceAfter: 0, // Sera calculé par le repository

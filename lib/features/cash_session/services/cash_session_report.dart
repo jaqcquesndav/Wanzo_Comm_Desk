@@ -9,6 +9,17 @@ final _dt = DateFormat('dd/MM/yyyy HH:mm');
 
 String cashAmount(double v, String currency) => '${_num.format(v)} $currency';
 
+/// Montants par devise lus d'un JSON ({ CDF: 1000, USD: 2 }).
+Map<String, double> cashAmountsOf(dynamic raw) {
+  if (raw is! Map) return const {};
+  final out = <String, double>{};
+  raw.forEach((k, v) {
+    final n = v is num ? v.toDouble() : double.tryParse('$v');
+    if (n != null) out[k.toString()] = n;
+  });
+  return out;
+}
+
 String _row(String left, String right, int width) {
   final space = width - right.length;
   final l = left.length > space - 1 ? left.substring(0, (space - 1).clamp(0, left.length)) : left;
@@ -47,6 +58,16 @@ List<String> zTicketLines(
       lines.add(_row(g.label, cashAmount(e.value, e.key), width));
     }
   }
+  // Ventes non encaissées : information seulement, jamais dans les especes.
+  final credit = s.creditGranted();
+  if (credit.isNotEmpty) {
+    lines
+      ..add(sep)
+      ..add('CREDIT ACCORDE (non encaisse)');
+    for (final e in credit.entries) {
+      lines.add(_row('Credit accorde', cashAmount(e.value, e.key), width));
+    }
+  }
   final expenses = s.totalOf(CashMovementKind.expense, cashOnly: true);
   final ins = s.totalOf(CashMovementKind.manualIn);
   final outs = s.totalOf(CashMovementKind.manualOut);
@@ -67,6 +88,12 @@ List<String> zTicketLines(
     lines.add(_row('Autres sorties', cashAmount(e.value, e.key), width));
   }
   if (expenses.isEmpty && ins.isEmpty && outs.isEmpty && deposits.isEmpty) lines.add(_row('Aucun', '0', width));
+  // Dépôt refusé par le serveur : sorti du tiroir mais pas comptabilisé.
+  for (final m in s.notPostedDeposits) {
+    lines
+      ..add(_row('Depot NON COMPTABILISE', cashAmount(m.amount, m.currency), width))
+      ..add('  ${m.syncIssue}');
+  }
 
   final expected = s.expected ?? s.expectedCash();
   lines
@@ -85,6 +112,26 @@ List<String> zTicketLines(
       ..add(sep)
       ..add('Motif de l\'ecart :')
       ..add(s.differenceReason!);
+  }
+  // Clôture déjà enregistrée sur le serveur par quelqu'un d'autre.
+  final srv = s.serverClosure;
+  if (srv != null) {
+    lines
+      ..add(sep)
+      ..add('DEJA CLOTUREE SUR LE SERVEUR');
+    if (srv['closedByName'] != null) lines.add('Par : ${srv['closedByName']}');
+    final at = DateTime.tryParse('${srv['closedAt']}')?.toLocal();
+    if (at != null) lines.add('Le : ${_dt.format(at)}');
+    for (final e in cashAmountsOf(srv['counted']).entries) {
+      lines.add(_row('Compte serveur ${e.key}', cashAmount(e.value, e.key), width));
+    }
+    for (final e in cashAmountsOf(srv['difference']).entries) {
+      lines.add(_row('Ecart serveur ${e.key}', cashAmount(e.value, e.key), width));
+    }
+    for (final e in cashAmountsOf(srv['countGap']).entries) {
+      if (e.value.abs() < 0.01) continue;
+      lines.add(_row('A corriger ${e.key}', cashAmount(e.value, e.key), width));
+    }
   }
   lines
     ..add(sep)

@@ -14,6 +14,7 @@ import '../../../core/services/currency_service.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../settings/models/financial_account.dart';
 import '../../settings/repositories/financial_account_repository.dart';
+import '../../business_unit/repositories/business_unit_repository.dart';
 import '../models/cash_session.dart';
 import '../services/cash_session_report.dart';
 import '../services/cash_session_service.dart';
@@ -61,6 +62,26 @@ Future<void> shareCashSessionReport(CashSession s) async {
     bytes: bytes,
     filename: 'cloture-caisse-${DateFormat('yyyyMMdd-HHmm').format(s.closedAt ?? s.openedAt)}.pdf',
   );
+}
+
+/// Clôture déjà enregistrée sur le serveur (par un responsable, ou avec un
+/// autre comptage) : qui, quand, ce que le serveur a retenu et l'écart à
+/// corriger entre les deux comptages.
+String serverClosureMessage(CashSession s) {
+  final srv = s.serverClosure ?? const {};
+  final by = srv['closedByName'];
+  final at = DateTime.tryParse('${srv['closedAt']}')?.toLocal();
+  String fmt(dynamic raw) {
+    final m = cashAmountsOf(raw);
+    return m.isEmpty ? '0' : m.entries.map((e) => cashAmount(e.value, e.key)).join(', ');
+  }
+
+  final gap = cashAmountsOf(srv['countGap']).entries.where((e) => e.value.abs() >= 0.01);
+  return 'Cette caisse était déjà clôturée sur le serveur'
+      '${by != null ? ' par $by' : ''}'
+      '${at != null ? ' le ${_dt.format(at)}' : ''}. '
+      'Compté retenu : ${fmt(srv['counted'])}, écart ${fmt(srv['difference'])}. '
+      '${gap.isEmpty ? 'Votre comptage est identique.' : 'Écart à corriger avec votre comptage : ${gap.map((e) => cashAmount(e.value, e.key)).join(', ')}.'}';
 }
 
 /// Caisse déjà ouverte côté serveur : message clair, jamais silencieux, et
@@ -122,6 +143,8 @@ class _CashSessionScreenState extends State<CashSessionScreen> {
     super.initState();
     _service.load().whenComplete(() async {
       if (mounted) setState(() => _ready = true);
+      // Envois restés en attente (réseau absent, serveur en panne) : rejoués.
+      await _service.syncPending().catchError((_) {});
       // Caisse ouverte sur le serveur mais pas ici (autre appareil, ouverture
       // refusée au rejeu hors ligne) : on le dit.
       final conflict = await _service.serverConflict();
@@ -173,6 +196,24 @@ class _CashSessionScreenState extends State<CashSessionScreen> {
                       actions: [
                         TextButton(
                           onPressed: () => _service.serverRefusal.value = null,
+                          child: const Text('Fermer'),
+                        ),
+                      ],
+                    ),
+            ),
+            // Clôture déjà faite sur le serveur par quelqu'un d'autre : dit
+            // clairement, avec l'écart à corriger.
+            ValueListenableBuilder<CashSession?>(
+              valueListenable: _service.closedElsewhere,
+              builder: (context, s, _) => s == null || s.serverClosure == null
+                  ? const SizedBox.shrink()
+                  : MaterialBanner(
+                      content: Text(serverClosureMessage(s)),
+                      leading: Icon(Icons.info_outline,
+                          color: Theme.of(context).colorScheme.error),
+                      actions: [
+                        TextButton(
+                          onPressed: () => _service.closedElsewhere.value = null,
                           child: const Text('Fermer'),
                         ),
                       ],
@@ -290,6 +331,12 @@ class _OpenFormState extends State<_OpenForm> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text('La caisse est fermée', style: Theme.of(context).textTheme.titleMedium),
+            // Caissier d'unité : la caisse s'ouvre dans SON unité, sans choix.
+            if (widget.service.unitScope.isLocked)
+              Text(
+                'Unité : ${BusinessContextService().businessUnitName ?? BusinessContextService().businessUnitCode ?? ''}',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
             const SizedBox(height: 4),
             Text(
               'Comptez les billets présents dans le tiroir : c\'est le fonds d\'ouverture. '
@@ -493,9 +540,11 @@ class _OpenSessionViewState extends State<_OpenSessionView> {
       builder: (ctx) => AlertDialog(
         title: const Text('Caisse clôturée'),
         content: Text(
-          CashSession.hasDifference(closed.difference ?? const {})
+          '${CashSession.hasDifference(closed.difference ?? const {})
               ? 'Écart enregistré avec son motif. Imprimez le rapport pour signature.'
-              : 'Aucun écart. Imprimez le rapport pour signature.',
+              : 'Aucun écart. Imprimez le rapport pour signature.'}'
+          '${closed.serverClosure != null ? '\n\n${serverClosureMessage(closed)}' : ''}'
+          '${closed.hasPendingSync ? '\n\nHors connexion : la clôture partira au retour du réseau.' : ''}',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fermer')),
@@ -518,6 +567,7 @@ class _OpenSessionViewState extends State<_OpenSessionView> {
     final theme = Theme.of(context);
     final expected = s.expectedCash();
     final receipts = s.receiptsByMethod();
+    final credit = s.creditGranted();
     final moves = s.movements.reversed.toList();
     final visible = moves.take(_shown).toList();
 
@@ -564,7 +614,24 @@ class _OpenSessionViewState extends State<_OpenSessionView> {
           for (final g in CashMethodGroup.values)
             if (receipts[g] != null)
               row(g.label, receipts[g]!.entries.map((e) => cashAmount(e.value, e.key)).join(' + ')),
+          // Ventes non encaissées : hors tiroir, jamais dans les espèces.
+          if (credit.isNotEmpty)
+            row('Crédit accordé (non encaissé)', credit.entries.map((e) => cashAmount(e.value, e.key)).join(' + ')),
         ]),
+        if (s.hasPendingSync)
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: ListTile(
+              leading: const Icon(Icons.cloud_upload_outlined),
+              title: Text('${s.pendingSync.length} envoi(s) en attente du réseau'),
+              subtitle: const Text('Ils partent seuls au retour de la connexion.'),
+              trailing: IconButton(
+                tooltip: 'Réessayer',
+                icon: const Icon(Icons.refresh),
+                onPressed: () => widget.service.syncPending(),
+              ),
+            ),
+          ),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -600,7 +667,13 @@ class _OpenSessionViewState extends State<_OpenSessionView> {
             leading: Icon(m.amount >= 0 ? Icons.south_west : Icons.north_east,
                 color: m.amount >= 0 ? Colors.green : Colors.red),
             title: Text(m.label, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text('${DateFormat('HH:mm').format(m.at)} · ${m.kind.label} · ${cashMethodGroupOf(m.method).label}'),
+            subtitle: Text(
+              '${DateFormat('HH:mm').format(m.at)} · ${m.kind.label} · ${cashMethodGroupOf(m.method).label}'
+              '${m.isNotPosted ? '\nNon comptabilisé : ${m.syncIssue}' : ''}'
+              '${m.kind == CashMovementKind.bankDeposit && !m.isNotPosted && s.pendingSync.any((p) => p.ref == m.ref) ? '\nEn attente d\'envoi' : ''}',
+              style: m.isNotPosted ? TextStyle(color: theme.colorScheme.error) : null,
+            ),
+            isThreeLine: m.isNotPosted,
             trailing: Text(cashAmount(m.amount, m.currency)),
           ),
         if (moves.length > _shown)
@@ -728,6 +801,7 @@ class _HistoryTabState extends State<_HistoryTab> {
   void initState() {
     super.initState();
     _reload();
+    _loadServer();
     widget.service.current.addListener(_reload);
   }
 
@@ -737,9 +811,94 @@ class _HistoryTabState extends State<_HistoryTab> {
     super.dispose();
   }
 
+  /// Unité filtrée (null : toutes). Jamais proposé au caissier d'unité :
+  /// son historique est déjà limité à son unité.
+  String? _unitFilter;
+  Set<String> _units = const {};
+  Map<String, String> _unitNames = const {};
+
   Future<void> _reload() async {
-    final items = await widget.service.history();
-    if (mounted) setState(() => _items = items);
+    final items = await widget.service.history(unitFilter: _unitFilter);
+    final units = widget.service.unitScope.isLocked ? <String>{} : await widget.service.historyUnits();
+    if (mounted) {
+      setState(() {
+        _items = items;
+        _units = units;
+      });
+    }
+    if (units.length > 1 && _unitNames.isEmpty) await _loadUnitNames();
+  }
+
+  Future<void> _loadUnitNames() async {
+    try {
+      final all = await context.read<BusinessUnitRepository>().getAllLocalBusinessUnits();
+      if (mounted) setState(() => _unitNames = {for (final u in all) u.id: u.name});
+    } catch (_) {}
+  }
+
+  String _unitLabel(String id) =>
+      id == kCashRootUnit ? 'Entreprise générale' : (_unitNames[id] ?? 'Unité ${id.length > 8 ? id.substring(0, 8) : id}');
+
+  Widget? _unitFilterField() {
+    if (_units.length < 2 && _unitFilter == null) return null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: DropdownButtonFormField<String?>(
+        value: _unitFilter,
+        isExpanded: true,
+        decoration: const InputDecoration(
+          labelText: 'Unité',
+          border: OutlineInputBorder(),
+          isDense: true,
+        ),
+        items: [
+          const DropdownMenuItem<String?>(value: null, child: Text('Toutes les unités')),
+          for (final u in _units)
+            DropdownMenuItem<String?>(
+              value: u,
+              child: Text(_unitLabel(u), overflow: TextOverflow.ellipsis),
+            ),
+        ],
+        onChanged: (v) {
+          setState(() {
+            _unitFilter = v;
+            _shown = _page;
+          });
+          _reload();
+        },
+      ),
+    );
+  }
+
+  bool _serverLoaded = false;
+  bool _loadingMore = false;
+
+  /// Historique du serveur (autres appareils, réinstallation), fusionné.
+  Future<void> _loadServer() async {
+    try {
+      await widget.service.refreshServerHistory();
+    } catch (_) {}
+    _serverLoaded = true;
+    await _reload();
+  }
+
+  Future<void> _more(int localCount) async {
+    if (localCount > _shown) {
+      setState(() => _shown += _page);
+      return;
+    }
+    if (_loadingMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      await widget.service.loadMoreServerHistory();
+    } catch (_) {}
+    await _reload();
+    if (mounted) {
+      setState(() {
+        _loadingMore = false;
+        _shown += _page;
+      });
+    }
   }
 
   String _diffLabel(CashSession s) {
@@ -752,24 +911,34 @@ class _HistoryTabState extends State<_HistoryTab> {
   Widget build(BuildContext context) {
     final items = _items;
     if (items == null) return const Center(child: CircularProgressIndicator());
+    final filter = _unitFilterField();
     if (items.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text('Aucune clôture pour le moment.', textAlign: TextAlign.center),
-        ),
+      return ListView(
+        children: [
+          if (filter != null) filter,
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Text('Aucune clôture pour le moment.', textAlign: TextAlign.center),
+          ),
+        ],
       );
     }
     final visible = items.take(_shown).toList();
     return ListView(
       children: [
+        if (filter != null) filter,
         for (final s in visible)
           ListTile(
             title: Text('Clôture du ${_dt.format(s.closedAt ?? s.openedAt)}'),
             subtitle: Text(
               '${s.salesCount} vente(s) · ${_diffLabel(s)}'
-              '${s.closedByName != null ? ' · ${s.closedByName}' : ''}',
+              '${s.closedByName != null ? ' · ${s.closedByName}' : ''}'
+              '${s.fromServer ? ' · relue du serveur' : ''}'
+              '${s.hasPendingSync ? ' · en attente d\'envoi' : ''}'
+              '${s.notPostedDeposits.isNotEmpty ? ' · dépôt non comptabilisé' : ''}'
+              '${s.serverClosure != null ? '\n${serverClosureMessage(s)}' : ''}',
             ),
+            isThreeLine: s.serverClosure != null,
             trailing: PopupMenuButton<String>(
               tooltip: 'Actions',
               onSelected: (v) => v == 'print' ? printCashSessionReport(context, s) : shareCashSessionReport(s),
@@ -781,8 +950,13 @@ class _HistoryTabState extends State<_HistoryTab> {
           ),
         if (items.length > _shown)
           TextButton(
-            onPressed: () => setState(() => _shown += _page),
+            onPressed: () => _more(items.length),
             child: Text('Voir plus (${items.length - _shown} restantes)'),
+          )
+        else if (_serverLoaded && widget.service.hasMoreServerHistory)
+          TextButton(
+            onPressed: _loadingMore ? null : () => _more(items.length),
+            child: Text(_loadingMore ? 'Chargement…' : 'Voir plus'),
           ),
       ],
     );
