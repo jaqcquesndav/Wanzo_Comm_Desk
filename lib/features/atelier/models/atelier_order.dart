@@ -356,7 +356,7 @@ const List<String> kMaintenanceSpecialties = [
   'Téléphonie',
   'Électroménager',
   'Électromécanique',
-  'Thermique / Froid & Clim',
+  'Thermique / Froid et Clim',
   'Autre',
 ];
 

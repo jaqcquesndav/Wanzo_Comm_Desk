@@ -45,7 +45,7 @@
   },
   "invoiceNumberFormat": "Invoice Number Format",
   "invoicePrefix": "Invoice Prefix",
-  "taxesAndConditions": "Taxes & Conditions",
+  "taxesAndConditions": "Taxes and conditions",
   "showTaxesOnInvoices": "Show taxes on invoices",
   "defaultTaxRatePercentage": "Default Tax Rate (%)",
   "errorInvalidTaxRate": "Tax rate must be between 0 and 100.",

@@ -717,7 +717,7 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen>
   String? _validatePort(String? v) {
     if (v == null || v.trim().isEmpty) return 'Champ obligatoire';
     final port = int.tryParse(v.trim());
-    if (port == null || port < 1 || port > 65535) return 'Port invalide (1–65535)';
+    if (port == null || port < 1 || port > 65535) return 'Port invalide (1 à 65535)';
     return null;
   }
 

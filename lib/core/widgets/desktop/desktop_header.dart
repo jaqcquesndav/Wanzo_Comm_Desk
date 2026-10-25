@@ -224,7 +224,7 @@ class DesktopHeader extends StatelessWidget {
         if (mode == ActivityMode.retail) return const SizedBox.shrink();
         final scheme = theme.colorScheme;
         return Tooltip(
-          message: 'Mode : ${mode.label} — appuyez pour changer',
+          message: 'Mode : ${mode.label}, appuyez pour changer',
           child: Material(
             color: scheme.primaryContainer,
             borderRadius: BorderRadius.circular(20),

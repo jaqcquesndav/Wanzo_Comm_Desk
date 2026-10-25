@@ -1334,7 +1334,7 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
             const Divider(),
             const SizedBox(height: WanzoTheme.spacingSm),
             Text(
-              'Stock & Performance',
+              'Stock et performance',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.bold,
               ),

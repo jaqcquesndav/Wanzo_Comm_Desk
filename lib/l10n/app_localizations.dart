@@ -169,7 +169,7 @@ abstract class AppLocalizations {
   /// No description provided for @taxesAndConditions.
   ///
   /// In en, this message translates to:
-  /// **'Taxes & Conditions'**
+  /// **'Taxes and conditions'**
   String get taxesAndConditions;
 
   /// No description provided for @showTaxesOnInvoices.

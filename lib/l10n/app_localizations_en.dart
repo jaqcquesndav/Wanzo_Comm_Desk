@@ -48,7 +48,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get invoicePrefix => 'Invoice Prefix';
 
   @override
-  String get taxesAndConditions => 'Taxes & Conditions';
+  String get taxesAndConditions => 'Taxes and conditions';
 
   @override
   String get showTaxesOnInvoices => 'Show taxes on invoices';

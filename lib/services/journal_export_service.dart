@@ -1155,7 +1155,7 @@ class JournalExportService {
       pw.TableRow(
         children: [
           cell(
-            'Classe 5 – Trésorerie',
+            'Classe 5 : Trésorerie',
             bold: true,
             align: pw.Alignment.centerLeft,
             bg: PdfColors.blue50,
@@ -1171,7 +1171,7 @@ class JournalExportService {
       pw.TableRow(
         children: [
           cell(
-            'Classe 7 – CA / Ventes',
+            'Classe 7 : CA / Ventes',
             bold: true,
             align: pw.Alignment.centerLeft,
           ),
@@ -1186,7 +1186,7 @@ class JournalExportService {
       pw.TableRow(
         children: [
           cell(
-            'Classe 3 – Stocks',
+            'Classe 3 : Stocks',
             bold: true,
             align: pw.Alignment.centerLeft,
             bg: PdfColors.orange50,
