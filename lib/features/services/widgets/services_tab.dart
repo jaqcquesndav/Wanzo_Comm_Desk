@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:wanzo/core/services/currency_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
+import 'package:wanzo/core/shared_widgets/show_more.dart';
+import 'package:wanzo/core/widgets/desktop/row_actions_menu.dart';
 
 import '../cubit/services_cubit.dart';
 import '../models/service_item.dart';
@@ -26,6 +28,9 @@ class _ServicesTabState extends State<ServicesTab> {
   final _searchCtrl = TextEditingController();
   String _query = '';
   String? _category;
+
+  /// Pagination locale : nombre de services dessines.
+  int _visible = kShowMoreStep;
 
   /// Ouvre le bareme du garage, prestations en lignes et categories de
   /// vehicules en colonnes. Les lignes existantes y sont rechargees.
@@ -110,7 +115,10 @@ class _ServicesTabState extends State<ServicesTab> {
                           },
                         ),
                 ),
-                onChanged: (v) => setState(() => _query = v),
+                onChanged: (v) => setState(() {
+                  _query = v;
+                  _visible = kShowMoreStep;
+                }),
               ),
             ),
             if (state.categories.isNotEmpty)
@@ -150,9 +158,17 @@ class _ServicesTabState extends State<ServicesTab> {
                     )
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
-                      itemCount: items.length,
+                      itemCount: visibleSlice(items, _visible).length + 1,
                       separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (context, i) => _ServiceTile(
+                      itemBuilder: (context, i) => i ==
+                              visibleSlice(items, _visible).length
+                          ? ShowMoreFooter(
+                              shown: visibleSlice(items, _visible).length,
+                              total: items.length,
+                              onMore: () => setState(() => _visible =
+                                  nextVisibleCount(_visible, items.length)),
+                            )
+                          : _ServiceTile(
                         service: items[i],
                         onTap: () => widget.onEdit(items[i]),
                         onToggleActive: () => context.read<ServicesCubit>().toggleActive(items[i]),
@@ -278,6 +294,21 @@ class _ServiceTile extends StatelessWidget {
               Switch(
                 value: service.active,
                 onChanged: (_) => onToggleActive(),
+              ),
+              RowActionsMenu(
+                actions: [
+                  RowAction(
+                    label: 'Modifier',
+                    icon: Icons.edit_outlined,
+                    onSelected: onTap,
+                  ),
+                  RowAction(
+                    label: 'Supprimer',
+                    icon: Icons.delete_outline,
+                    destructive: true,
+                    onSelected: onDelete,
+                  ),
+                ],
               ),
             ],
           ),

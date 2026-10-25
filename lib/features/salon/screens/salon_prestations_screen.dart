@@ -8,6 +8,8 @@ import 'package:wanzo/core/quick_actions/desktop_quick_actions.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
+import 'package:wanzo/core/shared_widgets/show_more.dart';
+import 'package:wanzo/core/widgets/desktop/row_actions_menu.dart';
 import 'package:wanzo/core/enums/currency_enum.dart';
 import 'package:wanzo/core/models/currency_settings_model.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
@@ -41,6 +43,9 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
   bool _loading = true;
   bool _publishing = false;
   String _search = '';
+
+  /// Pagination locale : nombre de prestations dessinees.
+  int _visible = kShowMoreStep;
 
   @override
   void initState() {
@@ -180,7 +185,10 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        onChanged: (v) => setState(() => _search = v),
+                        onChanged: (v) => setState(() {
+                          _search = v;
+                          _visible = kShowMoreStep;
+                        }),
                       ),
                     ),
                     Expanded(
@@ -193,8 +201,17 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
                               padding:
                                   const EdgeInsets.fromLTRB(16, 12, 16, 96),
                               children: [
-                                for (final cat in categories)
-                                  _categorySection(cat, grouped[cat]!),
+                                for (final e in visibleGroups(
+                                    categories, grouped, _visible))
+                                  _categorySection(e.key, e.value,
+                                      total: grouped[e.key]!.length),
+                                ShowMoreFooter(
+                                  shown: _visible.clamp(0, _total(grouped)),
+                                  total: _total(grouped),
+                                  onMore: () => setState(() => _visible =
+                                      nextVisibleCount(
+                                          _visible, _total(grouped))),
+                                ),
                               ],
                             ),
                     ),
@@ -203,8 +220,12 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
     );
   }
 
+  static int _total(Map<SalonServiceCategory, List<SalonService>> grouped) =>
+      grouped.values.fold(0, (s, l) => s + l.length);
+
   Widget _categorySection(
-      SalonServiceCategory category, List<SalonService> services) {
+      SalonServiceCategory category, List<SalonService> services,
+      {required int total}) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
@@ -224,7 +245,7 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
                   color: theme.colorScheme.primary.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text('${services.length}',
+                child: Text('$total',
                     style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -321,18 +342,27 @@ class _SalonPrestationsScreenState extends State<SalonPrestationsScreen> {
                 visualDensity: VisualDensity.compact,
                 onPressed: () => _toggleActive(item),
               ),
-              IconButton(
-                tooltip: 'Modifier',
-                icon: const Icon(Icons.edit_outlined),
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _openForm(existing: item),
-              ),
-              IconButton(
-                tooltip: 'Supprimer',
-                icon: Icon(Icons.delete_outline,
-                    color: theme.colorScheme.error),
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _confirmDelete(item),
+              RowActionsMenu(
+                actions: [
+                  RowAction(
+                    label: 'Modifier',
+                    icon: Icons.edit_outlined,
+                    onSelected: () => _openForm(existing: item),
+                  ),
+                  RowAction(
+                    label: item.active ? 'Désactiver' : 'Activer',
+                    icon: item.active
+                        ? Icons.remove_circle_outline
+                        : Icons.check_circle_outline,
+                    onSelected: () => _toggleActive(item),
+                  ),
+                  RowAction(
+                    label: 'Supprimer',
+                    icon: Icons.delete_outline,
+                    destructive: true,
+                    onSelected: () => _confirmDelete(item),
+                  ),
+                ],
               ),
             ],
           ),

@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/exceptions/api_exceptions.dart';
+import '../../../core/shared_widgets/show_more.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../invoice/services/invoice_service.dart';
 import '../../sales/bloc/sales_bloc.dart';
@@ -444,6 +445,9 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
   List<Proforma> _all = const [];
   bool _loading = true;
 
+  /// Pagination locale par onglet (cle = message d'etat vide de l'onglet).
+  final Map<String, int> _visible = {};
+
   @override
   void initState() {
     super.initState();
@@ -484,14 +488,23 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
       );
     }
     final fmt = DateFormat('dd/MM/yyyy');
+    final visibles = visibleSlice(items, _visible[vide] ?? kShowMoreStep);
     return RefreshIndicator(
       onRefresh: _charger,
       child: ListView.separated(
         padding: const EdgeInsets.all(12),
-        itemCount: items.length,
+        itemCount: visibles.length + 1,
         separatorBuilder: (_, __) => const SizedBox(height: 6),
         itemBuilder: (context, i) {
-          final p = items[i];
+          if (i == visibles.length) {
+            return ShowMoreFooter(
+              shown: visibles.length,
+              total: items.length,
+              onMore: () => setState(() => _visible[vide] =
+                  nextVisibleCount(visibles.length, items.length)),
+            );
+          }
+          final p = visibles[i];
           return Card(
             margin: EdgeInsets.zero,
             child: ListTile(

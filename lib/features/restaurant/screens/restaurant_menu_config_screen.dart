@@ -16,6 +16,8 @@ import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/core/shared_widgets/empty_state_view.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
+import 'package:wanzo/core/shared_widgets/show_more.dart';
+import 'package:wanzo/core/widgets/desktop/row_actions_menu.dart';
 import 'package:wanzo/core/widgets/smart_image.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/utils/price_plausibility.dart';
@@ -55,6 +57,9 @@ class _RestaurantMenuConfigScreenState
   bool _loading = true;
   bool _publishing = false;
   String _search = '';
+
+  /// Pagination locale : nombre de plats dessines.
+  int _visible = kShowMoreStep;
 
   @override
   void initState() {
@@ -244,7 +249,10 @@ class _RestaurantMenuConfigScreenState
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      onChanged: (v) => setState(() => _search = v),
+                      onChanged: (v) => setState(() {
+                        _search = v;
+                        _visible = kShowMoreStep;
+                      }),
                     ),
                   ),
                   Expanded(
@@ -262,8 +270,26 @@ class _RestaurantMenuConfigScreenState
                                 96,
                               ),
                               children: [
-                                for (final course in courses)
-                                  _courseSection(course, grouped[course]!),
+                                for (final e in visibleGroups(
+                                  courses,
+                                  grouped,
+                                  _visible,
+                                ))
+                                  _courseSection(
+                                    e.key,
+                                    e.value,
+                                    total: grouped[e.key]!.length,
+                                  ),
+                                ShowMoreFooter(
+                                  shown: _visible.clamp(0, totalShown(grouped)),
+                                  total: totalShown(grouped),
+                                  onMore: () => setState(
+                                    () => _visible = nextVisibleCount(
+                                      _visible,
+                                      totalShown(grouped),
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
                   ),
@@ -272,7 +298,14 @@ class _RestaurantMenuConfigScreenState
     );
   }
 
-  Widget _courseSection(MenuCourse course, List<MenuItem> dishes) {
+  static int totalShown(Map<MenuCourse, List<MenuItem>> grouped) =>
+      grouped.values.fold(0, (s, l) => s + l.length);
+
+  Widget _courseSection(
+    MenuCourse course,
+    List<MenuItem> dishes, {
+    required int total,
+  }) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
@@ -295,7 +328,7 @@ class _RestaurantMenuConfigScreenState
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  '${dishes.length}',
+                  '$total',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -414,20 +447,28 @@ class _RestaurantMenuConfigScreenState
                 visualDensity: VisualDensity.compact,
                 onPressed: () => _toggleAvailable(item),
               ),
-              IconButton(
-                tooltip: 'Modifier',
-                icon: const Icon(Icons.edit_outlined),
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _openDishForm(existing: item),
-              ),
-              IconButton(
-                tooltip: 'Supprimer',
-                icon: Icon(
-                  Icons.delete_outline,
-                  color: theme.colorScheme.error,
-                ),
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _confirmDelete(item),
+              RowActionsMenu(
+                actions: [
+                  RowAction(
+                    label: 'Modifier',
+                    icon: Icons.edit_outlined,
+                    onSelected: () => _openDishForm(existing: item),
+                  ),
+                  RowAction(
+                    label:
+                        item.available ? 'Marquer épuisé' : 'Rendre disponible',
+                    icon: item.available
+                        ? Icons.remove_circle_outline
+                        : Icons.check_circle_outline,
+                    onSelected: () => _toggleAvailable(item),
+                  ),
+                  RowAction(
+                    label: 'Supprimer',
+                    icon: Icons.delete_outline,
+                    destructive: true,
+                    onSelected: () => _confirmDelete(item),
+                  ),
+                ],
               ),
             ],
           ),
