@@ -160,6 +160,24 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
           return Column(
             children: [
               _PerfKpis(orders: state.orders),
+              if (state.hasMore)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: state.loadingMore
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : TextButton.icon(
+                            onPressed: cubit.loadMore,
+                            icon: const Icon(Icons.expand_more),
+                            label: const Text('Charger plus'),
+                          ),
+                  ),
+                ),
               Expanded(
                 child: KanbanBoard<AtelierOrder>(
                   columns: columns,

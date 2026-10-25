@@ -63,8 +63,14 @@ class AtelierApiService {
       String? status,
       String? customerId,
       String? metier,
-      String? vehicleId}) async {
+      String? vehicleId,
+      int? limit,
+      int? offset}) async {
     final qp = <String, String>{};
+    // Pagination serveur : 200 par defaut, 500 au plus. Une page plus courte
+    // que [limit] signale la fin de la liste.
+    if (limit != null) qp['limit'] = '$limit';
+    if (offset != null && offset > 0) qp['offset'] = '$offset';
     if (businessUnitId != null) qp['businessUnitId'] = businessUnitId;
     if (status != null) qp['status'] = status;
     if (customerId != null) qp['customerId'] = customerId;

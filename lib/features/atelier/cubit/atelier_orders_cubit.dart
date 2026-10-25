@@ -11,26 +11,38 @@ class AtelierOrdersState extends Equatable {
   final bool loading;
   final String? error;
 
+  /// Le serveur a peut-etre d'autres fiches au-dela de la derniere page lue.
+  final bool hasMore;
+
+  /// Lecture de la page suivante en cours (bouton « Charger plus »).
+  final bool loadingMore;
+
   const AtelierOrdersState({
     this.orders = const [],
     this.loading = false,
     this.error,
+    this.hasMore = false,
+    this.loadingMore = false,
   });
 
   AtelierOrdersState copyWith({
     List<AtelierOrder>? orders,
     bool? loading,
     String? error,
+    bool? hasMore,
+    bool? loadingMore,
   }) {
     return AtelierOrdersState(
       orders: orders ?? this.orders,
       loading: loading ?? this.loading,
       error: error,
+      hasMore: hasMore ?? this.hasMore,
+      loadingMore: loadingMore ?? this.loadingMore,
     );
   }
 
   @override
-  List<Object?> get props => [orders, loading, error];
+  List<Object?> get props => [orders, loading, error, hasMore, loadingMore];
 }
 
 /// Pilote les commandes de confection (persistées côté backend).
@@ -64,9 +76,16 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
   // doit jamais afficher une commande de couture ou d'imprimerie.
   AtelierMetier? _metier;
 
-  AtelierOrdersCubit(this._api, {AtelierOrderCache? cache})
+  AtelierOrdersCubit(this._api, {AtelierOrderCache? cache, this.pageSize = 200})
       : _cache = cache ?? AtelierOrderCache(),
         super(const AtelierOrdersState());
+
+  /// Taille d'une page lue sur le serveur (200 par defaut, 500 au plus).
+  final int pageSize;
+
+  /// Nombre de fiches brutes deja lues sur le serveur (decalage de la page
+  /// suivante, avant le filtre par metier).
+  int _fetched = 0;
 
   Future<void> load({String? businessUnitId, AtelierMetier? metier}) async {
     _businessUnitId = businessUnitId ?? _businessUnitId;
@@ -77,12 +96,18 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
       final orders = await _api.getOrders(
         businessUnitId: _businessUnitId,
         metier: metierKey,
+        limit: pageSize,
       );
+      _fetched = orders.length;
       // Garde-fou client : même si le backend renvoyait des commandes d'autres
       // métiers (ancienne version, cache serveur), on n'affiche que le métier
       // courant sur ce board.
       final scoped = _scope(orders);
-      emit(AtelierOrdersState(orders: scoped, loading: false));
+      emit(AtelierOrdersState(
+        orders: scoped,
+        loading: false,
+        hasMore: orders.length >= pageSize,
+      ));
       // Mémoriser pour l'affichage hors-ligne (cache scindé par métier).
       await _cache.save(_businessUnitId, scoped, metier: metierKey);
     } catch (e) {
@@ -97,6 +122,37 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
       } else {
         emit(state.copyWith(loading: false, error: e.toString()));
       }
+    }
+  }
+
+  /// Lit la page suivante et l'ajoute au board, sans doublon.
+  Future<void> loadMore() async {
+    if (!state.hasMore || state.loadingMore || state.loading) return;
+    emit(state.copyWith(loadingMore: true, error: null));
+    try {
+      final page = await _api.getOrders(
+        businessUnitId: _businessUnitId,
+        metier: _metier?.apiValue,
+        limit: pageSize,
+        offset: _fetched,
+      );
+      _fetched += page.length;
+      final known = state.orders.map((o) => o.id).toSet();
+      final merged = [
+        ...state.orders,
+        ..._scope(page).where((o) => !known.contains(o.id)),
+      ];
+      emit(state.copyWith(
+        orders: merged,
+        loadingMore: false,
+        hasMore: page.length >= pageSize,
+      ));
+      await _cache.save(_businessUnitId, merged, metier: _metier?.apiValue);
+    } catch (e) {
+      emit(state.copyWith(
+        loadingMore: false,
+        error: e is ApiException ? e.message : 'Page suivante indisponible, reessayez.',
+      ));
     }
   }
 
