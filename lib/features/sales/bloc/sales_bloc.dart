@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart'; // Pour debugPrint
 import '../models/sale.dart';
 import '../models/sale_item.dart'; // Ensure SaleItem and SaleItemType are imported
 import '../repositories/sales_repository.dart';
+import '../services/sale_dto.dart';
 import '../../../core/models/operation_payment.dart';
 import '../../dashboard/models/operation_journal_entry.dart';
 import '../../dashboard/bloc/operation_journal_bloc.dart'; // Imports events too
@@ -193,7 +194,10 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
   Future<void> _onAddSale(AddSale event, Emitter<SalesState> emit) async {
     try {
       // 1. D'abord, enregistrer la vente
-      final Sale savedSale = await _salesRepository.addSale(event.sale);
+      // Le moyen de l'acompte voyage avec la vente (envoyé au serveur).
+      final Sale savedSale = await _salesRepository.addSale(
+        saleWithDownPaymentMethod(event.sale, event.downPaymentMethod),
+      );
       // Caisse ouverte : la vente y est rattachée (rien si elle est fermée).
       await CashSessionHooks.onSale(
         savedSale,

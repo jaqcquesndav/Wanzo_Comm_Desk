@@ -152,6 +152,14 @@ class Sale extends Equatable {
   @JsonKey(includeIfNull: false)
   final String? paymentReference;
 
+  /// Moyen de paiement de l'acompte d'une vente à crédit (code : cash,
+  /// mobile_money, bank_transfer...). Envoyé au serveur (downPaymentMethod) :
+  /// la jambe de trésorerie de l'acompte va au compte de ce moyen. Null :
+  /// caisse.
+  @HiveField(22)
+  @JsonKey(includeIfNull: false)
+  final String? downPaymentMethod;
+
   /// Identifiant de l'utilisateur
   @JsonKey(includeIfNull: false)
   final String? userId;
@@ -218,6 +226,7 @@ class Sale extends Equatable {
     this.attachmentUrls,
     this.localAttachmentPaths,
     this.paymentReference,
+    this.downPaymentMethod,
     this.userId,
     this.createdAt,
     this.updatedAt,
@@ -320,6 +329,7 @@ class Sale extends Equatable {
     List<String>? attachmentUrls,
     List<String>? localAttachmentPaths,
     String? paymentReference,
+    String? downPaymentMethod,
     String? userId,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -362,6 +372,7 @@ class Sale extends Equatable {
       attachmentUrls: attachmentUrls ?? this.attachmentUrls,
       localAttachmentPaths: localAttachmentPaths ?? this.localAttachmentPaths,
       paymentReference: paymentReference ?? this.paymentReference,
+      downPaymentMethod: downPaymentMethod ?? this.downPaymentMethod,
       userId: userId ?? this.userId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -400,6 +411,7 @@ class Sale extends Equatable {
     attachmentUrls,
     localAttachmentPaths,
     paymentReference,
+    downPaymentMethod,
     userId,
     createdAt,
     updatedAt,

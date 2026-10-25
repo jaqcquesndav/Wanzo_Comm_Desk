@@ -55,6 +55,9 @@ Map<String, dynamic> saleToApiDto(
     'paymentMethod': paymentMethodCode(sale.paymentMethod),
     if (nonEmpty(sale.paymentReference) != null)
       'paymentReference': sale.paymentReference,
+    // Acompte d'une vente à crédit : son moyen (caisse, banque, Mobile Money)
+    // choisit le compte de trésorerie côté serveur. Absent : caisse.
+    if (downPaymentMethodForApi(sale) case final dp?) 'downPaymentMethod': dp,
     'exchangeRate': rate,
     'transactionCurrencyCode': currency,
     if (nonEmpty(sale.notes) != null) 'notes': sale.notes,
@@ -123,6 +126,24 @@ Map<String, dynamic> saleToApiDto(
           )
           .toList(),
   };
+}
+
+/// Code du moyen de l'acompte d'une vente à crédit à envoyer au serveur, ou
+/// null s'il est inconnu, vide ou « crédit » (le serveur garde alors la
+/// caisse) ou si la vente n'est pas à crédit.
+String? downPaymentMethodForApi(Sale sale) {
+  final raw = (sale.downPaymentMethod ?? '').trim();
+  if (raw.isEmpty || !isCreditPaymentMethod(sale.paymentMethod)) return null;
+  final code = paymentMethodCode(raw, fallback: '');
+  return code.isEmpty || code == PaymentMethodCode.credit ? null : code;
+}
+
+/// La vente porte le moyen de son acompte (vente à crédit seulement) : il
+/// voyage avec elle jusqu'au serveur, rejeu hors ligne compris.
+Sale saleWithDownPaymentMethod(Sale sale, String? downPaymentMethod) {
+  final dp = (downPaymentMethod ?? '').trim();
+  if (dp.isEmpty || !isCreditPaymentMethod(sale.paymentMethod)) return sale;
+  return sale.copyWith(downPaymentMethod: dp);
 }
 
 /// Taux de change devise de la vente vers CDF à transmettre au backend.

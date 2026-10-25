@@ -39,13 +39,14 @@ class SaleAdapter extends TypeAdapter<Sale> {
       attachmentUrls: (fields[19] as List?)?.cast<String>(),
       localAttachmentPaths: (fields[20] as List?)?.cast<String>(),
       paymentReference: fields[21] as String?,
+      downPaymentMethod: fields[22] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Sale obj) {
     writer
-      ..writeByte(22)
+      ..writeByte(23)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -89,7 +90,9 @@ class SaleAdapter extends TypeAdapter<Sale> {
       ..writeByte(20)
       ..write(obj.localAttachmentPaths)
       ..writeByte(21)
-      ..write(obj.paymentReference);
+      ..write(obj.paymentReference)
+      ..writeByte(22)
+      ..write(obj.downPaymentMethod);
   }
 
   @override
@@ -193,6 +196,7 @@ Sale _$SaleFromJson(Map<String, dynamic> json) => Sale(
           ?.map((e) => e as String)
           .toList(),
       paymentReference: json['paymentReference'] as String?,
+      downPaymentMethod: json['downPaymentMethod'] as String?,
       userId: json['userId'] as String?,
       createdAt: json['createdAt'] == null
           ? null
@@ -238,6 +242,8 @@ Map<String, dynamic> _$SaleToJson(Sale instance) => <String, dynamic>{
       if (instance.attachmentUrls case final value?) 'attachmentUrls': value,
       if (instance.paymentReference case final value?)
         'paymentReference': value,
+      if (instance.downPaymentMethod case final value?)
+        'downPaymentMethod': value,
       if (instance.userId case final value?) 'userId': value,
       if (instance.createdAt?.toIso8601String() case final value?)
         'createdAt': value,

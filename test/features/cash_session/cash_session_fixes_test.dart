@@ -285,17 +285,44 @@ void main() {
     await service.addManual(entry: true, amount: 10, currency: 'USD', reason: 'Apport');
     await service.addManual(entry: false, amount: 1000, currency: 'CDF', reason: 'Retrait');
     await service.addBankDeposit(amount: 2000, currency: 'CDF', accountId: 'b1', accountName: 'Banque');
+    // Fonds d'ouverture : ligne d'information à montant nul (fonds dans le
+    // libellé) ; entrées, sorties et dépôts font bouger le solde.
     expect(entries.map((e) => '${e.type.name}:${e.currencyCode}:${e.amount}'), [
-      'cashIn:CDF:5000.0',
-      'cashIn:USD:20.0',
+      'cashIn:CDF:0.0',
+      'cashIn:USD:0.0',
       'cashIn:USD:10.0',
       'cashOut:CDF:-1000.0',
       'cashOut:CDF:-2000.0',
     ]);
+    expect(entries.first.description, contains('Fonds d\'ouverture'));
+    expect(entries.first.description, contains('5'));
+    expect(entries.first.description, contains('hors solde'));
     expect(entries.every((e) => isCashPaymentMethod(e.paymentMethod)), isTrue);
     final usd = saleCashJournalAmount(_sale(total: 10, paid: 10));
     expect(usd.currency, 'USD');
     expect(usd.amount, 10);
+  });
+
+  test('journal : deux jours d ouverture ne changent pas le solde de caisse', () async {
+    final entries = <OperationJournalEntry>[];
+    final service = svc()..journal = (e) async => entries.add(e);
+    double balance(String currency) => entries
+        .where((e) => e.type.impactsCash && e.currencyCode == currency)
+        .fold(0.0, (sum, e) => sum + e.amount);
+
+    await service.open({'CDF': 50000, 'USD': 20}, at: DateTime(2026, 10, 24, 7));
+    await service.addManual(entry: true, amount: 3000, currency: 'CDF', reason: 'Apport');
+    await service.close({'CDF': 53000, 'USD': 20});
+    final afterDay1 = balance('CDF');
+    expect(afterDay1, 3000, reason: 'seule l entrée manuelle compte, pas le fonds');
+
+    await service.open({'CDF': 53000, 'USD': 20}, at: DateTime(2026, 10, 25, 7));
+    expect(balance('CDF'), afterDay1, reason: 'le même argent n est pas recompté le lendemain');
+    expect(balance('USD'), 0);
+    // Les lignes du fonds restent visibles dans la vue Caisse.
+    final floats = entries.where((e) => e.description.contains('Fonds d\'ouverture')).toList();
+    expect(floats, hasLength(4));
+    expect(floats.every((e) => const JournalFilter(view: JournalView.cash).matchesScope(e)), isTrue);
   });
 
   test('contrat serveur : mouvement manuel, clôture avec taux et mouvements joints', () async {
@@ -370,6 +397,27 @@ void main() {
     expect(back.date, DateTime(2026, 10, 25, 10));
   });
 
+  test('acompte d une vente à crédit : son moyen part au serveur (downPaymentMethod)', () {
+    final credit = _sale(total: 100, paid: 30, method: 'credit', currency: 'CDF');
+    // Absent : rien n'est envoyé (le serveur garde la caisse).
+    expect(saleToApiDto(credit).containsKey('downPaymentMethod'), isFalse);
+
+    final momo = saleWithDownPaymentMethod(credit, 'Mobile Money');
+    expect(saleToApiDto(momo)['downPaymentMethod'], 'mobile_money');
+    expect(saleToApiDto(saleWithDownPaymentMethod(credit, 'bank_transfer'))['downPaymentMethod'], 'bank_transfer');
+    expect(saleToApiDto(saleWithDownPaymentMethod(credit, 'cash'))['downPaymentMethod'], 'cash');
+    // « Crédit » n'est pas un moyen d'acompte.
+    expect(saleToApiDto(saleWithDownPaymentMethod(credit, 'credit')).containsKey('downPaymentMethod'), isFalse);
+    // Vente au comptant : jamais de moyen d'acompte.
+    final cash = saleWithDownPaymentMethod(_sale(method: 'cash', currency: 'CDF'), 'mobile_money');
+    expect(cash.downPaymentMethod, isNull);
+    expect(saleToApiDto(cash).containsKey('downPaymentMethod'), isFalse);
+    // Gardé par la vente (rejeu hors ligne) : aller-retour JSON.
+    final back = Sale.fromJson({...momo.toJson()});
+    expect(back.downPaymentMethod, 'Mobile Money');
+    expect(saleToApiDto(back)['downPaymentMethod'], 'mobile_money');
+  });
+
   test('10. clôture déjà faite par un responsable : signalée avec l écart', () async {
     final service = svc(
       sender: (endpoint, body) async {
@@ -416,12 +464,19 @@ void main() {
       expect(locked.lockedUnitId, 'bu1');
       expect(cashUnitScopeFor(role: 'cashier', businessUnitId: 'co1', companyId: 'co1').isLocked, isFalse,
           reason: 'caissier de l entreprise générale');
-      // Même règle que le serveur (403 CASH_SESSION_OTHER_UNIT) : à la
-      // racine on voit toutes les unités, rattaché à une unité on voit la
-      // sienne, quel que soit le rôle de caisse.
+      expect(cashUnitScopeFor(role: 'cashier', businessUnitId: 'root', companyId: 'co1', unitType: BusinessUnitType.company).isLocked, isFalse,
+          reason: 'caissier de l unité racine');
+      // Même règle que le serveur (403 CASH_SESSION_OTHER_UNIT) : seul le
+      // caissier d'une unité non racine est limité à la sienne ; admin et
+      // comptable voient toutes les unités, quelle que soit la leur.
       expect(cashUnitScopeFor(role: 'admin', businessUnitId: null, companyId: 'co1').isLocked, isFalse);
       expect(cashUnitScopeFor(role: 'accountant', businessUnitId: 'root', companyId: 'co1', unitType: BusinessUnitType.company).isLocked, isFalse);
-      expect(cashUnitScopeFor(role: 'accountant', businessUnitId: 'bu1', companyId: 'co1', unitType: BusinessUnitType.branch).lockedUnitId, 'bu1');
+      for (final r in ['admin', 'owner', 'sme_owner', 'sme_admin', 'super_admin', 'superadmin', 'accountant', 'avec_treasurer']) {
+        expect(cashUnitScopeFor(role: r, businessUnitId: 'bu1', companyId: 'co1', unitType: BusinessUnitType.branch).isLocked, isFalse,
+            reason: r);
+        expect(isCashSupervisor(r), isTrue, reason: r);
+      }
+      expect(isCashSupervisor('cashier'), isFalse);
 
       Future<CashHistoryPage?> server(int page, int limit) async => CashHistoryPage([
         for (final bu in ['bu1', 'bu2', null])
