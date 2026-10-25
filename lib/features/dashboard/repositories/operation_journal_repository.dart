@@ -1208,16 +1208,24 @@ class OperationJournalRepository {
           'summaryPeriod': 'local_data_fallback',
         };
       } catch (e2) {
-        return {
-          'totalRevenue': 0.0,
-          'totalExpenses': 0.0,
-          'netFlow': 0.0,
-          'numberOfTransactions': 0,
-          'summaryPeriod': 'error',
-        };
+        // Ni le serveur ni le journal local : le resume est INDISPONIBLE.
+        // Des zeros feraient croire a une periode sans aucune operation.
+        return journalSummaryUnavailable();
       }
     }
   }
+
+  /// Resume du journal quand aucune source ne repond : montants nuls (null,
+  /// jamais 0) et libelle « indisponible », pour que l'ecran et Adha disent
+  /// « indisponible » au lieu d'afficher une periode a zero.
+  static Map<String, dynamic> journalSummaryUnavailable() => const {
+        'available': false,
+        'totalRevenue': null,
+        'totalExpenses': null,
+        'netFlow': null,
+        'numberOfTransactions': null,
+        'summaryPeriod': 'indisponible',
+      };
 
   /// Vider le cache local des entrées de journal (à utiliser lors du changement de business unit)
   Future<void> clearLocalCache() async {
