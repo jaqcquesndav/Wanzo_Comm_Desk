@@ -321,7 +321,10 @@ class SalesRepository {
     );
     await _salesBox.put(sale.id, optimistic);
 
-    if (_apiService == null) {
+    // Vente encore jamais envoyée : le serveur ne la connaît pas, un appel
+    // sales/:id répondrait 404. La copie locale fait foi et la tranche attend
+    // en file que la vente parte.
+    if (_apiService == null || awaitsServerCreation(optimistic)) {
       await _enqueuePayment(
         sale.id,
         payment,
