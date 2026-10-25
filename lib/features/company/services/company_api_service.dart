@@ -1,47 +1,13 @@
-import 'dart:io'; // Added for File type
-import 'dart:convert'; // Added for jsonDecode
 import 'package:wanzo/core/services/api_client.dart';
 import 'package:wanzo/core/services/currency_display_service.dart';
 import 'package:wanzo/core/models/api_response.dart';
 import 'package:wanzo/core/exceptions/api_exceptions.dart';
-import 'package:wanzo/features/company/models/company_profile.dart'; // Assurez-vous que ce modèle existe
 
 class CompanyApiService {
   final ApiClient _apiClient;
 
   CompanyApiService({ApiClient? apiClient})
     : _apiClient = apiClient ?? ApiClient();
-
-  Future<ApiResponse<CompanyProfile>> getCompanyProfile() async {
-    try {
-      final response = await _apiClient.get('company', requiresAuth: true);
-      if (response != null && response['data'] != null) {
-        final profile = CompanyProfile.fromJson(
-          response['data'] as Map<String, dynamic>,
-        );
-        return ApiResponse<CompanyProfile>(
-          success: true,
-          data: profile,
-          message:
-              response['message'] as String? ??
-              'Company profile fetched successfully.',
-          statusCode: response['statusCode'] as int? ?? 200,
-        );
-      } else {
-        throw ApiExceptionFactory.fromStatusCode(
-          response['statusCode'] as int? ?? 500,
-          'Invalid response data format from server',
-          responseBody: response,
-        );
-      }
-    } on ApiException {
-      rethrow;
-    } catch (e) {
-      throw ServerException(
-        'Failed to fetch company profile: An unexpected error occurred. $e',
-      );
-    }
-  }
 
   /// Récupère le taux de change central de l'entreprise.
   ///
@@ -95,97 +61,6 @@ class CompanyApiService {
     } catch (_) {
       // Offline / erreur serveur / format inattendu: ne rien écraser.
       return null;
-    }
-  }
-
-  Future<ApiResponse<CompanyProfile>> updateCompanyProfile(
-    CompanyProfile profile,
-  ) async {
-    try {
-      final response = await _apiClient.put(
-        'company',
-        body: profile.toJson(),
-        requiresAuth: true,
-      );
-      if (response != null && response['data'] != null) {
-        final updatedProfile = CompanyProfile.fromJson(
-          response['data'] as Map<String, dynamic>,
-        );
-        return ApiResponse<CompanyProfile>(
-          success: true,
-          data: updatedProfile,
-          message:
-              response['message'] as String? ??
-              'Company profile updated successfully.',
-          statusCode: response['statusCode'] as int? ?? 200,
-        );
-      } else {
-        throw ApiExceptionFactory.fromStatusCode(
-          response['statusCode'] as int? ?? 500,
-          'Invalid response data format from server',
-          responseBody: response,
-        );
-      }
-    } on ApiException {
-      rethrow;
-    } catch (e) {
-      throw ServerException(
-        'Failed to update company profile: An unexpected error occurred. $e',
-      );
-    }
-  }
-
-  // Assurez-vous d'avoir une méthode pour gérer l'upload de fichiers dans ApiClient
-  // Exemple: Future<dynamic> postMultipart(String endpoint, {required File file, required String fileField, Map<String, String>? fields, bool requiresAuth = false})
-  Future<ApiResponse<String>> uploadCompanyLogo(File logoFile) async {
-    try {
-      final httpResponse = await _apiClient.postMultipart(
-        'company/logo',
-        file: logoFile,
-        fileField: 'logoFile', // Doit correspondre à ce que le backend attend
-        requiresAuth: true,
-      );
-
-      // Decode the response body from JSON string to Map
-      final Map<String, dynamic>? responseData =
-          httpResponse.body.isNotEmpty
-              ? jsonDecode(httpResponse.body) as Map<String, dynamic>?
-              : null;
-
-      if (httpResponse.statusCode >= 200 && httpResponse.statusCode < 300) {
-        if (responseData != null &&
-            responseData['data'] != null &&
-            responseData['data']['logoUrl'] != null) {
-          return ApiResponse<String>(
-            success: true,
-            data: responseData['data']['logoUrl'] as String,
-            message:
-                responseData['message'] as String? ??
-                'Company logo uploaded successfully.',
-            statusCode: httpResponse.statusCode,
-          );
-        } else {
-          throw ApiExceptionFactory.fromStatusCode(
-            httpResponse.statusCode,
-            'Invalid response data format from server for logo upload',
-            responseBody: httpResponse.body,
-          );
-        }
-      } else {
-        // Handle error responses based on statusCode
-        throw ApiExceptionFactory.fromStatusCode(
-          httpResponse.statusCode,
-          responseData?['message'] as String? ??
-              'Failed to upload company logo',
-          responseBody: httpResponse.body,
-        );
-      }
-    } on ApiException {
-      rethrow;
-    } catch (e) {
-      throw ServerException(
-        'Failed to upload company logo: An unexpected error occurred. $e',
-      );
     }
   }
 

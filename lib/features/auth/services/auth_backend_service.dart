@@ -114,48 +114,6 @@ class AuthBackendService {
     return authMe?.user;
   }
 
-  /// Synchronise les données Auth0 avec le backend
-  ///
-  /// Appelle POST /auth/sync pour créer/mettre à jour l'utilisateur
-  /// côté backend avec les données Auth0
-  Future<BackendUserProfile?> syncAuth0User(
-    Map<String, dynamic> auth0UserData,
-  ) async {
-    try {
-      debugPrint('AuthBackendService: Syncing Auth0 user with backend');
-
-      final response = await _apiClient.post(
-        'auth/sync',
-        body: {'auth0Data': auth0UserData},
-        requiresAuth: true,
-      );
-
-      if (response != null && response['success'] == true) {
-        final data = response['data'] as Map<String, dynamic>?;
-        if (data != null) {
-          debugPrint(
-            'AuthBackendService: Auth0 user synced successfully. CompanyId: ${data['companyId']}',
-          );
-          return BackendUserProfile.fromJson(data);
-        }
-      }
-
-      debugPrint('AuthBackendService: Failed to sync Auth0 user');
-      return null;
-    } on NetworkException catch (e) {
-      debugPrint(
-        'AuthBackendService: Network error syncing user: ${e.message}',
-      );
-      return null;
-    } on ApiException catch (e) {
-      debugPrint('AuthBackendService: API error syncing user: ${e.message}');
-      return null;
-    } catch (e) {
-      debugPrint('AuthBackendService: Unexpected error syncing user: $e');
-      return null;
-    }
-  }
-
   /// Met à jour le profil utilisateur sur le backend
   Future<BackendUserProfile?> updateUserProfile(
     Map<String, dynamic> updates,
