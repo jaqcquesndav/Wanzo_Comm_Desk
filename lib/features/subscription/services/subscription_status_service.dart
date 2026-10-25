@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/config/env_config.dart';
@@ -222,13 +223,30 @@ class SubscriptionStatusService {
     return null;
   }
 
+  /// Vrai si les en-tetes portent un jeton. Le client HTTP pose la cle
+  /// `HttpHeaders.authorizationHeader`, c'est-a-dire « authorization » en
+  /// minuscules : chercher « Authorization » ne la trouvait jamais, si bien
+  /// que la banniere d'abonnement et l'ecran de compte suspendu ne se
+  /// declenchaient pas.
+  @visibleForTesting
+  static bool hasBearerToken(Map<String, String> headers) {
+    for (final entry in headers.entries) {
+      if (entry.key.toLowerCase() == 'authorization' &&
+          entry.value.trim().toLowerCase().startsWith('bearer ') &&
+          entry.value.trim().length > 'bearer '.length) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// GET authentifié sur customer-service, tolérant aux pannes (retourne null).
   Future<Map<String, dynamic>?> _getJson(String path) async {
     try {
       final url = EnvConfig.getDeviceCompatibleUrl('${EnvConfig.landBaseUrl}$path');
       final headers = await _apiClient.getHeaders(requiresAuth: true);
       // Pas de token → non authentifié, rien à afficher.
-      if (!headers.containsKey('Authorization')) return null;
+      if (!hasBearerToken(headers)) return null;
 
       final res = await http
           .get(Uri.parse(url), headers: headers)
