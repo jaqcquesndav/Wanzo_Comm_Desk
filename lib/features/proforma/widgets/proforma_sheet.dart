@@ -56,28 +56,6 @@ Future<Proforma?> issueProforma(
   return p;
 }
 
-/// Proforma d'une réservation (séjour ou salle, folio compris), calculée par le
-/// serveur comme la facture. Réseau requis.
-Future<Proforma?> issueReservationProforma(
-  BuildContext context,
-  String reservationId,
-) async {
-  final messenger = ScaffoldMessenger.of(context);
-  try {
-    final p = await ProformaRepository().fromReservation(reservationId);
-    if (!context.mounted) return p;
-    await showProformaSheet(context, p);
-    return p;
-  } catch (e) {
-    messenger.showSnackBar(SnackBar(
-      content: Text(e is ApiException && e.message.isNotEmpty
-          ? 'Proforma impossible : ${e.message}'
-          : 'La proforma d\'une réservation demande le réseau. Réessayez.'),
-    ));
-    return null;
-  }
-}
-
 /// Durée de validité, choix rapide (30 jours par défaut).
 Future<int?> _choisirValidite(BuildContext context) => showDialog<int>(
       context: context,

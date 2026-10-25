@@ -193,22 +193,6 @@ class ProformaRepository {
     return local();
   }
 
-  /// Proforma d'une réservation (séjour ou salle, folio compris), calculée par
-  /// le serveur exactement comme la facture. Réseau requis.
-  Future<Proforma> fromReservation(String reservationId, {String? notes}) async {
-    final res = await _api.post(
-      'proformas/from-reservation/$reservationId',
-      body: {'id': const Uuid().v4(), if (notes != null) 'notes': notes},
-      requiresAuth: true,
-      queueOffline: false,
-    );
-    final data = _deballer(res);
-    final p = Proforma.fromJson(Map<String, dynamic>.from(data as Map),
-        synced: true);
-    await _garder(p);
-    return p;
-  }
-
   /// Annule une proforma. Gardée sur l'appareil puis envoyée (le statut
   /// part avec la proforma) : hors ligne, l'annulation suit à la synchro.
   Future<Proforma> cancel(Proforma p) async {
