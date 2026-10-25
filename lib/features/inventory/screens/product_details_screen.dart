@@ -1,6 +1,7 @@
 import 'dart:io';
 import '../widgets/stock_by_location_card.dart';
 import '../widgets/restock_dialog.dart';
+import '../widgets/product_stock_history.dart';
 import '../../../core/services/form_navigation_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -9,7 +10,6 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../constants/colors.dart';
 import '../../../constants/spacing.dart';
-import '../../../constants/typography.dart';
 import '../../../core/services/catalog_enhancer.dart';
 import '../../../core/shared_widgets/wanzo_scaffold.dart';
 import '../bloc/inventory_bloc.dart';
@@ -173,7 +173,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                             ),
 
                         // Onglet "Historique"
-                        _buildTransactionsHistory(context, transactions),
+                        // Historique réel, paginé (serveur), local hors ligne.
+                        ProductStockHistory(
+                          productId: product.id,
+                          localTransactions:
+                              transactions.whereType<StockTransaction>().toList(),
+                        ),
                       ],
                     ),
                   ),
@@ -1125,55 +1130,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
           ),
         ],
       ),
-    );
-  }
-
-  /// Construire l'historique des transactions
-  Widget _buildTransactionsHistory(
-    BuildContext context,
-    List<dynamic> transactions,
-  ) {
-    // Si aucune transaction n'est disponible
-    if (transactions.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.history, size: 80, color: Colors.grey.shade300),
-            const SizedBox(height: WanzoSpacing.md),
-            const Text(
-              'Aucune transaction pour ce produit',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: WanzoTypography.fontWeightMedium,
-              ),
-            ),
-            const SizedBox(height: WanzoSpacing.md),
-            ElevatedButton.icon(
-              onPressed: () => _tabController.animateTo(0),
-              icon: const Icon(Icons.info),
-              label: const Text('Voir les informations du produit'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Temporairement, utilisez une approche compatible jusqu'à ce que StockTransaction soit correctement implémenté
-    return ListView(
-      padding: const EdgeInsets.all(WanzoSpacing.md),
-      children: [
-        const Card(
-          child: Padding(
-            padding: EdgeInsets.all(WanzoSpacing.md),
-            child: Text(
-              'L\'historique des transactions sera disponible prochainement',
-              style: TextStyle(fontSize: 16),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      ],
     );
   }
 

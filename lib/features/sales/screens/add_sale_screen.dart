@@ -2466,8 +2466,14 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                       backgroundColor: Colors.orange,
                       action: SnackBarAction(
                         label: 'Ajouter',
+                        // Ouvre la fiche produit avec le code prérempli.
                         onPressed: () {
-                          // TODO: Navigation vers ajout de produit avec code-barres pré-rempli
+                          final bloc = context.read<InventoryBloc>();
+                          FormNavigationService.instance.openProductForm(
+                            context,
+                            initialBarcode: barcode,
+                            onSuccess: () => bloc.add(const LoadProducts()),
+                          );
                         },
                       ),
                     ),

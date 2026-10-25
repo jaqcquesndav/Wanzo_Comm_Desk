@@ -242,12 +242,18 @@ class FormNavigationService {
     BuildContext context, {
     Product? product,
     VoidCallback? onSuccess,
+    // Code-barres scanné inconnu : prérempli dans la fiche.
+    String? initialBarcode,
   }) async {
     if (shouldUseModal(context)) {
       final result = await _showFormDialog(
         context,
         builder:
-            (onSaved) => AddProductScreen(product: product, onSaved: onSaved),
+            (onSaved) => AddProductScreen(
+              product: product,
+              onSaved: onSaved,
+              initialBarcode: initialBarcode,
+            ),
       );
       if (result == true) onSuccess?.call();
       return result;
@@ -260,7 +266,7 @@ class FormNavigationService {
         if (result == true) onSuccess?.call();
         return result;
       } else {
-        final result = await context.push<bool>(route);
+        final result = await context.push<bool>(route, extra: initialBarcode);
         if (result == true) onSuccess?.call();
         return result;
       }

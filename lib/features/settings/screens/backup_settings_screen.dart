@@ -137,24 +137,9 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
             const SizedBox(height: 24),
 
             // Layout côte à côte sur desktop, empilé sur mobile
-            if (isDesktop || isTablet)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: _buildBackupSection(context, isDesktop, isTablet),
-                  ),
-                  const SizedBox(width: 24),
-                  Expanded(
-                    child: _buildReportsSection(context, isDesktop, isTablet),
-                  ),
-                ],
-              )
-            else ...[
-              _buildBackupSection(context, isDesktop, isTablet),
-              const SizedBox(height: 24),
-              _buildReportsSection(context, isDesktop, isTablet),
-            ],
+            // Sauvegarde, restauration et export manuels ne sont pas branchés :
+            // masqués plutôt que proposés pour rien.
+            _buildReportsSection(context, isDesktop, isTablet),
 
             const SizedBox(height: 32),
 
@@ -176,93 +161,6 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                   ),
                 ),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBackupSection(
-    BuildContext context,
-    bool isDesktop,
-    bool isTablet,
-  ) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.shade300),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.backup,
-                  color: Theme.of(context).colorScheme.primary,
-                  size: 24,
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'Sauvegarde automatique',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // Activer la sauvegarde automatique
-            SwitchListTile(
-              title: const Text('Activer la sauvegarde'),
-              subtitle: const Text('Sauvegarde périodique de vos données'),
-              value: _backupEnabled,
-              contentPadding: EdgeInsets.zero,
-              onChanged: (value) {
-                setState(() {
-                  _backupEnabled = value;
-                  _hasChanges = true;
-                });
-              },
-            ),
-            const SizedBox(height: 16),
-
-            // Fréquence de sauvegarde
-            TextFormField(
-              controller: _backupFrequencyController,
-              decoration: const InputDecoration(
-                labelText: 'Fréquence (jours)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.timer),
-                suffixText: 'jours',
-              ),
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              validator: (value) {
-                if (_backupEnabled) {
-                  if (value == null || value.isEmpty) {
-                    return 'Ce champ est obligatoire';
-                  }
-                  try {
-                    final days = int.parse(value);
-                    if (days < 1) {
-                      return 'Minimum 1 jour requis';
-                    }
-                    if (days > 90) {
-                      return 'Maximum 90 jours autorisés';
-                    }
-                  } catch (_) {
-                    return 'Veuillez entrer un nombre valide';
-                  }
-                }
-                return null;
-              },
-              enabled: _backupEnabled,
-            ),
           ],
         ),
       ),
@@ -394,30 +292,6 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
               children: [
                 _buildActionCard(
                   context,
-                  icon: Icons.backup,
-                  title: 'Sauvegarder',
-                  subtitle: 'Créer une sauvegarde manuelle',
-                  onTap: _backupNow,
-                  color: Colors.blue,
-                ),
-                _buildActionCard(
-                  context,
-                  icon: Icons.restore,
-                  title: 'Restaurer',
-                  subtitle: 'Restaurer une sauvegarde',
-                  onTap: _restoreBackup,
-                  color: Colors.orange,
-                ),
-                _buildActionCard(
-                  context,
-                  icon: Icons.import_export,
-                  title: 'Exporter',
-                  subtitle: 'Exporter en CSV/Excel',
-                  onTap: _exportData,
-                  color: Colors.green,
-                ),
-                _buildActionCard(
-                  context,
                   icon: Icons.file_upload_outlined,
                   title: 'Importer CSV',
                   subtitle: 'Importer des produits',
@@ -501,30 +375,6 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
         ),
       );
     }
-  }
-
-  /// Effectue une sauvegarde immédiate
-  void _backupNow() {
-    // TODO: Implémenter la sauvegarde manuelle
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Fonctionnalité à implémenter')),
-    );
-  }
-
-  /// Restaure une sauvegarde
-  void _restoreBackup() {
-    // TODO: Implémenter la restauration de sauvegarde
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Fonctionnalité à implémenter')),
-    );
-  }
-
-  /// Exporte les données
-  void _exportData() {
-    // TODO: Implémenter l'exportation de données
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Fonctionnalité à implémenter')),
-    );
   }
 
   /// Gère l'import CSV de produits
