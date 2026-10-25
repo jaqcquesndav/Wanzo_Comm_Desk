@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/atelier/models/atelier_order.dart';
+import '../../features/cash_session/cash_access.dart';
 import '../modules/activity_mode.dart';
 import '../modules/module_registry.dart';
 import '../services/form_navigation_service.dart';
@@ -201,6 +202,8 @@ abstract final class DesktopQuickActionsCatalog {
         icon: Icons.point_of_sale_outlined,
         color: const Color(0xFF0D9488),
         hiddenOn: const {'/cash-session'},
+        // Administrateur, comptable et caissier seulement.
+        roles: kCashSessionRoles,
         run: (c) => c.push('/cash-session'),
       );
 

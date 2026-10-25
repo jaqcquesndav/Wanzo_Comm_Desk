@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/utils/theme.dart';
 import '../models/journal_filter.dart';
+import '../../cash_session/cash_access.dart';
 import '../models/operation_journal_entry.dart';
 import 'package:wanzo/core/modules/mode_vocabulary.dart';
 
@@ -125,10 +126,12 @@ class _JournalFilterPanelState extends State<JournalFilterPanel> {
             _buildQuickFilterChip('Dépenses', JournalFilter.expensesOnly()),
             _buildQuickFilterChip('Dettes', JournalFilter.customerDebts()),
             // Nouveaux filtres pour distinguer comptabilité et trésorerie
-            _buildQuickFilterChip(
-              '💰 Trésorerie',
-              JournalFilter.cashFlowOnly(),
-            ),
+            // Vue Caisse : administrateur, comptable et caissier seulement.
+            if (canSeeCash(context))
+              _buildQuickFilterChip(
+                '💰 Trésorerie',
+                JournalFilter.cashFlowOnly(),
+              ),
             _buildQuickFilterChip(
               '📊 Comptabilité',
               JournalFilter.accountingOnly(),

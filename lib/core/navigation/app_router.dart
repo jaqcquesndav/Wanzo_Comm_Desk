@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:wanzo/features/sales/repositories/sales_repository.dart';
 import 'package:wanzo/features/cash_session/screens/cash_session_screen.dart';
+import 'package:wanzo/features/cash_session/cash_access.dart';
 import 'package:wanzo/features/inventory/stock_count/stock_count_screen.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/auth/bloc/auth_bloc.dart';
@@ -474,6 +475,9 @@ class AppRouter {
       // Caisse : ouverture, clôture quotidienne et rapports.
       GoRoute(
         path: '/cash-session',
+        // Masquée aux rôles qui ne tiennent pas la caisse (lien direct
+        // compris) : administrateur, comptable et caissier seulement.
+        redirect: (context, state) => canSeeCash(context) ? null : '/dashboard',
         pageBuilder: (context, state) =>
             _noAnim(state, const CashSessionScreen()),
       ),

@@ -155,6 +155,9 @@ class BusinessContextService extends ChangeNotifier {
   /// ID de l'unité commerciale courante
   String? get businessUnitId => _currentContext?.businessUnitId;
 
+  /// Rôle de l'utilisateur connecté (valeur API : admin, cashier...).
+  String? get userRole => _currentContext?.userRole;
+
   /// Code de l'unité commerciale courante
   String? get businessUnitCode => _currentContext?.businessUnitCode;
 

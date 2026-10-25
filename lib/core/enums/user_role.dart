@@ -246,6 +246,14 @@ extension UserRoleExtension on UserRole {
       this == UserRole.superAdmin ||
       this == UserRole.accountant;
 
+  /// Vérifie si ce rôle voit la caisse (ouverture, clôture, ticket Z,
+  /// journal vue Caisse) : administrateur, comptable, caissier.
+  bool get canAccessCashSession =>
+      this == UserRole.admin ||
+      this == UserRole.superAdmin ||
+      this == UserRole.accountant ||
+      this == UserRole.cashier;
+
   /// Vérifie si ce rôle peut gérer les demandes de crédit/financement
   bool get canManageCredit =>
       this == UserRole.admin ||

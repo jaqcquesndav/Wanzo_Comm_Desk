@@ -13,6 +13,7 @@ import 'package:wanzo/features/dashboard/bloc/dashboard_bloc.dart';
 import 'package:wanzo/features/dashboard/bloc/operation_journal_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wanzo/features/dashboard/models/journal_filter.dart';
+import 'package:wanzo/features/cash_session/cash_access.dart';
 import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
 import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/settings/bloc/settings_bloc.dart';
@@ -1257,7 +1258,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     spacing: WanzoSpacing.sm,
                     runSpacing: WanzoSpacing.sm,
                     children: [
-                      for (final view in JournalView.values)
+                      for (final view in visibleJournalViews(canSeeCash(context)))
                         ChoiceChip(
                           label: Text(view.label),
                           tooltip: view.hint,
