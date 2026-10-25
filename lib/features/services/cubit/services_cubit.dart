@@ -101,7 +101,12 @@ class ServicesCubit extends Cubit<ServicesState> {
       final pending = await _repository.pendingItems();
       if (pending.isNotEmpty) await _api.bulkUpsert(pending);
       final server = await _api.getServices(mode: _mode.apiValue, metier: currentMetier);
-      await _repository.replaceFromServer(server);
+      // Seule la portion du metier lu est remplacee, jamais sur une
+      // reponse vide.
+      await _repository.replaceFromServer(
+        server,
+        inScope: (s) => _visible([s]).isNotEmpty,
+      );
       emit(state.copyWith(items: _visible(await _repository.loadAll()), loading: false));
     } catch (e) {
       // Hors ligne ou serveur indisponible : le cache local fait foi.

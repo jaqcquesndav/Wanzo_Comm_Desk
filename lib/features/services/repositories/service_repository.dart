@@ -59,23 +59,31 @@ class ServiceRepository {
     await box.delete(id);
   }
 
-  /// Remplace le cache par la liste du backend, en conservant les écritures
-  /// locales encore en attente de synchronisation.
-  Future<void> replaceFromServer(List<ServiceItem> serverItems) async {
+  /// Remplace dans le cache la PORTION lue sur le serveur ([inScope] : le
+  /// mode et le metier demandes) par la liste du backend. Les services des
+  /// autres metiers ne sont jamais touches (la lecture est filtree par metier,
+  /// vider toute la boite effacait la carte des autres ateliers), les
+  /// ecritures locales en attente sont gardees, et une reponse vide ne purge
+  /// rien (serveur muet ou filtre momentanement faux).
+  Future<void> replaceFromServer(
+    List<ServiceItem> serverItems, {
+    bool Function(ServiceItem item)? inScope,
+  }) async {
     final box = await _openBox();
-    final pending = <String, String>{};
+    if (serverItems.isEmpty) return;
+    final serverIds = {for (final s in serverItems) s.id};
     for (final entry in box.toMap().entries) {
       try {
-        final map = jsonDecode(entry.value) as Map<String, dynamic>;
-        if (map['pendingSync'] == true) pending[entry.key.toString()] = entry.value;
-      } catch (_) {/* ignorée */}
+        final item = ServiceItem.fromJson(
+          jsonDecode(entry.value) as Map<String, dynamic>,
+        );
+        if (item.pendingSync) continue;
+        if (serverIds.contains(item.id)) continue;
+        if (inScope == null || inScope(item)) await box.delete(entry.key);
+      } catch (_) {/* entree illisible : ignoree */}
     }
-    await box.clear();
     for (final s in serverItems) {
       await box.put(s.id, jsonEncode(s.toLocalJson()));
-    }
-    for (final e in pending.entries) {
-      await box.put(e.key, e.value);
     }
   }
 
