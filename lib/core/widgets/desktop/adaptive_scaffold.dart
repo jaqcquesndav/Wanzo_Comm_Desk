@@ -77,7 +77,11 @@ class AdaptiveScaffold extends StatefulWidget {
     this.appBarActions,
     this.onBackPressed,
     this.quickActions = const [],
+    this.showAdhaButton = true,
   });
+
+  /// Faux sur l'écran Adha : pas de bouton Adha dans son propre en-tête.
+  final bool showAdhaButton;
 
   @override
   State<AdaptiveScaffold> createState() => _AdaptiveScaffoldState();
@@ -163,7 +167,9 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
             isSidebarExpanded: effectiveSidebarExpanded,
             onToggleSidebar: () => _layoutState.toggleSidebar(),
             // Adha entre le menu 3 points et les notifications.
-            adha: _buildAdhaToggleButton(context, isDark),
+            adha: widget.showAdhaButton
+                ? _buildAdhaToggleButton(context, isDark)
+                : null,
             actions: widget.appBarActions,
             onBackPressed: widget.onBackPressed,
           ),
@@ -210,10 +216,12 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () => _layoutState.toggleAdhaPanel(),
-          borderRadius: BorderRadius.circular(6),
+          // 48 px comme les autres boutons de l'en-tête (36 auparavant).
+          borderRadius: BorderRadius.circular(24),
           child: Container(
-            width: 36,
-            height: 36,
+            width: 48,
+            height: 48,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
               color:
                   isOpen
@@ -221,9 +229,9 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
                         context,
                       ).colorScheme.primary.withValues(alpha: 0.15)
                       : Colors.transparent,
-              borderRadius: BorderRadius.circular(6),
+              shape: BoxShape.circle,
             ),
-            child: const AdhaLogo(size: 22),
+            child: const AdhaLogo(size: 24),
           ),
         ),
       ),
@@ -307,7 +315,9 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
             title: widget.title,
             isSidebarExpanded: false, // Tablet = toujours compact
             onToggleSidebar: null, // Pas de toggle en mode tablette
-            adha: _buildAdhaToggleButton(context, isDark),
+            adha: widget.showAdhaButton
+                ? _buildAdhaToggleButton(context, isDark)
+                : null,
             actions: widget.appBarActions,
             onBackPressed: widget.onBackPressed,
           ),

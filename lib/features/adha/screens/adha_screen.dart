@@ -233,6 +233,8 @@ class _AdhaScreenState extends State<AdhaScreen> with WidgetsBindingObserver {
         return WanzoScaffold(
           currentIndex: 4, // Index for Adha in BottomNavigationBar
           title: currentTitle,
+          // On est déjà dans Adha : pas de bouton Adha dans l'en-tête.
+          showAdhaButton: false,
           appBarActions: appBarActions,
           body: Column(
             children: [

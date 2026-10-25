@@ -38,7 +38,11 @@ class WanzoScaffold extends StatelessWidget {
     this.floatingActionButton,
     this.appBarActions,
     this.onBackPressed,
+    this.showAdhaButton = true,
   });
+
+  /// Faux sur l'écran Adha : pas de bouton Adha dans son propre en-tête.
+  final bool showAdhaButton;
 
   @override
   Widget build(BuildContext context) {
@@ -126,6 +130,7 @@ class WanzoScaffold extends StatelessWidget {
             floatingActionButton: floatingActionButton,
             appBarActions: appBarActions,
             onBackPressed: onBackPressed,
+            showAdhaButton: showAdhaButton,
             // Dock d'actions rapides du mode, sur chaque écran principal.
             quickActions: DesktopQuickActionsCatalog.forScreen(
               mode: mode,
@@ -141,6 +146,7 @@ class WanzoScaffold extends StatelessWidget {
             title: title,
             additionalActions: appBarActions,
             onBackPressed: onBackPressed,
+            showAdha: showAdhaButton,
           ),
           body: body,
           bottomNavigationBar:

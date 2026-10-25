@@ -38,7 +38,11 @@ class WanzoAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.title,
     this.additionalActions,
     this.onBackPressed,
+    this.showAdha = true,
   });
+
+  /// Faux sur l'écran Adha lui-même : son propre bouton n'y a pas de sens.
+  final bool showAdha;
 
   /// Obtenir le logo à afficher dans l'AppBar
   Widget _getLogo(BuildContext context) {
@@ -127,6 +131,9 @@ class WanzoAppBar extends StatelessWidget implements PreferredSizeWidget {
           ),
         ),
     ];
+    final notifItem = items[0];
+    final adhaItem = items[1];
+    if (!showAdha) items.remove(adhaItem);
     // Un widget de page qui ne se replie pas reste affiché quoi qu'il arrive.
     final rigid = items.where((i) => i.entry == null).toList();
     final flexible = items.where((i) => i.entry != null).toList();
@@ -155,8 +162,6 @@ class WanzoAppBar extends StatelessWidget implements PreferredSizeWidget {
 
     bool isShown(_HeaderItem i) => shown.contains(i);
     final modeItem = items.where((i) => i.widget is _ModePill);
-    final notifItem = items[0];
-    final adhaItem = items[1];
 
     return AppBar(
       title: Row(
@@ -193,7 +198,7 @@ class WanzoAppBar extends StatelessWidget implements PreferredSizeWidget {
           if (isShown(i)) i.widget,
         if (menu.isNotEmpty || page.pageMenu != null)
           HeaderOverflowMenu(entries: menu, pageMenu: page.pageMenu),
-        if (isShown(adhaItem)) adhaItem.widget,
+        if (showAdha && isShown(adhaItem)) adhaItem.widget,
         if (isShown(notifItem)) notifItem.widget,
         _profileMenu(context, userName),
       ],
