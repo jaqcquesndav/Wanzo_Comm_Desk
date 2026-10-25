@@ -85,6 +85,18 @@ void main() {
       expect(relu?.businessUnitId, 'bu-gombe');
       expect(relu?.dueDate, DateTime(2026, 11, 23));
     });
+
+    test('vente locale jamais envoyee : copie locale, jamais GET sales/:id', () async {
+      final repo = SalesRepository();
+      await repo.init();
+      final saved = await repo.addSale(vente());
+      expect(SalesRepository.awaitsServerCreation(saved), isTrue);
+      expect(
+        SalesRepository.awaitsServerCreation(saved.copyWith(syncStatus: 'synced')),
+        isFalse,
+      );
+      expect(SalesRepository.awaitsServerCreation(null), isFalse);
+    });
   });
 
   group('moyens de paiement en code canonique', () {

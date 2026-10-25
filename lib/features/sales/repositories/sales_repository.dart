@@ -1,4 +1,5 @@
 // filepath: c:\Users\DevSpace\Flutter\wanzo\lib\features\sales\repositories\sales_repository.dart
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import '../models/sale.dart';
@@ -422,6 +423,12 @@ class SalesRepository {
     }
   }
 
+  /// Vrai pour une vente encore jamais envoyee au serveur : on lit alors sa
+  /// copie locale, jamais `GET sales/:id`.
+  @visibleForTesting
+  static bool awaitsServerCreation(Sale? local) =>
+      local != null && local.syncStatus == 'pending';
+
   /// Rejoue les règlements saisis hors ligne. Appelé à chaque synchronisation.
   Future<void> flushPendingPayments() async {
     if (_apiService == null) return;
@@ -455,6 +462,10 @@ class SalesRepository {
             DateTime.tryParse(raw['paidAt'] as String? ?? '') ?? DateTime.now(),
         reference: raw['reference'] as String?,
       );
+      // Vente creee sur l'appareil et pas encore envoyee : le serveur ne la
+      // connait pas (GET sales/:id repondrait 404). La copie locale fait foi ;
+      // le reglement attend en file que la vente parte d'abord.
+      if (awaitsServerCreation(_salesBox.get(saleId))) continue;
       try {
         // REJEU IDEMPOTENT : la même tranche peut déjà avoir atteint le
         // serveur par un autre chemin (PATCH d'entête rejoué par la file hors
