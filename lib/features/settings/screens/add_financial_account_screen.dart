@@ -537,6 +537,8 @@ class _AddFinancialAccountScreenState extends State<AddFinancialAccountScreen>
         return 'Orange Money';
       case MobileMoneyProvider.mpesa:
         return 'M-PESA';
+      case MobileMoneyProvider.afrimoney:
+        return 'Afrimoney';
     }
   }
 

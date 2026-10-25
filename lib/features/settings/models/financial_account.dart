@@ -56,12 +56,17 @@ enum FinancialAccountType {
 @HiveType(typeId: 44)
 @JsonEnum()
 enum MobileMoneyProvider {
-  @HiveField(0)
+  // Index Hive FIGÉS : ne jamais renuméroter (les comptes déjà enregistrés
+  // seraient relus sous un autre opérateur). Nouvel opérateur = EN FIN.
+  // Valeur inconnue (version plus ancienne) : Airtel Money par défaut.
+  @HiveField(0, defaultValue: true)
   airtelMoney, // Airtel Money
   @HiveField(1)
   orangeMoney, // Orange Money
   @HiveField(2)
   mpesa, // M-PESA
+  @HiveField(3)
+  afrimoney, // Afrimoney (Africell)
 }
 
 /// Modèle pour les comptes financiers (bancaires et Mobile Money)
@@ -224,6 +229,8 @@ class FinancialAccount extends Equatable {
         return 'Orange Money';
       case MobileMoneyProvider.mpesa:
         return 'M-PESA';
+      case MobileMoneyProvider.afrimoney:
+        return 'Afrimoney';
       default:
         return 'Mobile Money';
     }

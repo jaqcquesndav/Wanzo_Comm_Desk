@@ -187,6 +187,8 @@ class MobileMoneyProviderAdapter extends TypeAdapter<MobileMoneyProvider> {
         return MobileMoneyProvider.orangeMoney;
       case 2:
         return MobileMoneyProvider.mpesa;
+      case 3:
+        return MobileMoneyProvider.afrimoney;
       default:
         return MobileMoneyProvider.airtelMoney;
     }
@@ -203,6 +205,9 @@ class MobileMoneyProviderAdapter extends TypeAdapter<MobileMoneyProvider> {
         break;
       case MobileMoneyProvider.mpesa:
         writer.writeByte(2);
+        break;
+      case MobileMoneyProvider.afrimoney:
+        writer.writeByte(3);
         break;
     }
   }
@@ -280,4 +285,5 @@ const _$MobileMoneyProviderEnumMap = {
   MobileMoneyProvider.airtelMoney: 'airtelMoney',
   MobileMoneyProvider.orangeMoney: 'orangeMoney',
   MobileMoneyProvider.mpesa: 'mpesa',
+  MobileMoneyProvider.afrimoney: 'afrimoney',
 };
