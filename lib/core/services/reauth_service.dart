@@ -3,6 +3,76 @@ import 'package:flutter/foundation.dart';
 import '../../features/auth/services/auth0_service.dart';
 import '../exceptions/api_exceptions.dart';
 
+/// Ce qu'il faut faire d'un 401.
+enum ReauthDecision {
+  /// Renouveler le jeton (une seule fois pour une salve de 401).
+  refresh,
+
+  /// Le jeton tout juste renouvele est refuse lui aussi : retour a la
+  /// connexion, sans boucle de renouvellements.
+  login,
+}
+
+/// Politique de reauthentification sur 401 : UN renouvellement, puis retour a
+/// la connexion si le serveur refuse encore ; une attente croissante entre
+/// deux renouvellements successifs (1 s, 2 s, 4 s... 30 s au plus) pour ne
+/// jamais marteler le service d'authentification.
+class ReauthPolicy {
+  ReauthPolicy({
+    this.base = const Duration(seconds: 1),
+    this.max = const Duration(seconds: 30),
+    this.refusedWindow = const Duration(seconds: 30),
+    this.calmPeriod = const Duration(minutes: 5),
+    DateTime Function()? clock,
+  }) : _clock = clock ?? DateTime.now;
+
+  final Duration base;
+  final Duration max;
+
+  /// Un 401 recu dans cette fenetre apres un renouvellement reussi signifie
+  /// que le nouveau jeton est refuse aussi.
+  final Duration refusedWindow;
+
+  /// Sans renouvellement depuis cette duree, l'attente repart de zero.
+  final Duration calmPeriod;
+  final DateTime Function() _clock;
+
+  int _attempts = 0;
+  DateTime? _lastAttempt;
+  DateTime? _lastSuccess;
+
+  ReauthDecision onUnauthorized() {
+    final last = _lastSuccess;
+    if (last != null && _clock().difference(last) < refusedWindow) {
+      return ReauthDecision.login;
+    }
+    return ReauthDecision.refresh;
+  }
+
+  /// Attente avant le prochain renouvellement.
+  Duration nextDelay() {
+    final last = _lastAttempt;
+    if (last == null || _clock().difference(last) > calmPeriod) _attempts = 0;
+    if (_attempts == 0) return Duration.zero;
+    final ms = base.inMilliseconds * (1 << (_attempts - 1).clamp(0, 16));
+    return ms > max.inMilliseconds ? max : Duration(milliseconds: ms);
+  }
+
+  void recordAttempt() {
+    _attempts++;
+    _lastAttempt = _clock();
+  }
+
+  void recordSuccess() => _lastSuccess = _clock();
+
+  /// Retour a la connexion : tout repart de zero.
+  void reset() {
+    _attempts = 0;
+    _lastAttempt = null;
+    _lastSuccess = null;
+  }
+}
+
 /// Service pour gérer la ré-authentification automatique
 class ReauthService {
   static ReauthService? _instance;
@@ -14,6 +84,13 @@ class ReauthService {
 
   // Verrou pour éviter les tentatives multiples de ré-authentification simultanées
   bool _isReauthenticating = false;
+
+  /// Politique sur 401 (un renouvellement, puis connexion ; attente croissante).
+  @visibleForTesting
+  ReauthPolicy policy = ReauthPolicy();
+
+  /// Renouvellement en cours, partage par toute une salve de 401.
+  Future<bool>? _inflight;
 
   // Callback pour déclencher la déconnexion via le AuthBloc
   VoidCallback? _onForceLogout;
@@ -179,20 +256,47 @@ class ReauthService {
     }
   }
 
-  /// Gère une exception d'authentification depuis l'API
+  /// Gère une exception d'authentification depuis l'API.
+  ///
+  /// Une salve de 401 ne declenche qu'UN renouvellement (partage). Si le
+  /// serveur refuse encore le jeton tout juste renouvele, on retourne a la
+  /// connexion au lieu de renouveler en boucle ; deux renouvellements
+  /// successifs sont separes par une attente croissante.
   Future<void> handleAuthException(AuthenticationException exception) async {
     debugPrint(
-      'Gestion de l\'exception d\'authentification: ${exception.message}',
+      "Gestion de l'exception d'authentification: ${exception.message}",
     );
 
-    // Vérifier si on peut tenter une ré-authentification
-    if (!_isReauthenticating) {
-      final success = await attemptReauth();
+    final enCours = _inflight;
+    if (enCours != null || _isReauthenticating) {
+      if (enCours != null) await enCours;
+      return;
+    }
 
-      if (!success) {
-        // Si la ré-authentification échoue, forcer la déconnexion
-        await forceLogout();
+    if (policy.onUnauthorized() == ReauthDecision.login) {
+      policy.reset();
+      await _forceLogin();
+      return;
+    }
+
+    final run = () async {
+      final attente = policy.nextDelay();
+      if (attente > Duration.zero) await Future<void>.delayed(attente);
+      policy.recordAttempt();
+      // attemptReauth renvoie deja vers la connexion en cas d'echec.
+      final ok = await attemptReauth();
+      if (ok) {
+        policy.recordSuccess();
+      } else {
+        policy.reset();
       }
+      return ok;
+    }();
+    _inflight = run;
+    try {
+      await run;
+    } finally {
+      _inflight = null;
     }
   }
 
