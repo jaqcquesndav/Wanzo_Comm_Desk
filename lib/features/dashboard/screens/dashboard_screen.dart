@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:wanzo/core/shared_widgets/kpi_board.dart';
 import '../utils/open_journal_operation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:wanzo/core/services/currency_service.dart';
@@ -669,9 +670,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Construit la disposition responsive des KPI et du graphique
-  /// - Mode portrait : Grille adaptative de KPI puis graphique en dessous
-  /// - Mode paysage/desktop : KPI à gauche, graphique à droite
+  /// Indicateurs du tableau de bord Général, puis la courbe en dessous.
+  ///
+  /// Meme regle que les autres tableaux de bord : [KpiBoard] hierarchise
+  /// (chiffre d'affaires et charges d'abord) et n'etire jamais les vignettes
+  /// sur grand ecran.
   Widget _buildResponsiveKpiAndChart(
     BuildContext context,
     KpiData kpiData,
@@ -679,271 +682,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
     AppLocalizations l10n,
     String displayCurrencyCode,
   ) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final availableWidth = constraints.maxWidth;
-
-        // Breakpoints pour le layout
-        const double mobileBreakpoint = 400;
-        const double tabletBreakpoint = 700;
-        const double desktopBreakpoint = 1000;
-
-        // Taille minimale d'une carte KPI
-        const double minCardWidth = 140;
-        const double maxCardWidth = 200;
-
-        // Déterminer le nombre de colonnes dynamiquement
-        int crossAxisCount;
-
-        if (availableWidth < mobileBreakpoint) {
-          // Très petit écran: 1 colonne
-          crossAxisCount = 1;
-        } else if (availableWidth < tabletBreakpoint) {
-          // Mobile: 2 colonnes
-          crossAxisCount = 2;
-        } else if (availableWidth < desktopBreakpoint) {
-          // Tablet: 3 colonnes
-          crossAxisCount = 3;
-        } else {
-          // Desktop: 6 colonnes (toutes les cartes sur une ligne)
-          crossAxisCount = 6;
-        }
-
-        // Devise fonctionnelle = CDF (OHADA). L'USD n'apparaît QUE si
-        // l'utilisateur a activé la double devise, en montant secondaire subtil,
-        // à partir des montants USD RÉELLEMENT enregistrés (pas de conversion).
-        final bool dual = _dualCurrency;
-        final bool isCompact = availableWidth < mobileBreakpoint;
-        final kpiCards = [
-          // 1. Revenus (chiffre d'affaires) - CDF officiel, USD subtil si double devise
-          _buildResponsiveStatCard(
-            context,
-            title: ModeVocabulary.current.revenue,
-            value: formatCurrency(kpiData.salesTodayCdf, 'CDF'),
-            secondaryValue:
-                dual ? formatCurrency(kpiData.salesTodayUsd, 'USD') : null,
-            icon: Icons.trending_up,
-            color: Colors.green,
-            l10n: l10n,
-            subtitle: 'Chiffre d\'affaires',
-            isCompact: isCompact,
-          ),
-          // 2. Charges (dépenses engagées) - CDF officiel, USD subtil si double devise
-          _buildResponsiveStatCard(
-            context,
-            title: 'Charges',
-            value: formatCurrency(kpiData.expensesCdf, 'CDF'),
-            secondaryValue:
-                dual ? formatCurrency(kpiData.expensesUsd, 'USD') : null,
-            icon: Icons.trending_down,
-            color: Colors.red,
-            l10n: l10n,
-            subtitle: 'Dépenses engagées',
-            isCompact: isCompact,
-          ),
-          // 3. Valeur Stock
-          _buildResponsiveStatCard(
-            context,
-            title: 'Valeur Stock',
-            value: formatCurrency(kpiData.stockValueAtCost, 'CDF'),
-            icon: Icons.inventory_2,
-            color: Colors.blueGrey,
-            l10n: l10n,
-            subtitle:
-                kpiData.stockValueAtCost > 0
-                    ? '+${formatCurrency(kpiData.potentialProfit, 'CDF')} potentiel'
-                    : null,
-            isCompact: isCompact,
-          ),
-          // 4. Créances à encaisser (Vue trésorerie: argent attendu)
-          _buildResponsiveStatCard(
-            context,
-            title: 'À encaisser', // Vue trésorerie
-            value: formatCurrency(kpiData.receivables, 'CDF'),
-            icon: Icons.schedule_send,
-            color: Theme.of(context).colorScheme.primary,
-            l10n: l10n,
-            subtitle: 'Créances clients',
-            isCompact: isCompact,
-            // Ouvre les ventes à encaisser (non payées ou partielles).
-            onTap: () => context.go('/sales?filtre=a_encaisser'),
-          ),
-        ];
-
-        // Layout desktop large: graphique à gauche, KPI à droite
-        if (availableWidth >= desktopBreakpoint) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Graphique à gauche avec contraintes minimales
-              Expanded(
-                flex: 3,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    minWidth: 300,
-                    minHeight: 280,
-                  ),
-                  child: _buildCombinedChart(
-                    context,
-                    recentSales,
-                    l10n,
-                    kpiData,
-                  ),
-                ),
-              ),
-              const SizedBox(width: WanzoSpacing.sm),
-              // Colonne des KPI à droite - compacte
-              SizedBox(
-                width: 160, // Largeur fixe compacte
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (int i = 0; i < kpiCards.length; i++) ...[
-                      kpiCards[i],
-                      if (i < kpiCards.length - 1)
-                        const SizedBox(height: WanzoSpacing.xs),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          );
-        }
-
-        // Layout mobile/tablet: Grille de KPI puis graphique en dessous
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Wrap adaptatif des KPI - taille basée sur contenu
-            Wrap(
-              spacing: WanzoSpacing.sm,
-              runSpacing: WanzoSpacing.sm,
-              alignment: WrapAlignment.center,
-              children:
-                  kpiCards.map((card) {
-                    // Largeur calculée pour s'adapter au nombre de colonnes
-                    final cardWidth =
-                        (availableWidth -
-                            (crossAxisCount - 1) * WanzoSpacing.sm) /
-                        crossAxisCount;
-                    return SizedBox(
-                      width: cardWidth.clamp(minCardWidth, maxCardWidth),
-                      child: card,
-                    );
-                  }).toList(),
+    // Devise fonctionnelle = CDF (OHADA). L'USD n'apparait QUE si
+    // l'utilisateur a active la double devise, en montant secondaire,
+    // a partir des montants USD REELLEMENT enregistres (pas de conversion).
+    final bool dual = _dualCurrency;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        KpiBoard(
+          tiles: [
+            KpiTile(
+              weight: KpiWeight.pilote,
+              label: ModeVocabulary.current.revenue,
+              value: formatCurrency(kpiData.salesTodayCdf, 'CDF'),
+              secondary: dual
+                  ? formatCurrency(kpiData.salesTodayUsd, 'USD')
+                  : null,
+              icon: Icons.trending_up,
+              color: Colors.green,
             ),
-            const SizedBox(height: WanzoSpacing.md),
-            // Graphique avec contraintes minimales
-            ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 250),
-              child: _buildCombinedChart(context, recentSales, l10n, kpiData),
+            KpiTile(
+              weight: KpiWeight.pilote,
+              label: 'Charges',
+              value: formatCurrency(kpiData.expensesCdf, 'CDF'),
+              secondary: dual
+                  ? formatCurrency(kpiData.expensesUsd, 'USD')
+                  : null,
+              icon: Icons.trending_down,
+              color: Colors.red,
             ),
-          ],
-        );
-      },
-    );
-  }
-
-  /// Carte KPI responsive compacte qui s'adapte à la taille disponible
-  Widget _buildResponsiveStatCard(
-    BuildContext context, {
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-    required AppLocalizations l10n,
-    String? subtitle,
-    String? secondaryValue,
-    bool isCompact = false,
-    VoidCallback? onTap,
-  }) {
-    final theme = Theme.of(context);
-
-    return Card(
-      elevation: 1,
-      margin: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(WanzoBorderRadius.sm),
-      ),
-      // Vignette cliquable quand elle mène à la liste détaillée.
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-        padding: EdgeInsets.all(isCompact ? WanzoSpacing.xs : WanzoSpacing.sm),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Titre et icône sur une ligne compacte
-            Row(
-              children: [
-                Icon(icon, color: color, size: isCompact ? 14 : 16),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w500,
-                      fontSize: isCompact ? 9 : 10,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                ),
-              ],
+            KpiTile(
+              label: 'Valeur du stock',
+              value: formatCurrency(kpiData.stockValueAtCost, 'CDF'),
+              secondary: kpiData.stockValueAtCost > 0
+                  ? '+${formatCurrency(kpiData.potentialProfit, 'CDF')} potentiel'
+                  : null,
+              icon: Icons.inventory_2,
+              color: Colors.blueGrey,
             ),
-            const SizedBox(height: 4),
-            // Valeur principale - FittedBox pour éviter l'overflow
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                value,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                  fontSize: isCompact ? 14 : 16,
-                ),
-                maxLines: 1,
-              ),
+            KpiTile(
+              label: 'À encaisser',
+              value: formatCurrency(kpiData.receivables, 'CDF'),
+              icon: Icons.schedule_send,
+              color: Theme.of(context).colorScheme.primary,
+              // Ouvre les ventes a encaisser (non payees ou partielles).
+              onTap: () => context.go('/sales?filtre=a_encaisser'),
             ),
-            // Montant secondaire (USD réel) - affiché en mode double devise
-            if (secondaryValue != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 1),
-                child: Text(
-                  secondaryValue,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: isCompact ? 10 : 11,
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ),
-              ),
-            // Sous-titre optionnel
-            if (subtitle != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  subtitle,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: isCompact ? 8 : 9,
-                    color: Colors.green.shade700,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
           ],
         ),
-      ),
-      ),
+        const SizedBox(height: WanzoSpacing.md),
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 250),
+          child: _buildCombinedChart(context, recentSales, l10n, kpiData),
+        ),
+      ],
     );
   }
-
 
   Widget _buildCombinedChart(
     BuildContext context,
