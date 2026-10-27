@@ -25,6 +25,12 @@ import 'package:wanzo/features/receivables/utils/receivables_utils.dart';
 import 'package:wanzo/features/receivables/widgets/overdue_chip.dart';
 import 'package:wanzo/services/receipt_printer_service.dart';
 import 'package:wanzo/core/shared_widgets/accounting_sync_status.dart';
+import 'package:wanzo/core/cancellation/cancel_document_dialog.dart';
+import 'package:wanzo/core/cancellation/cancellation_banner.dart';
+import 'package:wanzo/core/cancellation/document_cancellation.dart';
+import 'package:wanzo/core/cancellation/pending_cancellations.dart';
+import 'package:wanzo/features/auth/bloc/auth_bloc.dart';
+import 'package:wanzo/features/cash_session/cash_access.dart';
 
 /// Écran de détails d'une vente
 class SaleDetailsScreen extends StatefulWidget {
@@ -98,6 +104,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
       listenWhen:
           (previous, current) =>
               current is SalePaymentRecorded ||
+              current is SaleCancellationDone ||
               current is SalesError ||
               current is SalesOperationSuccess,
       listener: _onSalesState,
@@ -135,17 +142,28 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                         isPrintAction: false,
                       ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  tooltip: "Supprimer",
-                  onPressed: () => _showDeleteConfirmation(context),
-                ),
+                // Une vente ne se supprime pas : elle s'annule (motif, trace)
+                // et peut être rétablie. Rôles autorisés seulement.
+                if (!sale.isCancelled && _canCancel)
+                  IconButton(
+                    icon: const Icon(Icons.block, color: Colors.red),
+                    tooltip: "Annuler la vente",
+                    onPressed: _submitting ? null : _cancelSale,
+                  ),
+                if (sale.isCancelled && _canRestore)
+                  IconButton(
+                    icon: const Icon(Icons.restore),
+                    tooltip: "Rétablir la vente",
+                    onPressed: _submitting ? null : _restoreSale,
+                  ),
               ] else
                 // Menu d'options pour mobile
                 PopupMenuButton<String>(
                   onSelected: (value) {
-                    if (value == "delete") {
-                      _showDeleteConfirmation(context);
+                    if (value == "cancel") {
+                      _cancelSale();
+                    } else if (value == "restore") {
+                      _restoreSale();
                     } else if (value == "print") {
                       _showDocumentTypeSelectionDialog(
                         context,
@@ -180,19 +198,31 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
                             ],
                           ),
                         ),
-                        const PopupMenuItem<String>(
-                          value: "delete",
-                          child: Row(
-                            children: [
-                              Icon(Icons.delete, color: Colors.red),
-                              SizedBox(width: 8),
-                              Text(
-                                "Supprimer",
-                                style: TextStyle(color: Colors.red),
-                              ),
-                            ],
+                        if (!sale.isCancelled && _canCancel)
+                          const PopupMenuItem<String>(
+                            value: "cancel",
+                            child: Row(
+                              children: [
+                                Icon(Icons.block, color: Colors.red),
+                                SizedBox(width: 8),
+                                Text(
+                                  "Annuler la vente",
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
+                        if (sale.isCancelled && _canRestore)
+                          const PopupMenuItem<String>(
+                            value: "restore",
+                            child: Row(
+                              children: [
+                                Icon(Icons.restore),
+                                SizedBox(width: 8),
+                                Text("Rétablir la vente"),
+                              ],
+                            ),
+                          ),
                       ],
                 ),
             ],
@@ -247,6 +277,19 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
   /// passait totalement inaperçu.
   void _onSalesState(BuildContext context, SalesState state) {
     if (!mounted) return;
+    if (state is SaleCancellationDone && state.sale.id == sale.id) {
+      setState(() {
+        _sale = state.sale;
+        _submitting = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(state.message),
+          backgroundColor: state.synced ? Colors.green : Colors.orange,
+        ),
+      );
+      return;
+    }
     if (state is SalePaymentRecorded && state.sale.id == sale.id) {
       setState(() {
         _sale = state.sale;
@@ -339,6 +382,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (sale.isCancelled) _cancellationBanner(),
                 // Devenir comptable de la vente (boîte d'envoi backend)
                 AccountingSyncStatusCard(sourceId: sale.id),
                 // En-tête avec statut
@@ -614,6 +658,7 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (sale.isCancelled) _cancellationBanner(),
           // En-tête avec information générale
           // Devenir comptable de la vente (boîte d'envoi backend)
           AccountingSyncStatusCard(sourceId: sale.id),
@@ -1054,34 +1099,53 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
   double _toTransactionCurrency(double amountInCdf) =>
       _money.fromCdf(amountInCdf);
 
-  /// Affiche une boîte de dialogue de confirmation pour supprimer la vente
-  void _showDeleteConfirmation(BuildContext context) {
-    showDialog(
-      context: context,
-      builder:
-          (dialogContext) => AlertDialog(
-            title: const Text("Confirmer la suppression"),
-            content: const Text(
-              "Êtes-vous sûr de vouloir supprimer cette vente ? Cette action est irréversible.",
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text("Annuler"),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(dialogContext);
-                  context.read<SalesBloc>().add(DeleteSale(sale.id));
-                  GoRouter.of(context).pop();
-                },
-                child: const Text(
-                  "Supprimer",
-                  style: TextStyle(color: Colors.red),
-                ),
-              ),
-            ],
-          ),
+  /// Administrateur, gérant ou comptable : seuls à annuler une vente.
+  bool get _canCancel => canCancelDocument(currentUserRole(context));
+
+  /// Administrateur ou comptable : seuls à rétablir une vente annulée.
+  bool get _canRestore => canRestoreDocument(currentUserRole(context));
+
+  /// Bandeau « Annulée le ... par ... : motif », avec « Rétablir ».
+  Widget _cancellationBanner() => CancellationBanner(
+    info: sale.cancellation,
+    pendingSync: PendingCancellations.instance.isPending(
+      CancellableDocument.sale,
+      sale.id,
+    ),
+    onRestore: _canRestore && !_submitting ? _restoreSale : null,
+  );
+
+  /// Annule la vente (jamais de suppression) : motif obligatoire, la vente
+  /// reste visible au statut annulé.
+  Future<void> _cancelSale() async {
+    final reason = await showCancelDocumentDialog(
+      context,
+      doc: CancellableDocument.sale,
+    );
+    if (reason == null || !mounted) return;
+    final auth = context.read<AuthBloc>().state;
+    final user = auth is AuthAuthenticated ? auth.user : null;
+    setState(() => _submitting = true);
+    context.read<SalesBloc>().add(
+      CancelSale(
+        sale: sale,
+        reason: reason,
+        actorName: user?.name.isNotEmpty == true ? user!.name : user?.email,
+        actorId: user?.id,
+      ),
+    );
+  }
+
+  /// Rétablit une vente annulée (administrateur et comptable).
+  Future<void> _restoreSale() async {
+    final reason = await showRestoreDocumentDialog(
+      context,
+      doc: CancellableDocument.sale,
+    );
+    if (reason == null || !mounted) return;
+    setState(() => _submitting = true);
+    context.read<SalesBloc>().add(
+      RestoreSale(sale: sale, reason: reason.isEmpty ? null : reason),
     );
   }
 

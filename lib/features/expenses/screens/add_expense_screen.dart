@@ -50,6 +50,13 @@ class AddExpenseScreen extends StatefulWidget {
 }
 
 class _AddExpenseScreenState extends State<AddExpenseScreen> {
+  /// Identifiant local de CETTE dépense, posé une fois : chaque nouvel essai
+  /// le réutilise, la dépense n'est jamais enregistrée deux fois.
+  final String _expenseLocalId = const Uuid().v4();
+
+  /// Envoi en cours : le bouton est désactivé avec un indicateur.
+  bool _saving = false;
+
   final _formKey = GlobalKey<FormState>();
   final _descriptionController = TextEditingController();
   final _amountController = TextEditingController();
@@ -339,6 +346,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   void _submitExpense() {
+    // Double clic : un seul envoi.
+    if (_saving) return;
     if (_formKey.currentState!.validate()) {
       final amount = double.tryParse(_amountController.text);
       if (amount == null || amount <= 0) {
@@ -396,12 +405,15 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
           exchangeRate: taux,
           paymentStatus: _determinePaymentStatus(),
         );
+        setState(() => _saving = true);
         context.read<ExpenseBloc>().add(UpdateExpense(updated));
         return;
       }
 
+      setState(() => _saving = true);
       final newExpense = Expense(
-        id: const Uuid().v4(),
+        id: _expenseLocalId,
+        localId: _expenseLocalId,
         date: _selectedDate,
         motif: _descriptionController.text,
         amount: amount,
@@ -441,6 +453,26 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               ScaffoldMessenger.of(
                 context,
               ).showSnackBar(SnackBar(content: Text(state.message)));
+              // Dépense semblable déjà enregistrée : avertissement non
+              // bloquant, avec un lien vers elle.
+              final doublon = state.expense?.possibleDuplicateOf;
+              if (doublon != null) {
+                final router = GoRouter.of(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text(
+                      'Une dépense semblable existe déjà. Vérifiez qu\'il ne s\'agit pas d\'un doublon.',
+                    ),
+                    backgroundColor: Colors.orange.shade800,
+                    duration: const Duration(seconds: 8),
+                    action: SnackBarAction(
+                      label: 'Voir',
+                      textColor: Colors.white,
+                      onPressed: () => router.push('/expense-detail/$doublon'),
+                    ),
+                  ),
+                );
+              }
               // Cartes « Charges » du tableau de bord à jour.
               context.read<DashboardBloc>().add(
                 LoadDashboardData(date: DateTime.now()),
@@ -451,6 +483,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 context.pop(true);
               }
             } else if (state is ExpenseError) {
+              // Échec : nouvel essai possible, avec le MÊME localId.
+              if (_saving) setState(() => _saving = false);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
@@ -1371,7 +1405,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   builder: (context, state) {
                     return ElevatedButton(
                       onPressed:
-                          state is ExpenseLoading ? null : _submitExpense,
+                          state is ExpenseLoading || _saving
+                              ? null
+                              : _submitExpense,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: WanzoColors.primary,
                         // Le bouton principal s'étend sur toute la largeur du
@@ -1385,7 +1421,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         ),
                       ),
                       child:
-                          state is ExpenseLoading
+                          state is ExpenseLoading || _saving
                               ? const SizedBox(
                                 width: 24,
                                 height: 24,

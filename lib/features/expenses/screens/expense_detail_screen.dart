@@ -13,6 +13,12 @@ import 'package:wanzo/core/shared_widgets/smart_attachment.dart';
 import 'package:wanzo/core/services/form_navigation_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart'; // Pour les permissions
+import 'package:wanzo/core/cancellation/cancel_document_dialog.dart';
+import 'package:wanzo/core/cancellation/cancellation_banner.dart';
+import 'package:wanzo/core/cancellation/document_cancellation.dart';
+import 'package:wanzo/core/cancellation/pending_cancellations.dart';
+import 'package:wanzo/features/auth/bloc/auth_bloc.dart';
+import 'package:wanzo/features/cash_session/cash_access.dart';
 
 class ExpenseDetailScreen extends StatefulWidget {
   final String expenseId;
@@ -36,8 +42,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   /// Un règlement est en cours d'envoi (voile de chargement).
   bool _submitting = false;
 
-  /// Une suppression est en cours : au succès on quitte la fiche.
-  bool _deleting = false;
 
   /// Change à chaque règlement pour recharger l'historique des tranches.
   int _paymentsToken = 0;
@@ -109,6 +113,19 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   /// informe l'utilisateur en cas d'échec.
   void _onExpenseState(BuildContext context, ExpenseState state) {
     if (!mounted) return;
+    if (state is ExpenseCancellationDone) {
+      setState(() {
+        _expense = state.expense;
+        _submitting = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(state.message),
+          backgroundColor: state.synced ? Colors.green : Colors.orange,
+        ),
+      );
+      return;
+    }
     if (state is ExpenseLoaded) {
       setState(() => _expense = state.expense);
     } else if (state is ExpensePaymentRecorded) {
@@ -130,20 +147,12 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(state.message), backgroundColor: Colors.green),
       );
-      if (_deleting) {
-        // La dépense n'existe plus : retour à la liste.
-        _deleting = false;
-        _leave();
-        return;
-      }
+
       // `ExpenseOperationSuccess` est suivi d'un `LoadExpenses` (état de
       // liste) que cet écran ne sait pas afficher : on redemande la dépense.
       context.read<ExpenseBloc>().add(LoadExpenseById(widget.expenseId));
     } else if (state is ExpenseError) {
-      setState(() {
-        _submitting = false;
-        _deleting = false;
-      });
+      setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(state.message.replaceFirst('Exception: ', '')),
@@ -174,37 +183,56 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     }
   }
 
-  Future<void> _confirmDelete(Expense expense) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Supprimer la dépense'),
-        content: Text(
-          (expense.paidAmount ?? 0) > 0
-              ? 'Supprimer « ${expense.motif} » ? Les règlements déjà '
-                  'enregistrés seront annulés au journal.'
-              : 'Supprimer « ${expense.motif} » ?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Supprimer'),
-          ),
-        ],
+  /// Administrateur, gérant ou comptable : seuls à annuler une dépense.
+  bool get _canCancel => canCancelDocument(currentUserRole(context));
+
+  /// Administrateur ou comptable : seuls à rétablir une dépense annulée.
+  bool get _canRestore => canRestoreDocument(currentUserRole(context));
+
+  /// Annule la dépense (jamais de suppression) : motif obligatoire, elle
+  /// reste visible au statut annulé et peut être rétablie.
+  Future<void> _cancelExpense(Expense expense) async {
+    final reason = await showCancelDocumentDialog(
+      context,
+      doc: CancellableDocument.expense,
+    );
+    if (reason == null || !mounted) return;
+    final auth = context.read<AuthBloc>().state;
+    final user = auth is AuthAuthenticated ? auth.user : null;
+    setState(() => _submitting = true);
+    context.read<ExpenseBloc>().add(
+      CancelExpense(
+        expense: expense,
+        reason: reason,
+        actorName: user?.name.isNotEmpty == true ? user!.name : user?.email,
+        actorId: user?.id,
       ),
     );
-    if (ok != true || !mounted) return;
-    setState(() => _deleting = true);
-    context.read<ExpenseBloc>().add(DeleteExpense(expense.id));
   }
+
+  /// Rétablit une dépense annulée (administrateur et comptable).
+  Future<void> _restoreExpense(Expense expense) async {
+    final reason = await showRestoreDocumentDialog(
+      context,
+      doc: CancellableDocument.expense,
+    );
+    if (reason == null || !mounted) return;
+    setState(() => _submitting = true);
+    context.read<ExpenseBloc>().add(
+      RestoreExpense(expense: expense, reason: reason.isEmpty ? null : reason),
+    );
+  }
+
+  /// Bandeau « Annulée le ... par ... : motif », avec « Rétablir ».
+  Widget _cancellationBanner(Expense expense) => CancellationBanner(
+    info: expense.cancellation,
+    pendingSync: PendingCancellations.instance.isPending(
+      CancellableDocument.expense,
+      expense.id.isNotEmpty ? expense.id : (expense.localId ?? ''),
+    ),
+    onRestore:
+        _canRestore && !_submitting ? () => _restoreExpense(expense) : null,
+  );
 
   // Vérifier et demander les permissions nécessaires au démarrage
   Future<void> _checkPermissions() async {
@@ -236,23 +264,36 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                     final current = _expense;
                     if (current == null) return;
                     if (value == 'edit') _edit(current);
-                    if (value == 'delete') _confirmDelete(current);
+                    if (value == 'cancel') _cancelExpense(current);
+                    if (value == 'restore') _restoreExpense(current);
                   },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(
-                      value: 'edit',
-                      child: ListTile(
-                        leading: Icon(Icons.edit_outlined),
-                        title: Text('Modifier'),
+                  itemBuilder: (_) => [
+                    if (!_expense!.isCancelled)
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('Modifier'),
+                        ),
                       ),
-                    ),
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: ListTile(
-                        leading: Icon(Icons.delete_outline, color: Colors.red),
-                        title: Text('Supprimer'),
+                    // Une dépense ne se supprime pas : elle s'annule (motif,
+                    // trace) et peut être rétablie, selon le rôle.
+                    if (!_expense!.isCancelled && _canCancel)
+                      const PopupMenuItem(
+                        value: 'cancel',
+                        child: ListTile(
+                          leading: Icon(Icons.block, color: Colors.red),
+                          title: Text('Annuler la dépense'),
+                        ),
                       ),
-                    ),
+                    if (_expense!.isCancelled && _canRestore)
+                      const PopupMenuItem(
+                        value: 'restore',
+                        child: ListTile(
+                          leading: Icon(Icons.restore),
+                          title: Text('Rétablir la dépense'),
+                        ),
+                      ),
                   ],
                 ),
             ],
@@ -271,7 +312,9 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                           ? state.expense
                           : (state is ExpensePaymentRecorded
                               ? state.expense
-                              : _expense);
+                              : (state is ExpenseCancellationDone
+                                  ? state.expense
+                                  : _expense));
 
                   if (expense == null) {
                     if (state is ExpenseError) {
@@ -329,6 +372,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (expense.isCancelled) _cancellationBanner(expense),
                 _buildMainCard(context, expense, currencyCode),
                 const SizedBox(height: 24),
                 _buildPaymentStatusCard(context, expense, currencyCode),
@@ -346,7 +390,8 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
               children: [
                 _buildAttachmentsCard(context, expense),
                 const SizedBox(height: 16),
-                if (expense.paymentStatus != ExpensePaymentStatus.paid)
+                if (!expense.isCancelled &&
+                    expense.paymentStatus != ExpensePaymentStatus.paid)
                   _buildDesktopActionsCard(context, expense),
               ],
             ),
@@ -367,6 +412,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
+          if (expense.isCancelled) _cancellationBanner(expense),
           _buildMainCard(context, expense, currencyCode),
           const SizedBox(height: 24),
           _buildPaymentStatusCard(context, expense, currencyCode),
@@ -620,7 +666,8 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
             // Boutons d'action de règlement.
             // ResponsiveActionBar au lieu d'une Row d'Expanded : deux boutons
             // libellés ne tiennent pas côte à côte sur un écran étroit.
-            if (expense.paymentStatus != ExpensePaymentStatus.paid &&
+            if (!expense.isCancelled &&
+                expense.paymentStatus != ExpensePaymentStatus.paid &&
                 expense.remainingAmount > 0) ...[
               const SizedBox(height: 20),
               ResponsiveActionBar(

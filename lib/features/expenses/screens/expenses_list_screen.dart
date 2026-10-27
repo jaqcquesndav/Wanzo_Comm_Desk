@@ -75,6 +75,10 @@ class ExpensesListScreen extends StatefulWidget {
 }
 
 class _ExpensesListScreenState extends State<ExpensesListScreen> {
+  /// Filtre « Annulées » : les dépenses annulées sont conservées, consultables
+  /// ici, jamais mêlées aux dépenses actives ni à leur total.
+  bool _showCancelled = false;
+
   StreamSubscription<SyncStatus>? _syncSubscription;
 
   @override
@@ -218,13 +222,56 @@ class _ExpensesListScreenState extends State<ExpensesListScreen> {
     }
 
     if (state is ExpensesLoaded) {
-      if (state.expenses.isEmpty) {
+      if (state.expenses.isEmpty && state.cancelledExpenses.isEmpty) {
         return _buildEmptyState(context);
       }
       // Tri chronologique : plus récentes en premier
-      final sortedExpenses = List<Expense>.from(state.expenses)
-        ..sort((a, b) => b.date.compareTo(a.date));
-      return _buildExpensesList(context, sortedExpenses, state.totalExpenses);
+      final shown = List<Expense>.from(
+        _showCancelled ? state.cancelledExpenses : state.expenses,
+      )..sort((a, b) => b.date.compareTo(a.date));
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('En cours'),
+                    selected: !_showCancelled,
+                    onSelected: (_) => setState(() => _showCancelled = false),
+                  ),
+                  ChoiceChip(
+                    key: const ValueKey('filter-cancelled'),
+                    avatar: const Icon(Icons.block, size: 16),
+                    label: Text('Annulées (${state.cancelledExpenses.length})'),
+                    selected: _showCancelled,
+                    onSelected: (_) => setState(() => _showCancelled = true),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child:
+                shown.isEmpty
+                    ? Center(
+                      child: Text(
+                        _showCancelled
+                            ? 'Aucune dépense annulée.'
+                            : 'Aucune dépense en cours.',
+                      ),
+                    )
+                    : _buildExpensesList(
+                      context,
+                      shown,
+                      _showCancelled ? 0 : state.totalExpenses,
+                    ),
+          ),
+        ],
+      );
     }
 
     return const Center(child: Text('Chargement...'));

@@ -22,6 +22,10 @@ import '../bloc/sales_bloc.dart';
 import '../models/sale.dart';
 import '../../receivables/utils/receivables_utils.dart';
 import '../../receivables/widgets/overdue_chip.dart';
+import '../../auth/bloc/auth_bloc.dart';
+import '../../cash_session/cash_access.dart';
+import '../../../core/cancellation/cancel_document_dialog.dart';
+import '../../../core/cancellation/document_cancellation.dart';
 
 /// Extension pour afficher le nom du statut
 extension SaleStatusDisplayExtension on SaleStatus {
@@ -70,6 +74,10 @@ class _SalesListScreenState extends State<SalesListScreen> {
   /// Filtre « À encaisser » actif (retirable par sa puce).
   late bool _onlyToCollect = widget.onlyToCollect;
 
+  /// Filtre « Annulées » : les ventes annulées sont conservées, consultables
+  /// ici, jamais mêlées aux ventes actives ni à leur total.
+  bool _showCancelled = false;
+
   @override
   void didUpdateWidget(covariant SalesListScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -114,7 +122,19 @@ class _SalesListScreenState extends State<SalesListScreen> {
         MediaQuery.sizeOf(context).width <
         PlatformService.instance.tabletMinWidth;
 
-    return BlocBuilder<SalesBloc, SalesState>(
+    return BlocConsumer<SalesBloc, SalesState>(
+      // Annulation ou rétablissement : un message, la liste se recharge.
+      listenWhen: (_, current) => current is SaleCancellationDone,
+      listener: (context, state) {
+        if (state is! SaleCancellationDone) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(state.message),
+            backgroundColor: state.synced ? Colors.green : Colors.orange,
+          ),
+        );
+      },
+      buildWhen: (_, current) => current is! SaleCancellationDone,
       builder: (context, state) {
         return WanzoScaffold(
           currentIndex: 1, // Index pour Revenus dans le sidebar
@@ -232,8 +252,28 @@ class _SalesListScreenState extends State<SalesListScreen> {
     }
 
     if (state is SalesLoaded) {
-      if (state.sales.isEmpty) {
+      if (state.sales.isEmpty && state.cancelledSales.isEmpty) {
         return _buildEmptyState(context);
+      }
+      if (_showCancelled) {
+        final cancelled = List<Sale>.from(state.cancelledSales)
+          ..sort((a, b) => b.date.compareTo(a.date));
+        return Column(
+          children: [
+            _buildStatusFilter(state),
+            Expanded(
+              child:
+                  cancelled.isEmpty
+                      ? const Center(child: Text('Aucune vente annulée.'))
+                      : _buildSalesList(
+                        context,
+                        cancelled,
+                        0,
+                        totalLabel: 'Hors totaux',
+                      ),
+            ),
+          ],
+        );
       }
       // Tri chronologique : plus récentes en premier
       final sortedSales = List<Sale>.from(state.sales)
@@ -272,10 +312,44 @@ class _SalesListScreenState extends State<SalesListScreen> {
           ],
         );
       }
-      return _buildSalesList(context, sortedSales, state.totalAmountInCdf);
+      return Column(
+        children: [
+          _buildStatusFilter(state),
+          Expanded(
+            child: _buildSalesList(context, sortedSales, state.totalAmountInCdf),
+          ),
+        ],
+      );
     }
 
     return const Center(child: Text('Chargement...'));
+  }
+
+  /// Puces « En cours » et « Annulées ».
+  Widget _buildStatusFilter(SalesLoaded state) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Wrap(
+          spacing: 8,
+          children: [
+            ChoiceChip(
+              label: const Text('En cours'),
+              selected: !_showCancelled,
+              onSelected: (_) => setState(() => _showCancelled = false),
+            ),
+            ChoiceChip(
+              key: const ValueKey('filter-cancelled'),
+              avatar: const Icon(Icons.block, size: 16),
+              label: Text('Annulées (${state.cancelledSales.length})'),
+              selected: _showCancelled,
+              onSelected: (_) => setState(() => _showCancelled = true),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildEmptyState(BuildContext context) {
@@ -601,12 +675,23 @@ class _SalesDataTable extends StatelessWidget {
                         icon: Icons.visibility,
                         onSelected: () => onSaleTap(sale),
                       ),
-                      RowAction(
-                        label: 'Supprimer',
-                        icon: Icons.delete_outline,
-                        destructive: true,
-                        onSelected: () => _confirmDeleteSale(context, sale),
-                      ),
+                      // Une vente ne se supprime pas : elle s'annule (motif,
+                      // trace) et peut être rétablie, selon le rôle.
+                      if (!sale.isCancelled &&
+                          canCancelDocument(currentUserRole(context)))
+                        RowAction(
+                          label: 'Annuler la vente',
+                          icon: Icons.block,
+                          destructive: true,
+                          onSelected: () => _cancelSale(context, sale),
+                        ),
+                      if (sale.isCancelled &&
+                          canRestoreDocument(currentUserRole(context)))
+                        RowAction(
+                          label: 'Rétablir',
+                          icon: Icons.restore,
+                          onSelected: () => _restoreSale(context, sale),
+                        ),
                     ],
                   ),
                 ),
@@ -685,74 +770,34 @@ class _SalesDataTable extends StatelessWidget {
     );
   }
 
-  /// Confirmer la suppression d'une vente
-  void _confirmDeleteSale(BuildContext context, Sale sale) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          icon: const Icon(
-            Icons.warning_amber_rounded,
-            color: Colors.red,
-            size: 48,
-          ),
-          title: const Text('Supprimer la vente ?'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Êtes-vous sûr de vouloir supprimer cette vente ?'),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Client: ${sale.customerName}',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    Text(
-                      'Montant: ${formatCurrency(sale.totalAmountInCdf, 'CDF')}',
-                    ),
-                    Text('Date: ${dateFormat.format(sale.date)}'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Cette action est irréversible. Le stock sera restauré.',
-                style: TextStyle(color: Colors.red, fontSize: 12),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Annuler'),
-            ),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                context.read<SalesBloc>().add(DeleteSale(sale.id));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Vente supprimée'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              },
-              icon: const Icon(Icons.delete),
-              label: const Text('Supprimer'),
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            ),
-          ],
-        );
-      },
+  /// Annule la vente depuis la table (fenêtre modale, motif obligatoire).
+  Future<void> _cancelSale(BuildContext context, Sale sale) async {
+    final reason = await showCancelDocumentDialog(
+      context,
+      doc: CancellableDocument.sale,
+    );
+    if (reason == null || !context.mounted) return;
+    final auth = context.read<AuthBloc>().state;
+    final user = auth is AuthAuthenticated ? auth.user : null;
+    context.read<SalesBloc>().add(
+      CancelSale(
+        sale: sale,
+        reason: reason,
+        actorName: user?.name.isNotEmpty == true ? user!.name : user?.email,
+        actorId: user?.id,
+      ),
+    );
+  }
+
+  /// Rétablit une vente annulée depuis la table.
+  Future<void> _restoreSale(BuildContext context, Sale sale) async {
+    final reason = await showRestoreDocumentDialog(
+      context,
+      doc: CancellableDocument.sale,
+    );
+    if (reason == null || !context.mounted) return;
+    context.read<SalesBloc>().add(
+      RestoreSale(sale: sale, reason: reason.isEmpty ? null : reason),
     );
   }
 }

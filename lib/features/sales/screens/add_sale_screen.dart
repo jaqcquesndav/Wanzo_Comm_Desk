@@ -51,6 +51,8 @@ import 'package:wanzo/features/services/widgets/service_search_results.dart';
 import 'package:wanzo/features/cash_session/services/cash_session_service.dart';
 import 'package:wanzo/features/cash_session/cash_access.dart';
 import 'package:wanzo/features/cash_session/widgets/down_payment_method_field.dart';
+import 'package:uuid/uuid.dart';
+import 'package:wanzo/core/navigation/app_router.dart' show saleDetailPath;
 
 /// Types de postes pour les devis/factures (UI uniquement, stocké dans notes)
 enum QuoteItemCategory {
@@ -179,6 +181,14 @@ class AddSaleScreen extends StatefulWidget {
 }
 
 class _AddSaleScreenState extends State<AddSaleScreen> {
+  /// Identifiant local de CETTE vente, posé une fois : chaque nouvel essai
+  /// (double clic, reprise après erreur) le réutilise, si bien que la vente
+  /// n'est jamais enregistrée deux fois (dédoublonnage local et serveur).
+  final String _saleLocalId = const Uuid().v4();
+
+  /// Envoi en cours : le bouton est désactivé avec un indicateur.
+  bool _saving = false;
+
   final _formKey = GlobalKey<FormState>();
 
   // Contrôleurs pour les champs du formulaire
@@ -732,6 +742,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                       // Rôles sans caisse : aucune invitation (masquée).
                       canSeeCash(context);
                   final router = GoRouter.of(context);
+                  final doublon = state.possibleDuplicateOf;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
@@ -749,6 +760,24 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                           : null,
                     ),
                   );
+                  // Vente semblable déjà enregistrée : avertissement non
+                  // bloquant, avec un lien vers elle.
+                  if (doublon != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text(
+                          'Une vente semblable existe déjà. Vérifiez qu\'il ne s\'agit pas d\'un doublon.',
+                        ),
+                        backgroundColor: Colors.orange.shade800,
+                        duration: const Duration(seconds: 8),
+                        action: SnackBarAction(
+                          label: 'Voir',
+                          textColor: Colors.white,
+                          onPressed: () => router.push(saleDetailPath(doublon)),
+                        ),
+                      ),
+                    );
+                  }
                   if (state.saleId != null) {
                     _handleSaleSuccess(state.saleId!);
                   } else {
@@ -762,6 +791,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                     if (mounted) _closeAfterSuccess();
                   }
                 } else if (state is SalesError) {
+                  // Échec : nouvel essai possible, avec le MÊME localId.
+                  if (_saving) setState(() => _saving = false);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(state.message),
@@ -1314,7 +1345,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             padding: const EdgeInsets.all(WanzoSpacing.md),
             child: BlocBuilder<SalesBloc, SalesState>(
               builder: (context, state) {
-                bool isLoading = state is SalesLoading;
+                bool isLoading = state is SalesLoading || _saving;
                 return SizedBox(
                   width: double.infinity, // Le bouton occupe toute la largeur
                   height: 54, // Augmentation de la hauteur du conteneur
@@ -3546,6 +3577,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   }
 
   Future<void> _saveSale() async {
+    // Double clic : un seul envoi.
+    if (_saving) return;
     // Le reste dû doit pouvoir être réclamé : pas de crédit sans client.
     if (_items.isNotEmpty && !_isPaidFully() && _linkedCustomerId == null) {
       _formKey.currentState!.validate();
@@ -3610,8 +3643,10 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       final userNotes = _notesController.text.trim();
       final paidInCdf = _paidAmount * currentRate;
 
+      setState(() => _saving = true);
       final sale = Sale(
         id: '',
+        localId: _saleLocalId,
         date: DateTime.now(),
         customerId: _linkedCustomerId,
         customerPhoneNumber:

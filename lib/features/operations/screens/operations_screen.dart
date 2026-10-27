@@ -65,6 +65,10 @@ class _OperationsViewState extends State<_OperationsView>
   late TabController _tabController;
   VoidCallback? _tabListener;
 
+  /// Filtre « Annulées » : les pièces annulées sont conservées, consultables
+  /// ici, et jamais mêlées aux pièces actives.
+  bool _showCancelled = false;
+
   static final DateFormat _dateFormat = DateFormat('dd/MM/yyyy', 'fr_FR');
 
   @override
@@ -184,6 +188,31 @@ class _OperationsViewState extends State<_OperationsView>
                 labelColor: Theme.of(context).primaryColor,
                 unselectedLabelColor: Colors.grey,
               ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('En cours'),
+                        selected: !_showCancelled,
+                        onSelected:
+                            (_) => setState(() => _showCancelled = false),
+                      ),
+                      ChoiceChip(
+                        key: const ValueKey('filter-cancelled'),
+                        avatar: const Icon(Icons.block, size: 16),
+                        label: const Text('Annulées'),
+                        selected: _showCancelled,
+                        onSelected:
+                            (_) => setState(() => _showCancelled = true),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               Expanded(child: _buildTabContent(context, state, isNarrow)),
             ],
           ),
@@ -213,12 +242,22 @@ class _OperationsViewState extends State<_OperationsView>
     if (state is OperationsLoaded) {
       final VoidCallback? onAdd =
           isNarrow ? null : () => _openCreateFromOperations(context);
+      // Filtre « Annulées » : pièces annulées à part, jamais mêlées aux
+      // pièces actives.
+      final shown = OperationsLoaded(
+        sales:
+            state.sales.where((s) => s.isCancelled == _showCancelled).toList(),
+        expenses:
+            state.expenses
+                .where((e) => e.isCancelled == _showCancelled)
+                .toList(),
+      );
       return TabBarView(
         controller: _tabController,
         children: [
-          _buildAllOperationsView(context, state, onAdd),
-          _buildSalesView(context, state.sales, onAdd),
-          _buildExpensesView(context, state.expenses, onAdd),
+          _buildAllOperationsView(context, shown, onAdd),
+          _buildSalesView(context, shown.sales, onAdd),
+          _buildExpensesView(context, shown.expenses, onAdd),
         ],
       );
     }
@@ -616,11 +655,13 @@ class _OperationsViewState extends State<_OperationsView>
           ? '${row.sale!.status.displayName} (en retard)'
           : row.sale!.status.displayName;
     }
+    if (row.expense?.isCancelled ?? false) return 'Annulée';
     return row.expense?.category.displayName ?? '';
   }
 
   Widget _statusCell(OperationRow row) {
     if (row.sale == null) {
+      if (row.expense?.isCancelled ?? false) return _chip('Annulée', Colors.red);
       return _chip(row.expense?.category.displayName ?? '', Colors.orange);
     }
     final sale = row.sale!;
