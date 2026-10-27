@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:wanzo/core/shared_widgets/kpi_board.dart';
+import 'package:wanzo/core/shared_widgets/kpi_grid.dart';
 import '../utils/open_journal_operation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:wanzo/core/services/currency_service.dart';
@@ -70,12 +71,13 @@ class KpiData {
   });
 }
 
-/// Vignettes du tableau de bord Général, par paires CDF | USD.
+/// Les six vignettes du tableau de bord Général, par paires CDF | USD.
 ///
-/// Le CDF est la devise de base (OHADA) ; l'USD est le montant REELLEMENT
-/// enregistre en dollars (ventes et depenses saisies en USD), jamais une
-/// conversion du CDF. Les deux devises sont toujours montrees, comme dans
-/// l'app Assets, pour suivre l'USD de bout en bout.
+/// Meme grille que le mode General de l'app Gestion d'actifs : chiffre
+/// d'affaires CDF | USD, charges CDF | USD, puis a encaisser et valeur du
+/// stock, chacune avec sa sous-ligne. Le CDF est la devise de base (OHADA) ;
+/// l'USD est le montant REELLEMENT enregistre en dollars, jamais une
+/// conversion du CDF.
 List<KpiTile> generalKpiTiles(
   KpiData kpiData, {
   required String revenueLabel,
@@ -85,7 +87,6 @@ List<KpiTile> generalKpiTiles(
   return [
     // Chiffre d'affaires du jour : CDF | USD.
     KpiTile(
-      weight: KpiWeight.pilote,
       label: '$revenueLabel (CDF)',
       value: formatCurrency(kpiData.salesTodayCdf, 'CDF'),
       secondary: 'Chiffre d\'affaires',
@@ -93,7 +94,6 @@ List<KpiTile> generalKpiTiles(
       color: Colors.green,
     ),
     KpiTile(
-      weight: KpiWeight.pilote,
       label: '$revenueLabel (USD)',
       value: formatCurrency(kpiData.salesTodayUsd, 'USD'),
       secondary: 'Chiffre d\'affaires',
@@ -102,7 +102,6 @@ List<KpiTile> generalKpiTiles(
     ),
     // Charges du jour : CDF | USD.
     KpiTile(
-      weight: KpiWeight.pilote,
       label: 'Charges (CDF)',
       value: formatCurrency(kpiData.expensesCdf, 'CDF'),
       secondary: 'Dépenses engagées',
@@ -110,7 +109,6 @@ List<KpiTile> generalKpiTiles(
       color: Colors.red,
     ),
     KpiTile(
-      weight: KpiWeight.pilote,
       label: 'Charges (USD)',
       value: formatCurrency(kpiData.expensesUsd, 'USD'),
       secondary: 'Dépenses engagées',
@@ -118,27 +116,24 @@ List<KpiTile> generalKpiTiles(
       color: Colors.red,
     ),
     KpiTile(
-      label: 'Valeur du stock',
-      value: formatCurrency(kpiData.stockValueAtCost, 'CDF'),
-      icon: Icons.inventory_2,
-      color: Colors.blueGrey,
-    ),
-    // Benefice potentiel du stock : sa propre vignette (une vignette de suivi
-    // porte un chiffre seul ; en sous-ligne il debordait a grande police).
-    if (kpiData.stockValueAtCost > 0)
-      KpiTile(
-        label: 'Bénéfice potentiel',
-        value: '+${formatCurrency(kpiData.potentialProfit, 'CDF')}',
-        icon: Icons.savings_outlined,
-        color: Colors.green,
-      ),
-    KpiTile(
       label: 'À encaisser',
       value: formatCurrency(kpiData.receivables, 'CDF'),
+      secondary: 'Créances clients',
       icon: Icons.schedule_send,
       color: receivablesColor,
       // Ouvre les ventes a encaisser (non payees ou partielles).
       onTap: onReceivables,
+    ),
+    // Le benefice potentiel du stock revient en sous-ligne : six vignettes,
+    // jamais une septieme qui casse la grille.
+    KpiTile(
+      label: 'Valeur du stock',
+      value: formatCurrency(kpiData.stockValueAtCost, 'CDF'),
+      secondary: kpiData.stockValueAtCost > 0
+          ? '+${formatCurrency(kpiData.potentialProfit, 'CDF')} potentiel'
+          : 'Au prix d\'achat',
+      icon: Icons.inventory_2,
+      color: Colors.blueGrey,
     ),
   ];
 }
@@ -723,13 +718,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Indicateurs du tableau de bord Général, puis la courbe en dessous.
+  /// Les six vignettes du tableau de bord Général, puis la courbe en dessous.
   ///
   /// Les deux devises sont TOUJOURS montrees cote a cote, comme dans l'app
-  /// Assets : le CDF (devise de base OHADA) et l'USD REELLEMENT encaisse ou
-  /// depense en dollars (ventes et depenses saisies en USD, jamais une
-  /// conversion). Chiffre d'affaires et charges en tete, par paires CDF | USD ;
-  /// [KpiBoard] n'etire jamais les vignettes sur grand ecran.
+  /// Gestion d'actifs : le CDF (devise de base OHADA) et l'USD REELLEMENT
+  /// encaisse ou depense en dollars. [KpiGrid] pose les six sur une rangee
+  /// sur desktop large, en 3 colonnes sur fenetre etroite, sans jamais etirer.
   Widget _buildResponsiveKpiAndChart(
     BuildContext context,
     KpiData kpiData,
@@ -741,7 +735,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        KpiBoard(
+        KpiGrid(
+          detailsLabel: l10n.dashboardCardViewDetails,
           tiles: generalKpiTiles(
             kpiData,
             revenueLabel: ModeVocabulary.current.revenue,

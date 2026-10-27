@@ -7,6 +7,7 @@ import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/shared_widgets/kpi_board.dart';
+import 'package:wanzo/core/shared_widgets/kpi_grid.dart';
 import 'package:wanzo/core/utils/daily_series.dart';
 import 'package:wanzo/features/dashboard/bloc/dashboard_bloc.dart';
 import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
@@ -157,48 +158,53 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
     return BlocBuilder<DashboardBloc, DashboardState>(
       builder: (context, dashState) {
         final bool loaded = dashState is DashboardLoaded;
+        // Donnée pas encore chargée : un état neutre, jamais un zéro.
+        const enAttente = 'En attente';
         final String caCdf =
-            loaded ? formatCurrency(dashState.salesTodayCdf, 'CDF') : '—';
-        final double caUsd = loaded ? dashState.salesTodayUsd : 0;
+            loaded ? formatCurrency(dashState.salesTodayCdf, 'CDF') : enAttente;
+        final String caUsd =
+            loaded ? formatCurrency(dashState.salesTodayUsd, 'USD') : enAttente;
         // `clientsServedToday` : nombre réel de clients servis aujourd'hui (≈
         // tickets du jour). Il n'existe pas de compteur de tickets dédié dans
         // le KPI global, on l'utilise donc comme repère du nombre de tickets.
         final String clients =
-            loaded ? '${dashState.clientsServedToday}' : '—';
+            loaded ? '${dashState.clientsServedToday}' : enAttente;
         final String commissions = _resteAVerser != null
             ? formatCurrency(_resteAVerser!, 'CDF')
-            : '—';
+            : enAttente;
 
-        // La courbe des vignettes de pilotage vient des ventes réellement
-        // enregistrées ; sans elles, la vignette reste sans courbe.
+        // L'écart affiché sur le CA vient des ventes réellement enregistrées.
         final ventes = context.watch<SalesBloc>().state;
         final serieCa =
             ventes is SalesLoaded ? DailySeries.revenue(ventes.sales) : null;
 
-        return KpiBoard(
-          spacing: 16,
+        // Six vignettes, par paires : CA CDF | USD, commissions | clients,
+        // prestations | coiffeurs. Même grille que le tableau de bord Général.
+        return KpiGrid(
           tiles: [
             KpiTile(
-              weight: KpiWeight.pilote,
               icon: Icons.payments,
               color: const Color(0xFF16A34A),
-              label: 'CA du jour',
+              label: 'CA du jour (CDF)',
               value: caCdf,
-              secondary:
-                  caUsd > 0 ? 'dont ${formatCurrency(caUsd, 'USD')}' : null,
+              secondary: '7 derniers jours',
               trend: serieCa,
-              trendLabel: '7 derniers jours',
             ),
             KpiTile(
-              weight: KpiWeight.pilote,
+              icon: Icons.payments,
+              color: const Color(0xFF16A34A),
+              label: 'CA du jour (USD)',
+              value: caUsd,
+              secondary: 'Encaissé en dollars',
+            ),
+            KpiTile(
               icon: Icons.savings_outlined,
               color: const Color(0xFFF59E0B),
               label: 'Reste à verser (mois)',
               value: commissions,
               secondary: _commissionsMonth != null
                   ? 'sur ${formatCurrency(_commissionsMonth!, 'CDF')} gagnées'
-                  : null,
-              trendLabel: 'Commissions de l\'équipe',
+                  : 'Commissions de l\'équipe',
               // On y va pour payer : l'ecran des coiffeurs, pas les statistiques.
               onTap: () => _ouvrir('/salon/stylists'),
             ),
@@ -207,12 +213,14 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
               color: const Color(0xFF0EA5E9),
               label: 'Clients servis (jour)',
               value: clients,
+              secondary: 'Tickets du jour',
             ),
             KpiTile(
               icon: Icons.content_cut,
               color: const Color(0xFF8B5CF6),
               label: 'Prestations',
               value: '${state.activeServices.length}',
+              secondary: 'Carte active',
               onTap: () => _ouvrir('/salon/prestations'),
             ),
             KpiTile(
@@ -220,6 +228,7 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
               color: const Color(0xFF197CA8),
               label: 'Coiffeurs',
               value: '${state.activeStylists.length}',
+              secondary: 'Équipe active',
               onTap: () => _ouvrir('/salon/stylists'),
             ),
           ],

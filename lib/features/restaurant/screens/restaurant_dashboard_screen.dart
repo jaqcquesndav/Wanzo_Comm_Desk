@@ -7,6 +7,7 @@ import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import 'package:wanzo/core/shared_widgets/kpi_board.dart';
+import 'package:wanzo/core/shared_widgets/kpi_grid.dart';
 import 'package:wanzo/core/utils/daily_series.dart';
 import 'package:wanzo/core/widgets/dish_thumb_grid.dart';
 import 'package:wanzo/features/sales/repositories/sales_repository.dart';
@@ -174,43 +175,45 @@ class RestaurantDashboardScreen extends StatelessWidget {
     final double revenueCdf = salesToday?.cdf ?? m.revenueToday;
     final double revenueUsd = salesToday?.usd ?? 0.0;
 
-    return KpiBoard(
-      spacing: 16,
+    // Six vignettes, par paires : chiffre CDF | USD, service | cuisine,
+    // réglées | temps moyen. Même grille que le tableau de bord Général.
+    return KpiGrid(
       tiles: [
         KpiTile(
-          weight: KpiWeight.pilote,
           icon: Icons.payments,
           color: const Color(0xFF16A34A),
-          label: 'Chiffre du jour',
+          label: 'Chiffre du jour (CDF)',
           value: formatCurrency(revenueCdf, 'CDF'),
-          secondary: revenueUsd > 0
-              ? 'dont ${formatCurrency(revenueUsd, 'USD')}'
-              : null,
+          secondary: '7 derniers jours',
           trend: salesToday?.serieCa,
-          trendLabel: '7 derniers jours',
         ),
         KpiTile(
-          weight: KpiWeight.pilote,
+          icon: Icons.payments,
+          color: const Color(0xFF16A34A),
+          label: 'Chiffre du jour (USD)',
+          value: formatCurrency(revenueUsd, 'USD'),
+          secondary: 'Encaissé en dollars',
+        ),
+        KpiTile(
           icon: Icons.room_service,
           color: const Color(0xFF0EA5E9),
           label: 'En service',
           value: '${m.active.length}',
-          secondary: m.inKitchen > 0
-              ? '${m.inKitchen} en cuisine'
-              : 'Rien en cuisine',
-          trendLabel: 'Commandes ouvertes en salle',
-        ),
-        KpiTile(
-          icon: Icons.receipt_long,
-          color: const Color(0xFF64748B),
-          label: 'Réglées (jour)',
-          value: '${m.paidTodayCount}',
+          secondary: 'Commandes ouvertes en salle',
         ),
         KpiTile(
           icon: Icons.soup_kitchen,
           color: const Color(0xFFF59E0B),
           label: 'En cuisine',
           value: '${m.inKitchen}',
+          secondary: m.inKitchen > 0 ? 'En préparation' : 'Rien en cuisine',
+        ),
+        KpiTile(
+          icon: Icons.receipt_long,
+          color: const Color(0xFF64748B),
+          label: 'Réglées (jour)',
+          value: '${m.paidTodayCount}',
+          secondary: 'Commandes encaissées',
         ),
         KpiTile(
           icon: Icons.timer_outlined,
@@ -219,6 +222,7 @@ class RestaurantDashboardScreen extends StatelessWidget {
           value: m.avgServiceMinutes > 0
               ? '${m.avgServiceMinutes.round()} min'
               : 'n.d.',
+          secondary: 'De la commande au service',
         ),
       ],
     );
