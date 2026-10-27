@@ -40,13 +40,17 @@ class SaleAdapter extends TypeAdapter<Sale> {
       localAttachmentPaths: (fields[20] as List?)?.cast<String>(),
       paymentReference: fields[21] as String?,
       downPaymentMethod: fields[22] as String?,
+      cancelledAt: fields[23] as DateTime?,
+      cancelledById: fields[24] as String?,
+      cancelledByName: fields[25] as String?,
+      cancelReason: fields[26] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Sale obj) {
     writer
-      ..writeByte(23)
+      ..writeByte(27)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -92,7 +96,15 @@ class SaleAdapter extends TypeAdapter<Sale> {
       ..writeByte(21)
       ..write(obj.paymentReference)
       ..writeByte(22)
-      ..write(obj.downPaymentMethod);
+      ..write(obj.downPaymentMethod)
+      ..writeByte(23)
+      ..write(obj.cancelledAt)
+      ..writeByte(24)
+      ..write(obj.cancelledById)
+      ..writeByte(25)
+      ..write(obj.cancelledByName)
+      ..writeByte(26)
+      ..write(obj.cancelReason);
   }
 
   @override

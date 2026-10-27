@@ -67,13 +67,33 @@ class RecordExpensePayment extends ExpenseEvent {
   List<Object?> get props => [expense.id, payment.amount, payment.paidAt];
 }
 
-class DeleteExpense extends ExpenseEvent {
-  final String expenseId;
+/// Annuler une dépense (jamais la supprimer) : motif obligatoire.
+class CancelExpense extends ExpenseEvent {
+  final Expense expense;
+  final String reason;
+  final String? actorName;
+  final String? actorId;
 
-  const DeleteExpense(this.expenseId);
+  const CancelExpense({
+    required this.expense,
+    required this.reason,
+    this.actorName,
+    this.actorId,
+  });
 
   @override
-  List<Object> get props => [expenseId];
+  List<Object?> get props => [expense.id, expense.localId, reason, actorName];
+}
+
+/// Rétablir une dépense annulée (administrateur et comptable).
+class RestoreExpense extends ExpenseEvent {
+  final Expense expense;
+  final String? reason;
+
+  const RestoreExpense({required this.expense, this.reason});
+
+  @override
+  List<Object?> get props => [expense.id, expense.localId, reason];
 }
 
 class LoadExpenseById extends ExpenseEvent {

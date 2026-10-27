@@ -25,8 +25,14 @@ class OperationsBloc extends Bloc<OperationsEvent, OperationsState> {
   ) async {
     emit(OperationsLoading());
     try {
-      List<Sale> sales = await salesRepository.getAllSales();
-      List<Expense> expenses = await expenseRepository.getAllExpenses();
+      // Pièces annulées comprises : l'écran les range sous le filtre
+      // « Annulées », jamais avec les pièces actives.
+      List<Sale> sales = await salesRepository.getAllSales(
+        includeCancelled: true,
+      );
+      List<Expense> expenses = await expenseRepository.getAllExpenses(
+        includeCancelled: true,
+      );
 
       // Apply date filtering to both sales and expenses
       if (event.startDate != null) {

@@ -11,6 +11,8 @@ import 'package:wanzo/core/services/api_service.dart';
 import 'package:wanzo/core/services/api_client.dart';
 import 'package:wanzo/core/services/database_service.dart';
 import 'package:wanzo/core/exceptions/api_exceptions.dart';
+import 'package:wanzo/core/cancellation/document_cancellation.dart';
+import 'package:wanzo/core/cancellation/pending_cancellations.dart';
 import 'package:wanzo/core/models/api_response.dart';
 import 'package:wanzo/core/services/customer_api_service.dart';
 import 'package:wanzo/core/services/sale_api_service.dart';
@@ -733,12 +735,29 @@ class SyncService {
               // Nouvelle vente à créer
               final response = await _saleApiService.createSale(sale);
               if (response.success && response.data != null) {
-                final syncedSale = response.data!.copyWith(
+                var syncedSale = response.data!.copyWith(
                   syncStatus: 'synced',
                 );
+                // Vente annulée sur l'appareil avant son envoi : elle reste
+                // annulée à l'écran, l'annulation en file suit son nouvel
+                // identifiant et part à la prochaine relecture.
+                if (sale.isCancelled && !syncedSale.isCancelled) {
+                  syncedSale = syncedSale.copyWith(
+                    status: SaleStatus.cancelled,
+                    cancelledAt: sale.cancelledAt,
+                    cancelledById: sale.cancelledById,
+                    cancelledByName: sale.cancelledByName,
+                    cancelReason: sale.cancelReason,
+                  );
+                }
                 // Remplacer avec l'ID serveur
                 await saleBox.delete(sale.id);
                 await saleBox.put(syncedSale.id, syncedSale);
+                await PendingCancellations.instance.rekey(
+                  CancellableDocument.sale,
+                  sale.id,
+                  syncedSale.id,
+                );
                 debugPrint(
                   '✅ Vente uploadée: ${sale.customerName} (ID: ${syncedSale.id})',
                 );
@@ -766,9 +785,14 @@ class SyncService {
 
       // Toutes les pages (`updated_after` n'est pas filtré côté serveur, et
       // la liste est plafonnée à 10 par défaut).
+      // Ventes annulées comprises : le cache les garde au statut annulé.
       final paged = await fetchAllPages<Sale>(
         (page, limit) => _saleApiService.getSales(
-          queryParameters: {'page': '$page', 'limit': '$limit'},
+          queryParameters: {
+            'page': '$page',
+            'limit': '$limit',
+            'includeCancelled': 'true',
+          },
         ),
       );
       final apiResponse = paged.response;
@@ -779,7 +803,12 @@ class SyncService {
           final localSale = saleBox.get(apiSale.id);
           if (localSale != null &&
               (localSale.syncStatus == 'pending' ||
-                  localSale.syncStatus == 'pending_update')) {
+                  localSale.syncStatus == 'pending_update' ||
+                  // Annulation ou rétablissement pas encore envoyé.
+                  PendingCancellations.instance.isPending(
+                    CancellableDocument.sale,
+                    apiSale.id,
+                  ))) {
             // Ne pas écraser une vente locale en attente de synchronisation
             // (création OU modification, ex. paiement saisi hors ligne). Un
             // statut absent (anciennes versions) n'est pas protégé : sinon la
@@ -798,7 +827,9 @@ class SyncService {
             isPending:
                 (s) =>
                     s.syncStatus == 'pending' ||
-                    s.syncStatus == 'pending_update',
+                    s.syncStatus == 'pending_update' ||
+                    // Une vente annulée n'est jamais effacée du cache.
+                    s.isCancelled,
           );
           if (stale > 0) debugPrint('🗑️ $stale ventes obsolètes supprimées');
         }
@@ -889,9 +920,20 @@ class SyncService {
                 beneficiary: expense.beneficiary,
               );
               if (response.success && response.data != null) {
-                final syncedExpense = response.data!.copyWith(
+                var syncedExpense = response.data!.copyWith(
                   syncStatus: 'synced',
                 );
+                // Dépense annulée sur l'appareil avant son envoi : elle reste
+                // annulée, l'annulation en file suit son nouvel identifiant.
+                if (expense.isCancelled && !syncedExpense.isCancelled) {
+                  syncedExpense = syncedExpense.copyWith(
+                    status: Expense.cancelledStatus,
+                    cancelledAt: expense.cancelledAt,
+                    cancelledById: expense.cancelledById,
+                    cancelledByName: expense.cancelledByName,
+                    cancelReason: expense.cancelReason,
+                  );
+                }
                 // Remplacer avec l'ID serveur. Le dépôt range une dépense
                 // locale sous son `localId` : effacer seulement `id` laissait
                 // la copie `pending`, renvoyée (en double) à chaque synchro.
@@ -899,6 +941,11 @@ class SyncService {
                 await expenseBox.delete(localKey);
                 await expenseBox.delete(expense.id);
                 await expenseBox.put(syncedExpense.id, syncedExpense);
+                await PendingCancellations.instance.rekey(
+                  CancellableDocument.expense,
+                  localKey,
+                  syncedExpense.id,
+                );
                 // Entrée de stock d'un réapprovisionnement qui attendait
                 // l'id serveur de sa dépense.
                 await RestockAwaitingExpense.release(
@@ -959,7 +1006,11 @@ class SyncService {
       // modification, et faisait manquer les dépenses antidatées.
       final expenseApi = _expenseApiService;
       final paged = await fetchAllPages<Expense>(
-        (page, limit) => expenseApi.getExpenses(page: page, limit: limit),
+        (page, limit) => expenseApi.getExpenses(
+          page: page,
+          limit: limit,
+          includeCancelled: true,
+        ),
       );
       final apiResponse = paged.response;
 
@@ -970,7 +1021,11 @@ class SyncService {
           final localExpense = expenseBox.get(apiExpense.id);
           if (localExpense != null &&
               (localExpense.syncStatus == 'pending' ||
-                  localExpense.syncStatus == 'pending_update')) {
+                  localExpense.syncStatus == 'pending_update' ||
+                  PendingCancellations.instance.isPending(
+                    CancellableDocument.expense,
+                    apiExpense.id,
+                  ))) {
             debugPrint(
               '⏳ Dépense ${apiExpense.id} ignorée (sync pending local)',
             );
@@ -990,7 +1045,8 @@ class SyncService {
             isPending:
                 (e) =>
                     e.syncStatus == 'pending' ||
-                    e.syncStatus == 'pending_update',
+                    e.syncStatus == 'pending_update' ||
+                    e.isCancelled,
           );
           if (stale > 0) debugPrint('🗑️ $stale dépenses obsolètes supprimées');
         }

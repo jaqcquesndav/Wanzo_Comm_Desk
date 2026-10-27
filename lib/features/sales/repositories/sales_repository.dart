@@ -4,6 +4,8 @@ import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import '../models/sale.dart';
 import '../services/sales_api_service.dart';
+import '../../../core/cancellation/document_cancellation.dart';
+import '../../../core/cancellation/pending_cancellations.dart';
 import '../../../core/models/operation_payment.dart';
 import '../../../core/utils/logger.dart';
 import '../../../core/services/business_context_service.dart';
@@ -47,10 +49,27 @@ class SalesRepository {
     _salesBox = await Hive.openBox<Sale>(_salesBoxName);
   }
 
-  /// Récupérer toutes les ventes (Offline-First)
-  Future<List<Sale>> getAllSales({bool syncWithApi = false}) async {
+  /// Ventes actives d'une liste : les ventes annulées sont conservées pour la
+  /// trace mais n'entrent dans aucun total.
+  static List<Sale> activeOnly(Iterable<Sale> sales) =>
+      sales.where((s) => !s.isCancelled).toList();
+
+  /// Ventes créées pendant cette session, par identifiant local : un nouvel
+  /// essai avec le même localId (double appui, reprise après erreur) rend la
+  /// vente déjà enregistrée au lieu d'en créer une seconde.
+  final Map<String, Sale> _createdByLocalId = {};
+
+  /// Récupérer toutes les ventes (Offline-First). Les ventes annulées sont
+  /// écartées, sauf [includeCancelled] (liste des ventes, filtre « Annulées »).
+  Future<List<Sale>> getAllSales({
+    bool syncWithApi = false,
+    bool includeCancelled = false,
+  }) async {
+    List<Sale> scope(Iterable<Sale> all) =>
+        includeCancelled ? all.toList() : activeOnly(all);
+
     // 1. Lire les données locales d'abord
-    final localSales = _salesBox.values.toList();
+    final localSales = scope(_salesBox.values);
 
     // 2. Si sync activé et API disponible, fusionner avec les données API
     if (syncWithApi && _apiService != null) {
@@ -58,6 +77,9 @@ class SalesRepository {
         // Les règlements saisis hors ligne partent AVANT la relecture, sinon
         // la réponse serveur écraserait le cache optimiste local.
         await flushPendingPayments();
+        // Annulations saisies hors ligne : envoyées avant la relecture, sinon
+        // la version serveur (encore active) reprendrait le dessus.
+        await flushPendingCancellations();
         // Toutes les pages : le backend ne renvoie que 10 ventes sans `limit`.
         final apiResponse = await _apiService.getAllSalesPaged().timeout(
           const Duration(seconds: 30),
@@ -65,7 +87,7 @@ class SalesRepository {
         if (apiResponse.success && apiResponse.data != null) {
           // Fusionner les données API avec local
           await _mergeSales(apiResponse.data!);
-          return _salesBox.values.toList();
+          return scope(_salesBox.values);
         }
       } catch (e) {
         // Fallback sur données locales en cas d'erreur réseau
@@ -93,10 +115,10 @@ class SalesRepository {
     }
   }
 
-  /// Récupérer les ventes d'un client
+  /// Récupérer les ventes d'un client (ventes annulées écartées)
   Future<List<Sale>> getSalesByCustomer(String customerId) async {
     return _salesBox.values
-        .where((sale) => sale.customerId == customerId)
+        .where((sale) => !sale.isCancelled && sale.customerId == customerId)
         .toList();
   }
 
@@ -121,6 +143,8 @@ class SalesRepository {
         allSales
             .where(
               (sale) =>
+                  // Ventes annulées écartées : tableau de bord, rapports.
+                  !sale.isCancelled &&
                   sale.date.isAfter(start) &&
                   sale.date.isBefore(end.add(const Duration(days: 1))),
             )
@@ -133,8 +157,24 @@ class SalesRepository {
   }
 
   /// Ajouter une nouvelle vente
+  ///
+  /// Le localId posé par l'écran est réutilisé à chaque essai : une vente
+  /// déjà enregistrée sous ce localId est rendue telle quelle, sans second
+  /// envoi (double appui, reprise après erreur). Le serveur déduplique aussi
+  /// sur (entreprise, localId).
   Future<Sale> addSale(Sale sale) async {
-    final newSaleId = _uuid.v4();
+    final requestedLocalId =
+        (sale.localId != null && sale.localId!.trim().isNotEmpty)
+            ? sale.localId!.trim()
+            : null;
+    if (requestedLocalId != null) {
+      final already = _createdByLocalId[requestedLocalId];
+      if (already != null) {
+        Logger.info('ℹ️ Vente $requestedLocalId déjà enregistrée, pas de doublon');
+        return already;
+      }
+    }
+    final newSaleId = requestedLocalId ?? _uuid.v4();
     // TOUTE la vente est propagée (échéance, référence de paiement, TVA, HT,
     // remise, unité d'affaires, pièces jointes, téléphone du client) :
     // reconstruire la vente champ par champ perdait en silence tout ce qui
@@ -154,6 +194,7 @@ class SalesRepository {
 
     // 1. Save locally first (offline-first)
     await _salesBox.put(newSale.id, newSale);
+    _createdByLocalId[newSaleId] = newSale;
     Logger.info('💾 Vente sauvegardée localement avec ID: ${newSale.id}');
 
     // 2. Try to sync with API
@@ -190,9 +231,20 @@ class SalesRepository {
           if (newSaleId != createdSaleFromApi.id) {
             // Remove the entry with local ID if different
             await _salesBox.delete(newSaleId);
+            await PendingCancellations.instance.rekey(
+              CancellableDocument.sale,
+              newSaleId,
+              createdSaleFromApi.id,
+            );
           }
 
-          return syncedSale;
+          // L'avertissement de doublon accompagne la vente rendue à l'écran,
+          // il n'est jamais conservé.
+          final result = syncedSale.copyWith(
+            possibleDuplicateOf: createdSaleFromApi.possibleDuplicateOf,
+          );
+          _createdByLocalId[newSaleId] = result;
+          return result;
         } else {
           Logger.warning(
             '⚠️ API sync failed: ${apiResponse.message}. Sale remains local.',
@@ -509,28 +561,216 @@ class SalesRepository {
     }
   }
 
-  /// Supprimer une vente
-  Future<void> deleteSale(String id) async {
-    // 1. Delete locally first
-    await _salesBox.delete(id);
-    Logger.info('💾 Vente supprimée localement: $id');
+  // ══════════════════════════════════════════════════════════════════════════
+  // ANNULATION ET RÉTABLISSEMENT (une vente n'est jamais effacée)
+  // ══════════════════════════════════════════════════════════════════════════
 
-    // 2. Try to delete from API
-    if (_apiService != null) {
+  /// Annule une vente avec son motif. La vente reste dans le cache local au
+  /// statut annulé (jamais retirée). Hors ligne, ou si la vente n'est pas
+  /// encore créée sur le serveur, l'annulation entre dans la file et repart à
+  /// la synchronisation. Un refus du serveur (droits, motif) rend la vente à
+  /// son état et lève un [StateError].
+  Future<CancellationOutcome<Sale>> cancelSale(
+    Sale sale,
+    String reason, {
+    String? actorName,
+    String? actorId,
+  }) async {
+    final error = validateCancelReason(reason);
+    if (error != null) throw StateError(error);
+    final motif = reason.trim();
+    final current = _salesBox.get(sale.id) ?? sale;
+    if (current.isCancelled &&
+        !PendingCancellations.instance.isPending(
+          CancellableDocument.sale,
+          current.id,
+        )) {
+      return CancellationOutcome(
+        document: current,
+        synced: current.syncStatus == 'synced',
+        message: 'Cette vente est déjà annulée.',
+      );
+    }
+
+    // 1. Application locale : la vente passe au statut annulé, avec sa trace.
+    final local = current.copyWith(
+      status: SaleStatus.cancelled,
+      cancelledAt: DateTime.now(),
+      cancelledByName: actorName,
+      cancelledById: actorId,
+      cancelReason: motif,
+    );
+    await _salesBox.put(current.id, local);
+
+    // 2. Vente encore jamais envoyée, ou pas de service : en file.
+    if (_apiService == null || awaitsServerCreation(current)) {
+      await PendingCancellations.instance.enqueue(
+        CancellableDocument.sale,
+        current.id,
+        PendingCancellations.cancel,
+        reason: motif,
+      );
+      return CancellationOutcome(
+        document: local,
+        synced: false,
+        message: 'Vente annulée sur l\'appareil, la synchronisation suivra.',
+      );
+    }
+
+    // 3. Envoi au serveur.
+    try {
+      final response = await _apiService
+          .cancelSale(current.id, reason: motif)
+          .timeout(const Duration(seconds: 15));
+      final server = (response.data ?? local).copyWith(syncStatus: 'synced');
+      await _salesBox.put(current.id, server);
+      await PendingCancellations.instance.done(
+        CancellableDocument.sale,
+        current.id,
+      );
+      return CancellationOutcome(
+        document: server,
+        synced: true,
+        message: 'Vente annulée.',
+      );
+    } catch (e) {
+      if (isServerRefusal(e)) {
+        // Refus définitif : la vente redevient ce qu'elle était.
+        await _salesBox.put(current.id, current);
+        throw StateError(
+          refusalMessage(e, fallback: 'Annulation refusée par le serveur.'),
+        );
+      }
+      Logger.warning('⚠️ Annulation de la vente ${current.id} mise en file: $e');
+      await PendingCancellations.instance.enqueue(
+        CancellableDocument.sale,
+        current.id,
+        PendingCancellations.cancel,
+        reason: motif,
+      );
+      return CancellationOutcome(
+        document: local,
+        synced: false,
+        message: 'Vente annulée hors ligne, elle sera synchronisée.',
+      );
+    }
+  }
+
+  /// Rétablit une vente annulée. Une annulation encore en file est
+  /// simplement retirée ; sinon le serveur doit confirmer (en ligne
+  /// seulement, il refuse par 409 une vente qui n'est pas annulée).
+  Future<CancellationOutcome<Sale>> restoreSale(
+    Sale sale, {
+    String? reason,
+  }) async {
+    final current = _salesBox.get(sale.id) ?? sale;
+    final pending = await PendingCancellations.instance.pendingFor(
+      CancellableDocument.sale,
+      current.id,
+    );
+    final restoredLocally = current.copyWith(
+      status: _statusFromPayments(current),
+      clearCancellation: true,
+    );
+
+    // L'annulation n'était jamais partie : il suffit de l'oublier.
+    if (pending != null && pending.isCancel) {
+      await PendingCancellations.instance.done(
+        CancellableDocument.sale,
+        current.id,
+      );
+      await _salesBox.put(current.id, restoredLocally);
+      return CancellationOutcome(
+        document: restoredLocally,
+        synced: current.syncStatus == 'synced',
+        message: 'Vente rétablie.',
+      );
+    }
+    if (_apiService == null) {
+      throw StateError('Rétablissement impossible : serveur indisponible.');
+    }
+    try {
+      final response = await _apiService
+          .restoreSale(current.id, reason: reason)
+          .timeout(const Duration(seconds: 15));
+      final server = (response.data ?? restoredLocally).copyWith(
+        syncStatus: 'synced',
+      );
+      await _salesBox.put(current.id, server);
+      return CancellationOutcome(
+        document: server,
+        synced: true,
+        message: 'Vente rétablie.',
+      );
+    } catch (e) {
+      if (isMissingRoute(e)) {
+        throw StateError(
+          'Le rétablissement n\'est pas encore disponible sur le serveur.',
+        );
+      }
+      if (isServerRefusal(e)) {
+        throw StateError(
+          refusalMessage(e, fallback: 'Rétablissement refusé par le serveur.'),
+        );
+      }
+      throw StateError(
+        'Rétablissement impossible hors ligne. Réessayez une fois connecté.',
+      );
+    }
+  }
+
+  /// Statut d'une vente rétablie, déduit de ses règlements.
+  static SaleStatus _statusFromPayments(Sale sale) {
+    if (sale.paidAmountInCdf + 0.01 >= sale.totalAmountInCdf) {
+      return SaleStatus.completed;
+    }
+    return sale.paidAmountInCdf > 0
+        ? SaleStatus.partiallyPaid
+        : SaleStatus.pending;
+  }
+
+  /// Rejoue les annulations saisies hors ligne. Appelé à chaque
+  /// synchronisation. Une vente pas encore créée sur le serveur attend.
+  Future<void> flushPendingCancellations() async {
+    if (_apiService == null) return;
+    final pending = await PendingCancellations.instance.entries(
+      CancellableDocument.sale,
+    );
+    for (final p in pending) {
+      if (awaitsServerCreation(_salesBox.get(p.id))) continue;
       try {
-        final apiResponse = await _apiService
-            .deleteSale(id)
-            .timeout(const Duration(seconds: 10));
-
-        if (apiResponse.success) {
-          Logger.info('✅ Suppression synchronisée avec l\'API: $id');
-        } else {
-          Logger.warning(
-            '⚠️ API sync failed for delete: ${apiResponse.message}',
+        final response =
+            p.isCancel
+                ? await _apiService
+                    .cancelSale(p.id, reason: p.reason ?? 'Annulation')
+                    .timeout(const Duration(seconds: 15))
+                : await _apiService
+                    .restoreSale(p.id, reason: p.reason)
+                    .timeout(const Duration(seconds: 15));
+        if (response.data != null) {
+          await _salesBox.put(
+            p.id,
+            response.data!.copyWith(syncStatus: 'synced'),
           );
         }
+        await PendingCancellations.instance.done(CancellableDocument.sale, p.id);
+        Logger.info('✅ Annulation en file envoyée (vente ${p.id})');
       } catch (e) {
-        Logger.error('❌ Erreur sync API (deleteSale)', error: e);
+        if (isServerRefusal(e) && !isMissingRoute(e)) {
+          // Refus définitif (droits, déjà rétablie...) : on l'abandonne et
+          // la vente reprend la version du serveur à la prochaine lecture.
+          await PendingCancellations.instance.done(
+            CancellableDocument.sale,
+            p.id,
+          );
+          final local = _salesBox.get(p.id);
+          if (local != null) {
+            await _salesBox.put(p.id, local.copyWith(syncStatus: 'synced'));
+          }
+          Logger.warning('⚠️ Annulation refusée (vente ${p.id}): $e');
+        } else {
+          Logger.warning('⚠️ Annulation en file non envoyée (vente ${p.id}): $e');
+        }
       }
     }
   }
@@ -544,16 +784,16 @@ class SalesRepository {
     ); // Use CDF field
   }
 
-  /// Calculer le nombre de ventes
+  /// Calculer le nombre de ventes (ventes annulées écartées)
   Future<int> getSalesCount() async {
-    return _salesBox.length;
+    return _salesBox.values.where((s) => !s.isCancelled).length;
   }
 
   /// Calculer le total des montants à recevoir (ventes non entièrement payées)
   Future<double> getTotalReceivables() async {
     final sales = _salesBox.values.where(
       (sale) =>
-          sale.status == SaleStatus.pending ||
+          !sale.isCancelled && sale.status == SaleStatus.pending ||
           (sale.status == SaleStatus.partiallyPaid &&
               sale.paidAmountInCdf < sale.totalAmountInCdf), // Use CDF fields
     );
@@ -574,6 +814,7 @@ class SalesRepository {
       // Règlements saisis hors ligne d'abord : `sales/sync` ignore les ventes
       // déjà connues du serveur, il ne les porterait donc jamais.
       await flushPendingPayments();
+      await flushPendingCancellations();
 
       final localSales = _salesBox.values.toList();
       if (localSales.isEmpty) return;
@@ -620,6 +861,16 @@ class SalesRepository {
   Future<void> _mergeSales(List<Sale> apiSales) async {
     for (final apiSale in apiSales) {
       final existing = _salesBox.get(apiSale.id);
+
+      // Annulation ou rétablissement en attente d'envoi : la version locale
+      // fait foi tant que le serveur ne l'a pas reçue.
+      if (existing != null &&
+          PendingCancellations.instance.isPending(
+            CancellableDocument.sale,
+            apiSale.id,
+          )) {
+        continue;
+      }
 
       // GARDE ANTI-ÉCRASEMENT : un règlement encore en attente de
       // synchronisation ne doit pas être effacé par la version serveur, qui

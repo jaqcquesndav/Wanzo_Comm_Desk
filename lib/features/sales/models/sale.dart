@@ -2,6 +2,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:hive/hive.dart';
 import 'package:json_annotation/json_annotation.dart';
+import 'package:wanzo/core/cancellation/document_cancellation.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
 import './sale_item.dart'; // Import SaleItem from its own file
 
@@ -160,6 +161,35 @@ class Sale extends Equatable {
   @JsonKey(includeIfNull: false)
   final String? downPaymentMethod;
 
+  // ============= ANNULATION =============
+  // Une vente n'est jamais effacée : annulée, elle garde qui, quand et
+  // pourquoi. Lus à la main dans [Sale.fromJson] (`cancelledBy` est un objet).
+
+  /// Date de l'annulation.
+  @HiveField(23)
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final DateTime? cancelledAt;
+
+  /// Identifiant de l'auteur de l'annulation.
+  @HiveField(24)
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? cancelledById;
+
+  /// Nom (ou courriel) de l'auteur de l'annulation.
+  @HiveField(25)
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? cancelledByName;
+
+  /// Motif de l'annulation.
+  @HiveField(26)
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? cancelReason;
+
+  /// Vente semblable signalée par le serveur à la création (réponse de
+  /// `POST sales`). Simple avertissement, jamais conservé.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? possibleDuplicateOf;
+
   /// Identifiant de l'utilisateur
   @JsonKey(includeIfNull: false)
   final String? userId;
@@ -227,6 +257,11 @@ class Sale extends Equatable {
     this.localAttachmentPaths,
     this.paymentReference,
     this.downPaymentMethod,
+    this.cancelledAt,
+    this.cancelledById,
+    this.cancelledByName,
+    this.cancelReason,
+    this.possibleDuplicateOf,
     this.userId,
     this.createdAt,
     this.updatedAt,
@@ -288,9 +323,30 @@ class Sale extends Equatable {
             it,
       ];
     }
-    return _$SaleFromJson(normalized);
+    final sale = _$SaleFromJson(normalized);
+    final info = CancellationInfo.fromJson(normalized);
+    final duplicate = possibleDuplicateIn(normalized);
+    if (info.isEmpty && duplicate == null) return sale;
+    return sale.copyWith(
+      cancelledAt: info.at,
+      cancelledById: info.byId,
+      cancelledByName: info.byName,
+      cancelReason: info.reason,
+      possibleDuplicateOf: duplicate,
+    );
   }
   Map<String, dynamic> toJson() => _$SaleToJson(this);
+
+  /// Vente annulée : hors de tous les totaux, conservée pour la trace.
+  bool get isCancelled => status == SaleStatus.cancelled;
+
+  /// Qui a annulé, quand et pourquoi.
+  CancellationInfo get cancellation => CancellationInfo(
+    at: cancelledAt,
+    byId: cancelledById,
+    byName: cancelledByName,
+    reason: cancelReason,
+  );
 
   /// Vérifier si la vente est entièrement payée (basé sur les montants en CDF)
   bool get isFullyPaid => paidAmountInCdf >= totalAmountInCdf;
@@ -330,6 +386,13 @@ class Sale extends Equatable {
     List<String>? localAttachmentPaths,
     String? paymentReference,
     String? downPaymentMethod,
+    DateTime? cancelledAt,
+    String? cancelledById,
+    String? cancelledByName,
+    String? cancelReason,
+    String? possibleDuplicateOf,
+    // Vrai : efface la trace d'annulation (vente rétablie).
+    bool clearCancellation = false,
     String? userId,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -373,6 +436,19 @@ class Sale extends Equatable {
       localAttachmentPaths: localAttachmentPaths ?? this.localAttachmentPaths,
       paymentReference: paymentReference ?? this.paymentReference,
       downPaymentMethod: downPaymentMethod ?? this.downPaymentMethod,
+      cancelledAt:
+          clearCancellation ? cancelledAt : (cancelledAt ?? this.cancelledAt),
+      cancelledById:
+          clearCancellation
+              ? cancelledById
+              : (cancelledById ?? this.cancelledById),
+      cancelledByName:
+          clearCancellation
+              ? cancelledByName
+              : (cancelledByName ?? this.cancelledByName),
+      cancelReason:
+          clearCancellation ? cancelReason : (cancelReason ?? this.cancelReason),
+      possibleDuplicateOf: possibleDuplicateOf ?? this.possibleDuplicateOf,
       userId: userId ?? this.userId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -412,6 +488,10 @@ class Sale extends Equatable {
     localAttachmentPaths,
     paymentReference,
     downPaymentMethod,
+    cancelledAt,
+    cancelledById,
+    cancelledByName,
+    cancelReason,
     userId,
     createdAt,
     updatedAt,

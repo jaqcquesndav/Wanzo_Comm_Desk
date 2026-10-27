@@ -935,7 +935,44 @@ class CashSessionService {
   /// théorique et son écart recalculés, et le serveur reçoit la correction.
   /// Renvoie false si la vente n'est rattachée à aucune caisse ou déjà
   /// contre-passée partout.
-  Future<bool> reverseSale(Set<String> refs, {String? label}) async {
+  Future<bool> reverseSale(Set<String> refs, {String? label}) => _reverse(
+    refs,
+    label: label,
+    isOriginal:
+        (m) =>
+            m.kind == CashMovementKind.sale ||
+            m.kind == CashMovementKind.customerPayment ||
+            (m.kind == CashMovementKind.creditGranted && m.amount > 0),
+    isReversal:
+        (m) =>
+            m.kind == CashMovementKind.saleReversal ||
+            (m.kind == CashMovementKind.creditGranted && m.amount < 0),
+    reversalKind:
+        (m) =>
+            m.kind == CashMovementKind.creditGranted
+                ? CashMovementKind.creditGranted
+                : CashMovementKind.saleReversal,
+  );
+
+  /// Contre-passe la sortie d'une dépense annulée (part payée et règlements)
+  /// dans chaque session où elle a laissé un mouvement, ouverte ou clôturée :
+  /// l'argent revient dans les espèces attendues. Sans effet si c'est déjà
+  /// fait.
+  Future<bool> reverseExpense(Set<String> refs, {String? label}) => _reverse(
+    refs,
+    label: label,
+    isOriginal: (m) => m.kind == CashMovementKind.expense && m.amount < 0,
+    isReversal: (m) => m.kind == CashMovementKind.expense && m.amount > 0,
+    reversalKind: (_) => CashMovementKind.expense,
+  );
+
+  Future<bool> _reverse(
+    Set<String> refs, {
+    String? label,
+    required bool Function(CashMovement) isOriginal,
+    required bool Function(CashMovement) isReversal,
+    required CashMovementKind Function(CashMovement) reversalKind,
+  }) async {
     await load();
     final keys = refs.where((r) => r.isNotEmpty).toSet();
     if (keys.isEmpty) return false;
@@ -944,18 +981,11 @@ class CashSessionService {
     for (final s in List<CashSession>.of(_all)) {
       if (companyId != null && s.companyId != null && s.companyId != companyId) continue;
       final originals = s.movements.where(
-        (m) =>
-            keys.contains(m.ref) &&
-            (m.kind == CashMovementKind.sale ||
-                m.kind == CashMovementKind.customerPayment ||
-                (m.kind == CashMovementKind.creditGranted && m.amount > 0)),
+        (m) => keys.contains(m.ref) && isOriginal(m),
       );
       if (originals.isEmpty) continue;
       final already = s.movements.any(
-        (m) =>
-            keys.contains(m.ref) &&
-            (m.kind == CashMovementKind.saleReversal ||
-                (m.kind == CashMovementKind.creditGranted && m.amount < 0)),
+        (m) => keys.contains(m.ref) && isReversal(m),
       );
       if (already) continue;
       final now = DateTime.now();
@@ -963,9 +993,7 @@ class CashSessionService {
         for (final m in originals)
           CashMovement(
             at: now,
-            kind: m.kind == CashMovementKind.creditGranted
-                ? CashMovementKind.creditGranted
-                : CashMovementKind.saleReversal,
+            kind: reversalKind(m),
             method: m.method,
             currency: m.currency,
             amount: -m.amount,

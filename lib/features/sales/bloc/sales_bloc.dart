@@ -18,6 +18,22 @@ import 'package:wanzo/features/cash_session/cash_session_hooks.dart';
 part 'sales_event.dart';
 part 'sales_state.dart';
 
+/// État chargé : ventes actives (seules comptées dans le total) et ventes
+/// annulées à part.
+@visibleForTesting
+SalesLoaded salesLoadedFrom(Iterable<Sale> all) {
+  final active = <Sale>[];
+  final cancelled = <Sale>[];
+  for (final s in all) {
+    (s.isCancelled ? cancelled : active).add(s);
+  }
+  return SalesLoaded(
+    sales: active,
+    totalAmountInCdf: active.fold(0.0, (t, s) => t + s.totalAmountInCdf),
+    cancelledSales: cancelled,
+  );
+}
+
 /// Bloc gérant l'état des ventes
 class SalesBloc extends Bloc<SalesEvent, SalesState> {
   final SalesRepository _salesRepository;
@@ -47,7 +63,8 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
     on<UpdateSale>(_onUpdateSale);
     on<UpdateSaleStatus>(_onUpdateSaleStatus);
     on<RecordSalePayment>(_onRecordSalePayment);
-    on<DeleteSale>(_onDeleteSale);
+    on<CancelSale>(_onCancelSale);
+    on<RestoreSale>(_onRestoreSale);
   }
 
   /// Enregistrer une tranche de règlement sur une créance client.
@@ -115,12 +132,11 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
   Future<void> _onLoadSales(LoadSales event, Emitter<SalesState> emit) async {
     emit(const SalesLoading());
     try {
-      final sales = await _salesRepository.getAllSales(syncWithApi: true);
-      final totalAmountInCdf = sales.fold(
-        0.0,
-        (total, sale) => total + sale.totalAmountInCdf,
+      final all = await _salesRepository.getAllSales(
+        syncWithApi: true,
+        includeCancelled: true,
       );
-      emit(SalesLoaded(sales: sales, totalAmountInCdf: totalAmountInCdf));
+      emit(salesLoadedFrom(all));
     } catch (e) {
       emit(SalesError(e.toString()));
     }
@@ -134,7 +150,8 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
     emit(const SalesLoading());
     try {
       final sales = await _salesRepository.getSalesByStatus(event.status);
-      final totalAmountInCdf = sales.fold(
+      // Filtre « Annulées » : la liste les montre, leur total ne compte pas.
+      final totalAmountInCdf = SalesRepository.activeOnly(sales).fold(
         0.0,
         (total, sale) => total + sale.totalAmountInCdf,
       );
@@ -191,7 +208,26 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
   }
 
   /// Ajouter une nouvelle vente
+  /// Ventes en cours d'enregistrement, par localId : un second AddSale de la
+  /// même vente (double appui) est ignoré.
+  final Set<String> _addingLocalIds = {};
+
   Future<void> _onAddSale(AddSale event, Emitter<SalesState> emit) async {
+    final localId = event.sale.localId;
+    if (localId != null && localId.isNotEmpty) {
+      if (!_addingLocalIds.add(localId)) {
+        debugPrint("Vente $localId déjà en cours d'envoi, second appui ignoré");
+        return;
+      }
+    }
+    try {
+      await _addSale(event, emit);
+    } finally {
+      if (localId != null) _addingLocalIds.remove(localId);
+    }
+  }
+
+  Future<void> _addSale(AddSale event, Emitter<SalesState> emit) async {
     try {
       // 1. D'abord, enregistrer la vente
       // Le moyen de l'acompte voyage avec la vente (envoyé au serveur).
@@ -385,6 +421,7 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
           SalesOperationSuccess(
             'Vente ajoutée avec succès et enregistrée dans le journal des opérations',
             saleId: savedSale.id,
+            possibleDuplicateOf: savedSale.possibleDuplicateOf,
           ),
         );
         add(const LoadSales());
@@ -407,6 +444,7 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
             SalesOperationSuccess(
               'Vente ajoutée avec succès et enregistrée dans le journal des opérations',
               saleId: savedSale.id,
+              possibleDuplicateOf: savedSale.possibleDuplicateOf,
             ),
           );
         } catch (secondError) {
@@ -419,6 +457,7 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
             SalesOperationSuccess(
               'Vente ajoutée avec succès, mais problème d\'enregistrement dans le journal des opérations',
               saleId: savedSale.id,
+              possibleDuplicateOf: savedSale.possibleDuplicateOf,
             ),
           );
         }
@@ -442,66 +481,126 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
     }
   }
 
-  /// Supprimer une vente
-  Future<void> _onDeleteSale(DeleteSale event, Emitter<SalesState> emit) async {
-    emit(const SalesLoading());
+  /// Annuler une vente : elle est conservée au statut annulé, jamais effacée.
+  ///
+  /// Le serveur rétablit le stock et les règlements et informe la
+  /// comptabilité. Sur l'appareil, à la PREMIÈRE annulation seulement : stock
+  /// local rendu, encaissement contre-passé dans sa caisse (même clôturée),
+  /// écritures du journal contre-passées.
+  Future<void> _onCancelSale(CancelSale event, Emitter<SalesState> emit) async {
     try {
-      // Récupérer les détails de la vente avant de la supprimer pour restaurer l'inventaire
-      final saleToDelete = await _salesRepository.getSaleById(event.id);
-
-      if (saleToDelete == null) {
-        emit(SalesError('Vente introuvable'));
-        return;
+      final before =
+          await _salesRepository.getSaleById(event.sale.id) ?? event.sale;
+      final wasCancelled = before.isCancelled;
+      final outcome = await _salesRepository.cancelSale(
+        before,
+        event.reason,
+        actorName: event.actorName,
+        actorId: event.actorId,
+      );
+      if (!wasCancelled) {
+        await _adjustLocalStock(before, restock: true);
+        await cashSessionOnSaleCancelled(before);
+        await _reverseJournal(before);
       }
-
-      // Restaurer l'inventaire des produits vendus
-      if (saleToDelete.items.isNotEmpty) {
-        for (final item in saleToDelete.items) {
-          // Skip items without a productId
-          if (item.productId == null) continue;
-          final productId = item.productId!;
-          try {
-            // Créer une transaction d'ajustement pour remettre les produits en stock
-            final stockTransaction = StockTransaction(
-              id: const Uuid().v4(),
-              productId: productId,
-              type: StockTransactionType.adjustment,
-              quantity: item.quantity.toDouble(), // Convertir en double
-              date: DateTime.now(),
-              notes:
-                  'Stock restauré suite à suppression de la vente #${saleToDelete.id.substring(0, 8)}',
-              unitCostInCdf:
-                  item.unitPriceInCdf, // Utiliser le prix de vente comme référence
-              totalValueInCdf: item.unitPriceInCdf * item.quantity,
-            );
-
-            // Restock LOCAL uniquement : le backend restocke via la suppression
-            // de la vente (évite le double).
-            await _inventoryRepository.addStockTransaction(stockTransaction);
-          } catch (e) {
-            if (kDebugMode) {
-              print(
-                'Erreur lors de la restauration du stock pour ${item.productId}: $e',
-              );
-            }
-            // Continuer avec les autres produits même si une erreur se produit
-          }
-        }
-      }
-
-      // Supprimer la vente
-      await _salesRepository.deleteSale(event.id);
-      // Encaissement contre-passé dans sa caisse (même clôturée).
-      await cashSessionOnSaleCancelled(saleToDelete);
-
       emit(
-        const SalesOperationSuccess(
-          'Vente supprimée avec succès et stock restauré',
+        SaleCancellationDone(
+          sale: outcome.document,
+          synced: outcome.synced,
+          message: outcome.message,
         ),
       );
       add(const LoadSales());
     } catch (e) {
-      emit(SalesError(e.toString()));
+      emit(SalesError(e is StateError ? e.message : e.toString()));
+    }
+  }
+
+  /// Rétablir une vente annulée : le stock local est de nouveau sorti et les
+  /// écritures du journal reprises. La caisse n'est pas retouchée : le
+  /// serveur fait foi pour la trésorerie.
+  Future<void> _onRestoreSale(
+    RestoreSale event,
+    Emitter<SalesState> emit,
+  ) async {
+    try {
+      final before =
+          await _salesRepository.getSaleById(event.sale.id) ?? event.sale;
+      final outcome = await _salesRepository.restoreSale(
+        before,
+        reason: event.reason,
+      );
+      if (before.isCancelled) {
+        await _adjustLocalStock(before, restock: false);
+        try {
+          await _journalRepository.reinstateDocument({
+            before.id,
+            before.localId,
+          });
+          _operationJournalBloc.add(const RefreshJournal());
+        } catch (e) {
+          debugPrint('⚠️ Journal non repris pour la vente rétablie: $e');
+        }
+      }
+      emit(
+        SaleCancellationDone(
+          sale: outcome.document,
+          synced: outcome.synced,
+          message: outcome.message,
+          restored: true,
+        ),
+      );
+      add(const LoadSales());
+    } catch (e) {
+      emit(SalesError(e is StateError ? e.message : e.toString()));
+    }
+  }
+
+  /// Stock LOCAL des produits de la vente : rendu à l'annulation, de nouveau
+  /// sorti au rétablissement (cache local seulement). Le serveur fait le même
+  /// mouvement de son côté.
+  Future<void> _adjustLocalStock(Sale sale, {required bool restock}) async {
+    final shortId = sale.id.length >= 8 ? sale.id.substring(0, 8) : sale.id;
+    for (final item in sale.items) {
+      final productId = item.productId;
+      if (productId == null || item.itemType != SaleItemType.product) continue;
+      try {
+        await _inventoryRepository.addStockTransaction(
+          StockTransaction(
+            id: _uuid.v4(),
+            productId: productId,
+            type:
+                restock
+                    ? StockTransactionType.adjustment
+                    : StockTransactionType.sale,
+            quantity:
+                restock
+                    ? item.quantity.toDouble()
+                    : -item.quantity.toDouble(),
+            date: DateTime.now(),
+            referenceId: sale.id,
+            notes:
+                restock
+                    ? 'Stock rendu, vente annulée #$shortId'
+                    : 'Vente rétablie #$shortId',
+            unitCostInCdf: item.unitPriceInCdf,
+            totalValueInCdf: item.unitPriceInCdf * item.quantity,
+          ),
+        );
+      } catch (e) {
+        debugPrint('⚠️ Stock local non ajusté pour ${item.productId}: $e');
+      }
+    }
+  }
+
+  /// Contre-passe au journal les écritures de la vente (chiffre d'affaires,
+  /// encaissement, sortie de stock) : elles sortent de tous les totaux.
+  Future<void> _reverseJournal(Sale sale) async {
+    try {
+      await _journalRepository.reverseDocument({sale.id, sale.localId});
+      _operationJournalBloc.add(const RefreshJournal());
+    } catch (e) {
+      debugPrint('⚠️ Journal non contre-passé pour la vente annulée: $e');
     }
   }
 
@@ -510,6 +609,15 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
     UpdateSaleStatus event,
     Emitter<SalesState> emit,
   ) async {
+    // Une annulation passe par CancelSale : motif, trace et contre-passations.
+    if (event.status == SaleStatus.cancelled) {
+      emit(
+        const SalesError(
+          'Pour annuler une vente, utilisez « Annuler la vente » avec son motif.',
+        ),
+      );
+      return;
+    }
     emit(const SalesLoading());
     try {
       final sale = await _salesRepository.getSaleById(event.id);
@@ -517,9 +625,6 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
         final updatedSale = sale.copyWith(status: event.status);
 
         await _salesRepository.updateSale(updatedSale);
-        if (event.status == SaleStatus.cancelled) {
-          await cashSessionOnSaleCancelled(updatedSale);
-        }
         emit(
           const SalesOperationSuccess(
             'Statut de la vente mis à jour avec succès',

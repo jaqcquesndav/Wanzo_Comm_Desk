@@ -27,6 +27,21 @@ import '../models/sale.dart';
 /// Lève [StateError] si la vente est dans une devise étrangère sans taux de
 /// change exploitable : un taux 1 implicite ferait enregistrer 10 USD comme
 /// 10 CDF.
+/// Statut envoyé au serveur. Une vente annulée localement et encore jamais
+/// créée côté serveur (`syncStatus == 'pending'`) est créée avec le statut
+/// déduit de ses règlements, puis annulée par `POST sales/:id/cancel`.
+String saleStatusForApi(Sale sale) {
+  if (sale.status != SaleStatus.cancelled || sale.syncStatus != 'pending') {
+    return sale.status.name;
+  }
+  if (sale.paidAmountInCdf + 0.01 >= sale.totalAmountInCdf) {
+    return SaleStatus.completed.name;
+  }
+  return sale.paidAmountInCdf > 0
+      ? SaleStatus.partiallyPaid.name
+      : SaleStatus.pending.name;
+}
+
 Map<String, dynamic> saleToApiDto(
   Sale sale, {
   bool includeItems = true,
@@ -66,8 +81,10 @@ Map<String, dynamic> saleToApiDto(
     if (sale.paidAmountInTransactionCurrency != null &&
         sale.paidAmountInTransactionCurrency! > 0)
       'paidAmountInTransactionCurrency': sale.paidAmountInTransactionCurrency,
-    // Statut : accepté par les DTO de création et de mise à jour.
-    'status': sale.status.name,
+    // Statut : accepté par les DTO de création et de mise à jour. Une vente
+    // annulée sur l'appareil avant même d'avoir été envoyée part avec son
+    // statut d'origine : l'annulation suit par sa propre route (motif, trace).
+    'status': saleStatusForApi(sale),
     if (sale.discountPercentage > 0)
       'discountPercentage': sale.discountPercentage,
     // Totaux calculés par l'app (après remise globale) : le serveur applique

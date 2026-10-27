@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 
 import '../models/operation_journal_entry.dart';
 import '../models/journal_filter.dart';
+import '../utils/journal_reversal.dart';
 import '../../../core/services/api_service.dart'; // Import ApiService
 import '../../../core/utils/connectivity_service.dart'; // Import ConnectivityService
 
@@ -1226,6 +1227,55 @@ class OperationJournalRepository {
         'numberOfTransactions': null,
         'summaryPeriod': 'indisponible',
       };
+
+  /// Écritures du journal rattachées à une pièce (vente, dépense), sous son
+  /// identifiant serveur ou local (une pièce saisie hors ligne change
+  /// d'identifiant à l'envoi).
+  Future<List<OperationJournalEntry>> entriesForDocument(
+    Iterable<String?> documentIds,
+  ) async {
+    final ids = {
+      for (final id in documentIds)
+        if (id != null && id.isNotEmpty) id,
+    };
+    if (ids.isEmpty) return const [];
+    try {
+      final box = await _getBox();
+      return box.values
+          .where((e) => ids.contains(e.relatedDocumentId))
+          .toList();
+    } catch (e) {
+      debugPrint('Journal illisible pour la pièce $ids: $e');
+      return const [];
+    }
+  }
+
+  /// Pièce annulée : ses écritures sont contre-passées (caisse, ventes,
+  /// stock reviennent à zéro pour elle). Sans effet si c'est déjà fait.
+  /// Renvoie le nombre d'écritures ajoutées.
+  Future<int> reverseDocument(Iterable<String?> documentIds) async {
+    final entries = await entriesForDocument(documentIds);
+    final reversals = journalReversalEntries(
+      entries,
+      at: DateTime.now(),
+      newId: _uuid.v4,
+    );
+    if (reversals.isNotEmpty) await addOperationEntries(reversals);
+    return reversals.length;
+  }
+
+  /// Pièce rétablie : ses écritures d'origine sont reprises. Sans effet si
+  /// elle n'était pas contre-passée.
+  Future<int> reinstateDocument(Iterable<String?> documentIds) async {
+    final entries = await entriesForDocument(documentIds);
+    final again = journalReinstatementEntries(
+      entries,
+      at: DateTime.now(),
+      newId: _uuid.v4,
+    );
+    if (again.isNotEmpty) await addOperationEntries(again);
+    return again.length;
+  }
 
   /// Vider le cache local des entrées de journal (à utiliser lors du changement de business unit)
   Future<void> clearLocalCache() async {

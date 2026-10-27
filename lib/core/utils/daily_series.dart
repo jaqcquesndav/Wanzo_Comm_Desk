@@ -22,6 +22,8 @@ class DailySeries {
 
     final parJour = List<double>.filled(jours, 0);
     for (final v in ventes) {
+      // Vente annulée : hors du chiffre d'affaires.
+      if (v.isCancelled) continue;
       final jour = DateTime(v.date.year, v.date.month, v.date.day);
       if (jour.isBefore(debut) || jour.isAfter(aujourdhui)) continue;
       parJour[jour.difference(debut).inDays] += v.totalAmountInCdf;

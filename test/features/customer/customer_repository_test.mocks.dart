@@ -66,12 +66,15 @@ class MockSalesRepository extends _i1.Mock implements _i3.SalesRepository {
       ) as _i4.Future<void>);
 
   @override
-  _i4.Future<List<_i2.Sale>> getAllSales({bool? syncWithApi = false}) =>
+  _i4.Future<List<_i2.Sale>> getAllSales({
+    bool? syncWithApi = false,
+    bool? includeCancelled = false,
+  }) =>
       (super.noSuchMethod(
         Invocation.method(
           #getAllSales,
           [],
-          {#syncWithApi: syncWithApi},
+          {#syncWithApi: syncWithApi, #includeCancelled: includeCancelled},
         ),
         returnValue: _i4.Future<List<_i2.Sale>>.value(<_i2.Sale>[]),
       ) as _i4.Future<List<_i2.Sale>>);
@@ -193,16 +196,6 @@ class MockSalesRepository extends _i1.Mock implements _i3.SalesRepository {
         Invocation.method(
           #flushPendingPayments,
           [],
-        ),
-        returnValue: _i4.Future<void>.value(),
-        returnValueForMissingStub: _i4.Future<void>.value(),
-      ) as _i4.Future<void>);
-
-  @override
-  _i4.Future<void> deleteSale(String? id) => (super.noSuchMethod(
-        Invocation.method(
-          #deleteSale,
-          [id],
         ),
         returnValue: _i4.Future<void>.value(),
         returnValueForMissingStub: _i4.Future<void>.value(),

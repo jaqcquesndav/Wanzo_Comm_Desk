@@ -173,3 +173,16 @@ Future<void> cashSessionOnSaleCancelled(Sale sale) async {
     debugPrint('⚠️ Caisse : contre-passation non faite ($e)');
   }
 }
+
+/// Dépense annulée : sa sortie d'espèces est contre-passée dans la caisse où
+/// elle avait été rattachée, même déjà clôturée.
+Future<void> cashSessionOnExpenseCancelled(Expense expense) async {
+  try {
+    await CashSessionService.instance.reverseExpense(
+      {expense.id, expense.localId ?? ''},
+      label: 'Dépense annulée : ${expense.motif}',
+    );
+  } catch (e) {
+    debugPrint('⚠️ Caisse : contre-passation non faite ($e)');
+  }
+}

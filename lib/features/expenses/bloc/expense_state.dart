@@ -15,14 +15,40 @@ class ExpenseLoading extends ExpenseState {
   const ExpenseLoading();
 }
 
+/// Dépenses chargées. [expenses] ne contient que les dépenses actives (seules
+/// comptées dans les totaux) ; les annulées sont à part dans
+/// [cancelledExpenses] (filtre « Annulées »).
 class ExpensesLoaded extends ExpenseState {
   final List<Expense> expenses;
   final double totalExpenses;
+  final List<Expense> cancelledExpenses;
 
-  const ExpensesLoaded({required this.expenses, this.totalExpenses = 0.0});
+  const ExpensesLoaded({
+    required this.expenses,
+    this.totalExpenses = 0.0,
+    this.cancelledExpenses = const [],
+  });
 
   @override
-  List<Object?> get props => [expenses, totalExpenses];
+  List<Object?> get props => [expenses, totalExpenses, cancelledExpenses];
+}
+
+/// Dépense annulée ou rétablie : porte la dépense à jour pour la fiche.
+class ExpenseCancellationDone extends ExpenseState {
+  final Expense expense;
+  final bool synced;
+  final bool restored;
+  final String message;
+
+  const ExpenseCancellationDone({
+    required this.expense,
+    required this.synced,
+    required this.message,
+    this.restored = false,
+  });
+
+  @override
+  List<Object?> get props => [expense, synced, restored, message];
 }
 
 class ExpenseLoaded extends ExpenseState {

@@ -1177,6 +1177,8 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     double cumulativeExpenses = 0.0;
 
     for (final sale in widget.sales) {
+      // Vente annulée : hors du chiffre d'affaires.
+      if (sale.isCancelled) continue;
       if (sale.date.isAfter(startOfYear.subtract(const Duration(days: 1))) &&
           sale.date.isBefore(now.add(const Duration(days: 1)))) {
         cumulativeSales += sale.totalAmountInCdf;
@@ -1184,6 +1186,8 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     }
 
     for (final expense in widget.expenses) {
+      // Dépense annulée : hors des charges.
+      if (expense.isCancelled) continue;
       if (expense.date.isAfter(startOfYear.subtract(const Duration(days: 1))) &&
           expense.date.isBefore(now.add(const Duration(days: 1)))) {
         cumulativeExpenses += _expenseInCdf(expense, expense.amount);
@@ -1210,6 +1214,8 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     // Dépenses par catégorie
     final expensesByCategory = <ExpenseCategory, double>{};
     for (final expense in widget.expenses) {
+      // Dépense annulée : hors des charges.
+      if (expense.isCancelled) continue;
       expensesByCategory[expense.category] =
           (expensesByCategory[expense.category] ?? 0) +
           _expenseInCdf(expense, expense.amount);
@@ -1417,6 +1423,8 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     };
 
     for (final sale in widget.sales) {
+      // Vente annulée : hors du chiffre d'affaires.
+      if (sale.isCancelled) continue;
       if (sale.date.isAfter(now)) continue;
       final paid = sale.paidAmountInCdf;
       if (paid <= 0) continue;
@@ -1425,6 +1433,8 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     }
 
     for (final expense in widget.expenses) {
+      // Dépense annulée : hors des charges.
+      if (expense.isCancelled) continue;
       if (expense.date.isAfter(now)) continue;
       if (expense.paymentStatus != ExpensePaymentStatus.paid &&
           expense.paymentStatus != ExpensePaymentStatus.partial) {
@@ -1643,6 +1653,8 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     final dateRange = _selectedPeriod.getDateRange(DateTime.now());
 
     for (final sale in widget.sales) {
+      // Vente annulée : hors du chiffre d'affaires.
+      if (sale.isCancelled) continue;
       // Filtrer uniquement les ventes dans la période
       if (sale.date.isAfter(dateRange.start) &&
           sale.date.isBefore(dateRange.end.add(const Duration(seconds: 1)))) {
@@ -1669,6 +1681,8 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     final dateRange = _selectedPeriod.getDateRange(DateTime.now());
 
     for (final expense in widget.expenses) {
+      // Dépense annulée : hors des charges.
+      if (expense.isCancelled) continue;
       // Filtrer uniquement les dépenses dans la période
       if (expense.date.isAfter(dateRange.start) &&
           expense.date.isBefore(
@@ -1695,6 +1709,8 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     final dateRange = _selectedPeriod.getDateRange(DateTime.now());
 
     for (final sale in widget.sales) {
+      // Vente annulée : hors du chiffre d'affaires.
+      if (sale.isCancelled) continue;
       // Filtrer uniquement les ventes dans la période
       if (sale.date.isAfter(dateRange.start) &&
           sale.date.isBefore(dateRange.end.add(const Duration(seconds: 1)))) {
@@ -1718,6 +1734,8 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
     final dateRange = _selectedPeriod.getDateRange(DateTime.now());
 
     for (final expense in widget.expenses) {
+      // Dépense annulée : hors des charges.
+      if (expense.isCancelled) continue;
       // Filtrer uniquement les dépenses dans la période
       if (expense.date.isAfter(dateRange.start) &&
           expense.date.isBefore(

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:wanzo/core/cancellation/document_cancellation.dart';
 import 'package:wanzo/core/services/api_client.dart';
 import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/core/models/api_response.dart';
@@ -26,13 +27,19 @@ class SalesApiService {
       saleToApiDto(sale, includeItems: includeItems);
 
   /// TOUTES les ventes, page par page jusqu'à une page incomplète (le
-  /// backend renvoie 10 ventes quand `limit` est absent).
+  /// backend renvoie 10 ventes quand `limit` est absent). Les ventes annulées
+  /// sont demandées aussi : le cache local les garde au statut annulé (filtre
+  /// « Annulées »), les totaux les écartent.
   Future<ApiResponse<List<Sale>>> getAllSalesPaged({
     int pageSize = salesPageSize,
   }) async {
     final all = <Sale>[];
     for (var page = 1; page <= salesMaxPages; page++) {
-      final res = await getSales(page: page, limit: pageSize);
+      final res = await getSales(
+        page: page,
+        limit: pageSize,
+        includeCancelled: true,
+      );
       if (!res.success) return res;
       final batch = res.data ?? const <Sale>[];
       all.addAll(batch);
@@ -56,9 +63,12 @@ class SalesApiService {
     SaleStatus? status,
     String? sortBy,
     String? sortOrder,
+    // Le serveur écarte les ventes annulées par défaut.
+    bool includeCancelled = false,
   }) async {
     try {
       final Map<String, String> queryParams = {};
+      if (includeCancelled) queryParams['includeCancelled'] = 'true';
       if (page != null) queryParams['page'] = page.toString();
       if (limit != null) queryParams['limit'] = limit.toString();
       if (dateFrom != null) {
@@ -193,9 +203,14 @@ class SalesApiService {
       );
 
       if (response != null && response['data'] != null) {
-        final createdSale = Sale.fromJson(
+        var createdSale = Sale.fromJson(
           response['data'] as Map<String, dynamic>,
         );
+        // Vente semblable signalée par le serveur (avertissement seulement).
+        final duplicate = possibleDuplicateIn(response);
+        if (duplicate != null && createdSale.possibleDuplicateOf == null) {
+          createdSale = createdSale.copyWith(possibleDuplicateOf: duplicate);
+        }
 
         return ApiResponse<Sale>(
           success: true,
@@ -398,24 +413,8 @@ class SalesApiService {
     }
   }
 
-  /// Supprime une vente
-  Future<ApiResponse<void>> deleteSale(String id) async {
-    try {
-      final response = await _apiClient.delete('sales/$id', requiresAuth: true);
-
-      return ApiResponse<void>(
-        success: true,
-        data: null,
-        message:
-            response?['message'] as String? ?? 'Vente supprimée avec succès',
-        statusCode: response?['statusCode'] as int? ?? 200,
-      );
-    } on ApiException {
-      rethrow;
-    } catch (e) {
-      throw ServerException('Échec de la suppression de la vente: $e');
-    }
-  }
+  // Pas de suppression de vente : une vente s'annule (motif, trace) et peut
+  // être rétablie. Voir [cancelSale] et [restoreSale].
 
   /// Marque une vente comme complétée
   ///
@@ -467,42 +466,73 @@ class SalesApiService {
     }
   }
 
-  /// Annule une vente
-  Future<ApiResponse<Sale>> cancelSale(String id, {String? reason}) async {
+  /// Annule une vente (`POST sales/:id/cancel`, motif obligatoire). La vente
+  /// est conservée au statut annulé ; le serveur rétablit le stock et les
+  /// règlements et informe la comptabilité. Idempotent côté serveur.
+  ///
+  /// Serveur pas encore à jour (route absente) : repli sur l'ancienne
+  /// annulation `PUT sales/:id/cancel`, jamais sur la suppression.
+  ///
+  /// Pas de mise en file par le client HTTP : le dépôt tient sa propre file
+  /// (une vente pas encore créée sur le serveur doit attendre sa création).
+  Future<ApiResponse<Sale>> cancelSale(String id, {required String reason}) async {
+    final body = <String, dynamic>{'reason': reason.trim()};
+    dynamic response;
     try {
-      final response = await _apiClient.put(
+      response = await _apiClient.post(
         'sales/$id/cancel',
-        body: <String, dynamic>{
-          if (reason != null && reason.trim().isNotEmpty)
-            'reason': reason.trim(),
-        },
+        body: body,
         requiresAuth: true,
+        queueOffline: false,
       );
-
-      if (response != null && response['data'] != null) {
-        final cancelledSale = Sale.fromJson(
-          response['data'] as Map<String, dynamic>,
-        );
-
-        return ApiResponse<Sale>(
-          success: true,
-          data: cancelledSale,
-          message:
-              response['message'] as String? ?? 'Vente annulée avec succès',
-          statusCode: response['statusCode'] as int? ?? 200,
-        );
-      } else {
-        throw ApiExceptionFactory.fromStatusCode(
-          response?['statusCode'] as int? ?? 500,
-          'Format de réponse invalide du serveur',
-          responseBody: response,
-        );
-      }
-    } on ApiException {
-      rethrow;
-    } catch (e) {
-      throw ServerException('Échec de l\'annulation de la vente: $e');
+    } on ApiException catch (e) {
+      if (!isMissingRoute(e)) rethrow;
+      response = await _apiClient.put(
+        'sales/$id/cancel',
+        body: body,
+        requiresAuth: true,
+        queueOffline: false,
+      );
     }
+    return _saleResponse(response, 'Vente annulée');
+  }
+
+  /// Rétablit une vente annulée (`POST sales/:id/restore`). 409 si la vente
+  /// n'est pas annulée.
+  Future<ApiResponse<Sale>> restoreSale(String id, {String? reason}) async {
+    final response = await _apiClient.post(
+      'sales/$id/restore',
+      body: <String, dynamic>{
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      },
+      requiresAuth: true,
+      queueOffline: false,
+    );
+    return _saleResponse(response, 'Vente rétablie');
+  }
+
+  /// Déballe une vente renvoyée par le serveur (directe ou `{data: ...}`).
+  ApiResponse<Sale> _saleResponse(dynamic response, String message) {
+    if (response is! Map<String, dynamic>) {
+      throw ApiExceptionFactory.fromStatusCode(
+        500,
+        'Format de réponse invalide du serveur',
+        responseBody: response,
+      );
+    }
+    var saleData = response;
+    if (saleData['data'] is Map<String, dynamic>) {
+      saleData = saleData['data'] as Map<String, dynamic>;
+    }
+    if (saleData['sale'] is Map<String, dynamic>) {
+      saleData = saleData['sale'] as Map<String, dynamic>;
+    }
+    return ApiResponse<Sale>(
+      success: true,
+      data: Sale.fromJson(saleData),
+      message: response['message'] as String? ?? message,
+      statusCode: response['statusCode'] as int? ?? 200,
+    );
   }
 
   /// Synchronise les ventes locales avec le serveur

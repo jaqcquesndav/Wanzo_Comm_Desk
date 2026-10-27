@@ -41,13 +41,18 @@ class ExpenseAdapter extends TypeAdapter<Expense> {
       subCategory: fields[21] as String?,
       performerId: fields[22] as String?,
       performerName: fields[23] as String?,
+      status: fields[24] as String?,
+      cancelledAt: fields[25] as DateTime?,
+      cancelledById: fields[26] as String?,
+      cancelledByName: fields[27] as String?,
+      cancelReason: fields[28] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Expense obj) {
     writer
-      ..writeByte(24)
+      ..writeByte(29)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(9)
@@ -95,7 +100,17 @@ class ExpenseAdapter extends TypeAdapter<Expense> {
       ..writeByte(22)
       ..write(obj.performerId)
       ..writeByte(23)
-      ..write(obj.performerName);
+      ..write(obj.performerName)
+      ..writeByte(24)
+      ..write(obj.status)
+      ..writeByte(25)
+      ..write(obj.cancelledAt)
+      ..writeByte(26)
+      ..write(obj.cancelledById)
+      ..writeByte(27)
+      ..write(obj.cancelledByName)
+      ..writeByte(28)
+      ..write(obj.cancelReason);
   }
 
   @override

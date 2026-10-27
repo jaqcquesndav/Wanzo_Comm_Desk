@@ -98,12 +98,35 @@ class RecordSalePayment extends SalesEvent {
   List<Object?> get props => [sale.id, payment.amount, payment.paidAt];
 }
 
-/// Événement pour supprimer une vente
-class DeleteSale extends SalesEvent {
-  final String id;
+/// Annuler une vente (jamais la supprimer) : motif obligatoire. Le stock et
+/// les règlements sont rétablis, la caisse et le journal contre-passés, la
+/// comptabilité informée par le serveur.
+class CancelSale extends SalesEvent {
+  final Sale sale;
+  final String reason;
 
-  const DeleteSale(this.id);
+  /// Auteur affiché sur la fiche tant que le serveur n'a pas répondu.
+  final String? actorName;
+  final String? actorId;
+
+  const CancelSale({
+    required this.sale,
+    required this.reason,
+    this.actorName,
+    this.actorId,
+  });
 
   @override
-  List<Object?> get props => [id];
+  List<Object?> get props => [sale.id, reason, actorName, actorId];
+}
+
+/// Rétablir une vente annulée (administrateur et comptable).
+class RestoreSale extends SalesEvent {
+  final Sale sale;
+  final String? reason;
+
+  const RestoreSale({required this.sale, this.reason});
+
+  @override
+  List<Object?> get props => [sale.id, reason];
 }

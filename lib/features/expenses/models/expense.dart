@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 import 'package:hive/hive.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:flutter/material.dart'; // Import pour IconData et Icons
+import 'package:wanzo/core/cancellation/document_cancellation.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
 
 part 'expense.g.dart';
@@ -305,6 +306,36 @@ class Expense extends Equatable {
   @JsonKey(includeIfNull: false)
   final String? performerName;
 
+  // ============= ANNULATION =============
+  // Une dépense n'est jamais effacée : annulée, elle garde qui, quand et
+  // pourquoi. Lus à la main dans [Expense.fromJson].
+
+  /// Statut de la pièce : `cancelled` pour une dépense annulée, null sinon.
+  @HiveField(24)
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? status;
+
+  @HiveField(25)
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final DateTime? cancelledAt;
+
+  @HiveField(26)
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? cancelledById;
+
+  @HiveField(27)
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? cancelledByName;
+
+  @HiveField(28)
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? cancelReason;
+
+  /// Dépense semblable signalée par le serveur à la création. Simple
+  /// avertissement, jamais conservé.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? possibleDuplicateOf;
+
   const Expense({
     required this.id,
     this.localId,
@@ -330,6 +361,12 @@ class Expense extends Equatable {
     this.subCategory,
     this.performerId,
     this.performerName,
+    this.status,
+    this.cancelledAt,
+    this.cancelledById,
+    this.cancelledByName,
+    this.cancelReason,
+    this.possibleDuplicateOf,
     this.userId,
     this.createdAt,
     this.updatedAt,
@@ -363,6 +400,11 @@ class Expense extends Equatable {
     performerId,
     performerName,
     businessUnitType,
+    status,
+    cancelledAt,
+    cancelledById,
+    cancelledByName,
+    cancelReason,
     userId,
     createdAt,
     updatedAt,
@@ -395,6 +437,14 @@ class Expense extends Equatable {
     String? subCategory,
     String? performerId,
     String? performerName,
+    String? status,
+    DateTime? cancelledAt,
+    String? cancelledById,
+    String? cancelledByName,
+    String? cancelReason,
+    String? possibleDuplicateOf,
+    // Vrai : efface le statut et la trace d'annulation (dépense rétablie).
+    bool clearCancellation = false,
     String? userId,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -428,6 +478,20 @@ class Expense extends Equatable {
       subCategory: subCategory ?? this.subCategory,
       performerId: performerId ?? this.performerId,
       performerName: performerName ?? this.performerName,
+      status: clearCancellation ? status : (status ?? this.status),
+      cancelledAt:
+          clearCancellation ? cancelledAt : (cancelledAt ?? this.cancelledAt),
+      cancelledById:
+          clearCancellation
+              ? cancelledById
+              : (cancelledById ?? this.cancelledById),
+      cancelledByName:
+          clearCancellation
+              ? cancelledByName
+              : (cancelledByName ?? this.cancelledByName),
+      cancelReason:
+          clearCancellation ? cancelReason : (cancelReason ?? this.cancelReason),
+      possibleDuplicateOf: possibleDuplicateOf ?? this.possibleDuplicateOf,
       userId: userId ?? this.userId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -438,8 +502,38 @@ class Expense extends Equatable {
   }
 
   // Add fromJson and toJson factory constructors for json_serializable
-  factory Expense.fromJson(Map<String, dynamic> json) =>
-      _$ExpenseFromJson(json);
+  factory Expense.fromJson(Map<String, dynamic> json) {
+    final expense = _$ExpenseFromJson(json);
+    final info = CancellationInfo.fromJson(json);
+    final rawStatus = json['status'];
+    final cancelled =
+        (rawStatus is String && rawStatus.toLowerCase() == 'cancelled') ||
+        info.at != null;
+    final duplicate = possibleDuplicateIn(json);
+    if (!cancelled && duplicate == null) return expense;
+    return expense.copyWith(
+      status: cancelled ? Expense.cancelledStatus : null,
+      cancelledAt: info.at,
+      cancelledById: info.byId,
+      cancelledByName: info.byName,
+      cancelReason: info.reason,
+      possibleDuplicateOf: duplicate,
+    );
+  }
+
+  /// Valeur de [status] d'une dépense annulée.
+  static const cancelledStatus = 'cancelled';
+
+  /// Dépense annulée : hors de tous les totaux, conservée pour la trace.
+  bool get isCancelled => status == cancelledStatus;
+
+  /// Qui a annulé, quand et pourquoi.
+  CancellationInfo get cancellation => CancellationInfo(
+    at: cancelledAt,
+    byId: cancelledById,
+    byName: cancelledByName,
+    reason: cancelReason,
+  );
   Map<String, dynamic> toJson() => _$ExpenseToJson(this);
 
   String get hiveKey {

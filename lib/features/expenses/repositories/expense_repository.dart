@@ -4,6 +4,8 @@ import 'package:hive/hive.dart'; // Added for Hive
 import 'package:uuid/uuid.dart'; // Added for generating local IDs
 import '../models/expense.dart';
 import '../services/expense_api_service.dart';
+import '../../../core/cancellation/document_cancellation.dart';
+import '../../../core/cancellation/pending_cancellations.dart';
 import '../../../core/models/operation_payment.dart';
 
 /// Résultat d'un règlement enregistré sur une dette fournisseur.
@@ -39,17 +41,32 @@ class ExpenseRepository {
     debugPrint("ExpenseRepository initialized with API service and Hive box.");
   }
 
-  Future<List<Expense>> getAllExpenses() async {
+  /// Dépenses actives d'une liste : les dépenses annulées sont conservées
+  /// pour la trace mais n'entrent dans aucun total.
+  static List<Expense> activeOnly(Iterable<Expense> expenses) =>
+      expenses.where((e) => !e.isCancelled).toList();
+
+  /// Dépenses créées pendant cette session, par identifiant local : un
+  /// nouvel essai avec le même localId rend la dépense déjà enregistrée.
+  final Map<String, Expense> _createdByLocalId = {};
+
+  /// Toutes les dépenses ; les dépenses annulées sont écartées, sauf
+  /// [includeCancelled] (liste, filtre « Annulées »).
+  Future<List<Expense>> getAllExpenses({bool includeCancelled = false}) async {
+    List<Expense> scope(Iterable<Expense> all) =>
+        includeCancelled ? all.toList() : activeOnly(all);
+
     // Les règlements saisis hors ligne repartent à chaque relecture de la
     // liste : `expenses/sync` n'existe pas, sans cette file la tranche serait
     // perdue au prochain rafraîchissement depuis le serveur.
     await flushPendingPayments();
+    await flushPendingCancellations();
 
     // First, return local expenses
     final localExpenses = _expensesBox.values.toList();
     if (localExpenses.isNotEmpty) {
       debugPrint("Returning expenses from local Hive box.");
-      return localExpenses;
+      return scope(localExpenses);
     }
     // If local is empty, try fetching from API (optional, depends on desired offline strategy)
     // For a strict "offline-first" where data must be explicitly synced,
@@ -64,7 +81,7 @@ class ExpenseRepository {
       await _expensesBox.put(expense.id, expense);
     }
     debugPrint("Fetched and saved ${toutes.length} expenses from API to Hive.");
-    return toutes;
+    return scope(toutes);
   }
 
   /// Lit toutes les pages de `GET expenses` (100 par page) jusqu'à une page
@@ -77,6 +94,8 @@ class ExpenseRepository {
       final res = await _expenseApiService.getExpenses(
         page: page,
         limit: taille,
+        // Annulées comprises : le cache les garde au statut annulé.
+        includeCancelled: true,
       );
       if (!res.success || res.data == null) {
         debugPrint("Error fetching expenses from API: ${res.message}");
@@ -136,9 +155,20 @@ class ExpenseRepository {
     String hiveKey;
     Expense expenseToSave;
 
+    // Même localId à chaque essai (double appui, reprise après erreur) : la
+    // dépense déjà enregistrée est rendue, sans second envoi.
+    final already = _createdByLocalId[expense.localId ?? ''];
+    if (already != null) {
+      debugPrint("Dépense ${expense.localId} déjà enregistrée, pas de doublon.");
+      return already;
+    }
+
     if (expense.localId != null && expense.localId!.isNotEmpty) {
       hiveKey = expense.localId!;
-      expenseToSave = expense;
+      expenseToSave =
+          expense.syncStatus == null
+              ? expense.copyWith(syncStatus: "pending")
+              : expense;
     } else {
       final newLocalId = _uuid.v4();
       hiveKey = newLocalId;
@@ -149,6 +179,7 @@ class ExpenseRepository {
     }
 
     await _expensesBox.put(hiveKey, expenseToSave);
+    _createdByLocalId[hiveKey] = expenseToSave;
     debugPrint("Expense saved locally with key: $hiveKey");
 
     // Try to sync with API
@@ -202,12 +233,23 @@ class ExpenseRepository {
       if (hiveKey != createdExpenseFromApi.id) {
         // If we used a localId as key initially
         await _expensesBox.delete(hiveKey); // Remove the entry with localId key
+        await PendingCancellations.instance.rekey(
+          CancellableDocument.expense,
+          hiveKey,
+          createdExpenseFromApi.id,
+        );
       }
 
       debugPrint(
         "[ExpenseRepository] Expense synced with API. Local record updated with server ID: ${createdExpenseFromApi.id}. Attachment URLs: ${syncedExpense.attachmentUrls}",
       );
-      return syncedExpense;
+      // L'avertissement de doublon accompagne la dépense rendue à l'écran,
+      // il n'est jamais conservé.
+      final result = syncedExpense.copyWith(
+        possibleDuplicateOf: createdExpenseFromApi.possibleDuplicateOf,
+      );
+      _createdByLocalId[hiveKey] = result;
+      return result;
     } else {
       debugPrint(
         "[ExpenseRepository] Failed to sync new expense with API: ${apiResponse.message}. It remains local with key $hiveKey. Attachment URLs on expenseToSave: ${expenseToSave.attachmentUrls}",
@@ -454,54 +496,221 @@ class ExpenseRepository {
     }
   }
 
-  Future<void> deleteExpense(String id) async {
-    // Here, 'id' could be a server ID or a localId if not yet synced.
-    // For simplicity, we'll assume we try to delete by this ID in local Hive first.
-    // A more robust solution would involve a 'markedForDeletion' status for offline.
+  // ══════════════════════════════════════════════════════════════════════════
+  // ANNULATION ET RÉTABLISSEMENT (une dépense n'est jamais effacée)
+  // ══════════════════════════════════════════════════════════════════════════
 
-    final expenseToDelete = _expensesBox.get(id);
-    if (expenseToDelete == null) {
-      debugPrint("Expense with ID $id not found locally for deletion.");
-      // Optionally, still try to tell API to delete if we think it might exist on server
-      // await _expenseApiService.deleteExpense(id);
-      return;
+  /// Clé Hive d'une dépense : identifiant serveur, sinon local.
+  String _keyOf(Expense expense) =>
+      _expensesBox.get(expense.id) != null
+          ? expense.id
+          : (expense.localId ?? expense.id);
+
+  /// Dépense encore jamais envoyée au serveur.
+  static bool awaitsServerCreation(Expense? local) =>
+      local != null &&
+      (local.syncStatus == 'pending' ||
+          local.id.isEmpty ||
+          (local.localId != null && local.id == local.localId));
+
+  /// Annule une dépense avec son motif. Elle reste dans le cache au statut
+  /// annulé. Hors ligne, ou dépense pas encore envoyée : l'annulation entre
+  /// dans la file. Un refus du serveur la rend à son état ([StateError]).
+  Future<CancellationOutcome<Expense>> cancelExpense(
+    Expense expense,
+    String reason, {
+    String? actorName,
+    String? actorId,
+  }) async {
+    final error = validateCancelReason(reason);
+    if (error != null) throw StateError(error);
+    final motif = reason.trim();
+    final key = _keyOf(expense);
+    final current = _expensesBox.get(key) ?? expense;
+    final queueId = current.id.isNotEmpty ? current.id : key;
+    if (current.isCancelled &&
+        !PendingCancellations.instance.isPending(
+          CancellableDocument.expense,
+          queueId,
+        )) {
+      return CancellationOutcome(
+        document: current,
+        synced: current.syncStatus == 'synced',
+        message: 'Cette dépense est déjà annulée.',
+      );
     }
 
-    await _expensesBox.delete(id);
-    debugPrint("Expense with ID $id deleted locally.");
+    final local = current.copyWith(
+      status: Expense.cancelledStatus,
+      cancelledAt: DateTime.now(),
+      cancelledByName: actorName,
+      cancelledById: actorId,
+      cancelReason: motif,
+    );
+    await _expensesBox.put(key, local);
 
-    // If the expense had a server ID (i.e., it was synced), tell the API to delete it.
-    // The 'id' passed to this function should ideally be the server ID if known.
-    // If 'id' is a localId of an unsynced item, this API call might not be relevant or might fail.
-    if (expenseToDelete.id.isNotEmpty &&
-        expenseToDelete.id != expenseToDelete.localId) {
-      // Check if it has a server ID
-      final apiResponse = await _expenseApiService.deleteExpense(
-        expenseToDelete.id,
+    Future<CancellationOutcome<Expense>> queued(String message) async {
+      await PendingCancellations.instance.enqueue(
+        CancellableDocument.expense,
+        queueId,
+        PendingCancellations.cancel,
+        reason: motif,
       );
-      if (apiResponse.success) {
-        debugPrint(
-          "Deletion request for expense ID ${expenseToDelete.id} sent to API successfully.",
+      return CancellationOutcome(document: local, synced: false, message: message);
+    }
+
+    if (awaitsServerCreation(current)) {
+      return queued('Dépense annulée sur l\'appareil, la synchronisation suivra.');
+    }
+    try {
+      final server = (await _expenseApiService.cancelExpense(
+        current.id,
+        reason: motif,
+      )).copyWith(syncStatus: 'synced');
+      // Le serveur ne renvoie pas toujours le statut : la dépense reste annulée.
+      final stored =
+          server.isCancelled
+              ? server
+              : server.copyWith(
+                status: Expense.cancelledStatus,
+                cancelledAt: local.cancelledAt,
+                cancelledByName: local.cancelledByName,
+                cancelledById: local.cancelledById,
+                cancelReason: motif,
+              );
+      await _expensesBox.put(key, stored);
+      await PendingCancellations.instance.done(
+        CancellableDocument.expense,
+        queueId,
+      );
+      return CancellationOutcome(
+        document: stored,
+        synced: true,
+        message: 'Dépense annulée.',
+      );
+    } catch (e) {
+      if (isServerRefusal(e)) {
+        await _expensesBox.put(key, current);
+        throw StateError(
+          refusalMessage(e, fallback: 'Annulation refusée par le serveur.'),
         );
-      } else {
-        debugPrint(
-          "Failed to sync expense deletion with API for ID $id: ${apiResponse.message}",
+      }
+      debugPrint("Annulation de la dépense ${current.id} mise en file: $e");
+      return queued('Dépense annulée hors ligne, elle sera synchronisée.');
+    }
+  }
+
+  /// Rétablit une dépense annulée. Une annulation encore en file est
+  /// simplement retirée ; sinon le serveur doit confirmer (en ligne).
+  Future<CancellationOutcome<Expense>> restoreExpense(
+    Expense expense, {
+    String? reason,
+  }) async {
+    final key = _keyOf(expense);
+    final current = _expensesBox.get(key) ?? expense;
+    final queueId = current.id.isNotEmpty ? current.id : key;
+    final restoredLocally = current.copyWith(clearCancellation: true);
+    final pending = await PendingCancellations.instance.pendingFor(
+      CancellableDocument.expense,
+      queueId,
+    );
+    if (pending != null && pending.isCancel) {
+      await PendingCancellations.instance.done(
+        CancellableDocument.expense,
+        queueId,
+      );
+      await _expensesBox.put(key, restoredLocally);
+      return CancellationOutcome(
+        document: restoredLocally,
+        synced: current.syncStatus == 'synced',
+        message: 'Dépense rétablie.',
+      );
+    }
+    try {
+      final server = (await _expenseApiService.restoreExpense(
+        current.id,
+        reason: reason,
+      )).copyWith(syncStatus: 'synced', clearCancellation: true);
+      await _expensesBox.put(key, server);
+      return CancellationOutcome(
+        document: server,
+        synced: true,
+        message: 'Dépense rétablie.',
+      );
+    } catch (e) {
+      if (isMissingRoute(e)) {
+        throw StateError(
+          'Le rétablissement n\'est pas encore disponible sur le serveur.',
         );
-        // If API deletion fails, we might need to re-add it to a "pending deletion" list locally.
-        // For now, it's deleted locally.
-        // Consider adding it back with a 'pending_delete' status:
-        // await _expensesBox.put(id, expenseToDelete.copyWith(syncStatus: "pending_delete"));
+      }
+      if (isServerRefusal(e)) {
+        throw StateError(
+          refusalMessage(e, fallback: 'Rétablissement refusé par le serveur.'),
+        );
+      }
+      throw StateError(
+        'Rétablissement impossible hors ligne. Réessayez une fois connecté.',
+      );
+    }
+  }
+
+  /// Rejoue les annulations de dépenses saisies hors ligne.
+  Future<void> flushPendingCancellations() async {
+    List<PendingCancellation> pending;
+    try {
+      pending = await PendingCancellations.instance.entries(
+        CancellableDocument.expense,
+      );
+    } catch (_) {
+      return;
+    }
+    for (final p in pending) {
+      final local = _expensesBox.get(p.id);
+      if (awaitsServerCreation(local)) continue;
+      try {
+        final server =
+            p.isCancel
+                ? await _expenseApiService.cancelExpense(
+                  p.id,
+                  reason: p.reason ?? 'Annulation',
+                )
+                : await _expenseApiService.restoreExpense(
+                  p.id,
+                  reason: p.reason,
+                );
+        final keep =
+            p.isCancel && !server.isCancelled && local != null
+                ? local.copyWith(syncStatus: 'synced')
+                : server.copyWith(syncStatus: 'synced');
+        await _expensesBox.put(p.id, keep);
+        await PendingCancellations.instance.done(
+          CancellableDocument.expense,
+          p.id,
+        );
+      } catch (e) {
+        if (isServerRefusal(e) && !isMissingRoute(e)) {
+          await PendingCancellations.instance.done(
+            CancellableDocument.expense,
+            p.id,
+          );
+          debugPrint("Annulation refusée (dépense ${p.id}): $e");
+        } else {
+          debugPrint("Annulation en file non envoyée (dépense ${p.id}): $e");
+        }
       }
     }
   }
 
+  /// Dépenses d'une période (dépenses annulées écartées : tableau de bord,
+  /// rapports).
   Future<List<Expense>> getExpensesByDateRange(
     DateTime startDate,
     DateTime endDate,
   ) async {
     // Filter local expenses
     return _expensesBox.values.where((expense) {
-      return !expense.date.isBefore(startDate) &&
+      return !expense.isCancelled &&
+          !expense.date.isBefore(startDate) &&
           !expense.date.isAfter(
             endDate.add(const Duration(days: 1)),
           ); // Inclusive end date
@@ -511,20 +720,23 @@ class ExpenseRepository {
   Future<List<Expense>> getExpensesByCategory(ExpenseCategory category) async {
     // Filter local expenses
     return _expensesBox.values
-        .where((expense) => expense.category == category)
+        .where((expense) => !expense.isCancelled && expense.category == category)
         .toList();
   }
 
   /// Récupérer les dépenses liées à un fournisseur
   Future<List<Expense>> getExpensesBySupplier(String supplierId) async {
     return _expensesBox.values
-        .where((expense) => expense.supplierId == supplierId)
+        .where(
+          (expense) => !expense.isCancelled && expense.supplierId == supplierId,
+        )
         .toList();
   }
 
   /// Calculer le total des dettes fournisseurs (dépenses non entièrement payées)
   Future<double> getTotalPayables() async {
     final unpaid = _expensesBox.values.where((expense) {
+      if (expense.isCancelled) return false;
       final status = expense.paymentStatus;
       return status == ExpensePaymentStatus.unpaid ||
           status == ExpensePaymentStatus.partial ||

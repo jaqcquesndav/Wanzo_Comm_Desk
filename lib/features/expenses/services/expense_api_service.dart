@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:wanzo/core/cancellation/document_cancellation.dart';
+import 'package:wanzo/core/exceptions/api_exceptions.dart';
 import 'package:wanzo/core/services/api_client.dart';
 import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:wanzo/features/expenses/models/expense.dart';
@@ -9,7 +11,8 @@ import 'package:wanzo/core/models/payment_method_code.dart';
 
 /// Interface standardisée pour les opérations d'API des dépenses
 abstract class ExpenseApiService {
-  /// Récupère la liste des dépenses avec filtrage et pagination
+  /// Récupère la liste des dépenses avec filtrage et pagination. Le serveur
+  /// écarte les dépenses annulées, sauf [includeCancelled].
   Future<ApiResponse<List<Expense>>> getExpenses({
     int? page,
     int? limit,
@@ -18,7 +21,15 @@ abstract class ExpenseApiService {
     String? categoryId,
     String? sortBy,
     String? sortOrder,
+    bool includeCancelled = false,
   });
+
+  /// Annule une dépense (`POST expenses/:id/cancel`, motif obligatoire). Lève
+  /// une [ApiException] en cas d'échec (refus ou coupure).
+  Future<Expense> cancelExpense(String id, {required String reason});
+
+  /// Rétablit une dépense annulée (`POST expenses/:id/restore`).
+  Future<Expense> restoreExpense(String id, {String? reason});
 
   /// Crée une nouvelle dépense
   Future<ApiResponse<Expense>> createExpense(
@@ -94,8 +105,6 @@ abstract class ExpenseApiService {
   /// (`GET expenses/:id/payments`).
   Future<List<OperationPayment>> getExpensePayments(String id);
 
-  /// Supprime une dépense
-  Future<ApiResponse<void>> deleteExpense(String id);
 
   /// Récupère la liste des catégories de dépenses
   Future<ApiResponse<List<Map<String, dynamic>>>> getExpenseCategories();
@@ -135,9 +144,11 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
     String? categoryId,
     String? sortBy,
     String? sortOrder,
+    bool includeCancelled = false,
   }) async {
     try {
       final queryParameters = <String, String>{
+        if (includeCancelled) 'includeCancelled': 'true',
         if (page != null) 'page': page.toString(),
         if (limit != null) 'limit': limit.toString(),
         if (dateFrom != null) 'dateFrom': dateFrom,
@@ -306,9 +317,14 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
 
       // Le ApiClient.post retourne déjà le JSON décodé
       if (response != null && response['data'] != null) {
-        final expense = Expense.fromJson(
+        var expense = Expense.fromJson(
           response['data'] as Map<String, dynamic>,
         );
+        // Dépense semblable signalée par le serveur (avertissement seulement).
+        final duplicate = possibleDuplicateIn(response);
+        if (duplicate != null && expense.possibleDuplicateOf == null) {
+          expense = expense.copyWith(possibleDuplicateOf: duplicate);
+        }
         debugPrint(
           "[ExpenseAPI] ✅ Create expense success. Attachment URLs: ${expense.attachmentUrls}",
         );
@@ -566,23 +582,45 @@ class ExpenseApiServiceImpl implements ExpenseApiService {
   }
 
   @override
-  Future<ApiResponse<void>> deleteExpense(String id) async {
-    try {
-      await _apiClient.delete('expenses/$id', requiresAuth: true);
-      return ApiResponse<void>(
-        success: true,
-        data: null,
-        message: 'Expense deleted successfully.',
-        statusCode: 200,
-      );
-    } catch (e) {
-      return ApiResponse<void>(
-        success: false,
-        data: null,
-        message: 'Failed to delete expense: ${e.toString()}',
-        statusCode: 500,
+  Future<Expense> cancelExpense(String id, {required String reason}) async {
+    final response = await _apiClient.post(
+      'expenses/$id/cancel',
+      body: <String, dynamic>{'reason': reason.trim()},
+      requiresAuth: true,
+      // Le dépôt tient sa propre file (dépense pas encore créée, rejeu).
+      queueOffline: false,
+    );
+    return _expenseFrom(response);
+  }
+
+  @override
+  Future<Expense> restoreExpense(String id, {String? reason}) async {
+    final response = await _apiClient.post(
+      'expenses/$id/restore',
+      body: <String, dynamic>{
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      },
+      requiresAuth: true,
+      queueOffline: false,
+    );
+    return _expenseFrom(response);
+  }
+
+  /// Déballe une dépense renvoyée par le serveur (directe ou `{data: ...}`,
+  /// éventuellement ré-enveloppée).
+  Expense _expenseFrom(dynamic response) {
+    var data = response;
+    for (var i = 0; i < 2; i++) {
+      if (data is Map && data['data'] is Map) data = data['data'];
+    }
+    if (data is! Map) {
+      throw ApiExceptionFactory.fromStatusCode(
+        500,
+        'Format de réponse invalide du serveur',
+        responseBody: response,
       );
     }
+    return Expense.fromJson(Map<String, dynamic>.from(data));
   }
 
   @override

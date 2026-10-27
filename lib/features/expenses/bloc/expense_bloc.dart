@@ -15,6 +15,21 @@ import 'package:wanzo/features/cash_session/cash_session_hooks.dart';
 part 'expense_event.dart';
 part 'expense_state.dart';
 
+/// État chargé : dépenses actives (seules comptées) et annulées à part.
+@visibleForTesting
+ExpensesLoaded expensesLoadedFrom(Iterable<Expense> all) {
+  final active = <Expense>[];
+  final cancelled = <Expense>[];
+  for (final e in all) {
+    (e.isCancelled ? cancelled : active).add(e);
+  }
+  return ExpensesLoaded(
+    expenses: active,
+    totalExpenses: active.fold(0.0, (sum, e) => sum + e.amount),
+    cancelledExpenses: cancelled,
+  );
+}
+
 class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
   final ExpenseRepository _expenseRepository;
   final OperationJournalBloc _operationJournalBloc;
@@ -35,7 +50,8 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
     on<AddExpense>(_onAddExpense);
     on<UpdateExpense>(_onUpdateExpense);
     on<RecordExpensePayment>(_onRecordExpensePayment);
-    on<DeleteExpense>(_onDeleteExpense);
+    on<CancelExpense>(_onCancelExpense);
+    on<RestoreExpense>(_onRestoreExpense);
     on<LoadExpenseById>(_onLoadExpenseById);
     on<LoadExpenseCategories>(_onLoadExpenseCategories);
     on<CreateExpenseCategory>(_onCreateExpenseCategory);
@@ -89,9 +105,10 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
   ) async {
     emit(const ExpenseLoading());
     try {
-      final expenses = await _expenseRepository.getAllExpenses();
-      final total = expenses.fold(0.0, (sum, item) => sum + item.amount);
-      emit(ExpensesLoaded(expenses: expenses, totalExpenses: total));
+      final all = await _expenseRepository.getAllExpenses(
+        includeCancelled: true,
+      );
+      emit(expensesLoadedFrom(all));
     } catch (e) {
       emit(ExpenseError("Erreur de chargement des dépenses: ${e.toString()}"));
     }
@@ -138,7 +155,35 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
     }
   }
 
+  /// Dépenses en cours d'enregistrement, par localId : un second AddExpense
+  /// de la même dépense (double appui) est ignoré.
+  final Set<String> _addingLocalIds = {};
+
   Future<void> _onAddExpense(
+    AddExpense event,
+    Emitter<ExpenseState> emit,
+  ) async {
+    final localId = event.expense.localId;
+    if (localId != null && localId.isNotEmpty) {
+      if (!_addingLocalIds.add(localId)) {
+        debugPrint("Dépense $localId déjà en cours d'envoi, second appui ignoré");
+        final saved = event.saved;
+        if (saved != null && !saved.isCompleted) {
+          saved.completeError(
+            StateError("Cette dépense est déjà en cours d'enregistrement."),
+          );
+        }
+        return;
+      }
+    }
+    try {
+      await _addExpense(event, emit);
+    } finally {
+      if (localId != null) _addingLocalIds.remove(localId);
+    }
+  }
+
+  Future<void> _addExpense(
     AddExpense event,
     Emitter<ExpenseState> emit,
   ) async {
@@ -368,75 +413,80 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
     }
   }
 
-  Future<void> _onDeleteExpense(
-    DeleteExpense event,
+  /// Annuler une dépense : elle est conservée au statut annulé. À la
+  /// première annulation, sa sortie de caisse et ses écritures du journal
+  /// sont contre-passées ; le serveur informe la comptabilité.
+  Future<void> _onCancelExpense(
+    CancelExpense event,
     Emitter<ExpenseState> emit,
   ) async {
-    emit(const ExpenseLoading());
     try {
-      debugPrint(
-        "🔄 Suppression d'une dépense et création d'une entrée d'annulation au journal...",
+      final before = event.expense;
+      final wasCancelled = before.isCancelled;
+      final outcome = await _expenseRepository.cancelExpense(
+        before,
+        event.reason,
+        actorName: event.actorName,
+        actorId: event.actorId,
       );
-
-      // Fetch the expense before deleting to get its details for the journal entry
-      final expenseToDelete = await _expenseRepository.getExpenseById(
-        event.expenseId,
-      );
-
-      if (expenseToDelete == null) {
-        debugPrint("❌ Dépense non trouvée pour ID: ${event.expenseId}");
-        emit(
-          const ExpenseError(
-            "Dépense non trouvée pour l'annulation du journal.",
-          ),
-        );
-        return;
+      if (!wasCancelled) {
+        await cashSessionOnExpenseCancelled(before);
+        try {
+          await _operationJournalBloc.repository.reverseDocument({
+            before.id,
+            before.localId,
+          });
+          _operationJournalBloc.add(const RefreshJournal());
+        } catch (e) {
+          debugPrint("⚠️ Journal non contre-passé (dépense annulée): $e");
+        }
       }
-
-      await _expenseRepository.deleteExpense(event.expenseId);
-      debugPrint("✅ Dépense supprimée: ${event.expenseId}");
-
-      // Create a reversing journal entry
-      final journalEntry = _expenseJournalEntry(
-        expenseToDelete,
-        description: "Annulation Dépense: ${expenseToDelete.motif}",
-        reversal: true,
-        date: DateTime.now(),
-      );
-
-      try {
-        debugPrint(
-          "🔄 Ajout de l'entrée d'annulation au journal via repository...",
-        );
-        await _operationJournalBloc.repository.addOperation(journalEntry);
-        debugPrint(
-          "✅ Entrée d'annulation ajoutée avec succès au journal via repository",
-        );
-
-        // Rafraîchir le bloc du journal
-        _operationJournalBloc.add(const RefreshJournal());
-      } catch (journalError) {
-        debugPrint(
-          "⚠️ Erreur lors de l'ajout de l'annulation au journal via repository: $journalError",
-        );
-
-        // Méthode alternative via l'événement du bloc
-        _operationJournalBloc.add(AddOperationJournalEntry(journalEntry));
-      }
-
       emit(
-        const ExpenseOperationSuccess(
-          'Dépense supprimée et annulation enregistrée au journal.',
+        ExpenseCancellationDone(
+          expense: outcome.document,
+          synced: outcome.synced,
+          message: outcome.message,
         ),
       );
       add(const LoadExpenses());
     } catch (e) {
-      debugPrint("❌ ERREUR lors de la suppression de la dépense: $e");
+      emit(ExpenseError(e is StateError ? e.message : e.toString()));
+    }
+  }
+
+  /// Rétablir une dépense annulée : ses écritures du journal sont reprises.
+  Future<void> _onRestoreExpense(
+    RestoreExpense event,
+    Emitter<ExpenseState> emit,
+  ) async {
+    try {
+      final before = event.expense;
+      final outcome = await _expenseRepository.restoreExpense(
+        before,
+        reason: event.reason,
+      );
+      if (before.isCancelled) {
+        try {
+          await _operationJournalBloc.repository.reinstateDocument({
+            before.id,
+            before.localId,
+          });
+          _operationJournalBloc.add(const RefreshJournal());
+        } catch (e) {
+          debugPrint("⚠️ Journal non repris (dépense rétablie): $e");
+        }
+      }
       emit(
-        ExpenseError(
-          "Erreur lors de la suppression de la dépense: ${e.toString()}",
+        ExpenseCancellationDone(
+          expense: outcome.document,
+          synced: outcome.synced,
+          message: outcome.message,
+          restored: true,
         ),
       );
+      add(const LoadExpenses());
+    } catch (e) {
+      emit(ExpenseError(e is StateError ? e.message : e.toString()));
     }
   }
 

@@ -70,6 +70,8 @@ class DashboardApiService {
       double salesTodayCdf = 0.0;
       double salesTodayUsd = 0.0;
       for (final sale in sales) {
+        // Vente annulée : conservée pour la trace, hors des totaux.
+        if (sale.isCancelled) continue;
         if (sale.transactionCurrencyCode == 'USD') {
           salesTodayUsd += sale.totalAmountInTransactionCurrency ?? 0.0;
         } else {
@@ -145,6 +147,8 @@ class DashboardApiService {
       double salesTodayCdf = 0.0;
       double salesTodayUsd = 0.0;
       for (final sale in sales) {
+        // Vente annulée : conservée pour la trace, hors des totaux.
+        if (sale.isCancelled) continue;
         if (sale.transactionCurrencyCode == 'USD') {
           salesTodayUsd += sale.totalAmountInTransactionCurrency ?? 0.0;
         } else {
@@ -256,6 +260,8 @@ class DashboardApiService {
         );
         final rates = await _rates();
         for (final expense in expenses) {
+          // Dépense annulée : hors des totaux.
+          if (expense.isCancelled) continue;
           final currency = (expense.currencyCode ?? 'CDF').toUpperCase();
           byCurrency[currency] = (byCurrency[currency] ?? 0.0) + expense.amount;
           totalCdf += _expenseAmountInCdf(expense, rates);
