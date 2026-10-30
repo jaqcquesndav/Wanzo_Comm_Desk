@@ -1527,6 +1527,8 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
   }
 
   Future<void> _save() async {
+    // Double clic : un seul envoi.
+    if (_saving) return;
     if (!_formKey.currentState!.validate()) return;
     final taux = _tauxSaisi;
     if (taux == null) {
@@ -1605,6 +1607,7 @@ class _AtelierOrderFormScreenState extends State<AtelierOrderFormScreen> {
               order: draft,
               amount: aEncaisser,
               paymentMethod: _advanceMethod,
+              localId: atelierAdvanceLocalId(draft, draft.advanceAmount),
             ),
           ),
         );

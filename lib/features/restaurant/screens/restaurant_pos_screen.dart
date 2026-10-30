@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -135,6 +136,11 @@ class RestaurantPosScreen extends StatefulWidget {
 }
 
 class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
+  /// Identifiant local de l'encaissement, PAR COMMANDE : réutilisé à chaque
+  /// nouvel essai sur la même commande (double clic, reprise après erreur),
+  /// oublié une fois la vente enregistrée. Jamais partagé entre deux
+  /// commandes, sinon le serveur prendrait l'une pour l'autre.
+  final Map<String, String> _saleLocalIds = {};
   final MenuRepository _menuRepo = MenuRepository();
   List<MenuItem> _dishes = [];
   List<Product> _products = const [];
@@ -1507,6 +1513,8 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
   }
 
   Future<void> _confirm(RestaurantOrder order) async {
+    // Double clic : un seul envoi.
+    if (_submitting) return;
     // Devise sans taux : refus, jamais un taux 1 silencieux.
     if (_tauxManquant) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1568,6 +1576,7 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
 
     final sale = Sale(
       id: '',
+      localId: _saleLocalIds.putIfAbsent(order.id, () => const Uuid().v4()),
       date: DateTime.now(),
       // Client RÉEL quand la commande en connaît un (à emporter nommé) :
       // sans cela la vente restait rattachée à un client fabriqué, invisible
@@ -1656,6 +1665,8 @@ class _RestaurantPosScreenState extends State<RestaurantPosScreen> {
     if (state is SalesOperationSuccess) {
       // La commande payée est celle figée au clic, pas la sélection courante.
       final id = _payingOrderId;
+      // Vente enregistrée : son identifiant local ne sert plus.
+      if (id != null) _saleLocalIds.remove(id);
       if (id != null) {
         await context
             .read<RestaurantOrdersCubit>()

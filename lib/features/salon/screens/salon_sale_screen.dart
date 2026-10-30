@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -125,6 +126,11 @@ class SalonSaleScreen extends StatefulWidget {
 }
 
 class _SalonSaleScreenState extends State<SalonSaleScreen> {
+  /// Identifiant local de l'encaissement en cours : réutilisé à chaque
+  /// nouvel essai (double appui, reprise après erreur), renouvelé après une
+  /// vente réussie. La même vente n'est jamais enregistrée deux fois.
+  String _saleLocalId = const Uuid().v4();
+
   final List<_TicketLine> _lines = [];
   final _cashController = TextEditingController();
   _PickerMode _pickerMode = _PickerMode.services;
@@ -308,6 +314,8 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
   void _onSalesState(BuildContext context, SalesState state) {
     if (!_submitting) return;
     if (state is SalesOperationSuccess) {
+      // Vente enregistrée : le prochain encaissement aura son propre id.
+      _saleLocalId = const Uuid().v4();
       // Même flux post-vente que la boutique : génération de la pièce
       // (reçu / facture) puis feuille d'options PARTAGÉE (adaptative).
       _handleSaleSuccess(state.saleId);
@@ -809,6 +817,8 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
 
   // ── Règlement ───────────────────────────────────────────────────────────
   Future<void> _confirm() async {
+    // Double appui : un seul envoi.
+    if (_submitting) return;
     // Devise sans taux connu : refus, jamais une conversion au taux 1.
     final selected = _selectedTransactionCurrency;
     if (selected != null &&
@@ -892,6 +902,7 @@ class _SalonSaleScreenState extends State<SalonSaleScreen> {
 
     final sale = Sale(
       id: '',
+      localId: _saleLocalId,
       date: DateTime.now(),
       customerId: _customerId,
       customerName: customerName,

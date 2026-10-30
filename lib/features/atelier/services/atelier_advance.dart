@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:uuid/uuid.dart';
+
 import '../../cash_session/models/cash_session.dart' show cashRound;
 import '../../sales/models/sale.dart';
 import '../../sales/models/sale_item.dart';
@@ -16,6 +18,16 @@ double atelierAdvanceToCollect({
   return delta > 0 ? delta : 0;
 }
 
+/// Identifiant local de la vente d'avance : déduit de la commande et du
+/// cumul d'avance encaissé, il est le même à chaque nouvel essai (double
+/// appui, reprise hors ligne). Le serveur déduplique sur ce localId : la même
+/// avance n'est jamais encaissée deux fois.
+String atelierAdvanceLocalId(AtelierOrder order, double cumulativeAdvance) =>
+    const Uuid().v5(
+      Namespace.url.value,
+      'wanzo:atelier-advance:${order.id}:${(cumulativeAdvance * 100).round()}',
+    );
+
 /// Vente de l'avance : une prestation payée en entier, par le moyen choisi
 /// (espèces, Mobile Money...). Elle passe par la voie normale des ventes
 /// (caisse, journal, comptabilité du serveur). Le règlement final ne
@@ -25,6 +37,8 @@ Sale atelierAdvanceSale({
   required double amount,
   required String paymentMethod,
   DateTime? at,
+  // Identifiant local fixe (voir [atelierAdvanceLocalId]).
+  String? localId,
 }) {
   final code = order.currencyCode.toUpperCase();
   final rate = code == 'CDF' ? 1.0 : order.exchangeRate;
@@ -42,6 +56,7 @@ Sale atelierAdvanceSale({
   );
   return Sale(
     id: '',
+    localId: localId ?? atelierAdvanceLocalId(order, order.advanceAmount),
     date: at ?? DateTime.now(),
     customerId: order.customerId.isEmpty ? null : order.customerId,
     customerName: (order.customerName ?? '').trim().isEmpty ? 'Client' : order.customerName!,
