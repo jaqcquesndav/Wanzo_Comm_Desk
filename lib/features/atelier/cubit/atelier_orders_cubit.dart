@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import '../services/atelier_archive.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../models/atelier_order.dart';
@@ -250,6 +251,16 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
   /// serveur, donc supprimée.
   Future<Object?> deleteOrder(String id) async {
     final previous = state.orders;
+    // Une fiche qui porte de l'argent (réglée, avance encaissée) ne se
+    // supprime jamais : elle s'archive.
+    final target = previous.where((o) => o.id == id).firstOrNull;
+    if (target != null && !atelierOrderDeletable(target)) {
+      final refus = StateError(
+        'Fiche avec encaissement : archivez-la au lieu de la supprimer.',
+      );
+      emit(state.copyWith(error: refus.message));
+      return refus;
+    }
     final remaining = previous.where((o) => o.id != id).toList();
     emit(state.copyWith(orders: remaining));
     try {
