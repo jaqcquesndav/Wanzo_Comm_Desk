@@ -354,28 +354,37 @@ class InventoryRepository {
     return updatedProduct;
   }
 
-  /// Supprimer un produit
-  Future<void> deleteProduct(String id) async {
-    // 1. Delete locally first
-    await _productsBox.delete(id);
+  /// Le produit a-t-il un historique (vente, mouvement de stock) ? Le
+  /// serveur ne supprime alors jamais le produit : il le DÉSACTIVE (les
+  /// ventes et le stock passés gardent leur article).
+  bool productHasHistory(String id) =>
+      _transactionsBox.values.any((t) => t.productId == id);
 
-    // Supprimer également toutes les transactions associées
-    final transactions =
-        _transactionsBox.values.where((t) => t.productId == id).toList();
-    for (final transaction in transactions) {
-      await _transactionsBox.delete(transaction.id);
-    }
-    debugPrint('💾 Produit supprimé localement: $id');
+  /// Retire un produit. Sans historique, il est supprimé ; avec un historique
+  /// (vente, mouvement de stock), le serveur le désactive (`DELETE
+  /// products/:id` répond 204 dans les deux cas, on relit le produit pour
+  /// savoir lequel). Un produit désactivé quitte la liste mais garde ses
+  /// mouvements de stock sur l'appareil. Renvoie vrai s'il est désactivé.
+  Future<bool> deleteProduct(String id) async {
+    var deactivated = productHasHistory(id);
 
-    // 2. Try to delete from API
     if (_apiService != null) {
       try {
         final apiResponse = await _apiService
             .deleteProduct(id)
             .timeout(const Duration(seconds: 10));
-
         if (apiResponse.success) {
-          debugPrint('✅ Suppression synchronisée avec l\'API: $id');
+          // Toujours là après le DELETE : le serveur l'a désactivé.
+          try {
+            final still = await _apiService
+                .getProductById(id)
+                .timeout(const Duration(seconds: 10));
+            deactivated = still.success && still.data != null;
+          } catch (_) {
+            // 404 : supprimé pour de bon.
+            deactivated = false;
+          }
+          debugPrint('✅ Produit ${deactivated ? 'désactivé' : 'supprimé'} : $id');
         } else {
           debugPrint('⚠️ API sync failed for delete: ${apiResponse.message}');
         }
@@ -383,6 +392,19 @@ class InventoryRepository {
         debugPrint('❌ Erreur sync API (deleteProduct): $e');
       }
     }
+
+    await _productsBox.delete(id);
+    // Un produit désactivé garde ses mouvements : ils racontent le stock et
+    // les ventes passés. Seul un produit supprimé les perd.
+    if (!deactivated) {
+      final transactions =
+          _transactionsBox.values.where((t) => t.productId == id).toList();
+      for (final transaction in transactions) {
+        await _transactionsBox.delete(transaction.id);
+      }
+    }
+    debugPrint('💾 Produit retiré localement: $id');
+    return deactivated;
   }
 
   /// Mouvement de stock MANUEL (retrait, perte, ajustement, réapprovision-

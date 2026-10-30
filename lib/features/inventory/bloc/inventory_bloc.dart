@@ -291,8 +291,15 @@ class InventoryBloc extends Bloc<InventoryEvent, InventoryState> {
   ) async {
     emit(const InventoryLoading());
     try {
-      await _inventoryRepository.deleteProduct(event.id);
-      emit(const InventoryOperationSuccess('Produit supprimé avec succès'));
+      final deactivated = await _inventoryRepository.deleteProduct(event.id);
+      emit(
+        InventoryOperationSuccess(
+          deactivated
+              ? 'Produit désactivé : il figure dans des ventes ou des '
+                  'mouvements de stock, son historique est conservé.'
+              : 'Produit supprimé avec succès',
+        ),
+      );
       add(const LoadProducts());
     } catch (e) {
       emit(InventoryError(e.toString()));

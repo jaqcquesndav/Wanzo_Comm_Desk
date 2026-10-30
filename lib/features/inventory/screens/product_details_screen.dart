@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:wanzo/features/inventory/repositories/inventory_repository.dart';
 import '../widgets/stock_by_location_card.dart';
 import '../widgets/restock_dialog.dart';
 import '../widgets/product_stock_history.dart';
@@ -136,7 +137,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
             ),
             IconButton(
               icon: const Icon(Icons.delete, color: Colors.red),
-              tooltip: 'Supprimer',
+              tooltip: _hasHistory(product) ? 'Désactiver' : 'Supprimer',
               onPressed: () => _showDeleteProductConfirmation(context, product),
             ),
           ],
@@ -417,7 +418,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
           child: ElevatedButton.icon(
             onPressed: () => _showDeleteProductConfirmation(context, product),
             icon: const Icon(Icons.delete_forever, color: Colors.white),
-            label: const Text('Supprimer ce produit'),
+            label: Text(_hasHistory(product) ? 'Désactiver ce produit' : 'Supprimer ce produit'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
@@ -1478,18 +1479,36 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
   }
 
   /// Affiche une boîte de dialogue pour confirmer la suppression du produit
+  /// Produit vendu ou mouvementé : le serveur le désactive au lieu de le
+  /// supprimer, le bouton le dit.
+  bool _hasHistory(Product product) {
+    try {
+      return context.read<InventoryRepository>().productHasHistory(product.id);
+    } catch (_) {
+      return false;
+    }
+  }
+
   void _showDeleteProductConfirmation(BuildContext context, Product product) {
     showDialog(
       context: context,
       builder:
           (context) => AlertDialog(
-            title: const Text('Confirmer la suppression'),
+            title: Text(
+              _hasHistory(product)
+                  ? 'Désactiver le produit'
+                  : 'Confirmer la suppression',
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Êtes-vous sûr de vouloir supprimer ce produit ? Cette action est irréversible.',
+                Text(
+                  _hasHistory(product)
+                      ? 'Ce produit figure dans des ventes ou des mouvements de '
+                          'stock : il sera désactivé, pas supprimé. Il quitte la '
+                          'liste, son historique reste intact.'
+                      : 'Êtes-vous sûr de vouloir supprimer ce produit ? Cette action est irréversible.',
                 ),
                 const SizedBox(height: WanzoSpacing.md),
                 Text(
@@ -1527,7 +1546,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
                 ),
-                child: const Text('Supprimer'),
+                child: Text(_hasHistory(product) ? 'Désactiver' : 'Supprimer'),
               ),
             ],
           ),
