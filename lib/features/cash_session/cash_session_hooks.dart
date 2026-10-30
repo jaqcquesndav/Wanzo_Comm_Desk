@@ -5,6 +5,7 @@ import '../expenses/models/expense.dart';
 import '../sales/models/sale.dart';
 import 'models/cash_session.dart';
 import 'services/cash_session_service.dart';
+import 'services/cash_reentry_flags.dart';
 
 /// Montant CDF exprimé dans la devise de la pièce, au taux figé de la pièce.
 /// Sans taux exploitable, on reste en CDF (jamais un taux 1 silencieux).
@@ -185,4 +186,45 @@ Future<void> cashSessionOnExpenseCancelled(Expense expense) async {
   } catch (e) {
     debugPrint('⚠️ Caisse : contre-passation non faite ($e)');
   }
+}
+
+/// Vente rétablie : son encaissement revient dans la caisse ouverte de
+/// l'utilisateur (celle du moment du rétablissement). Sans caisse ouverte,
+/// la vente est marquée « Encaissement à reprendre en caisse » si de l'argent
+/// était entré dans le tiroir. Renvoie vrai si la caisse est à jour (repris,
+/// ou rien à reprendre).
+Future<bool> cashSessionOnSaleRestored(Sale sale) async {
+  final original = cashMovementForSale(
+    sale,
+    downPaymentMethod: sale.downPaymentMethod,
+  );
+  if (original == null) {
+    await CashReentryFlags.instance.clear(sale.id);
+    return true;
+  }
+  final shortId = sale.id.length >= 6 ? sale.id.substring(0, 6) : sale.id;
+  final again = CashMovement(
+    at: DateTime.now(),
+    kind: original.kind,
+    method: original.method,
+    currency: original.currency,
+    amount: original.amount,
+    label: 'Vente rétablie #$shortId',
+    ref: sale.id,
+  );
+  var recorded = false;
+  try {
+    recorded = await CashSessionService.instance.recordMovement(again);
+  } catch (e) {
+    debugPrint('⚠️ Caisse : encaissement non repris ($e)');
+  }
+  if (recorded) {
+    await CashReentryFlags.instance.clear(sale.id);
+    return true;
+  }
+  if (again.isCash) {
+    await CashReentryFlags.instance.flag(sale.id);
+    return false;
+  }
+  return true;
 }

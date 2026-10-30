@@ -530,8 +530,14 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
         before,
         reason: event.reason,
       );
+      var message = outcome.message;
       if (before.isCancelled) {
         await _adjustLocalStock(before, restock: false);
+        // Encaissement repris dans la caisse ouverte, sinon signalé.
+        final enCaisse = await cashSessionOnSaleRestored(outcome.document);
+        if (!enCaisse) {
+          message = '$message Encaissement à reprendre en caisse.';
+        }
         try {
           await _journalRepository.reinstateDocument({
             before.id,
@@ -546,7 +552,7 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
         SaleCancellationDone(
           sale: outcome.document,
           synced: outcome.synced,
-          message: outcome.message,
+          message: message,
           restored: true,
         ),
       );
