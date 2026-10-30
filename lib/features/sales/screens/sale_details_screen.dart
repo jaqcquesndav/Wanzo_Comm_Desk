@@ -26,7 +26,9 @@ import 'package:wanzo/features/receivables/widgets/overdue_chip.dart';
 import 'package:wanzo/services/receipt_printer_service.dart';
 import 'package:wanzo/core/shared_widgets/accounting_sync_status.dart';
 import 'package:wanzo/core/cancellation/cancel_document_dialog.dart';
+import 'package:wanzo/core/cancellation/audit_history_section.dart';
 import 'package:wanzo/core/cancellation/cancellation_banner.dart';
+import 'package:wanzo/features/cash_session/widgets/cash_reentry_banner.dart';
 import 'package:wanzo/core/cancellation/document_cancellation.dart';
 import 'package:wanzo/core/cancellation/pending_cancellations.dart';
 import 'package:wanzo/features/auth/bloc/auth_bloc.dart';
@@ -354,12 +356,19 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
 
   /// Historique des tranches de règlement (`GET sales/:id/payments`).
   Widget _buildPaymentHistory(String transactionCurrencyCode) {
-    return PaymentHistorySection(
-      loader: () => context.read<SalesRepository>().getSalePayments(sale.id),
-      currencyCode: transactionCurrencyCode,
-      fallbackPaidAmount:
-          _money.fromCdf(sale.paidAmountInCdf),
-      refreshToken: _paymentsToken,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PaymentHistorySection(
+          loader: () => context.read<SalesRepository>().getSalePayments(sale.id),
+          currencyCode: transactionCurrencyCode,
+          fallbackPaidAmount: _money.fromCdf(sale.paidAmountInCdf),
+          refreshToken: _paymentsToken,
+        ),
+        // Journal d'audit de la vente (administrateur et comptable).
+        if (canViewAuditHistory(currentUserRole(context)))
+          AuditHistorySection(entityType: 'sale', entityId: sale.id),
+      ],
     );
   }
 
@@ -383,6 +392,8 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (sale.isCancelled) _cancellationBanner(),
+                // Vente rétablie sans caisse ouverte : encaissement à reprendre.
+                CashReentryBanner(sale: sale),
                 // Devenir comptable de la vente (boîte d'envoi backend)
                 AccountingSyncStatusCard(sourceId: sale.id),
                 // En-tête avec statut
@@ -659,6 +670,8 @@ class _SaleDetailsScreenState extends State<SaleDetailsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (sale.isCancelled) _cancellationBanner(),
+                // Vente rétablie sans caisse ouverte : encaissement à reprendre.
+                CashReentryBanner(sale: sale),
           // En-tête avec information générale
           // Devenir comptable de la vente (boîte d'envoi backend)
           AccountingSyncStatusCard(sourceId: sale.id),

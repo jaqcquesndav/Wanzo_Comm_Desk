@@ -41,6 +41,10 @@ bool canCancelDocument(String? role) => kCancelDocumentRoles.contains(_norm(role
 /// Le rôle peut-il rétablir une pièce annulée ?
 bool canRestoreDocument(String? role) => kRestoreDocumentRoles.contains(_norm(role));
 
+/// Le rôle peut-il lire le journal d'audit (« Historique ») ? Comme le
+/// serveur (`GET audit-events`) : administrateur et comptable.
+bool canViewAuditHistory(String? role) => canRestoreDocument(role);
+
 /// Motif minimal exigé par le serveur.
 const int kMinCancelReasonLength = 3;
 

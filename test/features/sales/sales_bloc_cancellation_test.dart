@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:io';
+
+import 'package:hive/hive.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wanzo/core/cancellation/document_cancellation.dart';
@@ -110,6 +113,12 @@ void main() {
   late _FakeJournal journal;
   late OperationJournalBloc journalBloc;
   late SalesBloc bloc;
+
+  setUpAll(() async {
+    // Marqueurs locaux (encaissement à reprendre) : une boîte Hive.
+    final dossier = await Directory.systemTemp.createTemp('wanzo_bloc_');
+    Hive.init(dossier.path);
+  });
 
   setUp(() {
     CashSessionService.instance = CashSessionService(
