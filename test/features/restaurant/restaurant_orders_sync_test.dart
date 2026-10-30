@@ -108,6 +108,38 @@ void main() {
     }
   });
 
+  test("commande réglée « Masquer de la liste » : rien n'est effacé sur le serveur",
+      () async {
+    final commande = await cubit.openOrder('Table 5', tableId: 't5');
+    await cubit.addLine(commande.id, _poulet);
+    await cubit.markPaid(commande.id, method: 'cash');
+    await _laisserPartir();
+    expect(serveur.commandes.containsKey(commande.id), isTrue);
+
+    // Une commande réglée ne se supprime jamais...
+    await cubit.deleteOrder(commande.id);
+    await _laisserPartir();
+    expect(serveur.commandes.containsKey(commande.id), isTrue);
+    expect(cubit.state.byId(commande.id), isNotNull);
+
+    // ... elle se masque, sur cet appareil seulement.
+    await cubit.hideFromList(commande.id);
+    await _laisserPartir();
+    expect(cubit.state.byId(commande.id), isNull);
+    expect(serveur.commandes.containsKey(commande.id), isTrue,
+        reason: 'la commande et sa vente restent sur le serveur');
+    await cubit.load();
+    expect(cubit.state.byId(commande.id), isNull,
+        reason: 'le serveur ne renvoie que les commandes actives');
+  });
+
+  test('une commande active ne se masque pas', () async {
+    final commande = await cubit.openOrder('Table 6', tableId: 't6');
+    await cubit.addLine(commande.id, _poulet);
+    await cubit.hideFromList(commande.id);
+    expect(cubit.state.byId(commande.id), isNotNull);
+  });
+
   test('les plats saisis vite ne sont pas écrasés par un envoi plus ancien',
       () async {
     serveur.latence = const Duration(milliseconds: 20);

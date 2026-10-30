@@ -120,10 +120,12 @@ void showRestaurantOrderQuickView(
           ),
         ] else
           ListTile(
-            leading: const Icon(Icons.delete_outline),
-            title: const Text('Supprimer de la liste'),
+            // Purement local : la commande et sa vente restent sur le serveur.
+            leading: const Icon(Icons.visibility_off_outlined),
+            title: const Text('Masquer de la liste'),
+            subtitle: const Text('Sur cet appareil seulement'),
             onTap: () {
-              cubit.deleteOrder(order.id);
+              cubit.hideFromList(order.id);
               Navigator.pop(ctx);
             },
           ),

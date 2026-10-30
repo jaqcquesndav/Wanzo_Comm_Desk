@@ -372,10 +372,32 @@ class RestaurantOrdersCubit extends Cubit<RestaurantOrdersState> {
   Future<void> cancel(String orderId) =>
       updateStatus(orderId, RestaurantOrderStatus.cancelled);
 
+  /// Supprime une commande ouverte restée vide (table touchée sans rien
+  /// commander), ici et sur le serveur. Une commande réglée, ou annulée, ne
+  /// se supprime jamais : voir [hideFromList].
   Future<void> deleteOrder(String orderId) async {
+    final order = state.byId(orderId);
+    if (order != null && (!order.status.isActive || order.paidAt != null)) {
+      return;
+    }
     await _repository.delete(orderId);
     _connuesDuServeur.remove(orderId);
     unawaited(_sync.remove(orderId).catchError((_) {}));
+    emit(
+      state.copyWith(
+        orders: state.orders.where((o) => o.id != orderId).toList(),
+      ),
+    );
+  }
+
+  /// Masque une commande terminée (réglée ou annulée) de la liste de CET
+  /// appareil seulement : elle quitte le cache local, rien ne part au
+  /// serveur, la commande et la vente qui lui est liée restent intactes. Le
+  /// serveur ne la renvoie plus (seules les commandes actives sont relues).
+  Future<void> hideFromList(String orderId) async {
+    final order = state.byId(orderId);
+    if (order == null || order.status.isActive) return;
+    await _repository.delete(orderId);
     emit(
       state.copyWith(
         orders: state.orders.where((o) => o.id != orderId).toList(),
