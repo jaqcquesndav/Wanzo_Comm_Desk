@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
+import 'package:wanzo/core/enums/user_role.dart';
+import 'package:wanzo/core/auth/user_rights.dart';
 import 'package:wanzo/core/modules/activity_mode.dart';
 import 'package:wanzo/core/services/api_client.dart';
 import 'package:wanzo/features/auth/models/user.dart';
@@ -67,11 +69,12 @@ class BusinessContextService extends ChangeNotifier {
       ActivityMode.fromString(_currentContext?.activityMode);
 
   /// Seul un administrateur choisit le mode d'activité de l'entreprise.
-  bool get canChangeActivityMode => isAdminRole(_currentContext?.userRole);
+  bool get canChangeActivityMode => UserRights.isAdmin(this);
 
   static bool isAdminRole(String? role) {
+    // Même table que le serveur (owner, sme_owner, sme_admin compris).
     final r = (role ?? '').toLowerCase().replaceAll('-', '_');
-    return r == 'admin' || r == 'super_admin' || r == 'superadmin';
+    return UserRoleExtension.isKnownApiValue(r) && UserRoleExtension.fromApiValue(r).isAdmin;
   }
 
   /// Écriture du mode côté serveur (remplaçable en test).
@@ -158,6 +161,9 @@ class BusinessContextService extends ChangeNotifier {
   /// Rôle de l'utilisateur connecté (valeur API : admin, cashier...).
   String? get userRole => _currentContext?.userRole;
 
+  /// Propriétaire de l'entreprise selon le dernier /auth/me.
+  bool get isCompanyOwner => _currentContext?.isCompanyOwner ?? false;
+
   /// Code de l'unité commerciale courante
   String? get businessUnitCode => _currentContext?.businessUnitCode;
 
@@ -227,7 +233,15 @@ class BusinessContextService extends ChangeNotifier {
   ///
   /// Appelé après une connexion réussie ou un rafraîchissement du profil
   Future<void> updateFromUser(User user) async {
+    // Utilisateur issu du jeton seul (serveur injoignable) : son rôle peut
+    // être inconnu. On garde alors le dernier rôle connu du serveur, jamais
+    // « staff » par défaut.
+    final previous = _currentContext;
+    final keepServerRights = !UserRoleExtension.isKnownApiValue(user.role);
     _currentContext = BusinessContext(
+      isCompanyOwner: (keepServerRights || previous?.userId == user.id)
+          ? (previous?.isCompanyOwner ?? false)
+          : false,
       companyId: user.companyId,
       companyName: user.companyName,
       activityMode: _currentContext?.activityMode ?? 'retail',
@@ -239,7 +253,7 @@ class BusinessContextService extends ChangeNotifier {
       // Autres rôles avec businessUnitId = scope "unit"
       scope: user.businessUnitId == null ? 'company' : 'unit',
       userId: user.id,
-      userRole: user.role,
+      userRole: keepServerRights ? (previous?.userRole ?? user.role) : user.role,
     );
 
     await _persistContext();
@@ -260,7 +274,7 @@ class BusinessContextService extends ChangeNotifier {
       serverMode: company?.activityMode,
       localMode: _currentContext?.activityMode,
       alreadyAligned: _modeAck,
-      isAdmin: isAdminRole(user.role),
+      isAdmin: user.isCompanyOwner || isAdminRole(user.role),
     );
     if (company?.activityMode != null && !modeChoisi.publishLocal) {
       await _setModeAck();
@@ -295,6 +309,7 @@ class BusinessContextService extends ChangeNotifier {
           (user.businessUnitId == null ? 'company' : 'unit'),
       userId: user.id,
       userRole: user.role,
+      isCompanyOwner: user.isCompanyOwner,
     );
 
     await _persistContext();
@@ -486,6 +501,10 @@ class BusinessContext {
   /// Rôle de l'utilisateur
   final String? userRole;
 
+  /// Propriétaire de l'entreprise selon le serveur (/auth/me isCompanyOwner) :
+  /// toujours administrateur, quel que soit le rôle lu.
+  final bool isCompanyOwner;
+
   const BusinessContext({
     this.companyId,
     this.companyName,
@@ -507,6 +526,7 @@ class BusinessContext {
     this.scope,
     this.userId,
     this.userRole,
+    this.isCompanyOwner = false,
   });
 
   factory BusinessContext.fromJson(Map<String, dynamic> json) {
@@ -540,6 +560,7 @@ class BusinessContext {
       scope: json['scope'] as String?,
       userId: json['userId'] as String?,
       userRole: json['userRole'] as String?,
+      isCompanyOwner: json['isCompanyOwner'] as bool? ?? false,
     );
   }
 
@@ -564,6 +585,7 @@ class BusinessContext {
     'scope': scope,
     'userId': userId,
     'userRole': userRole,
+    'isCompanyOwner': isCompanyOwner,
   };
 
   /// `true` quand l'utilisateur est rattaché à une BU personne morale (coopérant
@@ -595,6 +617,7 @@ class BusinessContext {
     String? scope,
     String? userId,
     String? userRole,
+    bool? isCompanyOwner,
   }) {
     return BusinessContext(
       companyId: companyId ?? this.companyId,
@@ -618,6 +641,7 @@ class BusinessContext {
       scope: scope ?? this.scope,
       userId: userId ?? this.userId,
       userRole: userRole ?? this.userRole,
+      isCompanyOwner: isCompanyOwner ?? this.isCompanyOwner,
     );
   }
 }

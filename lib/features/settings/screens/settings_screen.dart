@@ -6,6 +6,7 @@ import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/enums/user_role.dart';
+import 'package:wanzo/core/auth/user_rights.dart';
 import 'package:wanzo/core/modules/activity_mode.dart';
 import 'package:wanzo/core/modules/module_registry.dart';
 import 'package:wanzo/core/shared_widgets/wanzo_scaffold.dart';
@@ -55,11 +56,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Administrateur, super administrateur ou comptable (comptes financiers).
   bool _isAdminOrAccountant() {
-    final authState = context.read<AuthBloc>().state;
-    if (authState is! AuthAuthenticated) return false;
-    return UserRoleExtension.fromApiValue(
-      authState.user.role,
-    ).canManageFinancialAccounts;
+    // Même source que le choix du mode (UserRights), propriétaire compris.
+    return UserRights.isAdmin() ||
+        (UserRights.role()?.canManageFinancialAccounts ?? false);
   }
 
   /// Nombre de demandes en attente (badge). Hors ligne, le badge reste vide :
@@ -357,14 +356,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Sélecteur de mode d'activité, réservé aux administrateurs. Le mode est
   /// écrit sur la fiche de l'entreprise (tous les postes le reçoivent) et
   /// recompose la navigation via [BusinessContextService.setActivityMode].
-  void _showActivityModePicker() {
+  Future<void> _showActivityModePicker() async {
     final ctx = BusinessContextService();
+    final messenger = ScaffoldMessenger.of(context);
+    // Droits relus quand ils sont inconnus, ou quand ils disent « pas
+    // administrateur » et datent de plus de 5 minutes (rôle resté en cache).
+    var rights = UserRights.adminStatus(ctx);
+    if (rights == AdminRightsStatus.unknown) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Vérification de vos droits…')),
+      );
+      await RoleRefresh.instance.refreshNow('choix du mode');
+      messenger.hideCurrentSnackBar();
+    } else if (rights == AdminRightsStatus.notAdmin) {
+      await RoleRefresh.instance.refreshIfStale('choix du mode');
+    }
+    rights = UserRights.adminStatus(ctx);
+    if (!mounted) return;
     final current = ctx.activityMode;
-    if (!ctx.canChangeActivityMode) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+    if (rights != AdminRightsStatus.admin) {
+      messenger.showSnackBar(
+        SnackBar(
           content: Text(
-            'Seul un administrateur de l\'entreprise change le mode d\'activité.',
+            rights == AdminRightsStatus.unknown
+                ? 'Vérification de vos droits impossible pour le moment. Réessayez une fois connecté.'
+                : 'Seul un administrateur de l\'entreprise change le mode d\'activité.',
           ),
         ),
       );

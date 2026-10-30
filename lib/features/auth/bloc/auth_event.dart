@@ -95,3 +95,15 @@ class AuthJoinRequestCheckRequested extends AuthEvent {
 class AuthJoinRequestCancelRequested extends AuthEvent {
   const AuthJoinRequestCancelRequested();
 }
+
+/// Relecture du rôle depuis /auth/me sans redémarrage (premier plan, refus
+/// 403 de droits, droits encore inconnus). [done] est complété à la fin.
+class AuthRoleRefreshRequested extends AuthEvent {
+  final String reason;
+  final Completer<void>? done;
+
+  const AuthRoleRefreshRequested({this.reason = '', this.done});
+
+  @override
+  List<Object?> get props => [reason, done];
+}

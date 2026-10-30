@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'dart:async';
 import 'dart:io'; // Import for File type
 import '../models/user.dart';
 import '../models/join_request.dart';
@@ -47,6 +48,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthRefreshProfileRequested>(_onAuthRefreshProfileRequested);
     on<AuthJoinRequestCheckRequested>(_onJoinRequestCheckRequested);
     on<AuthJoinRequestCancelRequested>(_onJoinRequestCancelRequested);
+    on<AuthRoleRefreshRequested>(_onRoleRefreshRequested);
   }
 
   /// Résout l'état d'authentification selon les 3 cas de /auth/me
@@ -603,6 +605,32 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     } catch (e) {
       debugPrint('AuthBloc: Error refreshing profile: $e');
       // Ne pas changer l'état en cas d'erreur de refresh
+    }
+  }
+
+  /// Relit le rôle (/auth/me) d'un utilisateur connecté : le cache (Hive,
+  /// contexte métier) est réécrit par le dépôt ; l'état n'est réémis que si
+  /// le rôle a changé. Sans réseau ou en cas d'erreur, rien ne change.
+  Future<void> _onRoleRefreshRequested(
+    AuthRoleRefreshRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    try {
+      final current = state;
+      if (current is! AuthAuthenticated) return;
+      final refreshed = await _authRepository.refreshUserProfile();
+      if (refreshed != null &&
+          state is AuthAuthenticated &&
+          refreshed.role != current.user.role) {
+        debugPrint(
+          'AuthBloc: rôle relu (${event.reason}) : ${current.user.role} -> ${refreshed.role}',
+        );
+        emit(AuthAuthenticated(refreshed));
+      }
+    } catch (e) {
+      debugPrint('AuthBloc: relecture du rôle impossible (${event.reason}) : $e');
+    } finally {
+      if (event.done != null && !event.done!.isCompleted) event.done!.complete();
     }
   }
 }

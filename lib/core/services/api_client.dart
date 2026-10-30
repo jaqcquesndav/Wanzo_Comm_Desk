@@ -10,6 +10,7 @@ import '../exceptions/api_exceptions.dart'; // Import des exceptions personnalis
 import 'reauth_service.dart'; // Import du service de ré-authentification
 import 'api_circuit_breaker.dart'; // Import du circuit breaker
 import 'account_block_notifier.dart';
+import '../auth/user_rights.dart';
 import 'business_context_service.dart'; // Contexte multi-tenant (companyId / businessUnitId)
 
 class ApiClient {
@@ -952,6 +953,11 @@ class ApiClient {
         // silence.
         final refus = AccountBlockNotifier.lireRefus(decodedBody);
         if (refus != null) AccountBlockNotifier.instance.signal(refus);
+        // Refus lié aux droits : le rôle a pu changer sur le serveur, on le
+        // relit (au plus toutes les 30 s) pour que l'app suive sans redémarrage.
+        if (refus == null && isRoleForbidden(403, decodedBody, endpoint: endpoint)) {
+          RoleRefresh.instance.onRoleForbidden();
+        }
         return AuthorizationException(
           message,
           endpoint: endpoint,

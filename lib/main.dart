@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:wanzo/core/auth/user_rights.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -564,6 +566,15 @@ Map<String, dynamic> _initializeBlocsSync(
     scopeGuard: CompanyScopeGuard.instance,
   );
   blocs['auth'] = authBloc;
+
+  // Relecture du rôle sans redémarrage (premier plan, refus 403 de droits,
+  // droits encore inconnus) : /auth/me, puis cache et état mis à jour.
+  RoleRefresh.instance.runner = (reason) {
+    final done = Completer<void>();
+    authBloc.add(AuthRoleRefreshRequested(reason: reason, done: done));
+    return done.future;
+  };
+  RoleRefreshLifecycleObserver.instance.attach();
 
   final operationJournalBloc = OperationJournalBloc(
     repository: repositories['operationJournal'] as OperationJournalRepository,

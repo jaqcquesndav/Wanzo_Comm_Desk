@@ -5,6 +5,7 @@ import '../models/user.dart';
 import '../models/join_request.dart';
 import 'join_request_service.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
+import 'package:wanzo/core/enums/user_role.dart';
 
 /// Service pour récupérer les informations utilisateur depuis le backend
 /// après authentification Auth0.
@@ -313,6 +314,9 @@ class BackendUserProfile {
   /// Type d'unité: "COMPANY", "BRANCH", "POS"
   final String? businessUnitType;
 
+  /// Propriétaire de l'entreprise (serveur) : toujours administrateur.
+  final bool isCompanyOwner;
+
   /// Indique si l'utilisateur est actif
   final bool isActive;
 
@@ -349,6 +353,7 @@ class BackendUserProfile {
     this.businessUnitId,
     this.businessUnitType,
     this.isActive = true,
+    this.isCompanyOwner = false,
     this.createdAt,
     this.updatedAt,
   });
@@ -363,7 +368,8 @@ class BackendUserProfile {
           json['fullName'] as String? ??
           '${json['firstName'] ?? ''} ${json['lastName'] ?? ''}'.trim(),
       phone: json['phone'] as String?,
-      role: (json['role'] as String?) ?? 'user',
+      // Absent : rôle inconnu, jamais « user » ni « staff » supposé.
+      role: (json['role'] as String?) ?? UserRoleExtension.unknownApiValue,
       companyId: json['companyId'] as String?,
       companyName: json['companyName'] as String?,
       rccmNumber: json['rccmNumber'] as String?,
@@ -383,6 +389,7 @@ class BackendUserProfile {
       businessUnitId: json['businessUnitId'] as String?,
       businessUnitType: json['businessUnitType'] as String?,
       isActive: json['isActive'] as bool? ?? true,
+      isCompanyOwner: json['isCompanyOwner'] == true,
       createdAt:
           json['createdAt'] != null
               ? DateTime.tryParse(json['createdAt'] as String)
@@ -421,6 +428,7 @@ class BackendUserProfile {
     'businessUnitId': businessUnitId,
     'businessUnitType': businessUnitType,
     'isActive': isActive,
+    'isCompanyOwner': isCompanyOwner,
     'createdAt': createdAt?.toIso8601String(),
     'updatedAt': updatedAt?.toIso8601String(),
   };

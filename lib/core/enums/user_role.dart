@@ -72,30 +72,49 @@ extension UserRoleExtension on UserRole {
     }
   }
 
+  /// Valeur posée quand aucun rôle n'est connu (jeton sans claim de rôle et
+  /// aucune réponse du serveur) : jamais lue comme « staff ».
+  static const String unknownApiValue = 'unknown';
+
+  /// Rôles du référentiel (customer-service, accounting, gestion) vers
+  /// l'enum de l'app, comme `mapExternalRole` côté serveur. Le propriétaire
+  /// (owner, sme_owner) et l'administrateur PME (sme_admin) sont
+  /// administrateurs.
+  static const Map<String, UserRole> _apiValues = {
+    'admin': UserRole.admin,
+    'owner': UserRole.admin,
+    'sme_owner': UserRole.admin,
+    'sme_admin': UserRole.admin,
+    'super_admin': UserRole.superAdmin,
+    'superadmin': UserRole.superAdmin,
+    'manager': UserRole.manager,
+    'commerce_manager': UserRole.manager,
+    'asset_manager': UserRole.manager,
+    'avec_president': UserRole.manager,
+    'avec_secretary': UserRole.manager,
+    'accountant': UserRole.accountant,
+    'avec_treasurer': UserRole.accountant,
+    'cashier': UserRole.cashier,
+    'sales': UserRole.sales,
+    'salesperson': UserRole.sales,
+    'inventory_manager': UserRole.inventoryManager,
+    'stock_keeper': UserRole.inventoryManager,
+    'procurement_officer': UserRole.inventoryManager,
+    'staff': UserRole.staff,
+    'user': UserRole.staff,
+    'sme_user': UserRole.staff,
+    'customer_support': UserRole.customerSupport,
+  };
+
+  /// La valeur désigne-t-elle un rôle réel (et non une absence de rôle) ?
+  static bool isKnownApiValue(String? value) {
+    final v = (value ?? '').trim().toLowerCase();
+    return v.isNotEmpty && v != unknownApiValue;
+  }
+
   /// Crée un UserRole depuis la valeur API
   static UserRole fromApiValue(String value) {
-    switch (value.toLowerCase()) {
-      case 'admin':
-        return UserRole.admin;
-      case 'super_admin':
-        return UserRole.superAdmin;
-      case 'manager':
-        return UserRole.manager;
-      case 'accountant':
-        return UserRole.accountant;
-      case 'cashier':
-        return UserRole.cashier;
-      case 'sales':
-        return UserRole.sales;
-      case 'inventory_manager':
-        return UserRole.inventoryManager;
-      case 'staff':
-        return UserRole.staff;
-      case 'customer_support':
-        return UserRole.customerSupport;
-      default:
-        return UserRole.staff;
-    }
+    return _apiValues[value.trim().toLowerCase()] ?? UserRole.staff;
   }
 
   /// Retourne le nom d'affichage localisé

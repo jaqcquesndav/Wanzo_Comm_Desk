@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:auth0_flutter/auth0_flutter.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
+import 'package:wanzo/core/auth/user_rights.dart';
+import 'package:wanzo/core/enums/user_role.dart';
 // import '../../../core/services/auth0_management_api_service.dart'; // Unused
 import '../models/user.dart';
 import '../../../core/utils/connectivity_service.dart';
@@ -744,14 +746,20 @@ class Auth0Service {
     return await getUserInfoFromSdk();
   }
 
-  String _extractRole(dynamic rolesClaim) {
-    if (rolesClaim is List && rolesClaim.isNotEmpty) {
-      return rolesClaim.first as String? ?? 'user';
-    } else if (rolesClaim is String) {
-      return rolesClaim;
-    }
-    return 'user';
+  /// Rôle porté par le jeton. Les comptes récents n'ont pas ce claim (la
+  /// Management API Auth0 ne l'écrit plus) : on n'en déduit jamais « staff »,
+  /// on garde le dernier rôle connu du serveur, sinon « inconnu ».
+  String _extractRole(dynamic rolesClaim) =>
+      roleFromTokenClaim(rolesClaim, lastKnownServerRole: _businessContextService.userRole);
+
+  /// Repli sans réponse de /auth/me : rôle du jeton s'il en porte un,
+  /// sinon dernier rôle connu du serveur.
+  User _withLastKnownRole(User user) {
+    if (UserRoleExtension.isKnownApiValue(user.role)) return user;
+    final last = _businessContextService.userRole;
+    return UserRoleExtension.isKnownApiValue(last) ? user.copyWith(role: last) : user;
   }
+
 
   IdStatus _parseIdStatus(String? statusString) {
     if (statusString == null) return IdStatus.UNKNOWN;
@@ -839,12 +847,12 @@ class Auth0Service {
         );
         // Mettre à jour le contexte avec les données Auth0 minimales
         await _businessContextService.updateFromUser(auth0User);
-        return auth0User;
+        return _withLastKnownRole(auth0User);
       }
     } catch (e) {
       debugPrint("Auth0Service: Error enriching user with backend data: $e");
       // En cas d'erreur, retourner l'utilisateur Auth0 sans les données backend
-      return auth0User;
+      return _withLastKnownRole(auth0User);
     }
   }
 

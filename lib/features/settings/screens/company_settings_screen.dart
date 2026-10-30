@@ -8,7 +8,7 @@ import 'package:wanzo/core/services/image_upload_service.dart';
 import 'package:path/path.dart' as path;
 import 'package:wanzo/l10n/app_localizations.dart';
 import 'package:wanzo/core/enums/business_unit_enums.dart';
-import 'package:wanzo/core/enums/user_role.dart';
+import 'package:wanzo/core/auth/user_rights.dart';
 import 'package:wanzo/core/services/business_context_service.dart';
 import 'package:wanzo/core/widgets/desktop/responsive_form_container.dart';
 import 'package:wanzo/core/platform/platform_service.dart';
@@ -55,9 +55,8 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
   void initState() {
     super.initState();
 
-    final roleStr = BusinessContextService().currentContext?.userRole;
-    _canEditCompany =
-        roleStr != null && UserRoleExtension.fromApiValue(roleStr).isAdmin;
+    // Même source que le choix du mode et l'en-tête (propriétaire compris).
+    _canEditCompany = UserRights.isAdmin();
 
     // Initialise les contrôleurs avec les valeurs actuelles
     _companyNameController = TextEditingController(
