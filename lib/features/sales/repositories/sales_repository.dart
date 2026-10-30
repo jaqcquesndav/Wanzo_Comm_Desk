@@ -122,6 +122,14 @@ class SalesRepository {
         .toList();
   }
 
+  /// Ventes annulées d'un client (section « Annulées » de sa fiche, hors
+  /// soldes et totaux).
+  Future<List<Sale>> getCancelledSalesByCustomer(String customerId) async {
+    return _salesBox.values
+        .where((sale) => sale.isCancelled && sale.customerId == customerId)
+        .toList();
+  }
+
   /// Récupérer les ventes d'une période donnée
   Future<List<Sale>> getSalesByDateRange(DateTime start, DateTime end) async {
     final allSales = _salesBox.values.toList();

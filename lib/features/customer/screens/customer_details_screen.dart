@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:wanzo/features/customer/widgets/customer_cancelled_sales.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wanzo/l10n/app_localizations.dart';
@@ -257,6 +258,8 @@ class CustomerDetailsScreen extends StatelessWidget {
                 ),
                 // Créances client (solde impayé).
                 _buildReceivablesSection(context, customer, localizations, currencyService),
+                // Ventes annulées : section repliée, hors soldes et totaux.
+                CustomerCancelledSales(customerId: customer.id),
                 if (customer.notes?.isNotEmpty ?? false) ...[
                   const SizedBox(height: 16),
                   Card(
@@ -598,6 +601,8 @@ class CustomerDetailsScreen extends StatelessWidget {
 
           // Créances client : aussi sur fenêtre étroite.
           _buildReceivablesSection(context, customer, localizations, currencyService),
+          // Ventes annulées : section repliée, hors soldes et totaux.
+          CustomerCancelledSales(customerId: customer.id),
           if (customer.notes?.isNotEmpty ?? false) ...[
             Card(
               elevation: 2,
