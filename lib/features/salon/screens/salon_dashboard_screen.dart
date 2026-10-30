@@ -10,6 +10,9 @@ import 'package:wanzo/core/shared_widgets/kpi_board.dart';
 import 'package:wanzo/core/shared_widgets/kpi_grid.dart';
 import 'package:wanzo/core/utils/daily_series.dart';
 import 'package:wanzo/features/dashboard/bloc/dashboard_bloc.dart';
+import 'package:wanzo/features/dashboard/widgets/dashboard_operations_journal.dart';
+import 'package:wanzo/features/dashboard/widgets/dashboard_sales_expense_chart.dart';
+import 'package:wanzo/features/dashboard/widgets/mode_dashboard_layout.dart';
 import 'package:wanzo/features/sales/bloc/sales_bloc.dart';
 
 import '../cubit/salon_cubit.dart';
@@ -17,11 +20,11 @@ import '../services/salon_api_service.dart';
 
 /// Tableau de bord du mode SALON DE COIFFURE (desktop).
 ///
-/// Volontairement épuré : les repères du salon (prestations à la carte, équipe)
-/// et un accès direct aux actions clés — nouveau ticket, carte, coiffeurs,
-/// performances. Les données proviennent du `SalonCubit` (carte locale + équipe
-/// backend, offline-tolerant), sans dépendance supplémentaire. Les actions clés
-/// passent par la feuille partagée d'actions rapides (un seul déclencheur).
+/// Même mise en page que le tableau de bord Général : les six vignettes du
+/// salon, le graphique ventes et charges, puis le journal des opérations,
+/// sur toute la largeur. Nouveau ticket et nouvelle prestation sont dans le
+/// dock d'actions rapides du shell ; équipe et performances dans la barre
+/// latérale. Les données du salon proviennent du `SalonCubit`.
 class SalonDashboardScreen extends StatefulWidget {
   const SalonDashboardScreen({super.key});
 
@@ -42,6 +45,9 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
   /// total gagne, seul affiche jusqu'ici, ne bougeait jamais.
   double? _resteAVerser;
 
+  /// Vue agrandie du journal des opérations (« Voir tout »).
+  bool _journalExpanded = false;
+
   @override
   void initState() {
     super.initState();
@@ -51,6 +57,8 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
     if (dashState is! DashboardLoaded) {
       context.read<DashboardBloc>().add(LoadDashboardData(date: DateTime.now()));
     }
+    // Graphique et journal : mêmes données que le tableau de bord Général.
+    loadDashboardFeeds(context);
     _loadCommissions();
   }
 
@@ -65,6 +73,7 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
 
   Future<void> _rafraichir() async {
     context.read<DashboardBloc>().add(LoadDashboardData(date: DateTime.now()));
+    loadDashboardFeeds(context);
     await _loadCommissions();
   }
 
@@ -101,6 +110,15 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
       ctx.currentContext?.userRole,
       '/dashboard',
     );
+    final displayCurrencyCode = dashboardDisplayCurrency(context);
+
+    if (_journalExpanded) {
+      return OperationsJournalExpandedView(
+        displayCurrencyCode: displayCurrencyCode,
+        currentIndex: index < 0 ? 0 : index,
+        onCollapse: () => setState(() => _journalExpanded = false),
+      );
+    }
 
     return WanzoScaffold(
       currentIndex: index < 0 ? 0 : index,
@@ -118,23 +136,15 @@ class _SalonDashboardScreenState extends State<SalonDashboardScreen> {
           if (state.loading && state.services.isEmpty) {
             return const Center(child: CircularProgressIndicator());
           }
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            // Sur grand écran, les tuiles d'action ne doivent pas s'étirer sur
-            // toute la largeur : on borne la colonne et on la centre (comme le
-            // reste des écrans desktop).
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 900),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _kpiRow(context, state),
-                    // Nouveau ticket et nouvelle prestation : dock d'actions
-                    // rapides du shell ; équipe et performances : sidebar.
-                  ],
-                ),
-              ),
+          // Même ordre que le Général : vignettes, graphique, journal, sur
+          // toute la largeur (plus de colonne bornée à 900 px).
+          return ModeDashboardLayout(
+            onRefresh: _rafraichir,
+            kpis: _kpiRow(context, state),
+            chart: const ModeDashboardChart(),
+            journal: DashboardOperationsJournal(
+              displayCurrencyCode: displayCurrencyCode,
+              onExpand: () => setState(() => _journalExpanded = true),
             ),
           );
         },

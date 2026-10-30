@@ -386,8 +386,8 @@ class _SalesExpenseChartWidgetState extends State<SalesExpenseChartWidget> {
         borderRadius: BorderRadius.circular(WanzoTheme.borderRadiusSm),
       ),
       padding: const EdgeInsets.all(2),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      // Retour à la ligne plutôt que débordement sur fenêtre étroite.
+      child: Wrap(
         children:
             ChartViewMode.values.map((mode) {
               final isSelected = _selectedViewMode == mode;

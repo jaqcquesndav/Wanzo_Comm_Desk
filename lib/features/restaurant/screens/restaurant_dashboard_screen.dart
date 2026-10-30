@@ -10,6 +10,10 @@ import 'package:wanzo/core/shared_widgets/kpi_board.dart';
 import 'package:wanzo/core/shared_widgets/kpi_grid.dart';
 import 'package:wanzo/core/utils/daily_series.dart';
 import 'package:wanzo/core/widgets/dish_thumb_grid.dart';
+import 'package:wanzo/features/dashboard/bloc/dashboard_bloc.dart';
+import 'package:wanzo/features/dashboard/widgets/dashboard_operations_journal.dart';
+import 'package:wanzo/features/dashboard/widgets/dashboard_sales_expense_chart.dart';
+import 'package:wanzo/features/dashboard/widgets/mode_dashboard_layout.dart';
 import 'package:wanzo/features/sales/repositories/sales_repository.dart';
 
 import '../cubit/restaurant_orders_cubit.dart';
@@ -20,13 +24,37 @@ import '../widgets/restaurant_order_quick_view_dialog.dart';
 
 /// Tableau de bord du mode RESTAURANT (desktop / comptoir).
 ///
-/// Volontairement DIFFÉRENT du tableau de bord boutique : pas de valeur de
-/// stock ni d'indicateurs d'inventaire, mais les repères du service — commandes
-/// en salle, en cuisine, chiffre du jour et plats les plus vendus. Les données
-/// proviennent uniquement du `RestaurantOrdersCubit` (aucune dépendance
-/// supplémentaire), ce qui garde l'écran léger et sans risque pour la boutique.
-class RestaurantDashboardScreen extends StatelessWidget {
+/// Même mise en page que le tableau de bord Général : les six vignettes du
+/// service, le graphique ventes et charges, les sections propres au
+/// restaurant (commandes en cours et plats les plus vendus, côte à côte sur
+/// grand écran, en onglets sur fenêtre étroite), puis le journal des
+/// opérations. Pas de valeur de stock : un restaurant suit sa carte.
+class RestaurantDashboardScreen extends StatefulWidget {
   const RestaurantDashboardScreen({super.key});
+
+  @override
+  State<RestaurantDashboardScreen> createState() =>
+      _RestaurantDashboardScreenState();
+}
+
+class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
+  /// Vue agrandie du journal des opérations (« Voir tout »).
+  bool _journalExpanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final dashState = context.read<DashboardBloc>().state;
+    if (dashState is! DashboardLoaded) {
+      context.read<DashboardBloc>().add(LoadDashboardData(date: DateTime.now()));
+    }
+    loadDashboardFeeds(context, includeInventory: false);
+  }
+
+  Future<void> _rafraichir() async {
+    context.read<DashboardBloc>().add(LoadDashboardData(date: DateTime.now()));
+    loadDashboardFeeds(context, includeInventory: false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,6 +64,16 @@ class RestaurantDashboardScreen extends StatelessWidget {
       ctx.currentContext?.userRole,
       '/dashboard',
     );
+
+    final displayCurrencyCode = dashboardDisplayCurrency(context);
+
+    if (_journalExpanded) {
+      return OperationsJournalExpandedView(
+        displayCurrencyCode: displayCurrencyCode,
+        currentIndex: index < 0 ? 0 : index,
+        onCollapse: () => setState(() => _journalExpanded = false),
+      );
+    }
 
     // Les actions du service (commande, encaissement, carte…) sont portées
     // par le dock d'actions rapides du shell, jamais dans le corps.
@@ -59,48 +97,27 @@ class RestaurantDashboardScreen extends StatelessWidget {
             future: _salesTodayByCurrency(context),
             builder: (context, snapshot) {
               final salesToday = snapshot.data;
-              return LayoutBuilder(
-                builder: (context, c) {
-                  final wide = c.maxWidth >= 900;
-                  return SingleChildScrollView(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _kpiRow(context, m, salesToday),
-                    const SizedBox(height: 28),
-                    if (wide)
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: _section(
-                              context,
-                              'Commandes en cours',
-                              _activeOrders(context, m.active),
-                            ),
-                          ),
-                          const SizedBox(width: 24),
-                          Expanded(
-                            child: _section(
-                              context,
-                              'Plats les plus vendus (aujourd\'hui)',
-                              _topDishes(context, m.topDishes),
-                            ),
-                          ),
-                        ],
-                      )
-                    else ...[
-                      _section(context, 'Commandes en cours',
-                          _activeOrders(context, m.active)),
-                      const SizedBox(height: 24),
-                      _section(context, 'Plats les plus vendus (aujourd\'hui)',
-                          _topDishes(context, m.topDishes)),
-                    ],
-                      ],
+              return ModeDashboardLayout(
+                onRefresh: _rafraichir,
+                kpis: _kpiRow(context, m, salesToday),
+                chart: const ModeDashboardChart(includeStock: false),
+                middle: DashboardSectionsGroup(
+                  sections: [
+                    DashboardSection(
+                      title: 'Commandes en cours',
+                      child: _activeOrders(context, m.active),
                     ),
-                  );
-                },
+                    DashboardSection(
+                      title: 'Plats les plus vendus (aujourd\'hui)',
+                      tabLabel: 'Plats les plus vendus',
+                      child: _topDishes(context, m.topDishes),
+                    ),
+                  ],
+                ),
+                journal: DashboardOperationsJournal(
+                  displayCurrencyCode: displayCurrencyCode,
+                  onExpand: () => setState(() => _journalExpanded = true),
+                ),
               );
             },
           );
@@ -141,23 +158,6 @@ class RestaurantDashboardScreen extends StatelessWidget {
       cdf: cdf,
       usd: usd,
       serieCa: DailySeries.revenue(semaine),
-    );
-  }
-
-  Widget _section(BuildContext context, String title, Widget child) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          title,
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        child,
-      ],
     );
   }
 
