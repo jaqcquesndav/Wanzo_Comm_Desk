@@ -441,7 +441,7 @@ class InvoiceService {
                         pw.Padding(
                           padding: const pw.EdgeInsets.all(5),
                           child: pw.Text(
-                            lineQuantityLabel(item.quantity, item.unitCode),
+                            lineQuantityLabel(item.quantity, item.unitCode, item.unitFactor),
                             textAlign: pw.TextAlign.center,
                           ),
                         ),
@@ -762,7 +762,7 @@ class InvoiceService {
                       pw.Expanded(
                         flex: 1,
                         child: pw.Text(
-                          lineQuantityLabel(item.quantity, item.unitCode),
+                          lineQuantityLabel(item.quantity, item.unitCode, item.unitFactor),
                           style: pw.TextStyle(font: regularFont, fontSize: 8),
                           textAlign: pw.TextAlign.center,
                         ),

@@ -1174,7 +1174,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
               const SizedBox(height: WanzoSpacing.md),
               SellableUnitSelector(
                 units: units,
-                selected: unit.code,
+                selectedKey: unit.key,
                 onChanged: (u) => setDialogState(() => unit = u),
               ),
               if (units.length > 1) const SizedBox(height: WanzoSpacing.sm),
@@ -1183,7 +1183,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                 decoration: InputDecoration(
                   labelText: 'Quantité',
                   border: const OutlineInputBorder(),
-                  suffixText: MeasurementUnits.label(unit.code, unitLang(context)),
+                  suffixText: unit.label,
                 ),
                 keyboardType: TextInputType.number,
                 autofocus: true,
@@ -1199,7 +1199,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
               onPressed: () {
                 final typed = double.tryParse(
                     quantityController.text.replaceAll(',', '.'));
-                // En unités de base : 2 cartons de 24 = 48.
+                // En cartons : 1 demi = 0,5 ; 5 bouteilles de 24 = 0,208333.
                 final quantity =
                     typed == null ? null : MeasurementUnits.toBase(typed, unit.factor);
 

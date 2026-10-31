@@ -68,10 +68,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   late ProductCategory _selectedCategory;
   late ProductUnit _selectedUnit;
-  // Unité réelle (catalogue partagé) et conditionnements (1 carton = 24).
+  // Unité de référence (catalogue partagé) et ses options : demi, quart,
+  // pièce contenue (1 carton = 24 bouteilles).
   late String _unitCode;
-  List<ProductPackaging> _packagings = const [];
-  bool _packagingsTouched = false;
+  ProductUnitOptions? _unitOptions;
+  bool _unitOptionsTouched = false;
   String? _selectedSubCategory;
 
   String?
@@ -165,19 +166,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
     _selectedCategory = widget.product?.category ?? ProductCategory.other;
     _selectedUnit = widget.product?.unit ?? ProductUnit.piece;
     _unitCode = widget.product?.baseUnitCode ?? _selectedUnit.name;
-    // Prix des conditionnements affichés dans la devise de saisie.
+    // Prix du demi et de la pièce affichés dans la devise de saisie.
     final rate = (widget.product?.inputExchangeRate ?? 1) > 0
         ? widget.product!.inputExchangeRate
         : 1.0;
-    _packagings = [
-      for (final p in widget.product?.packagings ?? const <ProductPackaging>[])
-        ProductPackaging(
-          unitCode: p.unitCode,
-          contains: p.contains,
-          sellingPriceInCdf:
-              p.sellingPriceInCdf == null ? null : p.sellingPriceInCdf! / rate,
-        ),
-    ];
+    final o = widget.product?.unitOptions;
+    _unitOptions = o == null ? null : _convertPrices(o, (v) => v / rate);
     _selectedSubCategory = widget.product?.subCategory;
 
     // Initialize expiration date fields
@@ -844,14 +838,16 @@ class _AddProductScreenState extends State<AddProductScreen> {
                       ),
                       const SizedBox(height: WanzoSpacing.sm),
                       // Conditionnements : vendu ou acheté au carton, au demi-carton...
-                      PackagingEditor(
-                        key: ValueKey('pack-$_unitCode'),
+                      UnitOptionsEditor(
+                        key: ValueKey('unit-options-$_unitCode'),
                         baseUnitCode: _unitCode,
-                        initial: _packagings,
+                        initial: _unitOptions,
                         priceSuffix: (_selectedInputCurrency ?? _appActiveCurrency).code,
-                        onChanged: (list) {
-                          _packagings = list;
-                          _packagingsTouched = true;
+                        basePrice: () => double.tryParse(
+                            _sellingPriceController.text.replaceAll(',', '.')),
+                        onChanged: (o) {
+                          _unitOptions = o;
+                          _unitOptionsTouched = true;
                         },
                       ),
                       const SizedBox(height: WanzoSpacing.md),
@@ -1150,20 +1146,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
       stockQuantity: stockQuantity,
       unit: _selectedUnit,
       unitCode: _unitCode == _selectedUnit.name ? null : _unitCode,
-      packagingsJson: (_packagingsTouched || _packagings.isNotEmpty)
-          ? (ProductPackaging.encodeList([
-                for (final p in _packagings)
-                  ProductPackaging(
-                    unitCode: p.unitCode,
-                    contains: p.contains,
-                    sellingPriceInCdf: p.sellingPriceInCdf == null
-                        ? null
-                        : currencyService.convertToCdf(
-                            p.sellingPriceInCdf!, inputCurrency),
-                  ),
-              ]) ??
-              '[]')
-          : widget.product?.packagingsJson,
+      unitOptionsJson: (_unitOptionsTouched || _unitOptions != null)
+          ? _convertPrices(
+              _unitOptions ?? const ProductUnitOptions(),
+              (v) => currencyService.convertToCdf(v, inputCurrency),
+            ).encode()
+          : widget.product?.unitOptionsJson,
       alertThreshold: double.tryParse(_alertThresholdController.text) ?? 5.0,
       createdAt: widget.product?.createdAt ?? DateTime.now(),
       updatedAt: DateTime.now(),
@@ -1222,6 +1210,22 @@ class _AddProductScreenState extends State<AddProductScreen> {
   String _formatDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
+
+  /// Prix du demi, du quart et de la pièce convertis (devise de saisie <-> CDF).
+  static ProductUnitOptions _convertPrices(
+    ProductUnitOptions o,
+    double Function(double) f,
+  ) =>
+      ProductUnitOptions(
+        fractions: o.fractions,
+        halfPriceInCdf: o.halfPriceInCdf == null ? null : f(o.halfPriceInCdf!),
+        quarterPriceInCdf:
+            o.quarterPriceInCdf == null ? null : f(o.quarterPriceInCdf!),
+        pieceUnitCode: o.pieceUnitCode,
+        piecesPerUnit: o.piecesPerUnit,
+        piecePriceInCdf:
+            o.piecePriceInCdf == null ? null : f(o.piecePriceInCdf!),
+      );
 
   /// Unités déjà employées par la boutique : en tête du sélecteur.
   Map<String, int> _unitUsage(BuildContext context) {

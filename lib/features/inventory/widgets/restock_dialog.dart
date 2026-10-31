@@ -68,8 +68,8 @@ class _RestockDialogState extends State<_RestockDialog> {
   /// si son taux existe, sinon CDF) ; jamais réécrite par une reconstruction.
   late Currency _devise;
 
-  /// Unité d'achat : la base ou un conditionnement (carton de 24). Quantité
-  /// et prix saisis dans cette unité ; le stock reçoit quantité x contenu.
+  /// Unité d'achat : carton, demi-carton ou pièce. Quantité et prix saisis
+  /// dans cette unité ; le stock reçoit quantité x facteur cartons.
   late SellableUnit _unite = widget.product.sellableUnits.first;
 
   void _choisirUnite(SellableUnit u) {
@@ -182,7 +182,7 @@ class _RestockDialogState extends State<_RestockDialog> {
             paymentStatus:
                 _paid ? ExpensePaymentStatus.paid : ExpensePaymentStatus.unpaid,
             paymentMethod: _paid ? _method : null,
-            notes: '${MeasurementUnits.formatUnitQuantity(_qty, _unite.code)} x '
+            notes: '${lineQuantityLabel(_qty, _unite.code, _unite.factor)} x '
                 '${formatCurrency(_price, code)}',
           ),
           saved: depenseEnregistree,
@@ -233,7 +233,7 @@ class _RestockDialogState extends State<_RestockDialog> {
       notes: _unite.isBase
           ? 'Réapprovisionnement ${product.name}'
           : 'Réapprovisionnement ${product.name} : '
-              '${MeasurementUnits.formatUnitQuantity(_qty, _unite.code)} de ${MeasurementUnits.formatNumber(_unite.factor)}',
+              '${lineQuantityLabel(_qty, _unite.code, _unite.factor)}',
       unitCostInCdf: _price * tauxAchat / _unite.factor,
       totalValueInCdf: _total * tauxAchat,
       currencyCode: 'CDF',
@@ -310,7 +310,7 @@ class _RestockDialogState extends State<_RestockDialog> {
                 // Acheté au carton, au demi-carton ou à l'unité.
                 SellableUnitSelector(
                   units: product.sellableUnits,
-                  selected: _unite.code,
+                  selectedKey: _unite.key,
                   onChanged: _choisirUnite,
                 ),
                 if (product.sellableUnits.length > 1)
@@ -324,10 +324,10 @@ class _RestockDialogState extends State<_RestockDialog> {
                   inputFormatters: [numberFormatter],
                   decoration: InputDecoration(
                     labelText: 'Quantité reçue',
-                    suffixText: MeasurementUnits.label(_unite.code, unitLang(context)),
+                    suffixText: _unite.label,
                     helperText: _unite.isBase || _qty <= 0
                         ? null
-                        : '= ${MeasurementUnits.formatUnitQuantity(MeasurementUnits.toBase(_qty, _unite.factor), product.baseUnitCode)}',
+                        : '= ${MeasurementUnits.formatStockBreakdown(MeasurementUnits.toBase(_qty, _unite.factor), product.baseUnitCode, product.unitOptions)}',
                     border: const OutlineInputBorder(),
                   ),
                   onChanged: (_) => setState(() {}),
@@ -344,7 +344,7 @@ class _RestockDialogState extends State<_RestockDialog> {
                   decoration: InputDecoration(
                     labelText: _unite.isBase
                         ? 'Prix d\'achat unitaire'
-                        : 'Prix d\'achat par ${MeasurementUnits.label(_unite.code, unitLang(context)).toLowerCase()}',
+                        : 'Prix d\'achat par ${_unite.label.toLowerCase()}',
                     border: const OutlineInputBorder(),
                     // Devise du prix saisi, parmi celles qui ont un taux.
                     suffixIcon: Padding(

@@ -5,7 +5,7 @@
 // ignore_for_file: prefer_single_quotes, always_specify_types
 
 const Map<String, dynamic> kMeasurementUnitsSnapshot = {
-  "version": 1,
+  "version": 2,
   "units": [
     {
       "code": "piece",
@@ -321,22 +321,14 @@ const Map<String, dynamic> kMeasurementUnitsSnapshot = {
       "pluralFr": "Cartons",
       "legacy": "box",
       "integer": true,
-      "rank": 4
-    },
-    {
-      "code": "half_carton",
-      "kind": "packaging",
-      "labels": {
+      "rank": 4,
+      "divisible": true,
+      "halfLabels": {
         "fr": "Demi-carton",
         "en": "Half carton",
         "sw": "Nusu katoni",
         "ln": "Ndambo ya katoni"
-      },
-      "pluralFr": "Demi-cartons",
-      "legacy": "box",
-      "integer": true,
-      "rank": 5,
-      "halfOf": "carton"
+      }
     },
     {
       "code": "package",
@@ -420,7 +412,14 @@ const Map<String, dynamic> kMeasurementUnitsSnapshot = {
       "pluralFr": "Sacs",
       "legacy": "package",
       "integer": true,
-      "rank": 11
+      "rank": 11,
+      "divisible": true,
+      "halfLabels": {
+        "fr": "Demi-sac",
+        "en": "Half bag",
+        "sw": "Nusu gunia",
+        "ln": "Ndambo ya saki"
+      }
     },
     {
       "code": "bag_25kg",
@@ -438,6 +437,13 @@ const Map<String, dynamic> kMeasurementUnitsSnapshot = {
       "measure": {
         "dim": "mass",
         "amount": 25000
+      },
+      "divisible": true,
+      "halfLabels": {
+        "fr": "Demi-sac",
+        "en": "Half bag",
+        "sw": "Nusu gunia",
+        "ln": "Ndambo ya saki"
       }
     },
     {
@@ -456,22 +462,14 @@ const Map<String, dynamic> kMeasurementUnitsSnapshot = {
       "measure": {
         "dim": "mass",
         "amount": 50000
-      }
-    },
-    {
-      "code": "half_bag",
-      "kind": "packaging",
-      "labels": {
+      },
+      "divisible": true,
+      "halfLabels": {
         "fr": "Demi-sac",
         "en": "Half bag",
         "sw": "Nusu gunia",
         "ln": "Ndambo ya saki"
-      },
-      "pluralFr": "Demi-sacs",
-      "legacy": "package",
-      "integer": true,
-      "rank": 14,
-      "halfOf": "bag"
+      }
     },
     {
       "code": "dozen",
@@ -486,22 +484,14 @@ const Map<String, dynamic> kMeasurementUnitsSnapshot = {
       "legacy": "package",
       "integer": true,
       "rank": 15,
-      "defaultContains": 12
-    },
-    {
-      "code": "half_dozen",
-      "kind": "packaging",
-      "labels": {
+      "defaultContains": 12,
+      "divisible": true,
+      "halfLabels": {
         "fr": "Demi-douzaine",
         "en": "Half dozen",
         "sw": "Nusu dazeni",
         "ln": "Ndambo ya zina"
-      },
-      "pluralFr": "Demi-douzaines",
-      "legacy": "package",
-      "integer": true,
-      "rank": 16,
-      "defaultContains": 6
+      }
     },
     {
       "code": "tray",
@@ -516,7 +506,14 @@ const Map<String, dynamic> kMeasurementUnitsSnapshot = {
       "legacy": "box",
       "integer": true,
       "rank": 17,
-      "defaultContains": 30
+      "defaultContains": 30,
+      "divisible": true,
+      "halfLabels": {
+        "fr": "Demi-plateau",
+        "en": "Half tray",
+        "sw": "Nusu trei",
+        "ln": "Ndambo ya plateau"
+      }
     },
     {
       "code": "crate",
@@ -738,24 +735,13 @@ const Map<String, dynamic> kMeasurementUnitsSnapshot = {
       "measure": {
         "dim": "length",
         "amount": 548.64
-      }
-    },
-    {
-      "code": "half_piece",
-      "kind": "packaging",
-      "labels": {
+      },
+      "divisible": true,
+      "halfLabels": {
         "fr": "Demi-pièce (3 yards)",
         "en": "Half piece (3 yards)",
         "sw": "Nusu kitenge (yadi 3)",
         "ln": "Ndambo ya liputa (yadi 3)"
-      },
-      "pluralFr": "Demi-pièces",
-      "legacy": "other",
-      "integer": true,
-      "rank": 33,
-      "measure": {
-        "dim": "length",
-        "amount": 274.32
       }
     },
     {
@@ -925,8 +911,6 @@ const Map<String, dynamic> kMeasurementUnitsSnapshot = {
     "bouteille": "bottle",
     "sac": "bag",
     "sack": "bag",
-    "demi-carton": "half_carton",
-    "demi-sac": "half_bag",
     "douzaine": "dozen",
     "plateau": "tray",
     "casier": "crate",
@@ -954,5 +938,9 @@ const Map<String, dynamic> kMeasurementUnitsSnapshot = {
     "millimètre": "mm",
     "rame": "ream",
     "plaquette": "blister"
-  }
+  },
+  "fractions": [
+    0.5,
+    0.25
+  ]
 };

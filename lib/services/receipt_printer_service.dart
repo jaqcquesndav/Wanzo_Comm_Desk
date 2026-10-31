@@ -221,7 +221,7 @@ class ReceiptPrinterService {
       // Nom du produit tronqué dynamiquement selon la largeur du montant
       bytes.addAll(_escLine(_rowText(item.productName, amtStr)));
       bytes.addAll(
-        _escLine('  ${lineQuantityLabel(item.quantity, item.unitCode)} x ${_fmtUnit(money, item, currency)}'),
+        _escLine('  ${lineQuantityLabel(item.quantity, item.unitCode, item.unitFactor)} x ${_fmtUnit(money, item, currency)}'),
       );
     }
     bytes.addAll(_escSeparator());
@@ -541,7 +541,7 @@ class ReceiptPrinterService {
     line('-' * _colWidth);
     for (final item in sale.items) {
       line(_rowText(item.productName, _fmt(money.lineTotal(item), currency)));
-      line('  ${lineQuantityLabel(item.quantity, item.unitCode)} x ${_fmtUnit(money, item, currency)}');
+      line('  ${lineQuantityLabel(item.quantity, item.unitCode, item.unitFactor)} x ${_fmtUnit(money, item, currency)}');
     }
     line('-' * _colWidth);
     bold(true);
@@ -721,7 +721,7 @@ class ReceiptPrinterService {
                 children: [
                   rowLR(item.productName,
                       _fmt(money.lineTotal(item), currency)),
-                  pw.Text('  ${lineQuantityLabel(item.quantity, item.unitCode)} x ${_fmtUnit(money, item, currency)}',
+                  pw.Text('  ${lineQuantityLabel(item.quantity, item.unitCode, item.unitFactor)} x ${_fmtUnit(money, item, currency)}',
                       style: pw.TextStyle(font: mono, fontSize: 8)),
                 ],
               ),

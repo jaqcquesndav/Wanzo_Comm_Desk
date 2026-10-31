@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:wanzo/core/units/measurement_units.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -168,12 +169,23 @@ class _StockCountScreenState extends State<StockCountScreen> {
           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
           decoration: InputDecoration(
             labelText: 'Quantité comptée',
-            helperText: 'Théorique : ${_qty.format(_draft!.theoreticalOf(p))}',
+            // Compté dans l'unité de référence (cartons), demis acceptés.
+            suffixText: MeasurementUnits.label(p.baseUnitCode),
+            helperText: 'Théorique : ${MeasurementUnits.formatStockBreakdown(_draft!.theoreticalOf(p), p.baseUnitCode, p.unitOptions)}',
           ),
           onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, '__clear__'), child: const Text('Effacer')),
+          // « ½ » : un carton entamé compte pour un demi (2 -> 2,5).
+          if (MeasurementUnits.fractionsOf(p.baseUnitCode, p.unitOptions).contains(0.5))
+            TextButton(
+              onPressed: () {
+                final v = double.tryParse(ctrl.text.replaceAll(',', '.').replaceAll(' ', '')) ?? 0;
+                ctrl.text = MeasurementUnits.formatNumber(v.floor() + 0.5);
+              },
+              child: const Text('½'),
+            ),
           FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('OK')),
         ],
       ),

@@ -2361,8 +2361,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                   child: Text(
                     item.unitCode == null || (item.unitFactor ?? 1) == 1
                         ? '${item.quantity.toInt()}'
-                        : MeasurementUnits.formatUnitQuantity(
-                            item.quantity, item.unitCode),
+                        : lineQuantityLabel(
+                            item.quantity, item.unitCode, item.unitFactor),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -3269,15 +3269,15 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
   void _showEditItemDialog(int index, SaleItem item) {
     final nameController = TextEditingController(text: item.productName);
-    // Unité de vente : la base ou un conditionnement (carton de 24...).
+    // Unité de vente : carton, demi-carton (le carton au facteur 0,5) ou
+    // pièce (bouteille, 1/24 de carton).
     final saleUnits = _productOfItem(item)?.sellableUnits ?? const <SellableUnit>[];
     SellableUnit? saleUnit;
     for (final u in saleUnits) {
-      if (item.unitCode == null || (item.unitFactor ?? 1) == 1
+      final same = item.unitCode == null
           ? u.isBase
-          : u.code == item.unitCode) {
-        saleUnit = u;
-      }
+          : u.code == item.unitCode && u.factor == (item.unitFactor ?? 1);
+      if (same) saleUnit = u;
     }
     saleUnit ??= saleUnits.isEmpty ? null : saleUnits.first;
     final quantityController = TextEditingController(
@@ -3357,7 +3357,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                     if (saleUnits.length > 1) ...[
                       SellableUnitSelector(
                         units: saleUnits,
-                        selected: saleUnit?.code ?? '',
+                        selectedKey: saleUnit?.key ?? '',
                         onChanged: (u) => setStateDialog(() {
                           saleUnit = u;
                           final cdf = u.sellingPriceInCdf;
@@ -3384,8 +3384,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                               labelText: 'Quantité',
                               suffixText: saleUnit == null
                                   ? null
-                                  : MeasurementUnits.shortLabel(
-                                      saleUnit!.code, unitLang(context)),
+                                  : saleUnit!.label,
                               border: const OutlineInputBorder(),
                             ),
                             onChanged: (_) => setStateDialog(() {}),
@@ -3537,8 +3536,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                                 totalPriceInCdf: newTotalPriceInCdf,
                                 itemType: item.itemType,
                                 notes: newNotes,
-                                // Ligne au carton : le stock sortira
-                                // quantité x contenu unités de base.
+                                // Demi-carton ou bouteille : le stock sortira
+                                // quantité x facteur cartons (0,5 ; 1/24).
                                 unitCode: saleUnit?.code ?? item.unitCode,
                                 unitFactor: saleUnit?.factor ?? item.unitFactor,
                                 taxRate: item.taxRate,

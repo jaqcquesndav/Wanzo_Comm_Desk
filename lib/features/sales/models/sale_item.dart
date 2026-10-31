@@ -111,17 +111,17 @@ class SaleItem extends Equatable {
   @HiveField(20)
   final String? priceTierCode;
 
-  /// Unité de la ligne (carton, half_carton...) ; null = unité de base du
-  /// produit. [quantity] est dans cette unité.
+  /// Unité de la ligne : celle de référence du produit (carton) ou sa pièce
+  /// (bouteille) ; null = référence. [quantity] est dans cette unité.
   @HiveField(21)
   final String? unitCode;
 
-  /// Unités de base par unité de la ligne (1 carton = 24). Null ou 1 : unité
-  /// de base. Le stock bouge de quantity x unitFactor.
+  /// Cartons par unité de la ligne : 1, 0,5 (demi-carton), 1/24 (bouteille).
+  /// Null ou 1 : unité de référence. Le stock bouge de quantity x unitFactor.
   @HiveField(22)
   final double? unitFactor;
 
-  /// Quantité en unités de base (2 cartons de 24 = 48).
+  /// Quantité en unités de référence (1 demi-carton = 0,5 carton).
   double get baseQuantity => quantity * ((unitFactor ?? 0) > 0 ? unitFactor! : 1.0);
 
   /// Constructeur

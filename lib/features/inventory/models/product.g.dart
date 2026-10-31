@@ -27,7 +27,7 @@ class ProductAdapter extends TypeAdapter<Product> {
       stockQuantity: fields[7] as double,
       unit: fields[8] as ProductUnit,
       unitCode: fields[40] as String?,
-      packagingsJson: fields[41] as String?,
+      unitOptionsJson: fields[41] as String?,
       alertThreshold: fields[9] as double,
       createdAt: fields[10] as DateTime,
       updatedAt: fields[11] as DateTime,
@@ -128,7 +128,7 @@ class ProductAdapter extends TypeAdapter<Product> {
       ..writeByte(40)
       ..write(obj.unitCode)
       ..writeByte(41)
-      ..write(obj.packagingsJson);
+      ..write(obj.unitOptionsJson);
   }
 
   @override

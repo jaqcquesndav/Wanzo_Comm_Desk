@@ -63,257 +63,221 @@ class MeasurementUnitField extends StatelessWidget {
   }
 }
 
-/// Conditionnements d'un produit : « Vendu aussi par » carton, demi-carton,
-/// sac... Le contenu est proposé d'office (douzaine 12, plateau 30, sac de
-/// 50 kg 50, demi-carton = moitié du carton). Prix du conditionnement
-/// facultatif, dans la devise de saisie du formulaire ([priceSuffix]).
-class PackagingEditor extends StatefulWidget {
+/// Options de l'unité d'un produit, dans la fiche :
+/// - « Se vend au demi » (actif d'office pour un carton, un sac, un pagne,
+///   une douzaine, un plateau), « et au quart » en option, prix du demi
+///   proposé à la moitié et modifiable ;
+/// - « Contient N pièces » (1 carton = 24 bouteilles), nombre proposé
+///   d'office (douzaine 12, plateau 30, sac de 50 kg 50), prix à la pièce.
+/// Les prix sont dans la devise de saisie du formulaire ([priceSuffix]) ;
+/// [basePrice] (même devise) sert aux valeurs proposées.
+class UnitOptionsEditor extends StatefulWidget {
   final String baseUnitCode;
-  final List<ProductPackaging> initial;
-  final ValueChanged<List<ProductPackaging>> onChanged;
+  final ProductUnitOptions? initial;
+  final ValueChanged<ProductUnitOptions> onChanged;
   final String priceSuffix;
+  final double? Function() basePrice;
 
-  const PackagingEditor({
+  const UnitOptionsEditor({
     super.key,
     required this.baseUnitCode,
     required this.initial,
     required this.onChanged,
+    required this.basePrice,
     this.priceSuffix = '',
   });
 
   @override
-  State<PackagingEditor> createState() => _PackagingEditorState();
+  State<UnitOptionsEditor> createState() => _UnitOptionsEditorState();
 }
 
-class _PackagingRow {
-  String code;
-  final TextEditingController contains;
-  final TextEditingController price;
-  _PackagingRow(this.code, String contains, String price)
-      : contains = TextEditingController(text: contains),
-        price = TextEditingController(text: price);
-}
+class _UnitOptionsEditorState extends State<UnitOptionsEditor> {
+  late bool _half;
+  late bool _quarter;
+  late bool _pieces;
+  String? _pieceCode;
+  late final TextEditingController _halfPrice;
+  late final TextEditingController _count;
+  late final TextEditingController _piecePrice;
 
-class _PackagingEditorState extends State<PackagingEditor> {
-  late final List<_PackagingRow> _rows = [
-    for (final p in widget.initial)
-      _PackagingRow(
-        p.unitCode,
-        MeasurementUnits.formatNumber(p.contains).replaceAll(',', '.'),
-        p.sellingPriceInCdf == null
-            ? ''
-            : MeasurementUnits.formatNumber(p.sellingPriceInCdf!)
-                .replaceAll(',', '.'),
-      ),
-  ];
+  static String _fmt(double? v) =>
+      v == null ? '' : MeasurementUnits.formatNumber(v).replaceAll(',', '.');
+
+  @override
+  void initState() {
+    super.initState();
+    final o = widget.initial;
+    final fr = MeasurementUnits.fractionsOf(widget.baseUnitCode, o);
+    _half = fr.contains(0.5);
+    _quarter = fr.contains(0.25);
+    _pieces = o?.hasPieces ?? false;
+    _pieceCode = o?.pieceUnitCode;
+    _halfPrice = TextEditingController(text: _fmt(o?.halfPriceInCdf));
+    _count = TextEditingController(text: _fmt(o?.piecesPerUnit));
+    _piecePrice = TextEditingController(text: _fmt(o?.piecePriceInCdf));
+  }
 
   @override
   void dispose() {
-    for (final r in _rows) {
-      r.contains.dispose();
-      r.price.dispose();
-    }
+    _halfPrice.dispose();
+    _count.dispose();
+    _piecePrice.dispose();
     super.dispose();
   }
 
   static double? _parse(String s) =>
       double.tryParse(s.trim().replaceAll(' ', '').replaceAll(',', '.'));
 
-  Map<String, double> get _known => {
-        for (final r in _rows)
-          if ((_parse(r.contains.text) ?? 0) > 0) r.code: _parse(r.contains.text)!,
-      };
-
   void _emit() {
-    final seen = <String>{};
-    widget.onChanged([
-      for (final r in _rows)
-        if ((_parse(r.contains.text) ?? 0) > 0 &&
-            r.code != widget.baseUnitCode &&
-            seen.add(r.code))
-          ProductPackaging(
-            unitCode: r.code,
-            contains: _parse(r.contains.text)!,
-            sellingPriceInCdf: _parse(r.price.text),
-          ),
-    ]);
+    final n = _parse(_count.text);
+    widget.onChanged(ProductUnitOptions(
+      fractions: [if (_half) 0.5, if (_half && _quarter) 0.25],
+      halfPriceInCdf: _half ? _parse(_halfPrice.text) : null,
+      pieceUnitCode: _pieces && (n ?? 0) > 0 ? _pieceCode : null,
+      piecesPerUnit: _pieces && _pieceCode != null ? n : null,
+      piecePriceInCdf: _pieces ? _parse(_piecePrice.text) : null,
+    ));
   }
 
-  String _suggest(String code) {
-    final s = MeasurementUnits.suggestedContains(code, widget.baseUnitCode,
-        known: _known);
-    return s == null ? '' : MeasurementUnits.formatNumber(s).replaceAll(',', '.');
+  String? _hint(double factor) {
+    final p = widget.basePrice();
+    if (p == null || p <= 0) return null;
+    return 'Par défaut : ${MeasurementUnits.formatNumber(p * factor)} ${widget.priceSuffix}';
   }
 
-  void _add() {
-    final used = {for (final r in _rows) r.code, widget.baseUnitCode};
-    final next = ['carton', 'half_carton', 'package', 'dozen', 'bag']
-        .firstWhere((c) => !used.contains(c), orElse: () => 'carton');
-    setState(() => _rows.add(_PackagingRow(next, _suggest(next), '')));
-    _emit();
-  }
-
-  /// Carton saisi sans demi-carton : proposé d'un geste (moitié du carton).
-  Widget? _halfHint() {
-    for (final r in _rows) {
-      final half = MeasurementUnits.all
-          .where((u) => u.halfOf == r.code)
-          .map((u) => u.code)
-          .firstOrNull;
-      final c = _parse(r.contains.text);
-      if (half == null || c == null || c <= 1) continue;
-      if (_rows.any((x) => x.code == half) || half == widget.baseUnitCode) {
-        continue;
-      }
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton.icon(
-          icon: const Icon(Icons.add, size: 18),
-          label: Text(
-              'Ajouter ${MeasurementUnits.label(half, unitLang(context)).toLowerCase()} '
-              '(${MeasurementUnits.formatNumber(c / 2)})'),
-          onPressed: () {
-            setState(() => _rows.add(_PackagingRow(half,
-                MeasurementUnits.formatNumber(c / 2).replaceAll(',', '.'), '')));
-            _emit();
-          },
+  Widget _numberField(TextEditingController c, String label,
+          {String? suffix, String? helper}) =>
+      TextField(
+        controller: c,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+        decoration: InputDecoration(
+          labelText: label,
+          suffixText: suffix,
+          helperText: helper,
+          isDense: true,
+          border: const OutlineInputBorder(),
         ),
+        onChanged: (_) => setState(_emit),
       );
-    }
-    return null;
-  }
 
   @override
   Widget build(BuildContext context) {
     final lang = unitLang(context);
     final base = MeasurementUnits.label(widget.baseUnitCode, lang).toLowerCase();
-    final hint = _halfHint();
+    final half = MeasurementUnits.halfLabel(widget.baseUnitCode, lang).toLowerCase();
+    final n = _parse(_count.text);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (var i = 0; i < _rows.length; i++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 4,
-                  child: MeasurementUnitField(
-                    label: 'Conditionnement',
-                    value: _rows[i].code,
-                    only: [
-                      for (final c in MeasurementUnits.sortedCodes())
-                        if (c != widget.baseUnitCode &&
-                            (MeasurementUnits.of(c)?.isPackaging ?? false))
-                          c,
-                    ],
-                    onChanged: (c) {
-                      setState(() {
-                        _rows[i].code = c;
-                        final s = _suggest(c);
-                        if (s.isNotEmpty) _rows[i].contains.text = s;
-                      });
-                      _emit();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 3,
-                  child: TextField(
-                    controller: _rows[i].contains,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                    ],
-                    decoration: InputDecoration(
-                      labelText: 'Contient',
-                      suffixText: base,
-                      isDense: true,
-                      border: const OutlineInputBorder(),
-                    ),
-                    onChanged: (_) {
-                      setState(() {});
-                      _emit();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 3,
-                  child: TextField(
-                    controller: _rows[i].price,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                    ],
-                    decoration: InputDecoration(
-                      labelText: 'Prix (option)',
-                      suffixText: widget.priceSuffix,
-                      isDense: true,
-                      border: const OutlineInputBorder(),
-                    ),
-                    onChanged: (_) => _emit(),
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Retirer',
-                  icon: const Icon(Icons.close),
-                  onPressed: () {
-                    setState(() => _rows.removeAt(i));
-                    _emit();
-                  },
-                ),
-              ],
-            ),
-          ),
-        if (hint != null) hint,
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            icon: const Icon(Icons.inventory_2_outlined, size: 18),
-            label: Text(_rows.isEmpty
-                ? 'Vendu aussi au carton, au sac, à la douzaine...'
-                : 'Autre conditionnement'),
-            onPressed: _add,
-          ),
+        SwitchListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: Text('Se vend au demi ($half)'),
+          subtitle: const Text('Le stock garde les demis : 2 cartons et demi'),
+          value: _half,
+          onChanged: (v) => setState(() {
+            _half = v;
+            _emit();
+          }),
         ),
+        if (_half) ...[
+          _numberField(_halfPrice, 'Prix du $half (option)',
+              suffix: widget.priceSuffix, helper: _hint(0.5)),
+          CheckboxListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: Text('Aussi au quart (1/4 $base)'),
+            value: _quarter,
+            onChanged: (v) => setState(() {
+              _quarter = v ?? false;
+              _emit();
+            }),
+          ),
+        ],
+        SwitchListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: Text('Se vend aussi à la pièce'),
+          subtitle: Text('1 $base contient N pièces (bouteilles, paquets...)'),
+          value: _pieces,
+          onChanged: (v) => setState(() {
+            _pieces = v;
+            _pieceCode ??= 'bottle';
+            final s = MeasurementUnits.suggestedContains(
+                widget.baseUnitCode, _pieceCode!);
+            if (v && _count.text.isEmpty && s != null) _count.text = _fmt(s);
+            _emit();
+          }),
+        ),
+        if (_pieces) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 3,
+                child: _numberField(_count, 'Contient'),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 4,
+                child: MeasurementUnitField(
+                  label: 'Pièce',
+                  value: _pieceCode,
+                  only: [
+                    for (final c in MeasurementUnits.sortedCodes())
+                      if (c != widget.baseUnitCode) c,
+                  ],
+                  onChanged: (c) => setState(() {
+                    _pieceCode = c;
+                    final s = MeasurementUnits.suggestedContains(
+                        widget.baseUnitCode, c);
+                    if (s != null) _count.text = _fmt(s);
+                    _emit();
+                  }),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _numberField(
+            _piecePrice,
+            'Prix à la pièce (option)',
+            suffix: widget.priceSuffix,
+            helper: n != null && n > 0 ? _hint(1 / n) : null,
+          ),
+        ],
       ],
     );
   }
 }
 
-/// Choix de l'unité d'une ligne (vente, achat, inventaire) parmi la base et
-/// les conditionnements du produit. Rien d'affiché sans conditionnement.
+/// Choix de l'unité d'une ligne (vente, achat, inventaire) : carton,
+/// demi-carton, pièce. Rien d'affiché quand seule l'unité de référence existe.
 class SellableUnitSelector extends StatelessWidget {
   final List<SellableUnit> units;
-  final String selected;
+  final String selectedKey;
   final ValueChanged<SellableUnit> onChanged;
 
   const SellableUnitSelector({
     super.key,
     required this.units,
-    required this.selected,
+    required this.selectedKey,
     required this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
     if (units.length < 2) return const SizedBox.shrink();
-    final lang = unitLang(context);
     return Wrap(
       spacing: 8,
       runSpacing: 4,
       children: [
         for (final u in units)
           ChoiceChip(
-            label: Text(u.isBase
-                ? MeasurementUnits.label(u.code, lang)
-                : '${MeasurementUnits.label(u.code, lang)} (${MeasurementUnits.formatNumber(u.factor)})'),
-            selected: u.code == selected,
+            label: Text(u.label),
+            selected: u.key == selectedKey,
             onSelected: (_) => onChanged(u),
           ),
       ],

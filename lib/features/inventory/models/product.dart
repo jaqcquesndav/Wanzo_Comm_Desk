@@ -387,28 +387,30 @@ class Product extends Equatable {
   @HiveField(40)
   final String? unitCode;
 
-  /// Conditionnements (1 carton = 24 unités de base), en JSON : pas
-  /// d'adaptateur Hive dédié. Null : inconnus (jamais renvoyés au serveur,
-  /// pour ne pas effacer ceux d'un autre appareil) ; '[]' : aucun.
+  /// Options de l'unité (fractions admises, prix du demi, pièce contenue),
+  /// en JSON : pas d'adaptateur Hive dédié. Null : inconnues (jamais
+  /// renvoyées au serveur, pour ne pas effacer celles d'un autre appareil).
   @HiveField(41)
   @JsonKey(includeFromJson: false, includeToJson: false)
-  final String? packagingsJson;
+  final String? unitOptionsJson;
 
-  /// Code de l'unité de base (stock), réel ou historique.
+  /// Unité de référence du stock (le carton), réelle ou historique. Le
+  /// stock accepte ses fractions : 2,5 cartons, jamais de « demi-carton »
+  /// à part.
   String get baseUnitCode => unitCode ?? unit.name;
 
-  /// Conditionnements déclarés sur la fiche.
-  List<ProductPackaging> get packagings =>
-      ProductPackaging.listFromJson(packagingsJson);
+  /// Options de l'unité déclarées sur la fiche.
+  ProductUnitOptions? get unitOptions =>
+      ProductUnitOptions.fromJson(unitOptionsJson);
 
-  /// Stock lisible : « 3 cartons et 5 bouteilles ».
+  /// Stock lisible : « 2 cartons et demi », « 2 cartons et 19 bouteilles ».
   String get stockLabel => MeasurementUnits.formatStockBreakdown(
-      stockQuantity, baseUnitCode, packagings);
+      stockQuantity, baseUnitCode, unitOptions);
 
-  /// Unités de vente ou d'achat : la base puis les conditionnements.
+  /// Unités de vente, d'achat ou d'inventaire : carton, demi-carton, pièce.
   List<SellableUnit> get sellableUnits => MeasurementUnits.sellableUnits(
         baseUnitCode,
-        packagings,
+        unitOptions,
         baseSellingPriceInCdf: sellingPriceInCdf,
         baseCostPriceInCdf: costPriceInCdf,
       );
@@ -435,13 +437,11 @@ class Product extends Equatable {
     return out;
   }
 
-  static Product _withPackagings(Product p, Map<String, dynamic> json) {
-    final raw = json['packagings'];
-    if (raw is! List) return p;
+  static Product _withUnitOptions(Product p, Map<String, dynamic> json) {
+    final raw = json['unitOptions'];
+    if (raw is! Map) return p;
     return p.copyWith(
-        packagingsJson:
-            ProductPackaging.encodeList(ProductPackaging.listFromJson(raw)) ??
-                '[]');
+        unitOptionsJson: ProductUnitOptions.fromJson(raw)?.encode() ?? '{}');
   }
 
   /// Constructeur
@@ -456,7 +456,7 @@ class Product extends Equatable {
     required this.stockQuantity,
     required this.unit,
     this.unitCode,
-    this.packagingsJson,
+    this.unitOptionsJson,
     this.alertThreshold = 5,
     required this.createdAt,
     required this.updatedAt,
@@ -487,7 +487,7 @@ class Product extends Equatable {
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
-    final base = Product._withPackagings(
+    final base = Product._withUnitOptions(
         _$ProductFromJson(Product.normalizeUnitJson(json)), json);
     final parsedImages = ProductImage.listFromJson(json['images']);
     // Rétro-compat : sans galerie, on retombe sur imageUrl via primaryImageUrl.
@@ -503,8 +503,8 @@ class Product extends Equatable {
 
   Map<String, dynamic> toJson() {
     final map = _$ProductToJson(this);
-    if (packagingsJson != null) {
-      map['packagings'] = [for (final p in packagings) p.toJson()];
+    if (unitOptionsJson != null) {
+      map['unitOptions'] = unitOptions?.toJson() ?? const <String, dynamic>{};
     }
     if (images.isNotEmpty) {
       map['images'] = images.map((e) => e.toJson()).toList();
@@ -566,7 +566,7 @@ class Product extends Equatable {
   /// Crée une copie du produit avec des attributs modifiés
   Product copyWith({
     String? unitCode,
-    String? packagingsJson,
+    String? unitOptionsJson,
     String? id,
     String? name,
     String? description,
@@ -615,7 +615,7 @@ class Product extends Equatable {
       stockQuantity: stockQuantity ?? this.stockQuantity,
       unit: unit ?? this.unit,
       unitCode: unitCode ?? this.unitCode,
-      packagingsJson: packagingsJson ?? this.packagingsJson,
+      unitOptionsJson: unitOptionsJson ?? this.unitOptionsJson,
       alertThreshold: alertThreshold ?? this.alertThreshold,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -659,7 +659,7 @@ class Product extends Equatable {
     stockQuantity,
     unit,
     unitCode,
-    packagingsJson,
+    unitOptionsJson,
     alertThreshold,
     createdAt,
     updatedAt,
