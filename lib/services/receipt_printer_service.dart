@@ -165,7 +165,8 @@ class ReceiptPrinterService {
     // Pied de pièce depuis la base CDF : jamais de montant réétiqueté.
     final fig = money.figures(
       sale,
-      showTax: settings.showTaxes && settings.isTaxSubject,
+      showTax: settings.showTaxes,
+      isTaxSubject: settings.isTaxSubject,
     );
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(sale.date);
     final bytes = <int>[];
@@ -229,15 +230,22 @@ class ReceiptPrinterService {
       bytes.addAll(_escLine(_rowText('Sous-total', _fmt(fig.lines, currency))));
       bytes.addAll(_escLine(_rowText('Remise', '-${_fmt(fig.discount, currency)}')));
     }
-    if (fig.tax > 0) {
+    if (fig.showsTax) {
       bytes.addAll(_escLine(_rowText('Total HT', _fmt(fig.totalHt, currency))));
-      bytes.addAll(_escLine(_rowText('TVA', _fmt(fig.tax, currency))));
+      bytes.addAll(
+        _escLine(_rowText('TVA ${fig.taxRateLabel}%', _fmt(fig.tax, currency))),
+      );
     }
 
     // ── Total ────────────────────────────────────────────────────────────
     bytes.addAll(_escBold(true));
     bytes.addAll(_escLine(_rowText('TOTAL', _fmt(fig.total, currency))));
     bytes.addAll(_escBold(false));
+    if (fig.taxNote != null) {
+      for (final ln in wrapWords(fig.taxNote!, _colWidth)) {
+        bytes.addAll(_escLine(ln));
+      }
+    }
     bytes.addAll(_escSeparatorDouble());
 
     // ── Règlement ────────────────────────────────────────────────────────
@@ -493,7 +501,8 @@ class ReceiptPrinterService {
     // Pied de pièce depuis la base CDF : jamais de montant réétiqueté.
     final fig = money.figures(
       sale,
-      showTax: settings.showTaxes && settings.isTaxSubject,
+      showTax: settings.showTaxes,
+      isTaxSubject: settings.isTaxSubject,
     );
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(sale.date);
 
@@ -541,14 +550,19 @@ class ReceiptPrinterService {
       line(_rowText('Remise', '-${_fmt(fig.discount, currency)}'));
       bold(true);
     }
-    if (fig.tax > 0) {
+    if (fig.showsTax) {
       bold(false);
       line(_rowText('Total HT', _fmt(fig.totalHt, currency)));
-      line(_rowText('TVA', _fmt(fig.tax, currency)));
+      line(_rowText('TVA ${fig.taxRateLabel}%', _fmt(fig.tax, currency)));
       bold(true);
     }
     line(_rowText('TOTAL', _fmt(fig.total, currency)));
     bold(false);
+    if (fig.taxNote != null) {
+      for (final ln in wrapWords(fig.taxNote!, _colWidth)) {
+        line(ln);
+      }
+    }
     line('=' * _colWidth);
     bold(true);
     line(_rowText('${receiptPaymentLabel(sale.paymentMethod)}:', _fmt(fig.received, currency)));
@@ -648,7 +662,8 @@ class ReceiptPrinterService {
     // Pied de pièce depuis la base CDF : jamais de montant réétiqueté.
     final fig = money.figures(
       sale,
-      showTax: settings.showTaxes && settings.isTaxSubject,
+      showTax: settings.showTaxes,
+      isTaxSubject: settings.isTaxSubject,
     );
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(sale.date);
 
@@ -715,11 +730,13 @@ class ReceiptPrinterService {
               rowLR('Sous-total', _fmt(fig.lines, currency)),
               rowLR('Remise', '-${_fmt(fig.discount, currency)}'),
             ],
-            if (fig.tax > 0) ...[
+            if (fig.showsTax) ...[
               rowLR('Total HT', _fmt(fig.totalHt, currency)),
-              rowLR('TVA', _fmt(fig.tax, currency)),
+              rowLR('TVA ${fig.taxRateLabel}%', _fmt(fig.tax, currency)),
             ],
             rowLR('TOTAL', _fmt(fig.total, currency), strong: true),
+            if (fig.taxNote != null)
+              pw.Text(fig.taxNote!, style: pw.TextStyle(font: mono, fontSize: 7)),
             rowLR(receiptPaymentLabel(sale.paymentMethod), _fmt(fig.received, currency)),
             if (fig.change > 0) rowLR('Monnaie', _fmt(fig.change, currency)),
             if (fig.due > 0) rowLR('Reste a payer', _fmt(fig.due, currency)),

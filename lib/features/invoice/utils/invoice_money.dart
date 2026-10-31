@@ -1,5 +1,8 @@
 import '../../sales/models/sale.dart';
 import '../../sales/models/sale_item.dart';
+import 'invoice_tax.dart';
+
+export 'invoice_tax.dart';
 
 /// Règle de présentation monétaire d'un état de sortie (facture, reçu, ticket).
 ///
@@ -89,17 +92,36 @@ class InvoiceMoney {
   /// l'étiquette de la devise : un montant en francs sortait avec « $ » et la
   /// monnaie se calculait entre deux devises (ticket « Espèces 126 $ ;
   /// Monnaie 125,95 $ » pour un total de 0,05 $).
-  SaleFigures figures(Sale sale, {required bool showTax}) {
+  ///
+  /// TVA (voir invoice_tax.dart) : [showTax] est le réglage « Afficher les
+  /// taxes sur les factures », [isTaxSubject] le régime fiscal. Le montant
+  /// imprimé est celui que la comptabilité enregistre, jamais une estimation.
+  SaleFigures figures(
+    Sale sale, {
+    required bool showTax,
+    bool isTaxSubject = true,
+  }) {
+    final mode = invoiceTaxMode(showTaxes: showTax, isTaxSubject: isTaxSubject);
     final lignes = linesTotal(sale.items);
     final total = fromCdf(sale.totalAmountInCdf);
     final recu = fromCdf(sale.paidAmountInCdf);
-    final tva = showTax ? fromCdf(sale.taxAmount ?? 0) : 0.0;
+    final tva = mode == InvoiceTaxMode.charged
+        ? fromCdf(
+            accountedSaleTaxCdf(
+              isTaxSubject: true,
+              totalTtcCdf: sale.totalAmountInCdf,
+              amountHtCdf: sale.amountHT,
+              taxAmountCdf: sale.taxAmount,
+            ),
+          )
+        : 0.0;
     final remise = lignes - total;
     return SaleFigures(
       lines: lignes,
       discount: remise > _seuil ? remise : 0,
       total: total,
       tax: tva > _seuil ? tva : 0,
+      taxMode: mode,
       received: recu,
       change: recu - total > _seuil ? recu - total : 0,
       due: total - recu > _seuil ? total - recu : 0,
@@ -128,6 +150,7 @@ class SaleFigures {
     required this.received,
     required this.change,
     required this.due,
+    this.taxMode = InvoiceTaxMode.hidden,
   });
 
   /// Somme des lignes, avant remise.
@@ -144,6 +167,27 @@ class SaleFigures {
   final double due;
 
   double get totalHt => total - tax;
+
+  /// Ce que la pièce montre de la TVA (voir invoice_tax.dart).
+  final InvoiceTaxMode taxMode;
+
+  /// Lignes « Total HT » et « TVA » à imprimer (assujetti, affichage activé).
+  bool get showsTax => taxMode == InvoiceTaxMode.charged;
+
+  /// Mention à imprimer sous le total (non assujetti, affichage activé).
+  String? get taxNote => taxMode == InvoiceTaxMode.notApplicable
+      ? tvaNotApplicableMention
+      : null;
+
+  /// Taux imprimé, arrondi au centième : « 16 » et non « 15.999 ».
+  String get taxRateLabel {
+    final taux = tax > 0 && totalHt > 0
+        ? (tax / totalHt * 10000).round() / 100
+        : tvaRateRdc;
+    return taux == taux.roundToDouble()
+        ? taux.toStringAsFixed(0)
+        : taux.toStringAsFixed(2);
+  }
 }
 
 /// Libellé imprimé du règlement selon le mode réel (ASCII pour les

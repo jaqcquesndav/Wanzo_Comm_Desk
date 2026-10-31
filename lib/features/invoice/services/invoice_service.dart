@@ -67,20 +67,18 @@ class InvoiceFooter {
   /// Payé, monnaie rendue, solde dû.
   final List<InvoiceFooterLine> settlement;
 
+  /// Mention de TVA sous les totaux (entreprise non assujettie), sinon null.
+  String? get taxNote => figures.taxNote;
+
   factory InvoiceFooter.of(Sale sale, Settings settings) {
     final money = InvoiceMoney.forSale(sale);
-    // La TVA n'apparaît que si l'entreprise est assujettie (régime NORMAL) ET
-    // que l'affichage des taxes est activé. En régime minimal/SMT : aucune TVA.
+    // TVA : le réglage décide si elle apparaît, le régime comment (montant
+    // comptabilisé ou mention de non-assujettissement), voir invoice_tax.dart.
     final f = money.figures(
       sale,
-      showTax: settings.showTaxes && settings.isTaxSubject,
+      showTax: settings.showTaxes,
+      isTaxSubject: settings.isTaxSubject,
     );
-    // Taux arrondi au centième : « 16 % » et non « 15.999 % ».
-    final taux =
-        f.totalHt > 0 ? (f.tax / f.totalHt * 10000).round() / 100 : 0.0;
-    final tauxLabel = taux == taux.roundToDouble()
-        ? taux.toStringAsFixed(0)
-        : taux.toStringAsFixed(2);
     return InvoiceFooter._(
       money.currencyCode,
       f,
@@ -89,9 +87,9 @@ class InvoiceFooter {
           InvoiceFooterLine('Sous-total', f.lines),
           InvoiceFooterLine('Remise', -f.discount),
         ],
-        if (f.tax > 0) ...[
+        if (f.showsTax) ...[
           InvoiceFooterLine('Total HT', f.totalHt),
-          InvoiceFooterLine('TVA ($tauxLabel%)', f.tax),
+          InvoiceFooterLine('TVA (${f.taxRateLabel}%)', f.tax),
         ],
         InvoiceFooterLine('Total à payer', f.total, strong: true),
       ],
@@ -476,6 +474,14 @@ class InvoiceService {
                   children: [
                     for (final l in footer.totals)
                       _invoiceFooterRow(footer, l, regularFont, boldFont),
+                    if (footer.taxNote != null)
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.only(top: 4),
+                        child: pw.Text(
+                          footer.taxNote!,
+                          style: pw.TextStyle(font: regularFont, fontSize: 9),
+                        ),
+                      ),
                     for (final l in proforma != null
                         ? const <InvoiceFooterLine>[]
                         : footer.settlement)
@@ -791,6 +797,15 @@ class InvoiceService {
               // Pied de reçu : chaque montant vient de la base CDF.
               for (final l in footer.totals)
                 _receiptFooterRow(footer, l, regularFont, boldFont),
+              if (footer.taxNote != null)
+                pw.Padding(
+                  padding: const pw.EdgeInsets.only(top: 2),
+                  child: pw.Text(
+                    footer.taxNote!,
+                    style: pw.TextStyle(font: regularFont, fontSize: 7),
+                    textAlign: pw.TextAlign.right,
+                  ),
+                ),
               pw.SizedBox(height: 8),
               for (final l in footer.settlement)
                 _receiptFooterRow(footer, l, regularFont, boldFont),

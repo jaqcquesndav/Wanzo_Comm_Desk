@@ -26,6 +26,7 @@ import 'package:wanzo/features/inventory/models/product.dart';
 import 'package:wanzo/features/inventory/repositories/inventory_repository.dart';
 import 'package:wanzo/features/inventory/screens/add_product_screen.dart';
 import 'package:wanzo/features/invoice/services/invoice_service.dart';
+import 'package:wanzo/features/invoice/utils/invoice_tax.dart';
 import 'package:wanzo/features/invoice/widgets/post_sale_document_sheet.dart';
 import 'package:wanzo/services/receipt_printer_service.dart';
 import 'package:wanzo/features/settings/bloc/settings_bloc.dart'
@@ -626,27 +627,26 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     );
   }
 
-  /// Retourne le taux de TVA applicable (produit > settings > 0)
-  double _getApplicableTaxRate([Product? product]) {
+  /// Paramètres courants (ancien bloc des réglages), null s'ils ne sont pas
+  /// encore chargés.
+  old_settings_model.Settings? _currentSettings() {
     final oldState = context.read<old_settings_bloc.SettingsBloc>().state;
-    old_settings_model.Settings? settings;
-    if (oldState is old_settings_state.SettingsLoaded) {
-      settings = oldState.settings;
-    } else if (oldState is old_settings_state.SettingsUpdated) {
-      settings = oldState.settings;
-    }
-    // Entreprise NON assujettie (régime minimal/SMT/forfaitaire) → aucune TVA,
-    // quel que soit le taux du produit. Cohérent avec le backend et Adha.
-    if (settings != null && !settings.isTaxSubject) return 0.0;
-
-    if (product != null && product.taxRate != null && product.taxRate! > 0) {
-      return product.taxRate!;
-    }
-    if (settings != null && settings.showTaxes && settings.defaultTaxRate > 0) {
-      return settings.defaultTaxRate;
-    }
-    return 0.0;
+    if (oldState is old_settings_state.SettingsLoaded) return oldState.settings;
+    if (oldState is old_settings_state.SettingsUpdated) return oldState.settings;
+    return null;
   }
+
+  /// Taux de TVA de la ligne, pour le CALCUL : il suit le régime fiscal et le
+  /// produit, jamais le réglage d'affichage. Ce taux fait le HT et la TVA
+  /// envoyés au serveur, donc la TVA comptabilisée : « Afficher les taxes »
+  /// désactivé faisait comptabiliser 0 TVA à une entreprise au régime NORMAL.
+  double _getApplicableTaxRate([Product? product]) => saleLineTaxRate(
+        // Entreprise NON assujettie (régime minimal/SMT/forfaitaire) → aucune
+        // TVA, quel que soit le taux du produit. Cohérent avec le backend et
+        // Adha. Réglages pas encore chargés : assujetti (défaut serveur).
+        isTaxSubject: _currentSettings()?.isTaxSubject ?? true,
+        productRate: product?.taxRate,
+      );
 
   /// TVA incluse de la vente, en CDF (base de la facture et de la compta),
   /// remise comprise. Calculée pour l'affichage mais jamais enregistrée :
@@ -992,7 +992,11 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                           Builder(
                             builder: (context) {
                               final tvaInfo = _calculateTVAInfo();
-                              if (tvaInfo['amount']! > 0) {
+                              // Rappel « dont TVA » : seulement si l'affichage
+                              // des taxes est activé, comme avant.
+                              final afficher =
+                                  _currentSettings()?.showTaxes ?? true;
+                              if (afficher && tvaInfo['amount']! > 0) {
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 4),
                                   child: Row(
