@@ -1,7 +1,7 @@
 name: wanzo
 description: "Une solution complÃ¨te de gestion d'entreprise pour les PME africaines."
 publish_to: 'none'
-version: 1.0.25+26
+version: 1.0.26+27
 
 environment:
   sdk: ^3.7.0
