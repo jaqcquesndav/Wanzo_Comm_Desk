@@ -18,11 +18,11 @@ bool atelierOrderDeletable(AtelierOrder order) {
       order.status == AtelierOrderStatus.cancelled;
 }
 
-/// Archivage des fiches sur l'appareil.
-///
-/// Le serveur n'offre que `DELETE atelier/orders/:id` (aucune route ni champ
-/// d'archivage) : l'archive est donc tenue localement, elle range la fiche
-/// sous le filtre « Archivées » sans rien effacer côté serveur.
+/// Ancienne archive tenue sur l'appareil seulement (avant les routes
+/// `atelier/orders/:id/archive`). Elle ne sert plus qu'à la MIGRATION : les
+/// fiches qu'elle contient sont archivées une fois sur le serveur, puis
+/// retirées d'ici (voir `AtelierOrdersCubit.migrateLocalArchive`). Le serveur
+/// est la référence (`archivedAt` sur la fiche).
 class AtelierArchive {
   static const boxName = 'atelier_archived_orders';
 

@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive/hive.dart';
 import 'package:wanzo/features/atelier/cubit/atelier_orders_cubit.dart';
 import 'package:wanzo/features/atelier/models/atelier_order.dart';
 import 'package:wanzo/features/atelier/repositories/atelier_order_cache.dart';
@@ -20,6 +23,7 @@ class _FakeApi implements AtelierApiService {
     String? vehicleId,
     int? limit,
     int? offset,
+    bool includeArchived = false,
   }) async {
     calls.add({'limit': limit, 'offset': offset});
     final start = offset ?? 0;
@@ -49,6 +53,12 @@ class _MemoryCache extends AtelierOrderCache {
 }
 
 void main() {
+  // Le chargement migre l'ancienne archive locale (boîte Hive).
+  setUpAll(() async {
+    final dossier = await Directory.systemTemp.createTemp('wanzo_atelier_pages_');
+    Hive.init(dossier.path);
+  });
+
   test('premiere page puis Charger plus jusqu a la fin', () async {
     final api = _FakeApi(5);
     final cubit = AtelierOrdersCubit(api, cache: _MemoryCache(), pageSize: 2);

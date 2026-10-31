@@ -749,6 +749,16 @@ class AtelierOrder extends Equatable {
   final String? lastActionByAvatar;
   final DateTime? lastActionAt;
 
+  /// Archivage serveur (`POST atelier/orders/:id/archive`) : une fiche réglée
+  /// ou dont l'avance est encaissée ne se supprime jamais, elle s'archive.
+  final DateTime? archivedAt;
+
+  /// Auteur de l'archivage (nom, sinon courriel).
+  final String? archivedByName;
+
+  /// Fiche archivée : rangée sous le filtre « Archivées ».
+  bool get isArchived => archivedAt != null;
+
   const AtelierOrder({
     required this.id,
     required this.customerId,
@@ -779,6 +789,8 @@ class AtelierOrder extends Equatable {
     this.lastActionByName,
     this.lastActionByAvatar,
     this.lastActionAt,
+    this.archivedAt,
+    this.archivedByName,
   });
 
   static double _toDouble(dynamic v) =>
@@ -836,6 +848,12 @@ class AtelierOrder extends Equatable {
       lastActionByName: json['lastActionByName'] as String?,
       lastActionByAvatar: json['lastActionByAvatar'] as String?,
       lastActionAt: _toDate(json['lastActionAt']),
+      archivedAt: _toDate(json['archivedAt']),
+      archivedByName: switch (json['archivedBy']) {
+        final Map m => (m['name'] as String?) ?? (m['email'] as String?),
+        final String s => s,
+        _ => json['archivedByName'] as String?,
+      },
     );
   }
 
@@ -871,6 +889,8 @@ class AtelierOrder extends Equatable {
     if (lastActionByName != null) 'lastActionByName': lastActionByName,
     if (lastActionByAvatar != null) 'lastActionByAvatar': lastActionByAvatar,
     if (lastActionAt != null) 'lastActionAt': lastActionAt!.toIso8601String(),
+    if (archivedAt != null) 'archivedAt': archivedAt!.toIso8601String(),
+    if (archivedByName != null) 'archivedByName': archivedByName,
     if (stageHistory.isNotEmpty)
       'stageHistory': stageHistory.map((e) => e.toJson()).toList(),
   };
@@ -911,6 +931,10 @@ class AtelierOrder extends Equatable {
     MaintenanceDetails? maintenanceDetails,
     PrintJobDetails? printDetails,
     PressingDetails? pressingDetails,
+    DateTime? archivedAt,
+    String? archivedByName,
+    // Vrai : la fiche sort des archives.
+    bool clearArchive = false,
   }) {
     return AtelierOrder(
       id: id,
@@ -942,12 +966,15 @@ class AtelierOrder extends Equatable {
       lastActionByName: lastActionByName,
       lastActionByAvatar: lastActionByAvatar,
       lastActionAt: lastActionAt,
+      archivedAt: clearArchive ? null : (archivedAt ?? this.archivedAt),
+      archivedByName:
+          clearArchive ? null : (archivedByName ?? this.archivedByName),
     );
   }
 
   @override
   List<Object?> get props => [
     id, customerId, label, status, totalAmount, advanceAmount,
-    remainingAmount, currencyCode, saleId,
+    remainingAmount, currencyCode, saleId, archivedAt,
   ];
 }

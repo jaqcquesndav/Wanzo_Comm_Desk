@@ -98,6 +98,7 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
         businessUnitId: _businessUnitId,
         metier: metierKey,
         limit: pageSize,
+        includeArchived: true,
       );
       _fetched = orders.length;
       // Garde-fou client : même si le backend renvoyait des commandes d'autres
@@ -111,6 +112,9 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
       ));
       // Mémoriser pour l'affichage hors-ligne (cache scindé par métier).
       await _cache.save(_businessUnitId, scoped, metier: metierKey);
+      // Fiches archivées autrefois sur l'appareil seulement : envoyées une
+      // fois au serveur, qui devient la référence.
+      await migrateLocalArchive();
     } catch (e) {
       // Réseau indisponible : servir la dernière liste connue (offline).
       final cached = _scope(await _cache.load(_businessUnitId, metier: metierKey));
@@ -136,6 +140,7 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
         metier: _metier?.apiValue,
         limit: pageSize,
         offset: _fetched,
+        includeArchived: true,
       );
       _fetched += page.length;
       final known = state.orders.map((o) => o.id).toSet();
@@ -249,6 +254,83 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
   /// Supprime une fiche. Renvoie l'erreur à afficher (null si supprimée).
   /// Hors ligne : retirée ici, suppression en file. 404 : déjà absente du
   /// serveur, donc supprimée.
+  /// Archive une fiche (réglée, avance encaissée) sur le serveur. Optimiste ;
+  /// hors ligne l'écriture part en file et la fiche reste archivée. Renvoie
+  /// null si le serveur a répondu, sinon l'erreur.
+  Future<Object?> archiveOrder(String id) =>
+      _setArchived(id, archived: true);
+
+  /// Sort une fiche des archives.
+  Future<Object?> unarchiveOrder(String id) =>
+      _setArchived(id, archived: false);
+
+  Future<Object?> _setArchived(String id, {required bool archived}) async {
+    final previous = state.orders;
+    final optimistic = previous
+        .map(
+          (o) =>
+              o.id != id
+                  ? o
+                  : (archived
+                      ? o.copyWith(archivedAt: o.archivedAt ?? DateTime.now())
+                      : o.copyWith(clearArchive: true)),
+        )
+        .toList();
+    emit(state.copyWith(orders: optimistic, error: null));
+    try {
+      final server =
+          archived ? await _api.archiveOrder(id) : await _api.unarchiveOrder(id);
+      // Réponse sans le champ (serveur plus ancien) : l'intention fait foi.
+      final applied =
+          server.isArchived == archived
+              ? server
+              : (archived
+                  ? server.copyWith(archivedAt: DateTime.now())
+                  : server.copyWith(clearArchive: true));
+      final orders =
+          state.orders.map((o) => o.id == id ? applied : o).toList();
+      emit(state.copyWith(orders: orders));
+      await _cache.save(_businessUnitId, orders, metier: _metier?.apiValue);
+      return null;
+    } on OfflineQueuedException catch (e) {
+      await _cache.save(_businessUnitId, optimistic, metier: _metier?.apiValue);
+      return e;
+    } catch (e) {
+      emit(state.copyWith(
+          error: e is ApiException ? e.message : e.toString(),
+          orders: previous));
+      return e;
+    }
+  }
+
+  /// Migration unique : les fiches que l'ancienne version archivait sur
+  /// l'appareil seulement sont archivées sur le serveur, puis retirées de
+  /// l'archive locale. Une fiche que le serveur ne connaît pas encore reste
+  /// en attente (prochain chargement).
+  Future<void> migrateLocalArchive() async {
+    final legacy = AtelierArchive.instance;
+    try {
+      await legacy.load();
+    } catch (_) {
+      return;
+    }
+    final ids = legacy.archived.value;
+    if (ids.isEmpty) return;
+    for (final id in ids.toList()) {
+      final order = state.orders.where((o) => o.id == id).firstOrNull;
+      if (order == null) continue;
+      if (order.isArchived) {
+        await legacy.unarchive(id);
+        continue;
+      }
+      final err = await archiveOrder(id);
+      // En file ou appliquée : le serveur fait foi désormais.
+      if (err == null || err is OfflineQueuedException) {
+        await legacy.unarchive(id);
+      }
+    }
+  }
+
   Future<Object?> deleteOrder(String id) async {
     final previous = state.orders;
     // Une fiche qui porte de l'argent (réglée, avance encaissée) ne se
@@ -275,7 +357,9 @@ class AtelierOrdersCubit extends Cubit<AtelierOrdersState> {
         await _cache.save(_businessUnitId, remaining, metier: _metier?.apiValue);
         return null;
       }
-      emit(state.copyWith(orders: previous));
+      // Refus du serveur (409 : fiche avec avance, vente ou réglée) : son
+      // message est affiché, la fiche revient.
+      emit(state.copyWith(error: e.message, orders: previous));
       return e;
     } catch (e) {
       emit(state.copyWith(orders: previous));

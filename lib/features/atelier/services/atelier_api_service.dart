@@ -65,8 +65,11 @@ class AtelierApiService {
       String? metier,
       String? vehicleId,
       int? limit,
-      int? offset}) async {
+      int? offset,
+      // Le serveur écarte les fiches archivées par défaut.
+      bool includeArchived = false}) async {
     final qp = <String, String>{};
+    if (includeArchived) qp['includeArchived'] = 'true';
     // Pagination serveur : 200 par defaut, 500 au plus. Une page plus courte
     // que [limit] signale la fin de la liste.
     if (limit != null) qp['limit'] = '$limit';
@@ -118,8 +121,33 @@ class AtelierApiService {
     return AtelierOrder.fromJson(res['data'] as Map<String, dynamic>);
   }
 
+  /// Supprime une fiche. Le serveur refuse (409, message lisible) une fiche
+  /// qui porte de l'argent : avance, vente ou fiche réglée.
   Future<void> deleteOrder(String id) async {
     await _apiClient.delete('atelier/orders/$id', requiresAuth: true);
+  }
+
+  /// Archive une fiche (idempotent). Hors ligne, l'écriture part en file.
+  Future<AtelierOrder> archiveOrder(String id) async {
+    final res = await _apiClient.post('atelier/orders/$id/archive',
+        body: const <String, dynamic>{}, requiresAuth: true);
+    return _orderFrom(res);
+  }
+
+  /// Sort une fiche des archives (idempotent).
+  Future<AtelierOrder> unarchiveOrder(String id) async {
+    final res = await _apiClient.post('atelier/orders/$id/unarchive',
+        body: const <String, dynamic>{}, requiresAuth: true);
+    return _orderFrom(res);
+  }
+
+  /// Fiche renvoyée par le serveur, directe ou enveloppée (`{data: ...}`).
+  static AtelierOrder _orderFrom(dynamic res) {
+    var data = res;
+    for (var i = 0; i < 2 && data is Map && data['data'] is Map; i++) {
+      data = data['data'];
+    }
+    return AtelierOrder.fromJson(Map<String, dynamic>.from(data as Map));
   }
 
   // ── Profil de mesures ───────────────────────────────────────────────────────

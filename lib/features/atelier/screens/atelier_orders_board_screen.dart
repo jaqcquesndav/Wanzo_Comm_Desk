@@ -1,5 +1,5 @@
 import 'package:wanzo/core/utils/desktop_modal.dart';
-import '../services/atelier_archive.dart';
+import '../services/atelier_archive.dart' show atelierOrderDeletable;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -83,7 +83,6 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
     // il a pu être chargé SANS filtre de métier au démarrage. On (re)charge donc
     // le board scopé au métier courant dès qu'il s'affiche → plus de fuite entre
     // couture / maintenance / imprimerie.
-    AtelierArchive.instance.load();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         context.read<AtelierOrdersCubit>().load(metier: _boardMetier);
@@ -124,10 +123,7 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
         tooltip: boardMetier.newWorkLabel,
         child: const Icon(Icons.add),
       ),
-      body: ValueListenableBuilder<Set<String>>(
-        valueListenable: AtelierArchive.instance.archived,
-        builder: (context, archived, _) =>
-            BlocBuilder<AtelierOrdersCubit, AtelierOrdersState>(
+      body: BlocBuilder<AtelierOrdersCubit, AtelierOrdersState>(
         builder: (context, state) {
           if (state.loading && state.orders.isEmpty) {
             return const Center(child: CircularProgressIndicator());
@@ -150,8 +146,10 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
             );
           }
           final cubit = context.read<AtelierOrdersCubit>();
+          // Archives tenues par le serveur (archivedAt sur la fiche).
+          final archivedCount = state.orders.where((o) => o.isArchived).length;
           final visible = state.orders
-              .where((o) => archived.contains(o.id) == _showArchived)
+              .where((o) => o.isArchived == _showArchived)
               .toList();
           final columns = [
             for (final status in _columnOrder)
@@ -188,7 +186,7 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
                       ChoiceChip(
                         key: const ValueKey('filter-archived'),
                         avatar: const Icon(Icons.archive_outlined, size: 16),
-                        label: Text('Archivées (${archived.length})'),
+                        label: Text('Archivées ($archivedCount)'),
                         selected: _showArchived,
                         onSelected:
                             (_) => setState(() => _showArchived = true),
@@ -238,7 +236,6 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
             ],
           );
         },
-            ),
       ),
     );
   }
@@ -374,13 +371,13 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
                   _ecrire(context, cubit.deleteOrder(order.id));
                 },
               )
-            else if (AtelierArchive.instance.isArchived(order.id))
+            else if (order.isArchived)
               ListTile(
                 leading: const Icon(Icons.unarchive_outlined),
                 title: const Text('Désarchiver'),
                 onTap: () {
-                  AtelierArchive.instance.unarchive(order.id);
                   Navigator.pop(ctx);
+                  _ecrire(context, cubit.unarchiveOrder(order.id));
                 },
               )
             else
@@ -389,8 +386,8 @@ class _AtelierOrdersBoardScreenState extends State<AtelierOrdersBoardScreen> {
                 title: const Text('Archiver'),
                 subtitle: const Text('Reste consultable dans « Archivées »'),
                 onTap: () {
-                  AtelierArchive.instance.archive(order.id);
                   Navigator.pop(ctx);
+                  _ecrire(context, cubit.archiveOrder(order.id));
                 },
               ),
           ],
