@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../auth/read_only.dart';
 import 'package:go_router/go_router.dart';
 import 'wanzo_app_bar.dart';
 import 'wanzo_bottom_navigation_bar.dart';
@@ -127,7 +128,9 @@ class WanzoScaffold extends StatelessWidget {
             title: title,
             body: body,
             navigationItems: desktopNavItems,
-            floatingActionButton: floatingActionButton,
+            floatingActionButton: ReadOnlyAccess.isReadOnly && floatingActionButton is FloatingActionButton
+              ? null
+              : floatingActionButton,
             appBarActions: appBarActions,
             onBackPressed: onBackPressed,
             showAdhaButton: showAdhaButton,
@@ -161,7 +164,9 @@ class WanzoScaffold extends StatelessWidget {
                     },
                   )
                   : null,
-          floatingActionButton: floatingActionButton,
+          floatingActionButton: ReadOnlyAccess.isReadOnly && floatingActionButton is FloatingActionButton
+              ? null
+              : floatingActionButton,
         );
       },
     );

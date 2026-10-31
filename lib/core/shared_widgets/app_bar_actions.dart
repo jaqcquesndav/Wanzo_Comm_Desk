@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../auth/read_only.dart';
 import 'package:go_router/go_router.dart';
 
 import 'adha_logo.dart';
@@ -92,6 +93,12 @@ HeaderMenuEntry? headerEntryOf(Widget w) {
   return null;
 }
 
+/// Lecteur : bouton d'en-tête d'écriture masqué (core/auth/read_only).
+bool _hiddenForReader(Widget w) {
+  final entry = headerEntryOf(w);
+  return entry != null && !ReadOnlyAccess.allows(label: entry.label);
+}
+
 /// Menu 3 points générique d'une page (icône par défaut), à fusionner.
 bool _isPlainMenu(Widget w) {
   if (w is! PopupMenuButton) return false;
@@ -113,7 +120,7 @@ SplitPageActions splitPageActions(
   // Les espaceurs (SizedBox vide) ne sont pas des actions.
   final all = <Widget>[
     for (final w in actions ?? const <Widget>[])
-      if (!(w is SizedBox && w.child == null)) w,
+      if (!(w is SizedBox && w.child == null) && !_hiddenForReader(w)) w,
   ];
   final menus = all.where(_isPlainMenu).toList();
   final PopupMenuButton<dynamic>? pageMenu =

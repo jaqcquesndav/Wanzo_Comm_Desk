@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../auth/read_only.dart';
 
 /// Une action de la barre d'actions d'une page de détail.
 class ActionBarItem {
@@ -18,7 +19,11 @@ class ActionBarItem {
     this.background,
     this.foreground,
     this.outlined = false,
+    this.write,
   });
+
+  /// L'action écrit-elle ? null : déduit du libellé (core/auth/read_only).
+  final bool? write;
 }
 
 /// Barre d'actions qui ne débordera jamais.
@@ -57,8 +62,10 @@ class ResponsiveActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visible = items.where((item) => item.onPressed != null).toList();
-    final rendered = visible.isEmpty ? items : visible;
+    // Lecteur : aucune action d'écriture (core/auth/read_only).
+    final allowed = items.where((i) => ReadOnlyAccess.allows(label: i.label, write: i.write)).toList();
+    final visible = allowed.where((item) => item.onPressed != null).toList();
+    final rendered = visible.isEmpty ? allowed : visible;
     if (rendered.isEmpty) return const SizedBox.shrink();
 
     return LayoutBuilder(

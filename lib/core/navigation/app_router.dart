@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../auth/read_only.dart';
 import 'package:wanzo/features/sales/repositories/sales_repository.dart';
 import 'package:wanzo/features/cash_session/screens/cash_session_screen.dart';
 import 'package:wanzo/features/cash_session/cash_access.dart';
@@ -103,6 +104,11 @@ class AppRouter {
     redirect: (BuildContext context, GoRouterState state) {
       final authState = authBloc.state;
       final isAuthenticated = authState is AuthAuthenticated;
+      // Lecteur : jamais de formulaire de création ou de modification.
+      if (isAuthenticated) {
+        final readOnlyTarget = ReadOnlyAccess.redirectFor(state.uri.toString());
+        if (readOnlyTarget != null) return readOnlyTarget;
+      }
       final isAuthenticating = authState is AuthLoading;
       final isSyncPending = authState is AuthSyncPending;
       final isBusinessUnitRequired = authState is AuthBusinessUnitRequired;

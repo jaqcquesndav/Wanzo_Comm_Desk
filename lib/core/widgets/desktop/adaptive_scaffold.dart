@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../auth/read_only.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../platform/platform_service.dart';
@@ -202,7 +203,7 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
       ),
       // Cacher le FAB quand le panneau Adha est ouvert pour ne pas bloquer les inputs
       floatingActionButton:
-          _layoutState.isAdhaPanelOpen ? null : widget.floatingActionButton,
+          _layoutState.isAdhaPanelOpen || ReadOnlyAccess.isReadOnly ? null : widget.floatingActionButton,
     );
   }
 
@@ -367,16 +368,18 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
       ),
       // Cacher le FAB quand le panneau Adha est ouvert pour ne pas bloquer les inputs
       floatingActionButton:
-          _layoutState.isAdhaPanelOpen ? null : widget.floatingActionButton,
+          _layoutState.isAdhaPanelOpen || ReadOnlyAccess.isReadOnly ? null : widget.floatingActionButton,
     );
   }
 
   /// Contenu de l'écran surmonté du dock d'actions rapides du mode, s'il y
   /// en a (porté une seule fois, ici, pour tous les écrans principaux).
   Widget get _mainBody {
-    if (widget.quickActions.isEmpty) return widget.body;
+    // Lecteur : aucune action rapide d'écriture (core/auth/read_only).
+    final quickActions = widget.quickActions.where((a) => ReadOnlyAccess.allows(label: a.label)).toList();
+    if (quickActions.isEmpty) return widget.body;
     return OperationsDockHost(
-      actions: widget.quickActions,
+      actions: quickActions,
       hasFloatingActionButton: widget.floatingActionButton != null,
       child: widget.body,
     );
@@ -472,7 +475,7 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
       ),
       // Cacher le FAB quand le panneau Adha est ouvert pour ne pas bloquer les inputs
       floatingActionButton:
-          _layoutState.isAdhaPanelOpen ? null : widget.floatingActionButton,
+          _layoutState.isAdhaPanelOpen || ReadOnlyAccess.isReadOnly ? null : widget.floatingActionButton,
     );
   }
 

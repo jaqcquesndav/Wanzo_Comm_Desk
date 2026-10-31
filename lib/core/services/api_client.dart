@@ -1,3 +1,4 @@
+import '../auth/read_only.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -921,6 +922,10 @@ class ApiClient {
 
     // Extraire le message d'erreur depuis la réponse si possible
     String message = _extractErrorMessage(decodedBody, statusCode);
+    // Lecteur : refus du serveur à une écriture, message clair.
+    if (statusCode == 403 && ReadOnlyAccess.isReadOnlyRefusal(decodedBody)) {
+      message = readOnlyRoleMessage;
+    }
 
     switch (statusCode) {
       case 400:

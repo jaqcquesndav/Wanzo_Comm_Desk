@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../auth/read_only.dart';
 
 /// Une action de ligne présentée dans un [RowActionsMenu].
 ///
@@ -9,7 +10,11 @@ class RowAction {
     required this.icon,
     required this.onSelected,
     this.destructive = false,
+    this.write,
   });
+
+  /// L'action écrit-elle ? null : déduit du libellé (core/auth/read_only).
+  final bool? write;
 
   /// Libellé affiché dans le menu.
   final String label;
@@ -49,6 +54,8 @@ class RowActionsMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Lecteur : ni modifier, ni annuler, ni supprimer (core/auth/read_only).
+    final actions = this.actions.where((a) => ReadOnlyAccess.allows(label: a.label, write: a.write)).toList();
     if (actions.isEmpty) return const SizedBox.shrink();
 
     final errorColor = Theme.of(context).colorScheme.error;
