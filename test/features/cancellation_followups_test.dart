@@ -39,10 +39,13 @@ class _FakeInventoryApi extends Fake implements InventoryApiService {
   bool keepsProduct = false;
   int deletes = 0;
 
+  /// Réponse du DELETE : null = 204 d'un serveur ancien.
+  ProductRemovalResult? removal;
+
   @override
-  Future<ApiResponse<void>> deleteProduct(String id) async {
+  Future<ApiResponse<ProductRemovalResult?>> deleteProduct(String id) async {
     deletes++;
-    return ApiResponse(success: true, statusCode: 204, message: 'ok');
+    return ApiResponse(success: true, statusCode: 200, message: 'ok', data: removal);
   }
 
   @override
@@ -262,8 +265,37 @@ void main() {
       api.keepsProduct = true;
       expect(repo.productHasHistory('p1'), isTrue);
       expect(await repo.deleteProduct('p1'), isTrue);
-      expect(Hive.box<Product>('products').get('p1'), isNull, reason: 'quitte la liste');
+      final kept = Hive.box<Product>('products').get('p1');
+      expect(kept?.isActive, isFalse, reason: 'gardé, marqué inactif');
+      expect(repo.getAllProducts().map((p) => p.id), isEmpty, reason: 'plus vendable');
+      expect(repo.getInactiveProducts().map((p) => p.id), ['p1']);
       expect(Hive.box<StockTransaction>('stock_transactions').get('t1'), isNotNull);
+    });
+  });
+
+  group('produit : réponse deleted et deactivated', () {
+    test('200 lu directement, sans relire le produit', () async {
+      final api = _FakeInventoryApi()
+        ..removal = const ProductRemovalResult(deleted: false, deactivated: true);
+      final repo = InventoryRepository(apiService: api);
+      await repo.init();
+      await Hive.box<Product>('products').clear();
+      await Hive.box<Product>('products').put('p1', _product());
+      // keepsProduct reste faux : un 204 aurait conclu « supprimé ».
+      expect(await repo.deleteProduct('p1'), isTrue);
+      expect(Hive.box<Product>('products').get('p1')!.isActive, isFalse);
+    });
+
+    test('lecture tolérante de la réponse', () {
+      expect(ProductRemovalResult.fromResponse(null), isNull, reason: '204');
+      final r = ProductRemovalResult.fromResponse({
+        'success': true,
+        'data': {'deleted': true, 'deactivated': false},
+      })!;
+      expect(r.deleted, isTrue);
+      expect(r.deactivated, isFalse);
+      final json = {..._product().toJson(), 'deactivatedAt': '2026-10-30T10:00:00Z'};
+      expect(Product.fromJson(json).isActive, isFalse);
     });
   });
 

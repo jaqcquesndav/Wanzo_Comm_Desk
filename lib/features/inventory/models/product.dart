@@ -369,6 +369,17 @@ class Product extends Equatable {
   @JsonKey(defaultValue: false)
   final bool isPublic;
 
+  /// Produit désactivé par le serveur (référencé par des ventes ou des
+  /// mouvements de stock, il n'est jamais effacé). Hors des listes et des
+  /// ventes ; visible sous le filtre « Inactifs ». Lu à la main dans
+  /// [Product.fromJson].
+  @HiveField(33)
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final DateTime? deactivatedAt;
+
+  /// Produit actif : vendable, présent dans les listes.
+  bool get isActive => deactivatedAt == null;
+
   /// Constructeur
   const Product({
     required this.id,
@@ -406,13 +417,21 @@ class Product extends Equatable {
     this.localId,
     this.subCategory,
     this.isPublic = false,
+    this.deactivatedAt,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
     final base = _$ProductFromJson(json);
     final parsedImages = ProductImage.listFromJson(json['images']);
     // Rétro-compat : sans galerie, on retombe sur imageUrl via primaryImageUrl.
-    return parsedImages.isEmpty ? base : base.copyWith(images: parsedImages);
+    final rawDeactivated = json['deactivatedAt'];
+    final deactivatedAt =
+        rawDeactivated is String ? DateTime.tryParse(rawDeactivated) : null;
+    final withImages =
+        parsedImages.isEmpty ? base : base.copyWith(images: parsedImages);
+    return deactivatedAt == null
+        ? withImages
+        : withImages.copyWith(deactivatedAt: deactivatedAt.toLocal());
   }
 
   Map<String, dynamic> toJson() {
@@ -509,6 +528,9 @@ class Product extends Equatable {
     String? localId,
     String? subCategory,
     bool? isPublic,
+    DateTime? deactivatedAt,
+    // Vrai : le produit redevient actif.
+    bool clearDeactivated = false,
   }) {
     return Product(
       id: id ?? this.id,
@@ -546,6 +568,8 @@ class Product extends Equatable {
       localId: localId ?? this.localId,
       subCategory: subCategory ?? this.subCategory,
       isPublic: isPublic ?? this.isPublic,
+      deactivatedAt:
+          clearDeactivated ? null : (deactivatedAt ?? this.deactivatedAt),
     );
   }
 
@@ -584,5 +608,6 @@ class Product extends Equatable {
     localId,
     subCategory,
     isPublic,
+    deactivatedAt,
   ];
 }

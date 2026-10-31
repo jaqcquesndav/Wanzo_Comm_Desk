@@ -135,6 +135,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
               onPressed: () =>
                   printProductLabels(context, products: [product]),
             ),
+            if (product.isActive)
             IconButton(
               icon: const Icon(Icons.delete, color: Colors.red),
               tooltip: _hasHistory(product) ? 'Désactiver' : 'Supprimer',
@@ -412,7 +413,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
         ),
         const SizedBox(height: WanzoSpacing.lg),
 
-        // Bouton de suppression du produit
+        // Produit désactivé : bandeau, plus d'action de retrait. Sinon,
+        // bouton de suppression (ou de désactivation) du produit.
+        if (!product.isActive)
+          _inactiveBanner(context)
+        else
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
@@ -1481,6 +1486,30 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
   /// Affiche une boîte de dialogue pour confirmer la suppression du produit
   /// Produit vendu ou mouvementé : le serveur le désactive au lieu de le
   /// supprimer, le bouton le dit.
+  /// Bandeau d'un produit désactivé par le serveur.
+  Widget _inactiveBanner(BuildContext context) => Container(
+    key: const ValueKey('product-inactive-banner'),
+    width: double.infinity,
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: const Row(
+      children: [
+        Icon(Icons.block),
+        SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Produit inactif : il figure dans des ventes ou des mouvements de '
+            'stock, il ne peut plus être vendu.',
+          ),
+        ),
+      ],
+    ),
+  );
+
   bool _hasHistory(Product product) {
     try {
       return context.read<InventoryRepository>().productHasHistory(product.id);

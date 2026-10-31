@@ -72,10 +72,24 @@ class InventoryRepository {
     await _transactionsBox.close();
   }
 
-  /// Obtenir tous les produits
-  List<Product> getAllProducts() {
-    return _productsBox.values.toList();
+  /// Obtenir tous les produits ACTIFS (listes, ventes, comptages). Un
+  /// produit désactivé ne se vend plus : il n'est servi qu'avec
+  /// [includeInactive] (filtre « Inactifs »).
+  List<Product> getAllProducts({bool includeInactive = false}) {
+    final all = _productsBox.values;
+    return includeInactive
+        ? all.toList()
+        : all.where((p) => p.isActive).toList();
   }
+
+  /// Produits actifs : un produit désactivé sort des recherches, des
+  /// alertes et de la valeur du stock.
+  Iterable<Product> get _activeProducts =>
+      _productsBox.values.where((p) => p.isActive);
+
+  /// Produits désactivés (filtre « Inactifs »).
+  List<Product> getInactiveProducts() =>
+      _productsBox.values.where((p) => !p.isActive).toList();
 
   /// Rafraîchit le cache local depuis le serveur (stock tenu par le serveur,
   /// mouvements des autres caisses), puis renvoie la liste locale. Hors ligne
@@ -92,7 +106,7 @@ class InventoryRepository {
       var complet = false;
       for (var page = 1; page <= 100; page++) {
         final response = await api
-            .getProducts(page: page, limit: taille)
+            .getProducts(page: page, limit: taille, includeInactive: true)
             .timeout(const Duration(seconds: 15));
         final lot = response.data;
         if (!response.success || lot == null) break;
@@ -153,7 +167,7 @@ class InventoryRepository {
       return getAllProducts();
     }
 
-    return _productsBox.values.where((product) {
+    return _activeProducts.where((product) {
       return product.name.toLowerCase().contains(normalizedQuery) ||
           product.description.toLowerCase().contains(normalizedQuery) ||
           product.barcode.toLowerCase().contains(normalizedQuery);
@@ -162,24 +176,24 @@ class InventoryRepository {
 
   /// Filtrer les produits par catégorie
   List<Product> getProductsByCategory(ProductCategory category) {
-    return _productsBox.values
+    return _activeProducts
         .where((product) => product.category == category)
         .toList();
   }
 
   /// Obtenir les produits avec stock bas
   List<Product> getLowStockProducts() {
-    return _productsBox.values.where((product) => product.isLowStock).toList();
+    return _activeProducts.where((product) => product.isLowStock).toList();
   }
 
   /// Obtenir les produits expirés
   List<Product> getExpiredProducts() {
-    return _productsBox.values.where((product) => product.isExpired).toList();
+    return _activeProducts.where((product) => product.isExpired).toList();
   }
 
   /// Obtenir les produits qui expirent bientôt (dans les 30 jours)
   List<Product> getExpiringSoonProducts() {
-    return _productsBox.values
+    return _activeProducts
         .where(
           (product) => product.isExpiringSoon || product.isExpiringVerySoon,
         )
@@ -188,14 +202,14 @@ class InventoryRepository {
 
   /// Obtenir les produits qui expirent très bientôt (dans les 7 jours)
   List<Product> getExpiringVerySoonProducts() {
-    return _productsBox.values
+    return _activeProducts
         .where((product) => product.isExpiringVerySoon)
         .toList();
   }
 
   /// Obtenir tous les produits avec problèmes (stock bas ou expiration)
   List<Product> getProblematicProducts() {
-    return _productsBox.values
+    return _activeProducts
         .where(
           (product) =>
               product.isLowStock || product.isExpired || product.isExpiringSoon,
@@ -374,15 +388,21 @@ class InventoryRepository {
             .deleteProduct(id)
             .timeout(const Duration(seconds: 10));
         if (apiResponse.success) {
-          // Toujours là après le DELETE : le serveur l'a désactivé.
-          try {
-            final still = await _apiService
-                .getProductById(id)
-                .timeout(const Duration(seconds: 10));
-            deactivated = still.success && still.data != null;
-          } catch (_) {
-            // 404 : supprimé pour de bon.
-            deactivated = false;
+          final result = apiResponse.data;
+          if (result != null) {
+            // 200 { deleted, deactivated } : la réponse dit ce qui s'est passé.
+            deactivated = result.deactivated;
+          } else {
+            // 204 d'un serveur plus ancien : le produit encore lisible après
+            // le DELETE a été désactivé.
+            try {
+              final still = await _apiService
+                  .getProductById(id)
+                  .timeout(const Duration(seconds: 10));
+              deactivated = still.success && still.data != null;
+            } catch (_) {
+              deactivated = false;
+            }
           }
           debugPrint('✅ Produit ${deactivated ? 'désactivé' : 'supprimé'} : $id');
         } else {
@@ -393,9 +413,18 @@ class InventoryRepository {
       }
     }
 
-    await _productsBox.delete(id);
-    // Un produit désactivé garde ses mouvements : ils racontent le stock et
-    // les ventes passés. Seul un produit supprimé les perd.
+    // Un produit désactivé reste en cache, marqué inactif (filtre
+    // « Inactifs », plus vendable) et garde ses mouvements : ils racontent le
+    // stock et les ventes passés. Seul un produit supprimé les perd.
+    final current = _productsBox.get(id);
+    if (deactivated && current != null) {
+      await _productsBox.put(
+        id,
+        current.copyWith(deactivatedAt: current.deactivatedAt ?? DateTime.now()),
+      );
+    } else {
+      await _productsBox.delete(id);
+    }
     if (!deactivated) {
       final transactions =
           _transactionsBox.values.where((t) => t.productId == id).toList();
@@ -599,7 +628,7 @@ class InventoryRepository {
 
   /// Obtenir la valeur totale de l'inventaire en CDF
   double getTotalInventoryValue() {
-    return _productsBox.values.fold(
+    return _activeProducts.fold(
       0,
       (total, product) => total + product.stockValueInCdf,
     );

@@ -49,13 +49,14 @@ class ProductAdapter extends TypeAdapter<Product> {
       localId: fields[27] as String?,
       subCategory: fields[30] as String?,
       isPublic: fields[31] == null ? false : fields[31] as bool,
+      deactivatedAt: fields[33] as DateTime?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Product obj) {
     writer
-      ..writeByte(32)
+      ..writeByte(33)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -119,7 +120,9 @@ class ProductAdapter extends TypeAdapter<Product> {
       ..writeByte(30)
       ..write(obj.subCategory)
       ..writeByte(31)
-      ..write(obj.isPublic);
+      ..write(obj.isPublic)
+      ..writeByte(33)
+      ..write(obj.deactivatedAt);
   }
 
   @override

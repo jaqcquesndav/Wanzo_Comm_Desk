@@ -15,6 +15,8 @@ abstract class InventoryApiService {
     String? sortBy,
     String? sortOrder,
     String? searchQuery,
+    // Produits désactivés compris (`includeInactive=true`).
+    bool includeInactive = false,
   });
 
   Future<ApiResponse<Product>> createProduct(Product product, {File? image});
@@ -28,7 +30,10 @@ abstract class InventoryApiService {
     bool? removeImage,
   });
 
-  Future<ApiResponse<void>> deleteProduct(String id);
+  /// `DELETE products/:id` : 200 `{ deleted, deactivated }` (un produit vendu
+  /// ou mouvementé est désactivé, jamais effacé). Un serveur plus ancien
+  /// répond 204 sans corps : `data` est alors null.
+  Future<ApiResponse<ProductRemovalResult?>> deleteProduct(String id);
 
   Future<ApiResponse<List<StockTransaction>>> getStockTransactions({
     String? productId,
@@ -68,9 +73,12 @@ class InventoryApiServiceImpl implements InventoryApiService {
     String? sortBy,
     String? sortOrder,
     String? searchQuery,
+    bool includeInactive = false,
   }) async {
     try {
       final queryParameters = <String, String>{
+        // Produits désactivés compris (filtre « Inactifs »).
+        if (includeInactive) 'includeInactive': 'true',
         if (page != null) 'page': page.toString(),
         if (limit != null) 'limit': limit.toString(),
         if (category != null) 'category': category,
@@ -539,27 +547,27 @@ class InventoryApiServiceImpl implements InventoryApiService {
   }
 
   @override
-  Future<ApiResponse<void>> deleteProduct(String id) async {
+  Future<ApiResponse<ProductRemovalResult?>> deleteProduct(String id) async {
     try {
-      await _apiClient.delete('products/$id', requiresAuth: true);
-      return ApiResponse<void>(
+      final response = await _apiClient.delete('products/$id', requiresAuth: true);
+      return ApiResponse<ProductRemovalResult?>(
         success: true,
-        data: null,
+        data: ProductRemovalResult.fromResponse(response),
         message: 'Product deleted successfully',
         statusCode: 200,
       );
     } on ApiException catch (e) {
-      return ApiResponse<void>(
+      return ApiResponse<ProductRemovalResult?>(
         success: false,
         data: null,
         message: e.message,
         statusCode: e.statusCode ?? 500,
       );
     } catch (e) {
-      return ApiResponse<void>(
+      return ApiResponse<ProductRemovalResult?>(
         success: false,
         data: null,
-        message: 'Failed to delete product: ${e.toString()}',
+        message: e.toString(),
         statusCode: 500,
       );
     }
@@ -721,4 +729,31 @@ class InventoryApiServiceImpl implements InventoryApiService {
               response.containsKey('data')
           ? response['data']
           : response;
+}
+
+/// Issue de `DELETE products/:id` : supprimé, ou désactivé (produit vendu ou
+/// mouvementé, jamais effacé).
+class ProductRemovalResult {
+  final bool deleted;
+  final bool deactivated;
+
+  const ProductRemovalResult({required this.deleted, required this.deactivated});
+
+  /// Lit `{ deleted, deactivated }`, éventuellement enveloppé. Null pour un
+  /// 204 sans corps (serveur plus ancien).
+  static ProductRemovalResult? fromResponse(Object? response) {
+    Object? data = response;
+    for (var i = 0; i < 2 && data is Map && data['data'] is Map; i++) {
+      data = data['data'];
+    }
+    if (data is! Map) return null;
+    final deactivated = data['deactivated'];
+    final deleted = data['deleted'];
+    if (deactivated is! bool && deleted is! bool) return null;
+    final isDeactivated = deactivated == true;
+    return ProductRemovalResult(
+      deleted: deleted is bool ? deleted : !isDeactivated,
+      deactivated: isDeactivated,
+    );
+  }
 }

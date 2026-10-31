@@ -42,6 +42,12 @@ class LoadLowStockProducts extends InventoryEvent {
   const LoadLowStockProducts();
 }
 
+/// Charger les produits désactivés (filtre « Inactifs ») : vendus ou
+/// mouvementés, le serveur les garde, ils ne se vendent plus.
+class LoadInactiveProducts extends InventoryEvent {
+  const LoadInactiveProducts();
+}
+
 /// Charger un seul produit avec ses transactions
 class LoadProduct extends InventoryEvent {
   final String id;

@@ -31,6 +31,7 @@ class InventoryBloc extends Bloc<InventoryEvent, InventoryState> {
     on<LoadProductsByCategory>(_onLoadProductsByCategory);
     on<SearchProducts>(_onSearchProducts);
     on<LoadLowStockProducts>(_onLoadLowStockProducts);
+    on<LoadInactiveProducts>(_onLoadInactiveProducts);
     on<LoadProduct>(_onLoadProduct);
     on<AddProduct>(_onAddProduct);
     on<UpdateProduct>(_onUpdateProduct);
@@ -162,6 +163,28 @@ class InventoryBloc extends Bloc<InventoryEvent, InventoryState> {
   }
 
   /// Charger les produits avec stock bas
+  /// Produits désactivés : hors des totaux du stock (valeurs à zéro).
+  Future<void> _onLoadInactiveProducts(
+    LoadInactiveProducts event,
+    Emitter<InventoryState> emit,
+  ) async {
+    emit(const InventoryLoading());
+    try {
+      final products = _inventoryRepository.getInactiveProducts();
+      emit(
+        ProductsLoaded(
+          products: products,
+          totalInventoryValueInCdf: 0,
+          totalInventoryValueAtSalePrice: 0,
+          totalProductCount: products.length,
+          lowStockCount: 0,
+        ),
+      );
+    } catch (e) {
+      emit(InventoryError(e.toString()));
+    }
+  }
+
   Future<void> _onLoadLowStockProducts(
     LoadLowStockProducts event,
     Emitter<InventoryState> emit,

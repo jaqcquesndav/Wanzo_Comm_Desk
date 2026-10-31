@@ -425,8 +425,22 @@ class _InventoryScreenState extends State<InventoryScreen>
 
                 return ListView.builder(
                   shrinkWrap: true,
-                  itemCount: categories.length + 1,
+                  itemCount: categories.length + 2,
                   itemBuilder: (context, index) {
+                    // Produits désactivés : vendus ou mouvementés, gardés par
+                    // le serveur, plus vendables.
+                    if (index == categories.length + 1) {
+                      return ListTile(
+                        key: const ValueKey('filter-inactive-products'),
+                        leading: const Icon(Icons.block, color: Colors.grey),
+                        title: const Text('Inactifs'),
+                        subtitle: const Text('Produits désactivés, plus vendables'),
+                        onTap: () {
+                          Navigator.pop(context);
+                          context.read<InventoryBloc>().add(const LoadInactiveProducts());
+                        },
+                      );
+                    }
                     if (index == 0) {
                       // Le stock faible est un FILTRE (les cartes produits
                       // portent déjà le badge), plus un onglet à part.
