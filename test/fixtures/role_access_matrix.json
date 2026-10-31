@@ -1,0 +1,472 @@
+{
+  "super_admin": {
+    "assignment": "system",
+    "commerce": "admin",
+    "production": "admin",
+    "avec": "avec_president",
+    "scope": "company",
+    "unitRequired": false,
+    "supervisor": true,
+    "readOnly": false
+  },
+  "owner": {
+    "assignment": "system",
+    "commerce": "admin",
+    "production": "admin",
+    "avec": "avec_president",
+    "scope": "company",
+    "unitRequired": false,
+    "supervisor": true,
+    "readOnly": false
+  },
+  "sme_owner": {
+    "assignment": "system",
+    "commerce": "admin",
+    "production": "admin",
+    "avec": "avec_president",
+    "scope": "company",
+    "unitRequired": false,
+    "supervisor": true,
+    "readOnly": false
+  },
+  "sme_admin": {
+    "assignment": "system",
+    "commerce": "admin",
+    "production": "admin",
+    "avec": "avec_president",
+    "scope": "company",
+    "unitRequired": false,
+    "supervisor": true,
+    "readOnly": false
+  },
+  "admin": {
+    "assignment": "system",
+    "commerce": "admin",
+    "production": "admin",
+    "avec": "avec_president",
+    "scope": "company",
+    "unitRequired": false,
+    "supervisor": true,
+    "readOnly": false
+  },
+  "manager": {
+    "assignment": "compta",
+    "commerce": "manager",
+    "production": "manager",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": true,
+    "readOnly": false
+  },
+  "accountant": {
+    "assignment": "compta",
+    "commerce": "accountant",
+    "production": "accountant",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "chief_accountant": {
+    "assignment": "compta",
+    "commerce": "accountant",
+    "production": "accountant",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": true,
+    "readOnly": false
+  },
+  "expert_comptable": {
+    "assignment": "backoffice",
+    "commerce": "viewer",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": true
+  },
+  "audit": {
+    "assignment": "backoffice",
+    "commerce": "viewer",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": true
+  },
+  "analyst": {
+    "assignment": "compta",
+    "commerce": "viewer",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": true
+  },
+  "hr": {
+    "assignment": "compta",
+    "commerce": "viewer",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": true
+  },
+  "treasurer": {
+    "assignment": "compta",
+    "commerce": "cashier",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "viewer": {
+    "assignment": "compta",
+    "commerce": "viewer",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": true
+  },
+  "commerce_manager": {
+    "assignment": "compta",
+    "commerce": "manager",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": true,
+    "supervisor": true,
+    "readOnly": false
+  },
+  "cashier": {
+    "assignment": "compta",
+    "commerce": "cashier",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": true,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "salesperson": {
+    "assignment": "compta",
+    "commerce": "sales",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": true,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "stock_keeper": {
+    "assignment": "compta",
+    "commerce": "inventory_manager",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": true,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "production_manager": {
+    "assignment": "compta",
+    "commerce": "viewer",
+    "production": "production_manager",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": true,
+    "readOnly": false
+  },
+  "production_planner": {
+    "assignment": "compta",
+    "commerce": "viewer",
+    "production": "production_planner",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "production_operator": {
+    "assignment": "compta",
+    "commerce": "viewer",
+    "production": "production_operator",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": true,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "quality_controller": {
+    "assignment": "compta",
+    "commerce": "viewer",
+    "production": "quality_controller",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "maintenance_technician": {
+    "assignment": "compta",
+    "commerce": "technician",
+    "production": "maintenance_technician",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": true,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "procurement_officer": {
+    "assignment": "compta",
+    "commerce": "inventory_manager",
+    "production": "procurement_officer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "asset_manager": {
+    "assignment": "compta",
+    "commerce": "manager",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": true,
+    "readOnly": false
+  },
+  "receptionist": {
+    "assignment": "compta",
+    "commerce": "receptionist",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": true,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "technician": {
+    "assignment": "compta",
+    "commerce": "technician",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": true,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "housekeeping": {
+    "assignment": "compta",
+    "commerce": "staff",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": true,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "portfolio_manager": {
+    "assignment": "system",
+    "commerce": "viewer",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": true
+  },
+  "credit_analyst": {
+    "assignment": "system",
+    "commerce": "viewer",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": true
+  },
+  "loan_officer": {
+    "assignment": "system",
+    "commerce": "viewer",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": true
+  },
+  "risk_officer": {
+    "assignment": "system",
+    "commerce": "viewer",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": true
+  },
+  "compliance_officer": {
+    "assignment": "system",
+    "commerce": "viewer",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": true
+  },
+  "avec_president": {
+    "assignment": "system",
+    "commerce": "manager",
+    "production": "manager",
+    "avec": "avec_president",
+    "scope": "company",
+    "unitRequired": false,
+    "supervisor": true,
+    "readOnly": false
+  },
+  "avec_secretary": {
+    "assignment": "system",
+    "commerce": "manager",
+    "production": "manager",
+    "avec": "avec_secretary",
+    "scope": "company",
+    "unitRequired": false,
+    "supervisor": true,
+    "readOnly": false
+  },
+  "avec_treasurer": {
+    "assignment": "system",
+    "commerce": "accountant",
+    "production": "accountant",
+    "avec": "avec_treasurer",
+    "scope": "company",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "program_manager": {
+    "assignment": "system",
+    "commerce": "viewer",
+    "production": "viewer",
+    "avec": "program_manager",
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": true
+  },
+  "program_field_agent": {
+    "assignment": "system",
+    "commerce": "viewer",
+    "production": "viewer",
+    "avec": "program_field_agent",
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": true
+  },
+  "program_me_officer": {
+    "assignment": "system",
+    "commerce": "viewer",
+    "production": "viewer",
+    "avec": "program_me_officer",
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": true
+  },
+  "program_auditor": {
+    "assignment": "compta_avec",
+    "commerce": "viewer",
+    "production": "viewer",
+    "avec": "program_auditor",
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": true
+  },
+  "program_accountant": {
+    "assignment": "compta_avec",
+    "commerce": "viewer",
+    "production": "viewer",
+    "avec": "program_accountant",
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": true
+  },
+  "staff": {
+    "assignment": "system",
+    "commerce": "staff",
+    "production": "staff",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "user": {
+    "assignment": "system",
+    "commerce": "staff",
+    "production": "staff",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "sme_user": {
+    "assignment": "system",
+    "commerce": "staff",
+    "production": "staff",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "sales": {
+    "assignment": "system",
+    "commerce": "sales",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": true,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "inventory_manager": {
+    "assignment": "system",
+    "commerce": "inventory_manager",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": true,
+    "supervisor": false,
+    "readOnly": false
+  },
+  "customer_support": {
+    "assignment": "system",
+    "commerce": "customer_support",
+    "production": "viewer",
+    "avec": null,
+    "scope": "unit",
+    "unitRequired": false,
+    "supervisor": false,
+    "readOnly": false
+  }
+}

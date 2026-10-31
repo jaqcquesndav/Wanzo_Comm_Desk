@@ -31,8 +31,14 @@ class UserRoleAdapter extends TypeAdapter<UserRole> {
         return UserRole.staff;
       case 7:
         return UserRole.customerSupport;
+      case 9:
+        return UserRole.receptionist;
+      case 10:
+        return UserRole.technician;
+      case 11:
+        return UserRole.viewer;
       default:
-        return UserRole.admin;
+        return UserRole.viewer;
     }
   }
 
@@ -65,6 +71,15 @@ class UserRoleAdapter extends TypeAdapter<UserRole> {
         break;
       case UserRole.customerSupport:
         writer.writeByte(7);
+        break;
+      case UserRole.receptionist:
+        writer.writeByte(9);
+        break;
+      case UserRole.technician:
+        writer.writeByte(10);
+        break;
+      case UserRole.viewer:
+        writer.writeByte(11);
         break;
     }
   }

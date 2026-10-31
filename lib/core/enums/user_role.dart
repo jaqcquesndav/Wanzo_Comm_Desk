@@ -44,6 +44,19 @@ enum UserRole {
   /// Support Client - Accès au support client
   @HiveField(7)
   customerSupport,
+
+  /// Réceptionniste - Front desk (réservations, hôtellerie)
+  @HiveField(9)
+  receptionist,
+
+  /// Technicien - Maintenance, ateliers
+  @HiveField(10)
+  technician,
+
+  /// Lecteur - Lecture seule (auditeur, analyste, RH, rôles sans équivalent).
+  /// Le serveur refuse toute écriture métier (403 READ_ONLY_ROLE).
+  @HiveField(11)
+  viewer,
 }
 
 /// Extension pour les fonctionnalités de UserRole
@@ -69,6 +82,12 @@ extension UserRoleExtension on UserRole {
         return 'staff';
       case UserRole.customerSupport:
         return 'customer_support';
+      case UserRole.receptionist:
+        return 'receptionist';
+      case UserRole.technician:
+        return 'technician';
+      case UserRole.viewer:
+        return 'viewer';
     }
   }
 
@@ -76,34 +95,61 @@ extension UserRoleExtension on UserRole {
   /// aucune réponse du serveur) : jamais lue comme « staff ».
   static const String unknownApiValue = 'unknown';
 
-  /// Rôles du référentiel (customer-service, accounting, gestion) vers
-  /// l'enum de l'app, comme `mapExternalRole` côté serveur. Le propriétaire
-  /// (owner, sme_owner) et l'administrateur PME (sme_admin) sont
-  /// administrateurs.
+  /// Rôles de la plateforme vers l'enum de l'app : copie À L'IDENTIQUE de la
+  /// matrice des rôles du serveur (Wanzo_Backend packages/shared/src/auth/
+  /// role-access-matrix.ts, colonne commerce), comparée par
+  /// test/core/enums/role_access_matrix_test.dart à
+  /// test/fixtures/role_access_matrix.json. Un rôle sans équivalent prend le
+  /// plus proche sans jamais le dépasser ; super_admin reste superAdmin ici.
   static const Map<String, UserRole> _apiValues = {
-    'admin': UserRole.admin,
+    'super_admin': UserRole.superAdmin,
     'owner': UserRole.admin,
     'sme_owner': UserRole.admin,
     'sme_admin': UserRole.admin,
-    'super_admin': UserRole.superAdmin,
-    'superadmin': UserRole.superAdmin,
+    'admin': UserRole.admin,
     'manager': UserRole.manager,
+    'accountant': UserRole.accountant,
+    'chief_accountant': UserRole.accountant,
+    'expert_comptable': UserRole.viewer,
+    'audit': UserRole.viewer,
+    'analyst': UserRole.viewer,
+    'hr': UserRole.viewer,
+    'treasurer': UserRole.cashier,
+    'viewer': UserRole.viewer,
     'commerce_manager': UserRole.manager,
+    'cashier': UserRole.cashier,
+    'salesperson': UserRole.sales,
+    'stock_keeper': UserRole.inventoryManager,
+    'production_manager': UserRole.viewer,
+    'production_planner': UserRole.viewer,
+    'production_operator': UserRole.viewer,
+    'quality_controller': UserRole.viewer,
+    'maintenance_technician': UserRole.technician,
+    'procurement_officer': UserRole.inventoryManager,
     'asset_manager': UserRole.manager,
+    'receptionist': UserRole.receptionist,
+    'technician': UserRole.technician,
+    'housekeeping': UserRole.staff,
+    'portfolio_manager': UserRole.viewer,
+    'credit_analyst': UserRole.viewer,
+    'loan_officer': UserRole.viewer,
+    'risk_officer': UserRole.viewer,
+    'compliance_officer': UserRole.viewer,
     'avec_president': UserRole.manager,
     'avec_secretary': UserRole.manager,
-    'accountant': UserRole.accountant,
     'avec_treasurer': UserRole.accountant,
-    'cashier': UserRole.cashier,
-    'sales': UserRole.sales,
-    'salesperson': UserRole.sales,
-    'inventory_manager': UserRole.inventoryManager,
-    'stock_keeper': UserRole.inventoryManager,
-    'procurement_officer': UserRole.inventoryManager,
+    'program_manager': UserRole.viewer,
+    'program_field_agent': UserRole.viewer,
+    'program_me_officer': UserRole.viewer,
+    'program_auditor': UserRole.viewer,
+    'program_accountant': UserRole.viewer,
     'staff': UserRole.staff,
     'user': UserRole.staff,
     'sme_user': UserRole.staff,
+    'sales': UserRole.sales,
+    'inventory_manager': UserRole.inventoryManager,
     'customer_support': UserRole.customerSupport,
+    'superadmin': UserRole.superAdmin,
   };
 
   /// La valeur désigne-t-elle un rôle réel (et non une absence de rôle) ?
@@ -114,7 +160,9 @@ extension UserRoleExtension on UserRole {
 
   /// Crée un UserRole depuis la valeur API
   static UserRole fromApiValue(String value) {
-    return _apiValues[value.trim().toLowerCase()] ?? UserRole.staff;
+    final key = value.trim().toLowerCase().replaceAll(RegExp(r'[\s-]+'), '_');
+    if (key.isEmpty) return UserRole.staff;
+    return _apiValues[key] ?? UserRole.viewer;
   }
 
   /// Retourne le nom d'affichage localisé
@@ -138,6 +186,12 @@ extension UserRoleExtension on UserRole {
         return l10n.userRoleStaff;
       case UserRole.customerSupport:
         return l10n.userRoleCustomerSupport;
+      case UserRole.receptionist:
+        return 'Réceptionniste';
+      case UserRole.technician:
+        return 'Technicien';
+      case UserRole.viewer:
+        return 'Lecteur';
     }
   }
 
@@ -162,6 +216,12 @@ extension UserRoleExtension on UserRole {
         return l10n.userRoleStaffDescription;
       case UserRole.customerSupport:
         return l10n.userRoleCustomerSupportDescription;
+      case UserRole.receptionist:
+        return 'Réservations et accueil';
+      case UserRole.technician:
+        return 'Maintenance et interventions';
+      case UserRole.viewer:
+        return 'Consultation en lecture seule';
     }
   }
 
@@ -186,6 +246,12 @@ extension UserRoleExtension on UserRole {
         return Icons.person;
       case UserRole.customerSupport:
         return Icons.support_agent;
+      case UserRole.receptionist:
+        return Icons.room_service;
+      case UserRole.technician:
+        return Icons.build;
+      case UserRole.viewer:
+        return Icons.visibility;
     }
   }
 
@@ -210,6 +276,12 @@ extension UserRoleExtension on UserRole {
         return Colors.grey;
       case UserRole.customerSupport:
         return Colors.indigo;
+      case UserRole.receptionist:
+        return Colors.cyan;
+      case UserRole.technician:
+        return Colors.brown;
+      case UserRole.viewer:
+        return Colors.blueGrey;
     }
   }
 
@@ -232,12 +304,21 @@ extension UserRoleExtension on UserRole {
         return 3;
       case UserRole.customerSupport:
         return 4;
+      case UserRole.receptionist:
+        return 3;
+      case UserRole.technician:
+        return 3;
+      case UserRole.viewer:
+        return 6;
       case UserRole.staff:
         return 5;
     }
   }
 
   /// Vérifie si ce rôle a des droits d'administration
+  /// Lecture seule : le serveur refuse toute écriture métier.
+  bool get isReadOnly => this == UserRole.viewer;
+
   bool get isAdmin => this == UserRole.admin || this == UserRole.superAdmin;
 
   /// Vérifie si ce rôle est super admin
