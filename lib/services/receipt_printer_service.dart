@@ -15,6 +15,7 @@ import 'package:wanzo/features/sales/models/sale.dart';
 import 'package:wanzo/features/sales/models/sale_item.dart';
 import 'package:wanzo/features/settings/models/settings.dart';
 import '../features/invoice/utils/invoice_money.dart';
+import 'package:wanzo/core/units/measurement_units.dart';
 
 /// Types de connexion pris en charge pour l'imprimante.
 enum ThermalConnectionType {
@@ -220,7 +221,7 @@ class ReceiptPrinterService {
       // Nom du produit tronqué dynamiquement selon la largeur du montant
       bytes.addAll(_escLine(_rowText(item.productName, amtStr)));
       bytes.addAll(
-        _escLine('  ${item.quantity} x ${_fmtUnit(money, item, currency)}'),
+        _escLine('  ${lineQuantityLabel(item.quantity, item.unitCode)} x ${_fmtUnit(money, item, currency)}'),
       );
     }
     bytes.addAll(_escSeparator());
@@ -540,7 +541,7 @@ class ReceiptPrinterService {
     line('-' * _colWidth);
     for (final item in sale.items) {
       line(_rowText(item.productName, _fmt(money.lineTotal(item), currency)));
-      line('  ${item.quantity} x ${_fmtUnit(money, item, currency)}');
+      line('  ${lineQuantityLabel(item.quantity, item.unitCode)} x ${_fmtUnit(money, item, currency)}');
     }
     line('-' * _colWidth);
     bold(true);
@@ -720,7 +721,7 @@ class ReceiptPrinterService {
                 children: [
                   rowLR(item.productName,
                       _fmt(money.lineTotal(item), currency)),
-                  pw.Text('  ${item.quantity} x ${_fmtUnit(money, item, currency)}',
+                  pw.Text('  ${lineQuantityLabel(item.quantity, item.unitCode)} x ${_fmtUnit(money, item, currency)}',
                       style: pw.TextStyle(font: mono, fontSize: 8)),
                 ],
               ),

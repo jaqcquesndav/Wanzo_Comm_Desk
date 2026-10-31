@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:hive/hive.dart';
 import 'package:json_annotation/json_annotation.dart';
+import 'package:wanzo/core/units/measurement_units.dart';
 import 'package:flutter/material.dart'; // Ajout pour IconData et Icons
 import 'package:wanzo/core/enums/business_unit_enums.dart';
 import 'package:wanzo/features/inventory/models/product_attribute.dart';
@@ -380,6 +381,69 @@ class Product extends Equatable {
   /// Produit actif : vendable, présent dans les listes.
   bool get isActive => deactivatedAt == null;
 
+  /// Unité réelle du catalogue partagé (carton, bottle, bag_50kg...).
+  /// Null : [unit] (enum historique) fait foi. [unit] reste la projection
+  /// historique, seule valeur que lisent les anciennes versions de l'app.
+  @HiveField(40)
+  final String? unitCode;
+
+  /// Conditionnements (1 carton = 24 unités de base), en JSON : pas
+  /// d'adaptateur Hive dédié. Null : inconnus (jamais renvoyés au serveur,
+  /// pour ne pas effacer ceux d'un autre appareil) ; '[]' : aucun.
+  @HiveField(41)
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? packagingsJson;
+
+  /// Code de l'unité de base (stock), réel ou historique.
+  String get baseUnitCode => unitCode ?? unit.name;
+
+  /// Conditionnements déclarés sur la fiche.
+  List<ProductPackaging> get packagings =>
+      ProductPackaging.listFromJson(packagingsJson);
+
+  /// Stock lisible : « 3 cartons et 5 bouteilles ».
+  String get stockLabel => MeasurementUnits.formatStockBreakdown(
+      stockQuantity, baseUnitCode, packagings);
+
+  /// Unités de vente ou d'achat : la base puis les conditionnements.
+  List<SellableUnit> get sellableUnits => MeasurementUnits.sellableUnits(
+        baseUnitCode,
+        packagings,
+        baseSellingPriceInCdf: sellingPriceInCdf,
+        baseCostPriceInCdf: costPriceInCdf,
+      );
+
+  /// Lecture tolérante de l'unité : un code que l'enum historique ne connaît
+  /// pas (carton, ou unité ajoutée plus tard au serveur) faisait échouer
+  /// toute la liste. Il passe dans unitCode, unit reçoit sa projection.
+  static Map<String, dynamic> normalizeUnitJson(Map<String, dynamic> json) {
+    final out = Map<String, dynamic>.from(json);
+    final legacyNames = {for (final u in ProductUnit.values) u.name};
+    final rawUnit = out['unit']?.toString().trim();
+    final rawCode = out['unitCode']?.toString().trim();
+    String? code = (rawCode != null && rawCode.isNotEmpty)
+        ? (MeasurementUnits.normalize(rawCode) ?? rawCode)
+        : null;
+    if (rawUnit == null || !legacyNames.contains(rawUnit)) {
+      if (code == null && rawUnit != null && rawUnit.isNotEmpty) {
+        code = MeasurementUnits.normalize(rawUnit) ?? rawUnit;
+      }
+      final legacy = MeasurementUnits.legacyOf(code);
+      out['unit'] = legacyNames.contains(legacy) ? legacy : 'piece';
+    }
+    out['unitCode'] = (code == null || code == out['unit']) ? null : code;
+    return out;
+  }
+
+  static Product _withPackagings(Product p, Map<String, dynamic> json) {
+    final raw = json['packagings'];
+    if (raw is! List) return p;
+    return p.copyWith(
+        packagingsJson:
+            ProductPackaging.encodeList(ProductPackaging.listFromJson(raw)) ??
+                '[]');
+  }
+
   /// Constructeur
   const Product({
     required this.id,
@@ -391,6 +455,8 @@ class Product extends Equatable {
     required this.sellingPriceInCdf,
     required this.stockQuantity,
     required this.unit,
+    this.unitCode,
+    this.packagingsJson,
     this.alertThreshold = 5,
     required this.createdAt,
     required this.updatedAt,
@@ -421,7 +487,8 @@ class Product extends Equatable {
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
-    final base = _$ProductFromJson(json);
+    final base = Product._withPackagings(
+        _$ProductFromJson(Product.normalizeUnitJson(json)), json);
     final parsedImages = ProductImage.listFromJson(json['images']);
     // Rétro-compat : sans galerie, on retombe sur imageUrl via primaryImageUrl.
     final rawDeactivated = json['deactivatedAt'];
@@ -436,6 +503,9 @@ class Product extends Equatable {
 
   Map<String, dynamic> toJson() {
     final map = _$ProductToJson(this);
+    if (packagingsJson != null) {
+      map['packagings'] = [for (final p in packagings) p.toJson()];
+    }
     if (images.isNotEmpty) {
       map['images'] = images.map((e) => e.toJson()).toList();
     }
@@ -495,6 +565,8 @@ class Product extends Equatable {
 
   /// Crée une copie du produit avec des attributs modifiés
   Product copyWith({
+    String? unitCode,
+    String? packagingsJson,
     String? id,
     String? name,
     String? description,
@@ -542,6 +614,8 @@ class Product extends Equatable {
       sellingPriceInCdf: sellingPriceInCdf ?? this.sellingPriceInCdf,
       stockQuantity: stockQuantity ?? this.stockQuantity,
       unit: unit ?? this.unit,
+      unitCode: unitCode ?? this.unitCode,
+      packagingsJson: packagingsJson ?? this.packagingsJson,
       alertThreshold: alertThreshold ?? this.alertThreshold,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -584,6 +658,8 @@ class Product extends Equatable {
     sellingPriceInCdf,
     stockQuantity,
     unit,
+    unitCode,
+    packagingsJson,
     alertThreshold,
     createdAt,
     updatedAt,

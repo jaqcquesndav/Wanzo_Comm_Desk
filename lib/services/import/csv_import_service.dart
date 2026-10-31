@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../features/inventory/models/product.dart';
+import '../../core/units/measurement_units.dart';
 
 /// Résultat de l'import CSV
 class CsvImportResult {
@@ -177,7 +178,9 @@ class CsvImportService {
     if (name == null || name.isEmpty) return null;
 
     final category = _parseCategory(row['categorie'] ?? 'other');
-    final unit = _parseUnit(row['unite'] ?? 'piece');
+    final rawUnit = row['unite'] ?? 'piece';
+    final unit = _uniteCatalogue(rawUnit, _parseUnit);
+    final unitCode = _uniteCode(rawUnit);
     final costPrice = double.tryParse(row['prix_achat'] ?? '') ?? 0.0;
     final sellingPrice = double.tryParse(row['prix_vente'] ?? '') ?? 0.0;
     final quantity = double.tryParse(row['quantite'] ?? '') ?? 0.0;
@@ -208,6 +211,7 @@ class CsvImportService {
       sellingPriceInCdf: sellingPriceInCdf,
       stockQuantity: quantity,
       unit: unit,
+      unitCode: unitCode,
       alertThreshold: double.tryParse(row['seuil_alerte'] ?? '') ?? 5,
       createdAt: now,
       updatedAt: now,
@@ -320,4 +324,20 @@ class CsvImportService {
         'Savon Palmolive,hygiene,piece,500,800,100,CDF,1,123456789,Savon de toilette,10,16,,savon;hygiene';
     return '$headers\n$sampleRow';
   }
+}
+
+/// Code du catalogue lu dans la colonne unité (« carton », « Sac de 50 kg »
+/// non reconnu reste piece) ; null quand l'enum historique suffit.
+String? _uniteCode(String s) {
+  final c = MeasurementUnits.normalize(s);
+  return (c == null || c == MeasurementUnits.legacyOf(c)) ? null : c;
+}
+
+ProductUnit _uniteCatalogue(String s, ProductUnit Function(String) ancien) {
+  final c = MeasurementUnits.normalize(s);
+  if (c == null) return ancien(s);
+  return ProductUnit.values.firstWhere(
+    (u) => u.name == MeasurementUnits.legacyOf(c),
+    orElse: () => ProductUnit.other,
+  );
 }

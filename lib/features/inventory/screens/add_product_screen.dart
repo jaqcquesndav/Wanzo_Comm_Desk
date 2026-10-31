@@ -20,6 +20,8 @@ import '../bloc/inventory_bloc.dart';
 import '../bloc/inventory_event.dart';
 import '../bloc/inventory_state.dart';
 import '../models/product.dart';
+import 'package:wanzo/core/units/measurement_units.dart';
+import 'package:wanzo/core/units/unit_fields.dart';
 import 'package:wanzo/core/enums/currency_enum.dart'; // Added
 import 'package:wanzo/features/settings/presentation/cubit/currency_settings_cubit.dart'; // Changed
 import 'package:wanzo/core/services/currency_service.dart'; // Added
@@ -66,6 +68,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   late ProductCategory _selectedCategory;
   late ProductUnit _selectedUnit;
+  // Unité réelle (catalogue partagé) et conditionnements (1 carton = 24).
+  late String _unitCode;
+  List<ProductPackaging> _packagings = const [];
+  bool _packagingsTouched = false;
   String? _selectedSubCategory;
 
   String?
@@ -158,6 +164,20 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
     _selectedCategory = widget.product?.category ?? ProductCategory.other;
     _selectedUnit = widget.product?.unit ?? ProductUnit.piece;
+    _unitCode = widget.product?.baseUnitCode ?? _selectedUnit.name;
+    // Prix des conditionnements affichés dans la devise de saisie.
+    final rate = (widget.product?.inputExchangeRate ?? 1) > 0
+        ? widget.product!.inputExchangeRate
+        : 1.0;
+    _packagings = [
+      for (final p in widget.product?.packagings ?? const <ProductPackaging>[])
+        ProductPackaging(
+          unitCode: p.unitCode,
+          contains: p.contains,
+          sellingPriceInCdf:
+              p.sellingPriceInCdf == null ? null : p.sellingPriceInCdf! / rate,
+        ),
+    ];
     _selectedSubCategory = widget.product?.subCategory;
 
     // Initialize expiration date fields
@@ -807,33 +827,32 @@ class _AddProductScreenState extends State<AddProductScreen> {
                           // Unité
                           Expanded(
                             flex: 1,
-                            child: DropdownButtonFormField<ProductUnit>(
-                              isExpanded: true,
-                              value: _selectedUnit,
-                              decoration: InputDecoration(
-                                labelText: l10n.productUnitLabel,
-                                border: const OutlineInputBorder(),
-                              ),
-                              items:
-                                  ProductUnit.values.map((unit) {
-                                    return DropdownMenuItem<ProductUnit>(
-                                      value: unit,
-                                      child: Text(
-                                        _getUnitName(unit, l10n),
-                                        overflow: TextOverflow.ellipsis,
-                                      ), // Pass l10n
-                                    );
-                                  }).toList(),
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(() {
-                                    _selectedUnit = value;
-                                  });
-                                }
-                              },
+                            child: MeasurementUnitField(
+                              label: l10n.productUnitLabel,
+                              value: _unitCode,
+                              usage: _unitUsage(context),
+                              onChanged: (code) => setState(() {
+                                _unitCode = code;
+                                _selectedUnit = ProductUnit.values.firstWhere(
+                                  (u) => u.name == MeasurementUnits.legacyOf(code),
+                                  orElse: () => ProductUnit.other,
+                                );
+                              }),
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: WanzoSpacing.sm),
+                      // Conditionnements : vendu ou acheté au carton, au demi-carton...
+                      PackagingEditor(
+                        key: ValueKey('pack-$_unitCode'),
+                        baseUnitCode: _unitCode,
+                        initial: _packagings,
+                        priceSuffix: (_selectedInputCurrency ?? _appActiveCurrency).code,
+                        onChanged: (list) {
+                          _packagings = list;
+                          _packagingsTouched = true;
+                        },
                       ),
                       const SizedBox(height: WanzoSpacing.md),
 
@@ -1130,6 +1149,21 @@ class _AddProductScreenState extends State<AddProductScreen> {
       sellingPriceInCdf: sellingPriceInCdf,
       stockQuantity: stockQuantity,
       unit: _selectedUnit,
+      unitCode: _unitCode == _selectedUnit.name ? null : _unitCode,
+      packagingsJson: (_packagingsTouched || _packagings.isNotEmpty)
+          ? (ProductPackaging.encodeList([
+                for (final p in _packagings)
+                  ProductPackaging(
+                    unitCode: p.unitCode,
+                    contains: p.contains,
+                    sellingPriceInCdf: p.sellingPriceInCdf == null
+                        ? null
+                        : currencyService.convertToCdf(
+                            p.sellingPriceInCdf!, inputCurrency),
+                  ),
+              ]) ??
+              '[]')
+          : widget.product?.packagingsJson,
       alertThreshold: double.tryParse(_alertThresholdController.text) ?? 5.0,
       createdAt: widget.product?.createdAt ?? DateTime.now(),
       updatedAt: DateTime.now(),
@@ -1189,29 +1223,16 @@ class _AddProductScreenState extends State<AddProductScreen> {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 
+  /// Unités déjà employées par la boutique : en tête du sélecteur.
+  Map<String, int> _unitUsage(BuildContext context) {
+    final state = context.read<InventoryBloc>().state;
+    if (state is! ProductsLoaded) return const {};
+    return unitUsage(state.products.map((p) => p.baseUnitCode));
+  }
+
   String _getCategoryName(ProductCategory category, AppLocalizations l10n) {
     // Utiliser l'extension pour obtenir le nom de la catégorie
     return category.displayName;
   }
 
-  String _getUnitName(ProductUnit unit, AppLocalizations l10n) {
-    switch (unit) {
-      case ProductUnit.piece:
-        return l10n.productUnitPiece;
-      case ProductUnit.kg:
-        return l10n.productUnitKg;
-      case ProductUnit.g:
-        return l10n.productUnitG;
-      case ProductUnit.l:
-        return l10n.productUnitL;
-      case ProductUnit.ml:
-        return l10n.productUnitMl;
-      case ProductUnit.package:
-        return l10n.productUnitPackage;
-      case ProductUnit.box:
-        return l10n.productUnitBox;
-      case ProductUnit.other:
-        return l10n.productUnitOther;
-    }
-  }
 }

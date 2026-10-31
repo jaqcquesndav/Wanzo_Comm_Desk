@@ -1,0 +1,952 @@
+{
+  "version": 1,
+  "units": [
+    {
+      "code": "piece",
+      "kind": "count",
+      "labels": {
+        "fr": "Pièce",
+        "en": "Piece",
+        "sw": "Kipande",
+        "ln": "Eteni"
+      },
+      "pluralFr": "Pièces",
+      "legacy": "piece",
+      "integer": true,
+      "rank": 1
+    },
+    {
+      "code": "unit",
+      "kind": "count",
+      "labels": {
+        "fr": "Unité",
+        "en": "Unit",
+        "sw": "Kimoja",
+        "ln": "Moko"
+      },
+      "pluralFr": "Unités",
+      "legacy": "piece",
+      "integer": true,
+      "rank": 2
+    },
+    {
+      "code": "pair",
+      "kind": "count",
+      "labels": {
+        "fr": "Paire",
+        "en": "Pair",
+        "sw": "Jozi",
+        "ln": "Peya"
+      },
+      "pluralFr": "Paires",
+      "legacy": "piece",
+      "integer": true,
+      "rank": 30
+    },
+    {
+      "code": "head",
+      "kind": "count",
+      "labels": {
+        "fr": "Tête",
+        "en": "Head",
+        "sw": "Kichwa",
+        "ln": "Moto"
+      },
+      "pluralFr": "Têtes",
+      "legacy": "piece",
+      "integer": true,
+      "rank": 31
+    },
+    {
+      "code": "bar",
+      "kind": "count",
+      "labels": {
+        "fr": "Barre",
+        "en": "Bar",
+        "sw": "Mche",
+        "ln": "Libenga"
+      },
+      "pluralFr": "Barres",
+      "legacy": "piece",
+      "integer": true,
+      "rank": 40
+    },
+    {
+      "code": "sheet",
+      "kind": "count",
+      "labels": {
+        "fr": "Feuille",
+        "en": "Sheet",
+        "sw": "Bati",
+        "ln": "Lokasa"
+      },
+      "pluralFr": "Feuilles",
+      "legacy": "piece",
+      "integer": true,
+      "rank": 41
+    },
+    {
+      "code": "kg",
+      "symbol": "kg",
+      "kind": "weight",
+      "labels": {
+        "fr": "Kilogramme (kg)",
+        "en": "Kilogram (kg)",
+        "sw": "Kilo (kg)",
+        "ln": "Kilo (kg)"
+      },
+      "legacy": "kg",
+      "integer": false,
+      "rank": 3,
+      "si": {
+        "dim": "mass",
+        "factor": 1000
+      }
+    },
+    {
+      "code": "g",
+      "symbol": "g",
+      "kind": "weight",
+      "labels": {
+        "fr": "Gramme (g)",
+        "en": "Gram (g)",
+        "sw": "Gramu (g)",
+        "ln": "Gramu (g)"
+      },
+      "legacy": "g",
+      "integer": false,
+      "rank": 20,
+      "si": {
+        "dim": "mass",
+        "factor": 1
+      }
+    },
+    {
+      "code": "tonne",
+      "symbol": "t",
+      "kind": "weight",
+      "labels": {
+        "fr": "Tonne (t)",
+        "en": "Tonne (t)",
+        "sw": "Tani (t)",
+        "ln": "Tɔ́ni (t)"
+      },
+      "pluralFr": "Tonnes",
+      "legacy": "kg",
+      "integer": false,
+      "rank": 45,
+      "si": {
+        "dim": "mass",
+        "factor": 1000000
+      }
+    },
+    {
+      "code": "l",
+      "symbol": "L",
+      "kind": "volume",
+      "labels": {
+        "fr": "Litre (L)",
+        "en": "Litre (L)",
+        "sw": "Lita (L)",
+        "ln": "Litre (L)"
+      },
+      "legacy": "l",
+      "integer": false,
+      "rank": 10,
+      "si": {
+        "dim": "volume",
+        "factor": 1000
+      }
+    },
+    {
+      "code": "ml",
+      "symbol": "ml",
+      "kind": "volume",
+      "labels": {
+        "fr": "Millilitre (ml)",
+        "en": "Millilitre (ml)",
+        "sw": "Mililita (ml)",
+        "ln": "Mililitele (ml)"
+      },
+      "legacy": "ml",
+      "integer": false,
+      "rank": 21,
+      "si": {
+        "dim": "volume",
+        "factor": 1
+      }
+    },
+    {
+      "code": "cl",
+      "symbol": "cl",
+      "kind": "volume",
+      "labels": {
+        "fr": "Centilitre (cl)",
+        "en": "Centilitre (cl)",
+        "sw": "Sentilita (cl)",
+        "ln": "Santilitele (cl)"
+      },
+      "legacy": "ml",
+      "integer": false,
+      "rank": 22,
+      "si": {
+        "dim": "volume",
+        "factor": 10
+      }
+    },
+    {
+      "code": "m3",
+      "symbol": "m³",
+      "kind": "volume",
+      "labels": {
+        "fr": "Mètre cube (m³)",
+        "en": "Cubic metre (m³)",
+        "sw": "Mita za ujazo (m³)",
+        "ln": "Metele kibe (m³)"
+      },
+      "legacy": "other",
+      "integer": false,
+      "rank": 46,
+      "si": {
+        "dim": "volume",
+        "factor": 1000000
+      }
+    },
+    {
+      "code": "m",
+      "symbol": "m",
+      "kind": "length",
+      "labels": {
+        "fr": "Mètre (m)",
+        "en": "Metre (m)",
+        "sw": "Mita (m)",
+        "ln": "Metele (m)"
+      },
+      "legacy": "other",
+      "integer": false,
+      "rank": 23,
+      "si": {
+        "dim": "length",
+        "factor": 100
+      }
+    },
+    {
+      "code": "cm",
+      "symbol": "cm",
+      "kind": "length",
+      "labels": {
+        "fr": "Centimètre (cm)",
+        "en": "Centimetre (cm)",
+        "sw": "Sentimita (cm)",
+        "ln": "Santimetele (cm)"
+      },
+      "legacy": "other",
+      "integer": false,
+      "rank": 47,
+      "si": {
+        "dim": "length",
+        "factor": 1
+      }
+    },
+    {
+      "code": "mm",
+      "symbol": "mm",
+      "kind": "length",
+      "labels": {
+        "fr": "Millimètre (mm)",
+        "en": "Millimetre (mm)",
+        "sw": "Milimita (mm)",
+        "ln": "Milimetele (mm)"
+      },
+      "legacy": "other",
+      "integer": false,
+      "rank": 48,
+      "si": {
+        "dim": "length",
+        "factor": 0.1
+      }
+    },
+    {
+      "code": "yard",
+      "symbol": "yd",
+      "kind": "length",
+      "labels": {
+        "fr": "Yard",
+        "en": "Yard",
+        "sw": "Yadi",
+        "ln": "Yadi"
+      },
+      "pluralFr": "Yards",
+      "legacy": "other",
+      "integer": false,
+      "rank": 24,
+      "si": {
+        "dim": "length",
+        "factor": 91.44
+      }
+    },
+    {
+      "code": "m2",
+      "symbol": "m²",
+      "kind": "area",
+      "labels": {
+        "fr": "Mètre carré (m²)",
+        "en": "Square metre (m²)",
+        "sw": "Mita mraba (m²)",
+        "ln": "Metele kare (m²)"
+      },
+      "legacy": "other",
+      "integer": false,
+      "rank": 44,
+      "si": {
+        "dim": "area",
+        "factor": 10000
+      }
+    },
+    {
+      "code": "carton",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Carton",
+        "en": "Carton",
+        "sw": "Katoni",
+        "ln": "Katoni"
+      },
+      "pluralFr": "Cartons",
+      "legacy": "box",
+      "integer": true,
+      "rank": 4
+    },
+    {
+      "code": "half_carton",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Demi-carton",
+        "en": "Half carton",
+        "sw": "Nusu katoni",
+        "ln": "Ndambo ya katoni"
+      },
+      "pluralFr": "Demi-cartons",
+      "legacy": "box",
+      "integer": true,
+      "rank": 5,
+      "halfOf": "carton"
+    },
+    {
+      "code": "package",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Paquet",
+        "en": "Pack",
+        "sw": "Pakiti",
+        "ln": "Paki"
+      },
+      "pluralFr": "Paquets",
+      "legacy": "package",
+      "integer": true,
+      "rank": 6
+    },
+    {
+      "code": "sachet",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Sachet",
+        "en": "Sachet",
+        "sw": "Kifuko",
+        "ln": "Saké"
+      },
+      "pluralFr": "Sachets",
+      "legacy": "package",
+      "integer": true,
+      "rank": 7
+    },
+    {
+      "code": "box",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Boîte",
+        "en": "Box",
+        "sw": "Boksi",
+        "ln": "Sanduku"
+      },
+      "pluralFr": "Boîtes",
+      "legacy": "box",
+      "integer": true,
+      "rank": 8
+    },
+    {
+      "code": "bottle",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Bouteille",
+        "en": "Bottle",
+        "sw": "Chupa",
+        "ln": "Molangi"
+      },
+      "pluralFr": "Bouteilles",
+      "legacy": "piece",
+      "integer": true,
+      "rank": 9
+    },
+    {
+      "code": "can",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Canette",
+        "en": "Can",
+        "sw": "Kopo",
+        "ln": "Kanéti"
+      },
+      "pluralFr": "Canettes",
+      "legacy": "piece",
+      "integer": true,
+      "rank": 25
+    },
+    {
+      "code": "bag",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Sac",
+        "en": "Bag",
+        "sw": "Gunia",
+        "ln": "Saki"
+      },
+      "pluralFr": "Sacs",
+      "legacy": "package",
+      "integer": true,
+      "rank": 11
+    },
+    {
+      "code": "bag_25kg",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Sac de 25 kg",
+        "en": "25 kg bag",
+        "sw": "Gunia la kilo 25",
+        "ln": "Saki ya kilo 25"
+      },
+      "pluralFr": "Sacs de 25 kg",
+      "legacy": "package",
+      "integer": true,
+      "rank": 12,
+      "measure": {
+        "dim": "mass",
+        "amount": 25000
+      }
+    },
+    {
+      "code": "bag_50kg",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Sac de 50 kg",
+        "en": "50 kg bag",
+        "sw": "Gunia la kilo 50",
+        "ln": "Saki ya kilo 50"
+      },
+      "pluralFr": "Sacs de 50 kg",
+      "legacy": "package",
+      "integer": true,
+      "rank": 13,
+      "measure": {
+        "dim": "mass",
+        "amount": 50000
+      }
+    },
+    {
+      "code": "half_bag",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Demi-sac",
+        "en": "Half bag",
+        "sw": "Nusu gunia",
+        "ln": "Ndambo ya saki"
+      },
+      "pluralFr": "Demi-sacs",
+      "legacy": "package",
+      "integer": true,
+      "rank": 14,
+      "halfOf": "bag"
+    },
+    {
+      "code": "dozen",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Douzaine",
+        "en": "Dozen",
+        "sw": "Dazeni",
+        "ln": "Zina"
+      },
+      "pluralFr": "Douzaines",
+      "legacy": "package",
+      "integer": true,
+      "rank": 15,
+      "defaultContains": 12
+    },
+    {
+      "code": "half_dozen",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Demi-douzaine",
+        "en": "Half dozen",
+        "sw": "Nusu dazeni",
+        "ln": "Ndambo ya zina"
+      },
+      "pluralFr": "Demi-douzaines",
+      "legacy": "package",
+      "integer": true,
+      "rank": 16,
+      "defaultContains": 6
+    },
+    {
+      "code": "tray",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Plateau (30 œufs)",
+        "en": "Tray (30 eggs)",
+        "sw": "Trei (mayai 30)",
+        "ln": "Plateau (maki 30)"
+      },
+      "pluralFr": "Plateaux",
+      "legacy": "box",
+      "integer": true,
+      "rank": 17,
+      "defaultContains": 30
+    },
+    {
+      "code": "crate",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Casier",
+        "en": "Crate",
+        "sw": "Kreti",
+        "ln": "Kazie"
+      },
+      "pluralFr": "Casiers",
+      "legacy": "box",
+      "integer": true,
+      "rank": 18,
+      "defaultContains": 24
+    },
+    {
+      "code": "bidon",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Bidon",
+        "en": "Can (bidon)",
+        "sw": "Bidoni",
+        "ln": "Bidɔ"
+      },
+      "pluralFr": "Bidons",
+      "legacy": "package",
+      "integer": true,
+      "rank": 19
+    },
+    {
+      "code": "jerrican_5l",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Jerrican de 5 L",
+        "en": "5 L jerrican",
+        "sw": "Dumu la lita 5",
+        "ln": "Bidɔ ya litele 5"
+      },
+      "pluralFr": "Jerricans de 5 L",
+      "legacy": "package",
+      "integer": true,
+      "rank": 26,
+      "measure": {
+        "dim": "volume",
+        "amount": 5000
+      }
+    },
+    {
+      "code": "jerrican_10l",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Jerrican de 10 L",
+        "en": "10 L jerrican",
+        "sw": "Dumu la lita 10",
+        "ln": "Bidɔ ya litele 10"
+      },
+      "pluralFr": "Jerricans de 10 L",
+      "legacy": "package",
+      "integer": true,
+      "rank": 27,
+      "measure": {
+        "dim": "volume",
+        "amount": 10000
+      }
+    },
+    {
+      "code": "jerrican_20l",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Jerrican de 20 L",
+        "en": "20 L jerrican",
+        "sw": "Dumu la lita 20",
+        "ln": "Bidɔ ya litele 20"
+      },
+      "pluralFr": "Jerricans de 20 L",
+      "legacy": "package",
+      "integer": true,
+      "rank": 28,
+      "measure": {
+        "dim": "volume",
+        "amount": 20000
+      }
+    },
+    {
+      "code": "jerrican_25l",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Jerrican de 25 L",
+        "en": "25 L jerrican",
+        "sw": "Dumu la lita 25",
+        "ln": "Bidɔ ya litele 25"
+      },
+      "pluralFr": "Jerricans de 25 L",
+      "legacy": "package",
+      "integer": true,
+      "rank": 29,
+      "measure": {
+        "dim": "volume",
+        "amount": 25000
+      }
+    },
+    {
+      "code": "drum",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Fût",
+        "en": "Drum",
+        "sw": "Pipa",
+        "ln": "Ngɔ́mbɛ"
+      },
+      "pluralFr": "Fûts",
+      "legacy": "package",
+      "integer": true,
+      "rank": 35,
+      "measure": {
+        "dim": "volume",
+        "amount": 200000
+      }
+    },
+    {
+      "code": "roll",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Rouleau",
+        "en": "Roll",
+        "sw": "Roli",
+        "ln": "Rulo"
+      },
+      "pluralFr": "Rouleaux",
+      "legacy": "package",
+      "integer": true,
+      "rank": 36
+    },
+    {
+      "code": "bale",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Ballot",
+        "en": "Bale",
+        "sw": "Belo",
+        "ln": "Balo"
+      },
+      "pluralFr": "Ballots",
+      "legacy": "package",
+      "integer": true,
+      "rank": 37
+    },
+    {
+      "code": "pallet",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Palette",
+        "en": "Pallet",
+        "sw": "Paleti",
+        "ln": "Paleti"
+      },
+      "pluralFr": "Palettes",
+      "legacy": "package",
+      "integer": true,
+      "rank": 39
+    },
+    {
+      "code": "lot",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Lot",
+        "en": "Lot",
+        "sw": "Seti",
+        "ln": "Lot"
+      },
+      "pluralFr": "Lots",
+      "legacy": "package",
+      "integer": true,
+      "rank": 38
+    },
+    {
+      "code": "ream",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Rame (500 feuilles)",
+        "en": "Ream (500 sheets)",
+        "sw": "Rimu (karatasi 500)",
+        "ln": "Rame (nkasa 500)"
+      },
+      "pluralFr": "Rames",
+      "legacy": "package",
+      "integer": true,
+      "rank": 42,
+      "defaultContains": 500
+    },
+    {
+      "code": "blister",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Plaquette",
+        "en": "Blister",
+        "sw": "Kibao cha vidonge",
+        "ln": "Plaketi"
+      },
+      "pluralFr": "Plaquettes",
+      "legacy": "package",
+      "integer": true,
+      "rank": 43
+    },
+    {
+      "code": "wrapper",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Pagne (6 yards)",
+        "en": "Wrapper (6 yards)",
+        "sw": "Kitenge (yadi 6)",
+        "ln": "Liputa (yadi 6)"
+      },
+      "pluralFr": "Pagnes",
+      "legacy": "other",
+      "integer": true,
+      "rank": 32,
+      "measure": {
+        "dim": "length",
+        "amount": 548.64
+      }
+    },
+    {
+      "code": "half_piece",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Demi-pièce (3 yards)",
+        "en": "Half piece (3 yards)",
+        "sw": "Nusu kitenge (yadi 3)",
+        "ln": "Ndambo ya liputa (yadi 3)"
+      },
+      "pluralFr": "Demi-pièces",
+      "legacy": "other",
+      "integer": true,
+      "rank": 33,
+      "measure": {
+        "dim": "length",
+        "amount": 274.32
+      }
+    },
+    {
+      "code": "bucket",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Seau",
+        "en": "Bucket",
+        "sw": "Ndoo",
+        "ln": "Seau"
+      },
+      "pluralFr": "Seaux",
+      "legacy": "other",
+      "integer": true,
+      "rank": 50
+    },
+    {
+      "code": "basin",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Bassin",
+        "en": "Basin",
+        "sw": "Beseni",
+        "ln": "Bassin"
+      },
+      "pluralFr": "Bassins",
+      "legacy": "other",
+      "integer": true,
+      "rank": 51
+    },
+    {
+      "code": "heap",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Tas",
+        "en": "Heap",
+        "sw": "Fungu",
+        "ln": "Liboke"
+      },
+      "pluralFr": "Tas",
+      "legacy": "other",
+      "integer": true,
+      "rank": 52
+    },
+    {
+      "code": "measure",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Mesure",
+        "en": "Measure",
+        "sw": "Kipimo",
+        "ln": "Mezire"
+      },
+      "pluralFr": "Mesures",
+      "legacy": "other",
+      "integer": true,
+      "rank": 53
+    },
+    {
+      "code": "glass",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Verre",
+        "en": "Glass",
+        "sw": "Glasi",
+        "ln": "Kopo"
+      },
+      "pluralFr": "Verres",
+      "legacy": "other",
+      "integer": true,
+      "rank": 54
+    },
+    {
+      "code": "cup",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Gobelet",
+        "en": "Cup",
+        "sw": "Kikombe",
+        "ln": "Gobelɛ"
+      },
+      "pluralFr": "Gobelets",
+      "legacy": "other",
+      "integer": true,
+      "rank": 55
+    },
+    {
+      "code": "plate",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Assiette",
+        "en": "Plate",
+        "sw": "Sahani",
+        "ln": "Sani"
+      },
+      "pluralFr": "Assiettes",
+      "legacy": "other",
+      "integer": true,
+      "rank": 56
+    },
+    {
+      "code": "bunch",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Botte",
+        "en": "Bunch",
+        "sw": "Kifungu",
+        "ln": "Liboke ya ndunda"
+      },
+      "pluralFr": "Bottes",
+      "legacy": "other",
+      "integer": true,
+      "rank": 57
+    },
+    {
+      "code": "banana_bunch",
+      "kind": "packaging",
+      "labels": {
+        "fr": "Régime",
+        "en": "Bunch (bananas)",
+        "sw": "Mkungu",
+        "ln": "Etuka"
+      },
+      "pluralFr": "Régimes",
+      "legacy": "other",
+      "integer": true,
+      "rank": 58
+    },
+    {
+      "code": "other",
+      "kind": "count",
+      "labels": {
+        "fr": "Autre",
+        "en": "Other",
+        "sw": "Nyingine",
+        "ln": "Mosusu"
+      },
+      "pluralFr": "Autres",
+      "legacy": "other",
+      "integer": false,
+      "rank": 99
+    }
+  ],
+  "aliases": {
+    "pcs": "piece",
+    "pc": "piece",
+    "pce": "piece",
+    "pièce": "piece",
+    "pieces": "piece",
+    "pièces": "piece",
+    "u": "unit",
+    "unité": "unit",
+    "kilo": "kg",
+    "kilogramme": "kg",
+    "litre": "l",
+    "liter": "l",
+    "m²": "m2",
+    "m³": "m3",
+    "metre": "m",
+    "mètre": "m",
+    "yd": "yard",
+    "t": "tonne",
+    "paquet": "package",
+    "pack": "package",
+    "boîte": "box",
+    "boite": "box",
+    "bouteille": "bottle",
+    "sac": "bag",
+    "sack": "bag",
+    "demi-carton": "half_carton",
+    "demi-sac": "half_bag",
+    "douzaine": "dozen",
+    "plateau": "tray",
+    "casier": "crate",
+    "jerrican": "bidon",
+    "fût": "drum",
+    "fut": "drum",
+    "rouleau": "roll",
+    "pagne": "wrapper",
+    "seau": "bucket",
+    "bassin": "basin",
+    "tas": "heap",
+    "mesure": "measure",
+    "verre": "glass",
+    "gobelet": "cup",
+    "assiette": "plate",
+    "botte": "bunch",
+    "régime": "banana_bunch",
+    "tête": "head",
+    "tete": "head",
+    "paire": "pair",
+    "canette": "can",
+    "ballot": "bale",
+    "palette": "pallet",
+    "millimetre": "mm",
+    "millimètre": "mm",
+    "rame": "ream",
+    "plaquette": "blister"
+  }
+}

@@ -13,6 +13,7 @@ import '../../settings/models/settings.dart';
 import 'package:wanzo/core/utils/document_issuer.dart';
 import 'package:wanzo/core/utils/currency_formatter.dart';
 import '../utils/invoice_money.dart';
+import 'package:wanzo/core/units/measurement_units.dart';
 
 /// En-tête (identité émettrice) des pièces commerciales : règle unique de
 /// [DocumentIssuer] (raison sociale, nom de l'unité, adresse et téléphone de
@@ -440,7 +441,7 @@ class InvoiceService {
                         pw.Padding(
                           padding: const pw.EdgeInsets.all(5),
                           child: pw.Text(
-                            '${item.quantity}',
+                            lineQuantityLabel(item.quantity, item.unitCode),
                             textAlign: pw.TextAlign.center,
                           ),
                         ),
@@ -761,7 +762,7 @@ class InvoiceService {
                       pw.Expanded(
                         flex: 1,
                         child: pw.Text(
-                          '${item.quantity}',
+                          lineQuantityLabel(item.quantity, item.unitCode),
                           style: pw.TextStyle(font: regularFont, fontSize: 8),
                           textAlign: pw.TextAlign.center,
                         ),

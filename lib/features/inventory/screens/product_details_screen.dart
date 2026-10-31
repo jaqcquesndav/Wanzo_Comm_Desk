@@ -17,6 +17,8 @@ import '../bloc/inventory_bloc.dart';
 import '../bloc/inventory_event.dart';
 import '../bloc/inventory_state.dart';
 import '../models/product.dart';
+import 'package:wanzo/core/units/measurement_units.dart';
+import 'package:wanzo/core/units/unit_fields.dart';
 import '../models/stock_transaction.dart';
 import 'package:wanzo/features/settings/bloc/settings_bloc.dart';
 import 'package:wanzo/features/settings/bloc/settings_state.dart';
@@ -266,7 +268,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
               _buildInfoRow(
                 context,
                 label: 'Unité de mesure',
-                value: _getUnitName(product.unit),
+                value: MeasurementUnits.label(product.baseUnitCode, unitLang(context)),
               ),
             ],
           ),
@@ -335,7 +337,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                 context,
                 label: 'Quantité en stock',
                 value:
-                    '${product.stockQuantity.toStringAsFixed(product.stockQuantity.truncateToDouble() == product.stockQuantity ? 0 : 2)} ${_getUnitName(product.unit)}',
+                    '${product.stockLabel}',
                 valueColor:
                     product.isLowStock
                         ? Colors.orange
@@ -346,7 +348,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                 context,
                 label: 'Seuil d\'alerte',
                 value:
-                    '${product.alertThreshold.toStringAsFixed(product.alertThreshold.truncateToDouble() == product.alertThreshold ? 0 : 2)} ${_getUnitName(product.unit)}',
+                    '${MeasurementUnits.formatUnitQuantity(product.alertThreshold, product.baseUnitCode)}',
               ),
               // Expiration date (conditional)
               if (product.hasExpirationDate) ...[
@@ -502,7 +504,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                       _buildInfoRow(
                         context,
                         label: 'Unité de mesure',
-                        value: _getUnitName(product.unit),
+                        value: MeasurementUnits.label(product.baseUnitCode, unitLang(context)),
                       ),
                     ],
                   ),
@@ -581,7 +583,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                         context,
                         label: 'Quantité en stock',
                         value:
-                            '${product.stockQuantity.toStringAsFixed(product.stockQuantity.truncateToDouble() == product.stockQuantity ? 0 : 2)} ${_getUnitName(product.unit)}',
+                            '${product.stockLabel}',
                         valueColor:
                             product.isLowStock
                                 ? Colors.orange
@@ -594,7 +596,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                         context,
                         label: 'Seuil d\'alerte',
                         value:
-                            '${product.alertThreshold.toStringAsFixed(product.alertThreshold.truncateToDouble() == product.alertThreshold ? 0 : 2)} ${_getUnitName(product.unit)}',
+                            '${MeasurementUnits.formatUnitQuantity(product.alertThreshold, product.baseUnitCode)}',
                       ),
                       if (product.hasExpirationDate) ...[
                         const Divider(),
@@ -1026,7 +1028,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                   ),
                   const SizedBox(height: WanzoSpacing.xs),
                   Text(
-                    'Quantité: ${product.stockQuantity.toStringAsFixed(product.stockQuantity.truncateToDouble() == product.stockQuantity ? 0 : 2)} ${_getUnitName(product.unit)}',
+                    'Quantité: ${product.stockLabel}',
                     style: const TextStyle(fontSize: 16),
                   ),
                   if (product.isLowStock && product.stockQuantity > 0) ...[
@@ -1152,11 +1154,13 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
       return;
     }
     final TextEditingController quantityController = TextEditingController();
+    final units = product.sellableUnits;
+    var unit = units.first;
 
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
+        return StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
           title: Text(isAddition ? 'Ajouter du stock' : 'Retirer du stock'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1168,12 +1172,18 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                         'Une vente se fait depuis le point de vente.',
               ),
               const SizedBox(height: WanzoSpacing.md),
+              SellableUnitSelector(
+                units: units,
+                selected: unit.code,
+                onChanged: (u) => setDialogState(() => unit = u),
+              ),
+              if (units.length > 1) const SizedBox(height: WanzoSpacing.sm),
               TextField(
                 controller: quantityController,
                 decoration: InputDecoration(
                   labelText: 'Quantité',
                   border: const OutlineInputBorder(),
-                  suffixText: _getUnitName(product.unit),
+                  suffixText: MeasurementUnits.label(unit.code, unitLang(context)),
                 ),
                 keyboardType: TextInputType.number,
                 autofocus: true,
@@ -1187,7 +1197,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
             ),
             ElevatedButton(
               onPressed: () {
-                final quantity = double.tryParse(quantityController.text);
+                final typed = double.tryParse(
+                    quantityController.text.replaceAll(',', '.'));
+                // En unités de base : 2 cartons de 24 = 48.
+                final quantity =
+                    typed == null ? null : MeasurementUnits.toBase(typed, unit.factor);
 
                 if (quantity != null && quantity > 0) {
                   final adjustedQuantity = isAddition ? quantity : -quantity;
@@ -1226,7 +1240,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
               child: const Text('Confirmer'),
             ),
           ],
-        );
+        ));
       },
     );
   }
@@ -1297,7 +1311,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                       controller: quantityController,
                       decoration: InputDecoration(
                         border: const OutlineInputBorder(),
-                        suffixText: _getUnitName(product.unit),
+                        suffixText: MeasurementUnits.label(product.baseUnitCode, unitLang(context)),
                       ),
                       keyboardType: TextInputType.number,
                     ),
@@ -1437,27 +1451,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
     }
   }
 
-  /// Obtenir le nom de l'unité
-  String _getUnitName(ProductUnit unit) {
-    switch (unit) {
-      case ProductUnit.piece:
-        return 'pièce(s)';
-      case ProductUnit.kg:
-        return 'kg';
-      case ProductUnit.g:
-        return 'g';
-      case ProductUnit.l:
-        return 'L';
-      case ProductUnit.ml:
-        return 'mL';
-      case ProductUnit.package:
-        return 'paquet(s)';
-      case ProductUnit.box:
-        return 'boîte(s)';
-      case ProductUnit.other:
-        return 'unité(s)';
-    }
-  }
 
   /// Obtenir le nom du type de transaction
   String _getTransactionTypeName(StockTransactionType type) {
@@ -1548,7 +1541,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                   Padding(
                     padding: const EdgeInsets.only(top: 12.0),
                     child: Text(
-                      'Attention: Ce produit a ${product.stockQuantity} ${_getUnitName(product.unit)} en stock.',
+                      'Attention: Ce produit a ${product.stockLabel} en stock.',
                       style: const TextStyle(
                         color: Colors.red,
                         fontWeight: FontWeight.bold,

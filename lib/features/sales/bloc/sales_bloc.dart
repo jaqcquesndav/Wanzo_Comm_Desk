@@ -1,4 +1,5 @@
 // filepath: c:\Users\DevSpace\Flutter\wanzo\lib\features\sales\bloc\sales_bloc.dart
+import 'package:wanzo/core/units/measurement_units.dart';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart'; // Pour debugPrint
@@ -337,7 +338,7 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
               // === SORTIE DE STOCK (Coût des marchandises vendues - COGS) ===
               // Cette opération enregistre la diminution de la valeur du stock
               // Elle N'IMPACTE PAS la trésorerie (c'est un mouvement de stock)
-              final cogsAmount = product.costPriceInCdf * item.quantity;
+              final cogsAmount = product.costPriceInCdf * item.baseQuantity;
 
               // Ne créer l'écriture COGS que si le prix d'achat est connu.
               // Sinon `costPriceInCdf == 0` produisait une opération à montant 0
@@ -348,12 +349,12 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
                     id: _uuid.v4(),
                     date: savedSale.date,
                     description:
-                        'Sortie stock: ${item.quantity} x ${item.productName} (Vente #${savedSale.id.substring(0, 6)})',
+                        'Sortie stock: ${MeasurementUnits.formatNumber(item.baseQuantity)} x ${item.productName} (Vente #${savedSale.id.substring(0, 6)})',
                     type: OperationType.stockOut,
                     amount:
                         -cogsAmount, // Négatif = diminution de la valeur du stock
                     relatedDocumentId: savedSale.id,
-                    quantity: item.quantity.toDouble(),
+                    quantity: item.baseQuantity,
                     productId: productId,
                     productName: item.productName,
                     // Montant = costPriceInCdf x quantité : il est en CDF.
@@ -372,8 +373,7 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
                 productId: productId,
                 type: StockTransactionType.sale, // Type de transaction = vente
                 quantity:
-                    -item.quantity
-                        .toDouble(), // Quantité négative car c'est une sortie (convertie en double)
+                    -item.baseQuantity, // Quantité négative car c'est une sortie (convertie en double)
                 date: savedSale.date,
                 referenceId: savedSale.id, // Référence à la vente
                 notes:
@@ -382,7 +382,7 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
                     product.costPriceInCdf, // Coût unitaire du produit
                 totalValueInCdf:
                     product.costPriceInCdf *
-                    item.quantity.toDouble(), // Valeur totale
+                    item.baseQuantity, // Valeur totale
               );
 
               // Décrément LOCAL uniquement : le backend décrémente déjà le stock
@@ -581,8 +581,8 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
                     : StockTransactionType.sale,
             quantity:
                 restock
-                    ? item.quantity.toDouble()
-                    : -item.quantity.toDouble(),
+                    ? item.baseQuantity
+                    : -item.baseQuantity,
             date: DateTime.now(),
             referenceId: sale.id,
             notes:
@@ -590,7 +590,7 @@ class SalesBloc extends Bloc<SalesEvent, SalesState> {
                     ? 'Stock rendu, vente annulée #$shortId'
                     : 'Vente rétablie #$shortId',
             unitCostInCdf: item.unitPriceInCdf,
-            totalValueInCdf: item.unitPriceInCdf * item.quantity,
+            totalValueInCdf: item.unitPriceInCdf * item.baseQuantity,
           ),
         );
       } catch (e) {

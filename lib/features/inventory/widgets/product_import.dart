@@ -14,6 +14,7 @@ import '../../../core/utils/price_plausibility.dart';
 import '../bloc/inventory_bloc.dart';
 import '../bloc/inventory_event.dart';
 import '../models/product.dart';
+import '../../../core/units/measurement_units.dart';
 import '../repositories/inventory_repository.dart';
 
 /// Colonnes du modèle d'import, dans l'ordre. Seuls « Nom » et « Prix de
@@ -269,7 +270,8 @@ _Analyse _analyser(List<List<String>> lignes, Set<String> existants, CurrencySer
       costPriceInCdf: devises.convertToCdf(achat, devise),
       sellingPriceInCdf: devises.convertToCdf(vente, devise),
       stockQuantity: quantite,
-      unit: _unite(cellule(l, iUnite)),
+      unit: _uniteCatalogue(cellule(l, iUnite), _unite),
+      unitCode: _uniteCode(cellule(l, iUnite)),
       alertThreshold: nombre(cellule(l, iSeuil)) ?? 5,
       createdAt: maintenant,
       updatedAt: maintenant,
@@ -365,4 +367,20 @@ List<List<String>> _lireXlsx(Uint8List octets) {
 
 void _message(BuildContext context, String texte) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texte)));
+}
+
+/// Code du catalogue lu dans la colonne unité (« carton », « Sac de 50 kg »
+/// non reconnu reste piece) ; null quand l'enum historique suffit.
+String? _uniteCode(String s) {
+  final c = MeasurementUnits.normalize(s);
+  return (c == null || c == MeasurementUnits.legacyOf(c)) ? null : c;
+}
+
+ProductUnit _uniteCatalogue(String s, ProductUnit Function(String) ancien) {
+  final c = MeasurementUnits.normalize(s);
+  if (c == null) return ancien(s);
+  return ProductUnit.values.firstWhere(
+    (u) => u.name == MeasurementUnits.legacyOf(c),
+    orElse: () => ProductUnit.other,
+  );
 }

@@ -19,6 +19,8 @@ import '../bloc/inventory_bloc.dart';
 import '../bloc/inventory_event.dart';
 import '../models/product.dart';
 import '../models/stock_transaction.dart';
+import '../../../core/units/measurement_units.dart';
+import '../../../core/units/unit_fields.dart';
 
 /// Réapprovisionnement d'un produit : UNE seule boîte, réutilisée partout
 /// (fiche produit, liste du stock, recherche de la vente).
@@ -65,6 +67,22 @@ class _RestockDialogState extends State<_RestockDialog> {
   /// Devise du prix d'achat, choisie une fois (devise active des réglages
   /// si son taux existe, sinon CDF) ; jamais réécrite par une reconstruction.
   late Currency _devise;
+
+  /// Unité d'achat : la base ou un conditionnement (carton de 24). Quantité
+  /// et prix saisis dans cette unité ; le stock reçoit quantité x contenu.
+  late SellableUnit _unite = widget.product.sellableUnits.first;
+
+  void _choisirUnite(SellableUnit u) {
+    final ancien = _unite.factor;
+    setState(() {
+      _unite = u;
+      // Prix proposé : celui de l'unité précédente ramené au nouveau contenu.
+      if (_price > 0 && ancien > 0) {
+        final p = _price / ancien * u.factor;
+        _priceController.text = p.toStringAsFixed(2);
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -164,7 +182,7 @@ class _RestockDialogState extends State<_RestockDialog> {
             paymentStatus:
                 _paid ? ExpensePaymentStatus.paid : ExpensePaymentStatus.unpaid,
             paymentMethod: _paid ? _method : null,
-            notes: '${_qty.toStringAsFixed(_qty % 1 == 0 ? 0 : 2)} x '
+            notes: '${MeasurementUnits.formatUnitQuantity(_qty, _unite.code)} x '
                 '${formatCurrency(_price, code)}',
           ),
           saved: depenseEnregistree,
@@ -208,11 +226,15 @@ class _RestockDialogState extends State<_RestockDialog> {
       id: const Uuid().v4(),
       productId: product.id,
       type: StockTransactionType.purchase,
-      quantity: _qty,
+      // En unités de base : 3 cartons de 24 = 72, coût du carton / 24.
+      quantity: MeasurementUnits.toBase(_qty, _unite.factor),
       date: now,
       referenceId: achat.id,
-      notes: 'Réapprovisionnement ${product.name}',
-      unitCostInCdf: _price * tauxAchat,
+      notes: _unite.isBase
+          ? 'Réapprovisionnement ${product.name}'
+          : 'Réapprovisionnement ${product.name} : '
+              '${MeasurementUnits.formatUnitQuantity(_qty, _unite.code)} de ${MeasurementUnits.formatNumber(_unite.factor)}',
+      unitCostInCdf: _price * tauxAchat / _unite.factor,
       totalValueInCdf: _total * tauxAchat,
       currencyCode: 'CDF',
     );
@@ -281,10 +303,18 @@ class _RestockDialogState extends State<_RestockDialog> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Stock actuel : ${product.stockQuantity.toStringAsFixed(product.stockQuantity % 1 == 0 ? 0 : 2)}',
+                  'Stock actuel : ${product.stockLabel}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: WanzoSpacing.md),
+                // Acheté au carton, au demi-carton ou à l'unité.
+                SellableUnitSelector(
+                  units: product.sellableUnits,
+                  selected: _unite.code,
+                  onChanged: _choisirUnite,
+                ),
+                if (product.sellableUnits.length > 1)
+                  const SizedBox(height: WanzoSpacing.md),
                 TextFormField(
                   controller: _qtyController,
                   autofocus: true,
@@ -292,9 +322,13 @@ class _RestockDialogState extends State<_RestockDialog> {
                     decimal: true,
                   ),
                   inputFormatters: [numberFormatter],
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Quantité reçue',
-                    border: OutlineInputBorder(),
+                    suffixText: MeasurementUnits.label(_unite.code, unitLang(context)),
+                    helperText: _unite.isBase || _qty <= 0
+                        ? null
+                        : '= ${MeasurementUnits.formatUnitQuantity(MeasurementUnits.toBase(_qty, _unite.factor), product.baseUnitCode)}',
+                    border: const OutlineInputBorder(),
                   ),
                   onChanged: (_) => setState(() {}),
                   validator: (_) =>
@@ -308,7 +342,9 @@ class _RestockDialogState extends State<_RestockDialog> {
                   ),
                   inputFormatters: [numberFormatter],
                   decoration: InputDecoration(
-                    labelText: 'Prix d\'achat unitaire',
+                    labelText: _unite.isBase
+                        ? 'Prix d\'achat unitaire'
+                        : 'Prix d\'achat par ${MeasurementUnits.label(_unite.code, unitLang(context)).toLowerCase()}',
                     border: const OutlineInputBorder(),
                     // Devise du prix saisi, parmi celles qui ont un taux.
                     suffixIcon: Padding(

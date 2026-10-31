@@ -128,6 +128,12 @@ Map<String, dynamic> saleToApiDto(
               if (item.priceTierCode != null && item.priceTierCode!.isNotEmpty)
                 'priceTierCode': item.priceTierCode,
               if (item.taxRate != null) 'taxRate': item.taxRate,
+              // Vente au carton : quantité dans cette unité, le serveur sort
+              // quantité x facteur unités de base du stock.
+              if (item.unitCode != null && item.unitCode!.isNotEmpty)
+                'unitCode': item.unitCode,
+              if (item.unitCode != null && (item.unitFactor ?? 0) > 0)
+                'unitFactor': item.unitFactor,
               if (item.notes != null && item.notes!.isNotEmpty)
                 'notes': item.notes,
               // Mode salon : exécutant + commission figée (si renseignés).

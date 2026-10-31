@@ -26,6 +26,8 @@ class ProductAdapter extends TypeAdapter<Product> {
       sellingPriceInCdf: fields[6] as double,
       stockQuantity: fields[7] as double,
       unit: fields[8] as ProductUnit,
+      unitCode: fields[40] as String?,
+      packagingsJson: fields[41] as String?,
       alertThreshold: fields[9] as double,
       createdAt: fields[10] as DateTime,
       updatedAt: fields[11] as DateTime,
@@ -56,7 +58,7 @@ class ProductAdapter extends TypeAdapter<Product> {
   @override
   void write(BinaryWriter writer, Product obj) {
     writer
-      ..writeByte(33)
+      ..writeByte(35)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -122,7 +124,11 @@ class ProductAdapter extends TypeAdapter<Product> {
       ..writeByte(31)
       ..write(obj.isPublic)
       ..writeByte(33)
-      ..write(obj.deactivatedAt);
+      ..write(obj.deactivatedAt)
+      ..writeByte(40)
+      ..write(obj.unitCode)
+      ..writeByte(41)
+      ..write(obj.packagingsJson);
   }
 
   @override
@@ -323,6 +329,7 @@ Product _$ProductFromJson(Map<String, dynamic> json) => Product(
       sellingPriceInCdf: (json['sellingPriceInCdf'] as num?)?.toDouble() ?? 0.0,
       stockQuantity: (json['stockQuantity'] as num?)?.toDouble() ?? 0.0,
       unit: $enumDecode(_$ProductUnitEnumMap, json['unit']),
+      unitCode: json['unitCode'] as String?,
       alertThreshold: (json['alertThreshold'] as num?)?.toDouble() ?? 5,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
@@ -367,6 +374,7 @@ Map<String, dynamic> _$ProductToJson(Product instance) => <String, dynamic>{
       'sellingPriceInCdf': instance.sellingPriceInCdf,
       'stockQuantity': instance.stockQuantity,
       'unit': _$ProductUnitEnumMap[instance.unit]!,
+      if (instance.unitCode case final value?) 'unitCode': value,
       'alertThreshold': instance.alertThreshold,
       'createdAt': instance.createdAt.toIso8601String(),
       'updatedAt': instance.updatedAt.toIso8601String(),

@@ -1131,7 +1131,7 @@ class _ProductGridCard extends StatelessWidget {
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            '${product.stockQuantity} ${_getShortUnitName(product.unit)}',
+                            product.stockLabel,
                             style: theme.textTheme.bodySmall?.copyWith(
                               color:
                                   isLowStock
@@ -1190,26 +1190,6 @@ class _ProductGridCard extends StatelessWidget {
     );
   }
 
-  String _getShortUnitName(ProductUnit unit) {
-    switch (unit) {
-      case ProductUnit.piece:
-        return 'pcs';
-      case ProductUnit.kg:
-        return 'kg';
-      case ProductUnit.g:
-        return 'g';
-      case ProductUnit.l:
-        return 'L';
-      case ProductUnit.ml:
-        return 'ml';
-      case ProductUnit.box:
-        return 'bte';
-      case ProductUnit.package:
-        return 'paq';
-      case ProductUnit.other:
-        return '';
-    }
-  }
 
   Widget _buildExpirationBadge(BuildContext context, ThemeData theme) {
     final isExpired = product.isExpired;

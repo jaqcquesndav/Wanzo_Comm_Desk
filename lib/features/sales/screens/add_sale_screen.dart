@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:wanzo/core/units/measurement_units.dart';
+import 'package:wanzo/core/units/unit_fields.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:wanzo/core/enums/currency_enum.dart'; // Corrected: Currency is the enum name
@@ -1934,7 +1936,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     final isOutOfStock = product.stockQuantity <= 0;
     final stockInfo = isOutOfStock
         ? 'Rupture'
-        : '${product.stockQuantity.toStringAsFixed(0)} en stock';
+        : '${product.stockLabel} en stock';
     final isLowStock = product.stockQuantity <= product.alertThreshold;
 
     return InkWell(
@@ -2206,6 +2208,9 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       unitPriceInCdf: product.sellingPriceInCdf,
       totalPriceInCdf: product.sellingPriceInCdf,
       itemType: SaleItemType.product,
+      // Unité imprimée sur le ticket ; facteur 1 (unité de base).
+      unitCode: product.baseUnitCode,
+      unitFactor: 1,
       taxRate: _getApplicableTaxRate(product),
     );
 
@@ -2354,7 +2359,10 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                 Expanded(
                   flex: 1,
                   child: Text(
-                    '${item.quantity.toInt()}',
+                    item.unitCode == null || (item.unitFactor ?? 1) == 1
+                        ? '${item.quantity.toInt()}'
+                        : MeasurementUnits.formatUnitQuantity(
+                            item.quantity, item.unitCode),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -2495,6 +2503,9 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                     unitPriceInCdf: product.sellingPriceInCdf,
                     totalPriceInCdf: product.sellingPriceInCdf,
                     itemType: SaleItemType.product,
+                    // Unité imprimée sur le ticket ; facteur 1 (unité de base).
+                    unitCode: product.baseUnitCode,
+                    unitFactor: 1,
                     taxRate: _getApplicableTaxRate(product),
                   );
 
@@ -3150,7 +3161,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  '${product.stockQuantity.toInt()} en stock',
+                                  '${product.stockLabel} en stock',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color:
@@ -3205,6 +3216,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             existingItem.itemType == item.itemType &&
             existingItem.serviceId == item.serviceId &&
             existingItem.priceTierCode == item.priceTierCode &&
+            existingItem.unitCode == item.unitCode &&
             existingItem.unitPrice == item.unitPrice,
       );
 
@@ -3243,8 +3255,31 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   }
 
   /// Affiche un dialog pour éditer un article du panier
+  /// Produit du stock d'une ligne (null : article libre ou service).
+  Product? _productOfItem(SaleItem item) {
+    final id = item.productId;
+    if (id == null || item.itemType != SaleItemType.product) return null;
+    final state = context.read<InventoryBloc>().state;
+    if (state is! ProductsLoaded) return null;
+    for (final p in state.products) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
+
   void _showEditItemDialog(int index, SaleItem item) {
     final nameController = TextEditingController(text: item.productName);
+    // Unité de vente : la base ou un conditionnement (carton de 24...).
+    final saleUnits = _productOfItem(item)?.sellableUnits ?? const <SellableUnit>[];
+    SellableUnit? saleUnit;
+    for (final u in saleUnits) {
+      if (item.unitCode == null || (item.unitFactor ?? 1) == 1
+          ? u.isBase
+          : u.code == item.unitCode) {
+        saleUnit = u;
+      }
+    }
+    saleUnit ??= saleUnits.isEmpty ? null : saleUnits.first;
     final quantityController = TextEditingController(
       text: item.quantity.toString(),
     );
@@ -3318,6 +3353,22 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                     ),
                     const SizedBox(height: 16),
 
+                    // Vendu au carton, au demi-carton ou à l'unité.
+                    if (saleUnits.length > 1) ...[
+                      SellableUnitSelector(
+                        units: saleUnits,
+                        selected: saleUnit?.code ?? '',
+                        onChanged: (u) => setStateDialog(() {
+                          saleUnit = u;
+                          final cdf = u.sellingPriceInCdf;
+                          if (cdf != null && item.exchangeRate > 0) {
+                            priceController.text =
+                                (cdf / item.exchangeRate).toStringAsFixed(2);
+                          }
+                        }),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     // Quantité et Prix
                     Row(
                       children: [
@@ -3329,9 +3380,13 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
                             ],
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Quantité',
-                              border: OutlineInputBorder(),
+                              suffixText: saleUnit == null
+                                  ? null
+                                  : MeasurementUnits.shortLabel(
+                                      saleUnit!.code, unitLang(context)),
+                              border: const OutlineInputBorder(),
                             ),
                             onChanged: (_) => setStateDialog(() {}),
                           ),
@@ -3482,6 +3537,10 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                                 totalPriceInCdf: newTotalPriceInCdf,
                                 itemType: item.itemType,
                                 notes: newNotes,
+                                // Ligne au carton : le stock sortira
+                                // quantité x contenu unités de base.
+                                unitCode: saleUnit?.code ?? item.unitCode,
+                                unitFactor: saleUnit?.factor ?? item.unitFactor,
                                 taxRate: item.taxRate,
                               );
 

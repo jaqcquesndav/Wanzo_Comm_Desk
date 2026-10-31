@@ -111,6 +111,19 @@ class SaleItem extends Equatable {
   @HiveField(20)
   final String? priceTierCode;
 
+  /// Unité de la ligne (carton, half_carton...) ; null = unité de base du
+  /// produit. [quantity] est dans cette unité.
+  @HiveField(21)
+  final String? unitCode;
+
+  /// Unités de base par unité de la ligne (1 carton = 24). Null ou 1 : unité
+  /// de base. Le stock bouge de quantity x unitFactor.
+  @HiveField(22)
+  final double? unitFactor;
+
+  /// Quantité en unités de base (2 cartons de 24 = 48).
+  double get baseQuantity => quantity * ((unitFactor ?? 0) > 0 ? unitFactor! : 1.0);
+
   /// Constructeur
   const SaleItem({
     this.id,
@@ -134,6 +147,8 @@ class SaleItem extends Equatable {
     this.commissionAmount,
     this.serviceId,
     this.priceTierCode,
+    this.unitCode,
+    this.unitFactor,
   });
 
   factory SaleItem.fromJson(Map<String, dynamic> json) {
@@ -151,6 +166,7 @@ class SaleItem extends Equatable {
       'taxAmount',
       'commissionRate',
       'commissionAmount',
+      'unitFactor',
     ]) {
       final v = normalized[key];
       if (v is String) normalized[key] = num.tryParse(v.trim());
@@ -177,6 +193,8 @@ class SaleItem extends Equatable {
     double? commissionRate,
     String? serviceId,
     String? priceTierCode,
+    String? unitCode,
+    double? unitFactor,
   }) {
     // Calcul du prix total avec remise
     final discountAmount = discount ?? 0.0;
@@ -214,6 +232,8 @@ class SaleItem extends Equatable {
       commissionAmount: calculatedCommissionAmount,
       serviceId: serviceId,
       priceTierCode: priceTierCode,
+      unitCode: unitCode,
+      unitFactor: unitFactor,
     );
   }
 
@@ -240,6 +260,8 @@ class SaleItem extends Equatable {
     double? commissionAmount,
     String? serviceId,
     String? priceTierCode,
+    String? unitCode,
+    double? unitFactor,
   }) {
     return SaleItem(
       id: id ?? this.id,
@@ -263,6 +285,8 @@ class SaleItem extends Equatable {
       commissionAmount: commissionAmount ?? this.commissionAmount,
       serviceId: serviceId ?? this.serviceId,
       priceTierCode: priceTierCode ?? this.priceTierCode,
+      unitCode: unitCode ?? this.unitCode,
+      unitFactor: unitFactor ?? this.unitFactor,
     );
   }
 
@@ -289,5 +313,7 @@ class SaleItem extends Equatable {
     commissionAmount,
     serviceId,
     priceTierCode,
+    unitCode,
+    unitFactor,
   ];
 }
